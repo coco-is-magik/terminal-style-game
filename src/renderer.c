@@ -35,15 +35,15 @@ static SDL_Texture* generate_font_atlas(SDL_Renderer *sdl_ren) {
     return atlas;
 }
 
-Renderer* renderer_create(int grid_w, int grid_h, int cell_w, int cell_h) {
+Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h) {
     Renderer *ren = malloc(sizeof(Renderer));
     if (!ren) return NULL;
 
     ren->cell_w = cell_w;
     ren->cell_h = cell_h;
 
-    int window_w = grid_w * cell_w;
-    int window_h = grid_h * cell_h;
+    int logical_w = grid_w * cell_w;
+    int logical_h = grid_h * cell_h;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -51,7 +51,7 @@ Renderer* renderer_create(int grid_w, int grid_h, int cell_w, int cell_h) {
         return NULL;
     }
 
-    ren->window = SDL_CreateWindow("ASCII FPS Prototype", window_w, window_h, 0);
+    ren->window = SDL_CreateWindow("ASCII FPS Prototype", win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!ren->window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();
@@ -67,6 +67,9 @@ Renderer* renderer_create(int grid_w, int grid_h, int cell_w, int cell_h) {
         free(ren);
         return NULL;
     }
+
+    // Best-fit scaling (letterboxing/pillarboxing)
+    SDL_SetRenderLogicalPresentation(ren->sdl_ren, logical_w, logical_h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
     ren->font_atlas = generate_font_atlas(ren->sdl_ren);
     if (!ren->font_atlas) {
@@ -93,9 +96,20 @@ void renderer_destroy(Renderer *ren) {
     free(ren);
 }
 
+// Helper to compare colors
+static bool colors_equal(SDL_Color a, SDL_Color b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
 void renderer_draw(Renderer *ren, Grid *grid) {
     SDL_SetRenderDrawColor(ren->sdl_ren, 0, 0, 0, 255);
     SDL_RenderClear(ren->sdl_ren);
+
+    // State cache to optimize SDL calls
+    SDL_Color last_bg = {0, 0, 0, 0};
+    SDL_Color last_fg = {0, 0, 0, 0};
+    bool first_bg = true;
+    bool first_fg = true;
 
     for (int y = 0; y < grid->height; y++) {
         for (int x = 0; x < grid->width; x++) {
@@ -108,14 +122,25 @@ void renderer_draw(Renderer *ren, Grid *grid) {
                 (float)ren->cell_h 
             };
 
-            // Draw Background
-            SDL_SetRenderDrawColor(ren->sdl_ren, c.bg.r, c.bg.g, c.bg.b, c.bg.a);
-            SDL_RenderFillRect(ren->sdl_ren, &dest_rect);
+            // Draw Background only if it's not the default clear color (black)
+            bool is_black = c.bg.r == 0 && c.bg.g == 0 && c.bg.b == 0 && c.bg.a == 255;
+            if (!is_black) {
+                if (first_bg || !colors_equal(last_bg, c.bg)) {
+                    SDL_SetRenderDrawColor(ren->sdl_ren, c.bg.r, c.bg.g, c.bg.b, c.bg.a);
+                    last_bg = c.bg;
+                    first_bg = false;
+                }
+                SDL_RenderFillRect(ren->sdl_ren, &dest_rect);
+            }
 
             // Draw Glyph if it's printable and not a space
             if (c.glyph > 32 && c.glyph < 127) {
-                SDL_SetTextureColorMod(ren->font_atlas, c.fg.r, c.fg.g, c.fg.b);
-                SDL_SetTextureAlphaMod(ren->font_atlas, c.fg.a);
+                if (first_fg || !colors_equal(last_fg, c.fg)) {
+                    SDL_SetTextureColorMod(ren->font_atlas, c.fg.r, c.fg.g, c.fg.b);
+                    SDL_SetTextureAlphaMod(ren->font_atlas, c.fg.a);
+                    last_fg = c.fg;
+                    first_fg = false;
+                }
                 
                 SDL_FRect src_rect = {
                     (float)(c.glyph * 8), 0.0f, 8.0f, 8.0f

@@ -13,7 +13,7 @@ typedef struct {
     int cell_h;
 } Renderer;
 
-Renderer* renderer_create(int grid_w, int grid_h, int cell_w, int cell_h);
+Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h);
 void renderer_destroy(Renderer *ren);
 void renderer_draw(Renderer *ren, Grid *grid);
 bool renderer_process_events(void);
