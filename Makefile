@@ -20,8 +20,10 @@ all: $(APP)
 dirs:
 	mkdir -p $(BUILD_DIR)
 
-$(APP): src/main.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) src/main.c -o $(APP) $(LIBS) $(RPATH)
+SRC_FILES := $(wildcard src/*.c)
+
+$(APP): $(SRC_FILES) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) $(SRC_FILES) -o $(APP) $(LIBS) $(RPATH)
 
 $(TEST_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
