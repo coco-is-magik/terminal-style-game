@@ -29,11 +29,17 @@ $(APP): $(SRC_FILES) | dirs
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
-$(TEST_CORE_RUNNER): tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+$(TEST_CORE_RUNNER): tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c src/math.c src/map.c src/camera.c src/raycast.c src/input.c src/config.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c src/math.c src/map.c src/camera.c src/raycast.c src/input.c src/config.c -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
 run: $(APP)
-	./$(APP)
+	./$(APP) --mode raycast
+
+run-normal: $(APP)
+	./$(APP) --mode normal
+
+run-stress: $(APP)
+	./$(APP) --mode stress
 
 test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER)
 	./$(TEST_DEPS_RUNNER)
