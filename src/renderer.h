@@ -5,10 +5,18 @@
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
+// Instrumentation counters
+extern int renderer_alloc_count;
+extern int renderer_free_count;
+extern int renderer_texture_create_count;
+
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *sdl_ren;
-    SDL_Texture *font_atlas;
+    SDL_Texture *screen_texture;
+    uint32_t *pixel_buffer;
+    int logical_w;
+    int logical_h;
     int cell_w;
     int cell_h;
 } Renderer;

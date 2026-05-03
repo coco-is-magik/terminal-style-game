@@ -11,7 +11,8 @@ LIBS := -L$(VENDOR_DIR)/lib64 -lSDL3 -lSDL3_mixer -lenet -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
 
 APP := $(BUILD_DIR)/ascii-fps
-TEST_RUNNER := $(BUILD_DIR)/test-runner
+TEST_DEPS_RUNNER := $(BUILD_DIR)/test-deps
+TEST_CORE_RUNNER := $(BUILD_DIR)/test-core
 
 .PHONY: all run test clean dirs
 
@@ -25,14 +26,25 @@ SRC_FILES := $(wildcard src/*.c)
 $(APP): $(SRC_FILES) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(SRC_FILES) -o $(APP) $(LIBS) $(RPATH)
 
-$(TEST_RUNNER): tests/test_deps.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+$(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+
+$(TEST_CORE_RUNNER): tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
 run: $(APP)
 	./$(APP)
 
-test: $(TEST_RUNNER)
-	./$(TEST_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER)
+	./$(TEST_DEPS_RUNNER)
+	./$(TEST_CORE_RUNNER)
+	@echo "Note: benchmark and stability require a video environment to fully run."
+
+benchmark: $(APP)
+	./$(APP) --benchmark-stress 5
+
+stability: $(APP)
+	./$(APP) --stability-test 30
 
 clean:
 	rm -rf $(BUILD_DIR)
