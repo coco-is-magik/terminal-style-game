@@ -161,8 +161,8 @@ static void test_map_lookup(void **state) {
     (void)state;
     Map *m = map_create(5, 5);
     map_set(m, 2, 2, 1);
-    assert_int_equal(map_get(m, 2, 2), 1);
-    assert_int_equal(map_get(m, 0, 0), 0);
+    assert_int_equal(map_get(m, 2, 2)->material_id, 1);
+    assert_int_equal(map_get(m, 0, 0)->material_id, 0);
     map_destroy(m);
 }
 
@@ -269,7 +269,12 @@ static void test_raycast_render_output(void **state) {
     Camera cam;
     camera_init(&cam, 2.5, 2.5, -PI/2, PI/2); // facing up (-y direction)
     
-    raycast_render(g, m, &cam);
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "#x-.");
+
+    raycast_render(g, m, &cam, &assets);
     
     Cell c;
     // Check ceiling (top row)

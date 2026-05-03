@@ -8,8 +8,8 @@ Map* map_create(int width, int height) {
     if (!m) return NULL;
     m->width = width;
     m->height = height;
-    m->data = calloc(width * height, sizeof(int));
-    if (!m->data) {
+    m->cells = calloc(width * height, sizeof(MapCell));
+    if (!m->cells) {
         free(m);
         return NULL;
     }
@@ -18,7 +18,7 @@ Map* map_create(int width, int height) {
 
 void map_destroy(Map *map) {
     if (!map) return;
-    if (map->data) free(map->data);
+    if (map->cells) free(map->cells);
     free(map);
 }
 
@@ -27,12 +27,12 @@ bool map_in_bounds(Map *map, int x, int y) {
     return x >= 0 && x < map->width && y >= 0 && y < map->height;
 }
 
-int map_get(Map *map, int x, int y) {
-    if (!map_in_bounds(map, x, y)) return 0;
-    return map->data[y * map->width + x];
+MapCell* map_get(Map *map, int x, int y) {
+    if (!map_in_bounds(map, x, y)) return NULL;
+    return &map->cells[y * map->width + x];
 }
 
-void map_set(Map *map, int x, int y, int value) {
+void map_set(Map *map, int x, int y, int material_id) {
     if (!map_in_bounds(map, x, y)) return;
-    map->data[y * map->width + x] = value;
+    map->cells[y * map->width + x].material_id = material_id;
 }

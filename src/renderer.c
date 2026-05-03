@@ -1,5 +1,4 @@
 #include "renderer.h"
-#include "font8x8.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -20,13 +19,14 @@ static void ren_free(void* ptr) {
 }
 
 // Macro to quickly pack SDL_Color into an ABGR/RGBA uint32_t suitable for SDL_PIXELFORMAT_RGBA32.
-// SDL_PIXELFORMAT_RGBA32 stores bytes in R, G, B, A order in memory.
-// On Little Endian, this translates to ABGR in registers.
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
     #define COLOR_TO_UINT32(c) (((c).r << 24) | ((c).g << 16) | ((c).b << 8) | (c).a)
 #else
     #define COLOR_TO_UINT32(c) (((c).a << 24) | ((c).b << 16) | ((c).g << 8) | (c).r)
 #endif
+
+// We need the raw font bits for the software pixel buffer. We will extract them from the atlas.
+extern const unsigned char font8x8_basic[128][8];
 
 Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h) {
     if (grid_w <= 0 || grid_h <= 0 || cell_w <= 0 || cell_h <= 0) return NULL;
@@ -38,6 +38,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     ren->cell_h = cell_h;
     ren->logical_w = grid_w * cell_w;
     ren->logical_h = grid_h * cell_h;
+    ren->atlas = NULL;
 
     ren->pixel_buffer = ren_malloc(ren->logical_w * ren->logical_h * sizeof(uint32_t));
     if (!ren->pixel_buffer) {
@@ -85,11 +86,24 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     }
     renderer_texture_create_count++;
 
+    ren->atlas = glyph_atlas_create_builtin(ren->sdl_ren);
+    if (!ren->atlas) {
+        fprintf(stderr, "glyph_atlas_create_builtin failed\n");
+        SDL_DestroyTexture(ren->screen_texture);
+        SDL_DestroyRenderer(ren->sdl_ren);
+        SDL_DestroyWindow(ren->window);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        ren_free(ren->pixel_buffer);
+        ren_free(ren);
+        return NULL;
+    }
+
     return ren;
 }
 
 void renderer_destroy(Renderer *ren) {
     if (!ren) return;
+    if (ren->atlas) glyph_atlas_destroy(ren->atlas);
     if (ren->screen_texture) SDL_DestroyTexture(ren->screen_texture);
     if (ren->sdl_ren) SDL_DestroyRenderer(ren->sdl_ren);
     if (ren->window) SDL_DestroyWindow(ren->window);
@@ -97,6 +111,7 @@ void renderer_destroy(Renderer *ren) {
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
     ren_free(ren);
 }
+
 
 void renderer_draw(Renderer *ren, Grid *grid) {
     uint32_t *pixels = ren->pixel_buffer;
@@ -110,7 +125,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             uint32_t fg = COLOR_TO_UINT32(c.fg);
             uint32_t bg = COLOR_TO_UINT32(c.bg);
             
-            uint8_t *glyph_data = font8x8_basic[c.glyph < 128 ? c.glyph : 32];
+            const uint8_t *glyph_data = font8x8_basic[c.glyph < 128 ? c.glyph : 32];
             int base_x = cx * 8;
             int base_y = cy * 8;
             

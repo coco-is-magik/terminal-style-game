@@ -50,13 +50,15 @@ void camera_update(Camera *cam, Map *map, InputState *input, double delta_time_s
     
     // Check X
     int map_x = (int)(cam->transform.pos.x + move_x + (move_x > 0 ? radius : -radius));
-    if (map_get(map, map_x, (int)cam->transform.pos.y) == 0) {
+    MapCell *cell_x = map_get(map, map_x, (int)cam->transform.pos.y);
+    if (cell_x && cell_x->material_id == 0) {
         cam->transform.pos.x += move_x;
     }
     
     // Check Y
     int map_y = (int)(cam->transform.pos.y + move_y + (move_y > 0 ? radius : -radius));
-    if (map_get(map, (int)cam->transform.pos.x, map_y) == 0) {
+    MapCell *cell_y = map_get(map, (int)cam->transform.pos.x, map_y);
+    if (cell_y && cell_y->material_id == 0) {
         cam->transform.pos.y += move_y;
     }
 }

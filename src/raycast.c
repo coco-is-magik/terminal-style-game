@@ -57,7 +57,8 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
             break;
         }
 
-        if (map_get(map, map_x, map_y) > 0) {
+        MapCell *cell = map_get(map, map_x, map_y);
+        if (cell && cell->material_id > 0) {
             hit = true;
         }
     }
@@ -76,8 +77,8 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
     return res;
 }
 
-void raycast_render(Grid *grid, Map *map, Camera *cam) {
-    if (!grid || !map || !cam) return;
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets) {
+    if (!grid || !map || !cam || !assets) return;
     
     // Fill ceiling/floor just in case
     grid_clear(grid, (SDL_Color){0, 0, 0, 255});
@@ -89,7 +90,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam) {
         RayResult ray = raycast_fire(map, cam, ray_angle, 20.0);
 
         int line_height = 0;
+        int material_id = 0;
+
         if (ray.hit) {
+            MapCell *cell = map_get(map, ray.map_x, ray.map_y);
+            if (cell) material_id = cell->material_id;
+
             double perp_dist = ray.distance * cos(ray_angle - cam->transform.angle);
             if (perp_dist < 0.001) perp_dist = 0.001;
             line_height = (int)(grid->height / perp_dist);
@@ -102,19 +108,24 @@ void raycast_render(Grid *grid, Map *map, Camera *cam) {
         if (draw_end >= grid->height) draw_end = grid->height - 1;
         if (draw_end < -1) draw_end = -1;
 
-        uint8_t glyph = '#';
-        if (ray.distance > 10) glyph = '.';
-        else if (ray.distance > 7) glyph = '-';
-        else if (ray.distance > 5) glyph = '+';
-        else if (ray.distance > 3) glyph = 'x';
+        uint8_t glyph = ' ';
+        SDL_Color color = {0,0,0,255};
 
-        SDL_Color color = ray.side == 1 ? (SDL_Color){150, 150, 150, 255} : (SDL_Color){200, 200, 200, 255};
-        
-        double intensity = 1.0 - (ray.distance / 20.0);
-        if (intensity < 0) intensity = 0;
-        color.r = (uint8_t)(color.r * intensity);
-        color.g = (uint8_t)(color.g * intensity);
-        color.b = (uint8_t)(color.b * intensity);
+        if (ray.hit) {
+            Material *mat = &assets->materials[material_id];
+            
+            int glyph_idx = 0;
+            if (ray.distance > 10.0) glyph_idx = 3;
+            else if (ray.distance > 7.0) glyph_idx = 2;
+            else if (ray.distance > 4.0) glyph_idx = 1;
+            
+            glyph = mat->glyphs[glyph_idx];
+            
+            double light_level = 1.0;
+            if (ray.side == 1) light_level *= 0.6; // Darker on Y sides
+            
+            color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
+        }
 
         for (int y = 0; y < draw_start; y++) {
             grid_set(grid, x, y, ' ', (SDL_Color){255,255,255,255}, (SDL_Color){50, 50, 50, 255});

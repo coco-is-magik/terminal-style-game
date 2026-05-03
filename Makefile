@@ -22,6 +22,7 @@ dirs:
 	mkdir -p $(BUILD_DIR)
 
 SRC_FILES := $(wildcard src/*.c)
+TEST_SRC := $(filter-out src/main.c src/app.c, $(SRC_FILES))
 
 $(APP): $(SRC_FILES) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(SRC_FILES) -o $(APP) $(LIBS) $(RPATH)
@@ -29,8 +30,8 @@ $(APP): $(SRC_FILES) | dirs
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
-$(TEST_CORE_RUNNER): tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c src/math.c src/map.c src/camera.c src/raycast.c src/input.c src/config.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c src/grid.c src/scale.c src/timing.c src/renderer.c src/math.c src/map.c src/camera.c src/raycast.c src/input.c src/config.c -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+$(TEST_CORE_RUNNER): tests/test_core.c $(TEST_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c $(TEST_SRC) -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
 run: $(APP)
 	./$(APP) --mode raycast

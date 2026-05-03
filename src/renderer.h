@@ -10,10 +10,13 @@ extern int renderer_alloc_count;
 extern int renderer_free_count;
 extern int renderer_texture_create_count;
 
+#include "glyph_atlas.h"
+
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *sdl_ren;
     SDL_Texture *screen_texture;
+    GlyphAtlas *atlas;
     uint32_t *pixel_buffer;
     int logical_w;
     int logical_h;

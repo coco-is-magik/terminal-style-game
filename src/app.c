@@ -7,6 +7,8 @@
 #include "map.h"
 #include "camera.h"
 #include "raycast.h"
+#include "assets.h"
+#include "map_loader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,22 +146,36 @@ int app_main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Initialize tiny static map
-    Map *map = map_create(10, 10);
-    if (map) {
-        for (int i = 0; i < 10; i++) {
-            map_set(map, i, 0, 1);
-            map_set(map, i, 9, 1);
-            map_set(map, 0, i, 1);
-            map_set(map, 9, i, 1);
-        }
-        map_set(map, 3, 3, 1);
-        map_set(map, 7, 7, 1);
-        map_set(map, 3, 7, 1);
-    }
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    
+    // Palette 0: Empty (unused)
+    // Palette 1: Grey Wall
+    asset_registry_set_palette(&assets, 1, 
+        (SDL_Color){255, 255, 255, 255}, 
+        (SDL_Color){150, 150, 150, 255}, 
+        (SDL_Color){50, 50, 50, 255});
+    // Palette 2: Blue Wall
+    asset_registry_set_palette(&assets, 2, 
+        (SDL_Color){100, 150, 255, 255}, 
+        (SDL_Color){50, 75, 150, 255}, 
+        (SDL_Color){20, 30, 50, 255});
+    
+    asset_registry_set_material(&assets, 1, 1, "#x-.");
+    asset_registry_set_material(&assets, 2, 2, "OX+:");
+    asset_registry_set_material(&assets, 3, 1, "====");
+
+    const char *map_txt = 
+        "1111111111\n"
+        "1000000001\n"
+        "1022003001\n"
+        "1020003001\n"
+        "1000000001\n"
+        "1111111111\n";
+    Map *map = map_load_from_string(map_txt);
 
     Camera cam;
-    camera_init(&cam, 2.5, 2.5, PI / 4.0, PI / 2.0);
+    camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
 
     uint64_t frame_count = 0;
     PerfStats perf_stats;
@@ -170,7 +186,6 @@ int app_main(int argc, char* argv[]) {
     uint64_t last_time = initial_time;
     double target_time_ms = timing_target_ms(TARGET_FPS);
 
-    // Track total metrics for the benchmark pass/fail
     double global_total_render_ms = 0.0;
     double absolute_worst_render_ms = 0.0;
     double second_worst_render_ms = 0.0;
@@ -202,7 +217,7 @@ int app_main(int argc, char* argv[]) {
         if (visual_mode == VISUAL_STRESS) {
             draw_stress_pattern(grid, frame_count);
         } else if (visual_mode == VISUAL_RAYCAST) {
-            raycast_render(grid, map, &cam);
+            raycast_render(grid, map, &cam, &assets);
         } else {
             draw_world_pattern(grid, frame_count);
         }
@@ -216,7 +231,6 @@ int app_main(int argc, char* argv[]) {
         double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
         global_total_render_ms += current_render_ms;
         
-        // Skip first 64 frames (warmup) for worst-case tracking to avoid init spikes
         if (frame_count >= 64) {
             if (current_render_ms > absolute_worst_render_ms) {
                 second_worst_render_ms = absolute_worst_render_ms;
@@ -236,7 +250,6 @@ int app_main(int argc, char* argv[]) {
         
         perf_stats_update(&perf_stats, delta_time_ms, frame_time_ms, spare_time_ms);
 
-        // Fail immediately if hot-path allocations occurred
         if (renderer_alloc_count > initial_alloc_count) {
             fprintf(stderr, "ERROR: Per-frame allocation detected!\n");
             input.quit = true;
@@ -262,7 +275,6 @@ int app_main(int argc, char* argv[]) {
         double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
         
         double effective_worst = absolute_worst_render_ms;
-        // If absolute worst is a one-off spike (> 2x second worst), trim it for pass/fail
         if (absolute_worst_render_ms > second_worst_render_ms * 2.0 && second_worst_render_ms > 0) {
             effective_worst = second_worst_render_ms;
             outlier_trimmed = true;

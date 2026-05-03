@@ -3,6 +3,7 @@
 #include "map.h"
 #include "camera.h"
 #include "grid.h"
+#include "assets.h"
 
 typedef struct {
     bool hit;
@@ -13,6 +14,6 @@ typedef struct {
 } RayResult;
 
 RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist);
-void raycast_render(Grid *grid, Map *map, Camera *cam);
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets);
 
 #endif
