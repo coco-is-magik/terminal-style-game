@@ -205,6 +205,62 @@ static void test_raycast_miss(void **state) {
     map_destroy(m);
 }
 
+static void test_raycast_perpendicular_correction(void **state) {
+    (void)state;
+    Map *m = map_create(10, 10);
+    // Wall at x = 5
+    for(int y=0; y<10; y++) map_set(m, 5, y, 1);
+    
+    Camera cam;
+    camera_init(&cam, 2.5, 5.5, 0.0, PI/2.0); // Facing right
+    
+    // Center ray
+    double center_angle = 0.0;
+    RayResult res_center = raycast_fire(m, &cam, center_angle, 10.0);
+    assert_true(res_center.hit);
+    double perp_dist_center = res_center.distance * cos(center_angle - cam.transform.angle);
+    
+    // Edge ray
+    double edge_angle = atan(1.0 * tan(cam.fov / 2.0));
+    RayResult res_edge = raycast_fire(m, &cam, edge_angle, 10.0);
+    assert_true(res_edge.hit);
+    double perp_dist_edge = res_edge.distance * cos(edge_angle - cam.transform.angle);
+    
+    // Perpendicular distance to a straight wall should be identical
+    assert_float_equal(perp_dist_center, perp_dist_edge, DOUBLE_EPSILON);
+    
+    map_destroy(m);
+}
+
+static void test_raycast_near_plane_clipping(void **state) {
+    (void)state;
+    Map *m = map_create(5, 5);
+    map_set(m, 2, 2, 1);
+    Camera cam;
+    camera_init(&cam, 1.99, 2.5, 0.0, PI/2); // Very close to the wall at x=2
+    
+    RayResult res = raycast_fire(m, &cam, 0.0, 10.0);
+    assert_true(res.hit);
+    assert_float_equal(res.distance, 0.01, DOUBLE_EPSILON);
+    
+    // Simulate render logic clip clamp
+    double perp_dist = res.distance * cos(0.0);
+    if (perp_dist < 0.001) perp_dist = 0.001; // Not clamped yet
+    int line_height = (int)(10 / perp_dist);
+    assert_true(line_height >= 999 && line_height <= 1000); // 10 / 0.01
+
+    // Now push it so close it clamps
+    cam.transform.pos.x = 1.99999;
+    res = raycast_fire(m, &cam, 0.0, 10.0);
+    assert_true(res.hit);
+    perp_dist = res.distance * cos(0.0);
+    if (perp_dist < 0.001) perp_dist = 0.001; // Clamps!
+    line_height = (int)(10 / perp_dist);
+    assert_int_equal(line_height, 10000); // 10 / 0.001
+    
+    map_destroy(m);
+}
+
 static void test_raycast_render_output(void **state) {
     (void)state;
     Grid *g = grid_create(10, 10);
@@ -256,6 +312,8 @@ int main(void) {
         cmocka_unit_test(test_camera_init),
         cmocka_unit_test(test_raycast_hit),
         cmocka_unit_test(test_raycast_miss),
+        cmocka_unit_test(test_raycast_perpendicular_correction),
+        cmocka_unit_test(test_raycast_near_plane_clipping),
         cmocka_unit_test(test_raycast_render_output),
     };
 

@@ -89,8 +89,10 @@ void raycast_render(Grid *grid, Map *map, Camera *cam) {
         RayResult ray = raycast_fire(map, cam, ray_angle, 20.0);
 
         int line_height = 0;
-        if (ray.hit && ray.distance > 0.001) {
-            line_height = (int)(grid->height / ray.distance);
+        if (ray.hit) {
+            double perp_dist = ray.distance * cos(ray_angle - cam->transform.angle);
+            if (perp_dist < 0.001) perp_dist = 0.001;
+            line_height = (int)(grid->height / perp_dist);
         }
 
         int draw_start = -line_height / 2 + grid->height / 2 + (int)cam->pitch;
