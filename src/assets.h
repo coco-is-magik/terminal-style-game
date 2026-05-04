@@ -15,13 +15,6 @@ typedef struct {
     uint8_t glyphs[4]; // 0=near, 1=mid, 2=far, 3=very_far
 } Material;
 
-// Lightweight overlay for wall attachments
-typedef struct {
-    int material_id;
-    double u, v; // Position on the 1x1 cell wall surface
-    double scale;
-} Decal;
-
 // Layered sprite concept
 typedef struct {
     uint8_t glyph;

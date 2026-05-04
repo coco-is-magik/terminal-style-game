@@ -4,6 +4,7 @@
 #include "camera.h"
 #include "grid.h"
 #include "assets.h"
+#include "world.h"
 
 typedef struct {
     bool hit;
@@ -14,6 +15,6 @@ typedef struct {
 } RayResult;
 
 RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist);
-void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets);
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world);
 
 #endif

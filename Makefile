@@ -13,6 +13,7 @@ RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
 APP := $(BUILD_DIR)/ascii-fps
 TEST_DEPS_RUNNER := $(BUILD_DIR)/test-deps
 TEST_CORE_RUNNER := $(BUILD_DIR)/test-core
+TEST_DECALS_RUNNER := $(BUILD_DIR)/test-decals
 
 .PHONY: all run test clean dirs
 
@@ -33,6 +34,9 @@ $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 $(TEST_CORE_RUNNER): tests/test_core.c $(TEST_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c $(TEST_SRC) -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
 
+$(TEST_DECALS_RUNNER): tests/test_decals.c $(TEST_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decals.c $(TEST_SRC) -o $(TEST_DECALS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+
 run: $(APP)
 	./$(APP) --mode raycast
 
@@ -42,9 +46,10 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
+	./$(TEST_DECALS_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
 benchmark: $(APP)

@@ -77,40 +77,42 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
     return res;
 }
 
-void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets) {
-    if (!grid || !map || !cam || !assets) return;
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world) {
+    if (!grid || !map || !cam || !assets || !world) return;
     
-    // Fill ceiling/floor just in case
-    grid_clear(grid, (SDL_Color){0, 0, 0, 255});
-
     for (int x = 0; x < grid->width; x++) {
         double camera_x = 2 * x / (double)grid->width - 1;
         double ray_angle = cam->transform.angle + atan(camera_x * tan(cam->fov / 2.0));
         
+        double dir_x = cos(ray_angle);
+        double dir_y = sin(ray_angle);
+
         RayResult ray = raycast_fire(map, cam, ray_angle, 20.0);
 
         int line_height = 0;
         int material_id = 0;
+        double wall_x = 0;
+        double perp_dist = ray.distance;
 
         if (ray.hit) {
             MapCell *cell = map_get(map, ray.map_x, ray.map_y);
             if (cell) material_id = cell->material_id;
 
-            double perp_dist = ray.distance * cos(ray_angle - cam->transform.angle);
+            perp_dist = ray.distance * cos(ray_angle - cam->transform.angle);
             if (perp_dist < 0.001) perp_dist = 0.001;
             line_height = (int)(grid->height / perp_dist);
+
+            if (ray.side == 0) wall_x = cam->transform.pos.y + ray.distance * dir_y;
+            else           wall_x = cam->transform.pos.x + ray.distance * dir_x;
+            wall_x -= floor(wall_x);
         }
 
         int draw_start = -line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_start < 0) draw_start = 0;
-        if (draw_start > grid->height) draw_start = grid->height;
         int draw_end = line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_end >= grid->height) draw_end = grid->height - 1;
-        if (draw_end < -1) draw_end = -1;
 
-        uint8_t glyph = ' ';
-        SDL_Color color = {0,0,0,255};
-
+        // WALL RENDERING
         if (ray.hit) {
             Material *mat = &assets->materials[material_id];
             
@@ -119,22 +121,99 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets) {
             else if (ray.distance > 7.0) glyph_idx = 2;
             else if (ray.distance > 4.0) glyph_idx = 1;
             
-            glyph = mat->glyphs[glyph_idx];
+            uint8_t wall_glyph = mat->glyphs[glyph_idx];
             
             double light_level = 1.0;
-            if (ray.side == 1) light_level *= 0.6; // Darker on Y sides
+            if (ray.side == 1) light_level *= 0.6;
             
-            color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
+            SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
+
+            for (int y = draw_start; y <= draw_end; y++) {
+                double v = (y - (grid->height / 2.0 + cam->pitch - line_height / 2.0)) / (double)line_height;
+                
+                uint8_t glyph = wall_glyph;
+                SDL_Color fg = wall_color;
+                SDL_Color bg = {0, 0, 0, 255};
+
+                // Check decals
+                for (int i = 0; i < world->num_decals; i++) {
+                    Decal *d = &world->decals[i];
+                    if (d->surface == DECAL_SURFACE_WALL && d->map_x == ray.map_x && d->map_y == ray.map_y && d->side == ray.side) {
+                        if (wall_x >= d->u && wall_x < d->u + d->width && v >= d->v && v < d->v + d->height) {
+                            int char_idx = (int)((wall_x - d->u) / d->width * strlen(d->text));
+                            if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
+                                glyph = d->text[char_idx];
+                                fg = d->fg;
+                                if (d->use_bg) bg = d->bg;
+                                break; 
+                            }
+                        }
+                    }
+                }
+                grid_set(grid, x, y, glyph, fg, bg);
+            }
         }
 
+        // Ceiling
         for (int y = 0; y < draw_start; y++) {
-            grid_set(grid, x, y, ' ', (SDL_Color){255,255,255,255}, (SDL_Color){50, 50, 50, 255});
+            double denom = grid->height - 2.0 * (y - cam->pitch);
+            if (fabs(denom) < 0.001) denom = 0.001;
+            double currentDist = grid->height / denom;
+            double trueDist = currentDist / cos(ray_angle - cam->transform.angle);
+            double curX = cam->transform.pos.x + trueDist * dir_x;
+            double curY = cam->transform.pos.y + trueDist * dir_y;
+
+            uint8_t glyph = ' ';
+            SDL_Color fg = {255,255,255,255};
+            SDL_Color bg = {50, 50, 50, 255};
+
+            for (int i = 0; i < world->num_decals; i++) {
+                Decal *d = &world->decals[i];
+                if (d->surface == DECAL_SURFACE_CEILING) {
+                    if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
+                        curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
+                        int char_idx = (int)((curX - (d->x - d->width/2.0)) / d->width * strlen(d->text));
+                        if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
+                            glyph = d->text[char_idx];
+                            fg = d->fg;
+                            if (d->use_bg) bg = d->bg;
+                            break;
+                        }
+                    }
+                }
+            }
+            grid_set(grid, x, y, glyph, fg, bg);
         }
-        for (int y = draw_start; y <= draw_end; y++) {
-            grid_set(grid, x, y, glyph, color, (SDL_Color){0, 0, 0, 255});
-        }
+
+        // Floor
         for (int y = draw_end + 1; y < grid->height; y++) {
-            grid_set(grid, x, y, ' ', (SDL_Color){255,255,255,255}, (SDL_Color){30, 30, 30, 255});
+            double denom = 2.0 * (y - cam->pitch) - grid->height;
+            if (fabs(denom) < 0.001) denom = 0.001;
+            double currentDist = grid->height / denom;
+            double trueDist = currentDist / cos(ray_angle - cam->transform.angle);
+            double curX = cam->transform.pos.x + trueDist * dir_x;
+            double curY = cam->transform.pos.y + trueDist * dir_y;
+
+            uint8_t glyph = ' ';
+            SDL_Color fg = {255,255,255,255};
+            SDL_Color bg = {30, 30, 30, 255};
+
+            for (int i = 0; i < world->num_decals; i++) {
+                Decal *d = &world->decals[i];
+                if (d->surface == DECAL_SURFACE_FLOOR) {
+                    if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
+                        curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
+                        int char_idx = (int)((curX - (d->x - d->width/2.0)) / d->width * strlen(d->text));
+                        if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
+                            glyph = d->text[char_idx];
+                            fg = d->fg;
+                            if (d->use_bg) bg = d->bg;
+                            break;
+                        }
+                    }
+                }
+            }
+            grid_set(grid, x, y, glyph, fg, bg);
         }
     }
 }

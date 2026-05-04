@@ -27,3 +27,8 @@ void world_add_sprite(WorldState *world, double x, double y, int sprite_id) {
     s->pos.y = y;
     s->sprite_id = sprite_id;
 }
+
+void world_add_decal(WorldState *world, Decal decal) {
+    if (!world || world->num_decals >= MAX_DECALS) return;
+    world->decals[world->num_decals++] = decal;
+}

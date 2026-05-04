@@ -274,7 +274,10 @@ static void test_raycast_render_output(void **state) {
     asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
     asset_registry_set_material(&assets, 1, 1, "#x-.");
 
-    raycast_render(g, m, &cam, &assets);
+    WorldState world;
+    world_init(&world);
+
+    raycast_render(g, m, &cam, &assets, &world);
     
     Cell c;
     // Check ceiling (top row)

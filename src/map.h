@@ -3,12 +3,8 @@
 #include "assets.h"
 #include <stdbool.h>
 
-#define MAX_DECALS_PER_CELL 4
-
 typedef struct {
     int material_id;
-    Decal decals[MAX_DECALS_PER_CELL];
-    int num_decals;
 } MapCell;
 
 typedef struct {

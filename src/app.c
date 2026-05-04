@@ -177,6 +177,43 @@ int app_main(int argc, char* argv[]) {
     Camera cam;
     camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
 
+    WorldState world;
+    world_init(&world);
+    
+    // Add wall decal
+    Decal wall_decal = {
+        .surface = DECAL_SURFACE_WALL,
+        .map_x = 2, .map_y = 2, .side = 0,
+        .u = 0.2, .v = 0.4,
+        .width = 0.6, .height = 0.2,
+        .text = "This is a decal",
+        .fg = {255, 255, 0, 255},
+        .use_bg = true, .bg = {50, 0, 0, 255}
+    };
+    world_add_decal(&world, wall_decal);
+
+    // Add floor decal
+    Decal floor_decal = {
+        .surface = DECAL_SURFACE_FLOOR,
+        .x = 5.0, .y = 3.0,
+        .width = 2.0, .height = 0.5,
+        .text = "this is the floor",
+        .fg = {0, 255, 255, 255},
+        .use_bg = false
+    };
+    world_add_decal(&world, floor_decal);
+
+    // Add ceiling decal
+    Decal ceil_decal = {
+        .surface = DECAL_SURFACE_CEILING,
+        .x = 5.0, .y = 2.0,
+        .width = 2.0, .height = 0.5,
+        .text = "this is the ceiling",
+        .fg = {255, 0, 255, 255},
+        .use_bg = false
+    };
+    world_add_decal(&world, ceil_decal);
+
     uint64_t frame_count = 0;
     PerfStats perf_stats;
     perf_stats_init(&perf_stats);
@@ -217,7 +254,7 @@ int app_main(int argc, char* argv[]) {
         if (visual_mode == VISUAL_STRESS) {
             draw_stress_pattern(grid, frame_count);
         } else if (visual_mode == VISUAL_RAYCAST) {
-            raycast_render(grid, map, &cam, &assets);
+            raycast_render(grid, map, &cam, &assets, &world);
         } else {
             draw_world_pattern(grid, frame_count);
         }
