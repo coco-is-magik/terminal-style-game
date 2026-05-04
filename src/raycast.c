@@ -1,5 +1,6 @@
 #include "raycast.h"
 #include <math.h>
+#include <stdlib.h>
 
 RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist) {
     RayResult res = {0};
@@ -80,7 +81,10 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world) {
     if (!grid || !map || !cam || !assets || !world) return;
     
-    for (int x = 0; x < grid->width; x++) {
+    double z_buffer[1024];
+    int max_x_idx = grid->width < 1024 ? grid->width : 1024;
+
+    for (int x = 0; x < max_x_idx; x++) {
         double camera_x = 2 * x / (double)grid->width - 1;
         double ray_angle = cam->transform.angle + atan(camera_x * tan(cam->fov / 2.0));
         
@@ -106,6 +110,8 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             else           wall_x = cam->transform.pos.x + ray.distance * dir_x;
             wall_x -= floor(wall_x);
         }
+        
+        z_buffer[x] = perp_dist;
 
         int draw_start = -line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_start < 0) draw_start = 0;
@@ -124,6 +130,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             uint8_t wall_glyph = mat->glyphs[glyph_idx];
             
             double light_level = 1.0;
+            if (map->light_map) {
+                light_level = map->light_map[ray.map_y * map->width + ray.map_x];
+            }
             if (ray.side == 1) light_level *= 0.6;
             
             SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
@@ -134,6 +143,7 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 uint8_t glyph = wall_glyph;
                 SDL_Color fg = wall_color;
                 SDL_Color bg = {0, 0, 0, 255};
+                bool has_decal = false;
 
                 // Check decals
                 for (int i = 0; i < world->num_decals; i++) {
@@ -145,11 +155,24 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                                 glyph = d->text[char_idx];
                                 fg = d->fg;
                                 if (d->use_bg) bg = d->bg;
+                                has_decal = true;
                                 break; 
                             }
                         }
                     }
                 }
+                
+                if (has_decal) {
+                    double final_light = light_level;
+                    if (final_light > 1.0) final_light = 1.0;
+                    fg.r = (uint8_t)(fg.r * final_light);
+                    fg.g = (uint8_t)(fg.g * final_light);
+                    fg.b = (uint8_t)(fg.b * final_light);
+                    bg.r = (uint8_t)(bg.r * final_light);
+                    bg.g = (uint8_t)(bg.g * final_light);
+                    bg.b = (uint8_t)(bg.b * final_light);
+                }
+
                 grid_set(grid, x, y, glyph, fg, bg);
             }
         }
@@ -182,6 +205,22 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                     }
                 }
             }
+            
+            if (map->light_map) {
+                int map_x = (int)curX;
+                int map_y = (int)curY;
+                if (map_in_bounds(map, map_x, map_y)) {
+                    double light_level = map->light_map[map_y * map->width + map_x];
+                    if (light_level > 1.0) light_level = 1.0;
+                    fg.r = (uint8_t)(fg.r * light_level);
+                    fg.g = (uint8_t)(fg.g * light_level);
+                    fg.b = (uint8_t)(fg.b * light_level);
+                    bg.r = (uint8_t)(bg.r * light_level);
+                    bg.g = (uint8_t)(bg.g * light_level);
+                    bg.b = (uint8_t)(bg.b * light_level);
+                }
+            }
+
             grid_set(grid, x, y, glyph, fg, bg);
         }
 
@@ -213,7 +252,58 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                     }
                 }
             }
+
+            if (map->light_map) {
+                int map_x = (int)curX;
+                int map_y = (int)curY;
+                if (map_in_bounds(map, map_x, map_y)) {
+                    double light_level = map->light_map[map_y * map->width + map_x];
+                    if (light_level > 1.0) light_level = 1.0;
+                    fg.r = (uint8_t)(fg.r * light_level);
+                    fg.g = (uint8_t)(fg.g * light_level);
+                    fg.b = (uint8_t)(fg.b * light_level);
+                    bg.r = (uint8_t)(bg.r * light_level);
+                    bg.g = (uint8_t)(bg.g * light_level);
+                    bg.b = (uint8_t)(bg.b * light_level);
+                }
+            }
+
             grid_set(grid, x, y, glyph, fg, bg);
+        }
+    }
+
+    // RENDER LIGHT SOURCES
+    for (int i = 0; i < world->num_lights; i++) {
+        Light *l = &world->lights[i];
+        
+        double sprite_x = l->pos.x - cam->transform.pos.x;
+        double sprite_y = l->pos.y - cam->transform.pos.y;
+        
+        double angle_to_light = atan2(sprite_y, sprite_x);
+        double angle_diff = angle_to_light - cam->transform.angle;
+        // Normalize angle difference to [-PI, PI]
+        while (angle_diff > PI) angle_diff -= 2.0 * PI;
+        while (angle_diff < -PI) angle_diff += 2.0 * PI;
+        
+        if (cos(angle_diff) < 0.1) continue; // Behind camera or extremely grazing
+        
+        double dist = sqrt(sprite_x*sprite_x + sprite_y*sprite_y);
+        
+        double camera_x = tan(angle_diff) / tan(cam->fov / 2.0);
+        int screen_x = (int)((grid->width / 2.0) * (1.0 + camera_x));
+        
+        if (screen_x < 0 || screen_x >= grid->width) continue;
+        
+        double perp_dist = dist * cos(angle_diff);
+        if (perp_dist >= z_buffer[screen_x]) continue;
+        
+        int draw_y = grid->height / 2 + (int)cam->pitch;
+        
+        if (draw_y >= 0 && draw_y < grid->height) {
+            Cell existing;
+            if (grid_get(grid, screen_x, draw_y, &existing)) {
+                grid_set(grid, screen_x, draw_y, '*', l->color, existing.bg);
+            }
         }
     }
 }

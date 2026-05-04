@@ -13,6 +13,7 @@
 #include "../src/map.h"
 #include "../src/camera.h"
 #include "../src/raycast.h"
+#include "../src/lighting.h"
 
 // --- GRID TESTS ---
 
@@ -277,18 +278,19 @@ static void test_raycast_render_output(void **state) {
     WorldState world;
     world_init(&world);
 
+    lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
     Cell c;
     // Check ceiling (top row)
     grid_get(g, 5, 0, &c);
     assert_int_equal(c.glyph, ' ');
-    assert_int_equal(c.bg.r, 50);
+    assert_int_equal(c.bg.r, 10); // 50 * 0.2 ambient
     
     // Check floor (bottom row)
     grid_get(g, 5, 9, &c);
     assert_int_equal(c.glyph, ' ');
-    assert_int_equal(c.bg.r, 30);
+    assert_int_equal(c.bg.r, 6); // 30 * 0.2 ambient
     
     // Check wall (middle)
     grid_get(g, 5, 5, &c);

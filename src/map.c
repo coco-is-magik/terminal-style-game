@@ -13,12 +13,19 @@ Map* map_create(int width, int height) {
         free(m);
         return NULL;
     }
+    m->light_map = calloc(width * height, sizeof(double));
+    if (!m->light_map) {
+        free(m->cells);
+        free(m);
+        return NULL;
+    }
     return m;
 }
 
 void map_destroy(Map *map) {
     if (!map) return;
     if (map->cells) free(map->cells);
+    if (map->light_map) free(map->light_map);
     free(map);
 }
 

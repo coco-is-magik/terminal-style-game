@@ -11,6 +11,7 @@ typedef struct {
     int width;
     int height;
     MapCell *cells;
+    double *light_map;
 } Map;
 
 Map* map_create(int width, int height);

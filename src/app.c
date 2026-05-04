@@ -9,6 +9,7 @@
 #include "raycast.h"
 #include "assets.h"
 #include "map_loader.h"
+#include "lighting.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -214,6 +215,9 @@ int app_main(int argc, char* argv[]) {
     };
     world_add_decal(&world, ceil_decal);
 
+    // Add a light source
+    world_add_light(&world, 4.5, 2.5, (SDL_Color){255, 255, 255, 255}, 1.0, 4.0, false);
+
     uint64_t frame_count = 0;
     PerfStats perf_stats;
     perf_stats_init(&perf_stats);
@@ -254,6 +258,7 @@ int app_main(int argc, char* argv[]) {
         if (visual_mode == VISUAL_STRESS) {
             draw_stress_pattern(grid, frame_count);
         } else if (visual_mode == VISUAL_RAYCAST) {
+            lighting_update(map, &world);
             raycast_render(grid, map, &cam, &assets, &world);
         } else {
             draw_world_pattern(grid, frame_count);

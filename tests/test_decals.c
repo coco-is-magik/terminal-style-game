@@ -13,6 +13,7 @@
 #include "../src/assets.h"
 #include "../src/world.h"
 #include "../src/decal.h"
+#include "../src/lighting.h"
 
 static void test_world_decal_add(void **state) {
     (void)state;
@@ -59,14 +60,15 @@ static void test_decal_rendering_wall(void **state) {
     };
     world_add_decal(&world, d);
 
+    lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
     // The decal covers the whole wall, so we expect 'D' in the middle of the wall
     Cell c;
     grid_get(g, 5, 5, &c);
     assert_int_equal(c.glyph, 'D');
-    assert_int_equal(c.fg.r, 255);
-    assert_int_equal(c.bg.g, 255);
+    assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
+    assert_int_equal(c.bg.g, 30); // 255 * 0.2 * 0.6
     
     map_destroy(m);
     grid_destroy(g);
@@ -100,6 +102,7 @@ static void test_decal_rendering_floor(void **state) {
     // Force a dummy wall hit far away so floorcasting has a perp_dist to work with
     // Actually our raycast_render uses perp_dist from the wall hit.
     // If no hit, ray.distance is max_dist (20.0).
+    lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
     // Check some floor pixels. 
@@ -111,8 +114,8 @@ static void test_decal_rendering_floor(void **state) {
             grid_get(g, x, y, &c);
             if (c.glyph == 'F') {
                 found = true;
-                assert_int_equal(c.fg.g, 255);
-                assert_int_equal(c.bg.b, 255);
+                assert_int_equal(c.fg.g, 51); // 255 * 0.2
+                assert_int_equal(c.bg.b, 51); // 255 * 0.2
             }
         }
     }
@@ -149,6 +152,7 @@ static void test_decal_fisheye_correction(void **state) {
     };
     world_add_decal(&world, d);
 
+    lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
     // Scan the grid to find the row where 'F' is rendered.
