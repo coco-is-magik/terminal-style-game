@@ -72,7 +72,7 @@ static void draw_stress_pattern(Grid *grid, uint64_t frame_count) {
     }
 }
 
-static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, VisualMode mode) {
+static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, VisualMode mode, int target_fps) {
     char ui_text[1024];
     
     const char* mode_str = "NORMAL PATTERN";
@@ -95,7 +95,7 @@ static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, 
              grid->width, grid->height, 
              (unsigned long long)frame_count,
              mode_str,
-             TARGET_FPS,
+             target_fps,
              stats->pub_avg_fps,
              stats->pub_avg_frame_time_ms,
              stats->pub_worst_frame_time_ms,
@@ -109,6 +109,10 @@ static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, 
 }
 
 int app_main(int argc, char* argv[]) {
+    config_init_defaults();
+    config_load_from_file("config.ini");
+    const EngineConfig *cfg = config_get();
+
     RunMode mode = RUN_MODE_NORMAL;
     VisualMode visual_mode = VISUAL_RAYCAST; // default
     double run_duration_seconds = 0.0;
@@ -130,7 +134,7 @@ int app_main(int argc, char* argv[]) {
         }
     }
 
-    Renderer *ren = renderer_create(WINDOW_WIDTH, WINDOW_HEIGHT, GRID_WIDTH, GRID_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
+    Renderer *ren = renderer_create(cfg->window_width, cfg->window_height, cfg->grid_width, cfg->grid_height, cfg->cell_width, cfg->cell_height);
     if (!ren) {
         fprintf(stderr, "Failed to initialize renderer. (Headless environment expected)\n");
         return 0;
@@ -140,7 +144,7 @@ int app_main(int argc, char* argv[]) {
         SDL_SetWindowRelativeMouseMode(ren->window, true);
     }
 
-    Grid *grid = grid_create(GRID_WIDTH, GRID_HEIGHT);
+    Grid *grid = grid_create(cfg->grid_width, cfg->grid_height);
     if (!grid) {
         fprintf(stderr, "Failed to initialize grid.\n");
         renderer_destroy(ren);
@@ -216,7 +220,7 @@ int app_main(int argc, char* argv[]) {
     world_add_decal(&world, ceil_decal);
 
     // Add a light source
-    world_add_light(&world, 4.5, 2.5, (SDL_Color){255, 255, 255, 255}, 1.0, 4.0, false);
+    world_add_light(&world, 4.5, 2.5, (SDL_Color){255, 255, 255, 255}, cfg->light_falloff_default, 4.0, false);
 
     uint64_t frame_count = 0;
     PerfStats perf_stats;
@@ -225,7 +229,7 @@ int app_main(int argc, char* argv[]) {
 
     uint64_t initial_time = SDL_GetPerformanceCounter();
     uint64_t last_time = initial_time;
-    double target_time_ms = timing_target_ms(TARGET_FPS);
+    double target_time_ms = timing_target_ms(cfg->target_fps);
 
     double global_total_render_ms = 0.0;
     double absolute_worst_render_ms = 0.0;
@@ -264,7 +268,9 @@ int app_main(int argc, char* argv[]) {
             draw_world_pattern(grid, frame_count);
         }
 
-        draw_ui_overlay(grid, frame_count, &perf_stats, visual_mode);
+        if (cfg->debug_display_enabled) {
+            draw_ui_overlay(grid, frame_count, &perf_stats, visual_mode, cfg->target_fps);
+        }
 
         uint64_t render_start = SDL_GetPerformanceCounter();
         renderer_draw(ren, grid);
@@ -341,9 +347,9 @@ int app_main(int argc, char* argv[]) {
         }
 
         printf("{\n");
-        printf("  \"grid_width\": %d,\n", GRID_WIDTH);
-        printf("  \"grid_height\": %d,\n", GRID_HEIGHT);
-        printf("  \"target_fps\": %d,\n", TARGET_FPS);
+        printf("  \"grid_width\": %d,\n", cfg->grid_width);
+        printf("  \"grid_height\": %d,\n", cfg->grid_height);
+        printf("  \"target_fps\": %d,\n", cfg->target_fps);
         printf("  \"avg_render_ms\": %.2f,\n", avg_render_ms);
         printf("  \"worst_render_ms\": %.2f,\n", absolute_worst_render_ms);
         printf("  \"effective_worst_ms\": %.2f,\n", effective_worst);

@@ -14,6 +14,7 @@
 #include "../src/camera.h"
 #include "../src/raycast.h"
 #include "../src/lighting.h"
+#include "../src/config.h"
 
 // --- GRID TESTS ---
 
@@ -131,6 +132,18 @@ static void test_renderer_backend_instrumentation(void **state) {
 }
 
 // --- ENGINE REFACTOR TESTS ---
+
+static void test_config_parsing(void **state) {
+    (void)state;
+    // We already called config_init_defaults() in main()
+    // It should have grid_width 260
+    assert_int_equal(config_get()->grid_width, 260);
+    
+    // Check loading the real config file
+    assert_true(config_load_from_file("config.ini"));
+    assert_int_equal(config_get()->target_fps, 120);
+    assert_float_equal(config_get()->ambient_light, 0.2, DOUBLE_EPSILON);
+}
 
 static void test_math_normalize(void **state) {
     (void)state;
@@ -302,6 +315,8 @@ static void test_raycast_render_output(void **state) {
 }
 
 int main(void) {
+    config_init_defaults();
+    
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_grid_init),
         cmocka_unit_test(test_grid_init_invalid),
@@ -315,6 +330,7 @@ int main(void) {
         cmocka_unit_test(test_renderer_backend_init_invalid),
         cmocka_unit_test(test_renderer_backend_instrumentation),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
+        cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_math_normalize),
         cmocka_unit_test(test_map_creation),
         cmocka_unit_test(test_map_bounds),

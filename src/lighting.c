@@ -1,6 +1,7 @@
 #include "lighting.h"
 #include "raycast.h"
 #include "camera.h"
+#include "config.h"
 #include <math.h>
 
 #ifndef MAX
@@ -15,7 +16,7 @@ void lighting_update(Map *map, WorldState *world) {
 
     // Reset light map to ambient
     for (int i = 0; i < map->width * map->height; i++) {
-        map->light_map[i] = 0.2; // Ambient light level
+        map->light_map[i] = config_get()->ambient_light; // Ambient light level
     }
 
     for (int i = 0; i < world->num_lights; i++) {
@@ -53,7 +54,7 @@ void lighting_update(Map *map, WorldState *world) {
 
                     double contribution = intensity * l->intensity;
                     if (blocked) {
-                        contribution *= 0.2; // bounce / ambient bleed
+                        contribution *= config_get()->light_bounce_attenuation; // bounce / ambient bleed
                     }
                     
                     map->light_map[y * map->width + x] += contribution;

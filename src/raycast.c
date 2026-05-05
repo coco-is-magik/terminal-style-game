@@ -1,4 +1,5 @@
 #include "raycast.h"
+#include "config.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -91,7 +92,7 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
         double dir_x = cos(ray_angle);
         double dir_y = sin(ray_angle);
 
-        RayResult ray = raycast_fire(map, cam, ray_angle, 20.0);
+        RayResult ray = raycast_fire(map, cam, ray_angle, config_get()->raycast_max_distance);
 
         int line_height = 0;
         int material_id = 0;
@@ -133,7 +134,7 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             if (map->light_map) {
                 light_level = map->light_map[ray.map_y * map->width + ray.map_x];
             }
-            if (ray.side == 1) light_level *= 0.6;
+            if (ray.side == 1) light_level *= config_get()->side_shadow_attenuation;
             
             SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
 

@@ -14,6 +14,7 @@
 #include "../src/world.h"
 #include "../src/decal.h"
 #include "../src/lighting.h"
+#include "../src/config.h"
 
 static void test_world_decal_add(void **state) {
     (void)state;
@@ -183,6 +184,8 @@ static void test_decal_fisheye_correction(void **state) {
 }
 
 int main(void) {
+    config_init_defaults();
+    
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_world_decal_add),
         cmocka_unit_test(test_decal_rendering_wall),

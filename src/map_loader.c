@@ -1,4 +1,5 @@
 #include "map_loader.h"
+#include "config.h"
 #include <string.h>
 
 Map* map_load_from_string(const char *map_txt) {
@@ -32,7 +33,7 @@ Map* map_load_from_string(const char *map_txt) {
             x = 0;
             y++;
         } else {
-            int mat_id = 0;
+            int mat_id = config_get()->default_material_id;
             if (map_txt[i] >= '0' && map_txt[i] <= '9') {
                 mat_id = map_txt[i] - '0';
             }
