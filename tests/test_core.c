@@ -133,6 +133,39 @@ static void test_renderer_backend_instrumentation(void **state) {
 
 // --- ENGINE REFACTOR TESTS ---
 
+#include "../src/asset_loader.h"
+
+static void test_asset_loader(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    
+    // Test loading palettes and materials
+    asset_loader_load_registry(&assets, "assets");
+    
+    // Verify palette 1 was loaded
+    SDL_Color near_col = palette_sample(&assets.palettes[1], 1.0, 1.0);
+    assert_int_equal(near_col.r, 255);
+    
+    // Verify material 1 was loaded
+    assert_int_equal(assets.materials[1].palette_id, 1);
+    assert_int_equal(assets.materials[1].glyphs[0], '#');
+    
+    WorldState world;
+    world_init(&world);
+    
+    Map *map = asset_loader_load_map_data(&world, "assets", 1);
+    assert_non_null(map);
+    assert_int_equal(map->width, 10);
+    assert_int_equal(map->height, 6);
+    
+    // Verify decals and lights
+    assert_true(world.num_decals > 0);
+    assert_true(world.num_lights > 0);
+    
+    map_destroy(map);
+}
+
 static void test_config_parsing(void **state) {
     (void)state;
     // We already called config_init_defaults() in main()
@@ -330,6 +363,7 @@ int main(void) {
         cmocka_unit_test(test_renderer_backend_init_invalid),
         cmocka_unit_test(test_renderer_backend_instrumentation),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
+        cmocka_unit_test(test_asset_loader),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_math_normalize),
         cmocka_unit_test(test_map_creation),

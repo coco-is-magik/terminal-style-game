@@ -8,7 +8,7 @@
 #include "camera.h"
 #include "raycast.h"
 #include "assets.h"
-#include "map_loader.h"
+#include "asset_loader.h"
 #include "lighting.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -153,74 +153,21 @@ int app_main(int argc, char* argv[]) {
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    
-    // Palette 0: Empty (unused)
-    // Palette 1: Grey Wall
-    asset_registry_set_palette(&assets, 1, 
-        (SDL_Color){255, 255, 255, 255}, 
-        (SDL_Color){150, 150, 150, 255}, 
-        (SDL_Color){50, 50, 50, 255});
-    // Palette 2: Blue Wall
-    asset_registry_set_palette(&assets, 2, 
-        (SDL_Color){100, 150, 255, 255}, 
-        (SDL_Color){50, 75, 150, 255}, 
-        (SDL_Color){20, 30, 50, 255});
-    
-    asset_registry_set_material(&assets, 1, 1, "#x-.");
-    asset_registry_set_material(&assets, 2, 2, "OX+:");
-    asset_registry_set_material(&assets, 3, 1, "====");
-
-    const char *map_txt = 
-        "1111111111\n"
-        "1000000001\n"
-        "1022003001\n"
-        "1020003001\n"
-        "1000000001\n"
-        "1111111111\n";
-    Map *map = map_load_from_string(map_txt);
-
-    Camera cam;
-    camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
+    asset_loader_load_registry(&assets, "assets");
 
     WorldState world;
     world_init(&world);
-    
-    // Add wall decal
-    Decal wall_decal = {
-        .surface = DECAL_SURFACE_WALL,
-        .map_x = 2, .map_y = 2, .side = 0,
-        .u = 0.2, .v = 0.4,
-        .width = 0.6, .height = 0.2,
-        .text = "This is a decal",
-        .fg = {255, 255, 0, 255},
-        .use_bg = true, .bg = {50, 0, 0, 255}
-    };
-    world_add_decal(&world, wall_decal);
 
-    // Add floor decal
-    Decal floor_decal = {
-        .surface = DECAL_SURFACE_FLOOR,
-        .x = 5.0, .y = 3.0,
-        .width = 2.0, .height = 0.5,
-        .text = "this is the floor",
-        .fg = {0, 255, 255, 255},
-        .use_bg = false
-    };
-    world_add_decal(&world, floor_decal);
+    Map *map = asset_loader_load_map_data(&world, "assets", 1);
+    if (!map) {
+        fprintf(stderr, "Failed to load map.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
 
-    // Add ceiling decal
-    Decal ceil_decal = {
-        .surface = DECAL_SURFACE_CEILING,
-        .x = 5.0, .y = 2.0,
-        .width = 2.0, .height = 0.5,
-        .text = "this is the ceiling",
-        .fg = {255, 0, 255, 255},
-        .use_bg = false
-    };
-    world_add_decal(&world, ceil_decal);
-
-    // Add a light source
-    world_add_light(&world, 4.5, 2.5, (SDL_Color){255, 255, 255, 255}, cfg->light_falloff_default, 4.0, false);
+    Camera cam;
+    camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
 
     uint64_t frame_count = 0;
     PerfStats perf_stats;

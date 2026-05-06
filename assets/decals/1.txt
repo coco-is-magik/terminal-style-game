@@ -1,0 +1,12 @@
+surface=0
+map_x=2
+map_y=2
+side=0
+u=0.2
+v=0.4
+width=0.6
+height=0.2
+fg=255,255,0,255
+use_bg=1
+bg=50,0,0,255
+text=This is a decal

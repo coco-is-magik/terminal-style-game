@@ -1,0 +1,2 @@
+palette=2
+glyphs=OX+:
