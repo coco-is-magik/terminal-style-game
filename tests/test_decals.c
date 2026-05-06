@@ -5,6 +5,7 @@
 #include <cmocka.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "../src/grid.h"
 #include "../src/map.h"
@@ -21,16 +22,20 @@ static void test_world_decal_add(void **state) {
     WorldState world;
     world_init(&world);
     
-    Decal d = {
-        .surface = DECAL_SURFACE_WALL,
-        .map_x = 1, .map_y = 1, .side = 0,
-        .text = "TEST",
-        .fg = {255, 0, 0, 255}
-    };
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.map_x = 1; d.map_y = 1; d.side = 0;
+    d.pattern_cols = 4; d.pattern_rows = 1;
+    d.pattern = malloc(4 * sizeof(PatternCell));
+    d.pattern[0] = (PatternCell){'T', 1};
+    d.pattern[1] = (PatternCell){'E', 1};
+    d.pattern[2] = (PatternCell){'S', 1};
+    d.pattern[3] = (PatternCell){'T', 1};
     
     world_add_decal(&world, d);
     assert_int_equal(world.num_decals, 1);
-    assert_string_equal(world.decals[0].text, "TEST");
+    assert_int_equal(world.decals[0].pattern[0].glyph, 'T');
 }
 
 static void test_decal_rendering_wall(void **state) {
@@ -50,15 +55,16 @@ static void test_decal_rendering_wall(void **state) {
     WorldState world;
     world_init(&world);
     
-    Decal d = {
-        .surface = DECAL_SURFACE_WALL,
-        .map_x = 2, .map_y = 0, .side = 1,
-        .u = 0.0, .v = 0.0,
-        .width = 1.0, .height = 1.0,
-        .text = "D",
-        .fg = {255, 0, 0, 255},
-        .use_bg = true, .bg = {0, 255, 0, 255}
-    };
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.map_x = 2; d.map_y = 0; d.side = 1;
+    d.u = 0.0; d.v = 0.0;
+    d.width = 1.0; d.height = 1.0;
+    d.pattern_cols = 1; d.pattern_rows = 1;
+    d.pattern = malloc(sizeof(PatternCell));
+    d.pattern[0] = (PatternCell){'D', 1};
+
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
@@ -69,7 +75,6 @@ static void test_decal_rendering_wall(void **state) {
     grid_get(g, 5, 5, &c);
     assert_int_equal(c.glyph, 'D');
     assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
-    assert_int_equal(c.bg.g, 30); // 255 * 0.2 * 0.6
     
     map_destroy(m);
     grid_destroy(g);
@@ -86,18 +91,21 @@ static void test_decal_rendering_floor(void **state) {
     
     AssetRegistry assets;
     asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
 
     WorldState world;
     world_init(&world);
     
-    Decal d = {
-        .surface = DECAL_SURFACE_FLOOR,
-        .x = 3.5, .y = 2.5, // 1 unit in front of camera
-        .width = 1.0, .height = 1.0,
-        .text = "F",
-        .fg = {0, 255, 0, 255},
-        .use_bg = true, .bg = {0, 0, 255, 255}
-    };
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_FLOOR;
+    d.x = 3.5; d.y = 2.5; // 1 unit in front of camera
+    d.width = 1.0; d.height = 1.0;
+    d.pattern_cols = 1; d.pattern_rows = 1;
+    d.pattern = malloc(sizeof(PatternCell));
+    d.pattern[0] = (PatternCell){'F', 1};
+
     world_add_decal(&world, d);
 
     // Force a dummy wall hit far away so floorcasting has a perp_dist to work with
@@ -116,7 +124,6 @@ static void test_decal_rendering_floor(void **state) {
             if (c.glyph == 'F') {
                 found = true;
                 assert_int_equal(c.fg.g, 51); // 255 * 0.2
-                assert_int_equal(c.bg.b, 51); // 255 * 0.2
             }
         }
     }
@@ -137,20 +144,23 @@ static void test_decal_fisheye_correction(void **state) {
     
     AssetRegistry assets;
     asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
 
     WorldState world;
     world_init(&world);
     
     // Add a very wide, thin decal on the floor exactly 2 units in front
     // This will appear as a straight horizontal line if fisheye is corrected
-    Decal d = {
-        .surface = DECAL_SURFACE_FLOOR,
-        .x = 7.0, .y = 5.0,
-        .width = 0.1, .height = 10.0,
-        .text = "F",
-        .fg = {255, 255, 255, 255},
-        .use_bg = false
-    };
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_FLOOR;
+    d.x = 7.0; d.y = 5.0;
+    d.width = 0.1; d.height = 10.0;
+    d.pattern_cols = 1; d.pattern_rows = 1;
+    d.pattern = malloc(sizeof(PatternCell));
+    d.pattern[0] = (PatternCell){'F', 1};
+
     world_add_decal(&world, d);
 
     lighting_update(m, &world);

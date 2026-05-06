@@ -15,20 +15,22 @@ typedef struct {
     uint8_t glyphs[4]; // 0=near, 1=mid, 2=far, 3=very_far
 } Material;
 
-// Layered sprite concept
+// Shared pattern cell for Decals and Sprites
 typedef struct {
     uint8_t glyph;
-    int palette_id;
-} SpriteLayer;
+    uint8_t material_id;
+} PatternCell;
 
 typedef struct {
-    SpriteLayer layers[4];
-    int num_layers;
-} Sprite;
+    int cols;
+    int rows;
+    PatternCell *pattern;
+} SpriteAsset;
 
 typedef struct {
     Palette palettes[256];
     Material materials[256];
+    SpriteAsset sprites[256];
 } AssetRegistry;
 
 void asset_registry_init(AssetRegistry *reg);

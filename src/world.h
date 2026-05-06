@@ -10,7 +10,6 @@ typedef struct {
     SDL_Color color;
     double intensity; // Negative for anti-light
     double radius;
-    bool is_god_ray;
 } Light;
 
 typedef struct {
@@ -37,7 +36,7 @@ typedef struct {
 } WorldState;
 
 void world_init(WorldState *world);
-void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius, bool is_god_ray);
+void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius);
 void world_add_sprite(WorldState *world, double x, double y, int sprite_id);
 void world_add_decal(WorldState *world, Decal decal);
 

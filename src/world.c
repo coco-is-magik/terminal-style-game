@@ -9,7 +9,7 @@ void world_init(WorldState *world) {
     world->spawn_angle = 0.0;
 }
 
-void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius, bool is_god_ray) {
+void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius) {
     if (!world || world->num_lights >= MAX_LIGHTS) return;
     Light *l = &world->lights[world->num_lights++];
     l->pos.x = x;
@@ -17,7 +17,6 @@ void world_add_light(WorldState *world, double x, double y, SDL_Color col, doubl
     l->color = col;
     l->intensity = intensity;
     l->radius = radius;
-    l->is_god_ray = is_god_ray;
 }
 
 void world_add_sprite(WorldState *world, double x, double y, int sprite_id) {

@@ -4,6 +4,8 @@
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
+#include "assets.h"
+
 typedef enum {
     DECAL_SURFACE_WALL,
     DECAL_SURFACE_FLOOR,
@@ -25,10 +27,9 @@ typedef struct {
     double u, v; 
     double width, height;
     
-    const char *text;
-    SDL_Color fg;
-    SDL_Color bg;
-    bool use_bg;
+    int pattern_cols;
+    int pattern_rows;
+    PatternCell *pattern;
 } Decal;
 
 #endif

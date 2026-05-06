@@ -144,34 +144,26 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 uint8_t glyph = wall_glyph;
                 SDL_Color fg = wall_color;
                 SDL_Color bg = {0, 0, 0, 255};
-                bool has_decal = false;
 
                 // Check decals
                 for (int i = 0; i < world->num_decals; i++) {
                     Decal *d = &world->decals[i];
                     if (d->surface == DECAL_SURFACE_WALL && d->map_x == ray.map_x && d->map_y == ray.map_y && d->side == ray.side) {
                         if (wall_x >= d->u && wall_x < d->u + d->width && v >= d->v && v < d->v + d->height) {
-                            int char_idx = (int)((wall_x - d->u) / d->width * strlen(d->text));
-                            if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
-                                glyph = d->text[char_idx];
-                                fg = d->fg;
-                                if (d->use_bg) bg = d->bg;
-                                has_decal = true;
-                                break; 
+                            int px = (int)((wall_x - d->u) / d->width * d->pattern_cols);
+                            int py = (int)((v - d->v) / d->height * d->pattern_rows);
+                            if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
+                                PatternCell pc = d->pattern[py * d->pattern_cols + px];
+                                if (pc.glyph != ' ' && pc.glyph != '\0') {
+                                    Material *d_mat = &assets->materials[pc.material_id];
+                                    SDL_Color d_color = palette_sample(&assets->palettes[d_mat->palette_id], ray.distance, light_level);
+                                    glyph = pc.glyph;
+                                    fg = d_color;
+                                    break; 
+                                }
                             }
                         }
                     }
-                }
-                
-                if (has_decal) {
-                    double final_light = light_level;
-                    if (final_light > 1.0) final_light = 1.0;
-                    fg.r = (uint8_t)(fg.r * final_light);
-                    fg.g = (uint8_t)(fg.g * final_light);
-                    fg.b = (uint8_t)(fg.b * final_light);
-                    bg.r = (uint8_t)(bg.r * final_light);
-                    bg.g = (uint8_t)(bg.g * final_light);
-                    bg.b = (uint8_t)(bg.b * final_light);
                 }
 
                 grid_set(grid, x, y, glyph, fg, bg);
@@ -196,12 +188,16 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 if (d->surface == DECAL_SURFACE_CEILING) {
                     if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
                         curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
-                        int char_idx = (int)((curX - (d->x - d->width/2.0)) / d->width * strlen(d->text));
-                        if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
-                            glyph = d->text[char_idx];
-                            fg = d->fg;
-                            if (d->use_bg) bg = d->bg;
-                            break;
+                        int px = (int)((curX - (d->x - d->width/2.0)) / d->width * d->pattern_cols);
+                        int py = (int)((curY - (d->y - d->height/2.0)) / d->height * d->pattern_rows);
+                        if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
+                            PatternCell pc = d->pattern[py * d->pattern_cols + px];
+                            if (pc.glyph != ' ' && pc.glyph != '\0') {
+                                Material *d_mat = &assets->materials[pc.material_id];
+                                fg = palette_sample(&assets->palettes[d_mat->palette_id], trueDist, 1.0);
+                                glyph = pc.glyph;
+                                break;
+                            }
                         }
                     }
                 }
@@ -243,12 +239,16 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 if (d->surface == DECAL_SURFACE_FLOOR) {
                     if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
                         curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
-                        int char_idx = (int)((curX - (d->x - d->width/2.0)) / d->width * strlen(d->text));
-                        if (char_idx >= 0 && char_idx < (int)strlen(d->text)) {
-                            glyph = d->text[char_idx];
-                            fg = d->fg;
-                            if (d->use_bg) bg = d->bg;
-                            break;
+                        int px = (int)((curX - (d->x - d->width/2.0)) / d->width * d->pattern_cols);
+                        int py = (int)((curY - (d->y - d->height/2.0)) / d->height * d->pattern_rows);
+                        if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
+                            PatternCell pc = d->pattern[py * d->pattern_cols + px];
+                            if (pc.glyph != ' ' && pc.glyph != '\0') {
+                                Material *d_mat = &assets->materials[pc.material_id];
+                                fg = palette_sample(&assets->palettes[d_mat->palette_id], trueDist, 1.0);
+                                glyph = pc.glyph;
+                                break;
+                            }
                         }
                     }
                 }
