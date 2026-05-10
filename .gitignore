@@ -1,3 +1,5 @@
 build/
 vendor/
 example-code/
+.*/
+!.git/
