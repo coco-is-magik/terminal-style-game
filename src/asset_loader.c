@@ -120,6 +120,7 @@ static bool load_decal(WorldState *world, const char *filepath) {
             else if (strcmp(key, "v") == 0) d.v = atof(val);
             else if (strcmp(key, "width") == 0) d.width = atof(val);
             else if (strcmp(key, "height") == 0) d.height = atof(val);
+            else if (strcmp(key, "rotation") == 0) d.rotation = atof(val);
             else if (strcmp(key, "pattern_cols") == 0) d.pattern_cols = atoi(val);
             else if (strcmp(key, "pattern_rows") == 0) d.pattern_rows = atoi(val);
             else if (strcmp(key, "default_material") == 0) default_material = atoi(val);

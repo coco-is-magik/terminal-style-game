@@ -26,6 +26,7 @@ typedef struct {
     // For floor/ceiling: width and height in world units
     double u, v; 
     double width, height;
+    double rotation;
     
     int pattern_cols;
     int pattern_rows;
