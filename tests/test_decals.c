@@ -6,6 +6,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "../src/grid.h"
 #include "../src/map.h"
@@ -16,6 +17,8 @@
 #include "../src/decal.h"
 #include "../src/lighting.h"
 #include "../src/config.h"
+#include "../src/asset_loader.h"
+
 
 static void test_world_decal_add(void **state) {
     (void)state;
@@ -59,7 +62,7 @@ static void test_decal_rendering_wall(void **state) {
     memset(&d, 0, sizeof(Decal));
     d.surface = DECAL_SURFACE_WALL;
     d.map_x = 2; d.map_y = 0; d.side = 1;
-    d.u = 0.0; d.v = 0.0;
+    d.u = 0.5; d.v = 0.5;
     d.width = 1.0; d.height = 1.0;
     d.pattern_cols = 1; d.pattern_rows = 1;
     d.pattern = malloc(sizeof(PatternCell));
@@ -100,7 +103,7 @@ static void test_decal_rendering_floor(void **state) {
     Decal d;
     memset(&d, 0, sizeof(Decal));
     d.surface = DECAL_SURFACE_FLOOR;
-    d.x = 3.5; d.y = 2.5; // 1 unit in front of camera
+    d.x = 3.75; d.y = 2.5; // 1.25 units in front of camera
     d.width = 1.0; d.height = 1.0;
     d.pattern_cols = 1; d.pattern_rows = 1;
     d.pattern = malloc(sizeof(PatternCell));
@@ -116,18 +119,10 @@ static void test_decal_rendering_floor(void **state) {
     
     // Check some floor pixels. 
     // This is a bit tricky to predict exact pixel, but let's check a range.
-    bool found = false;
-    for (int y = 5; y < 10; y++) {
-        for (int x = 0; x < 10; x++) {
-            Cell c;
-            grid_get(g, x, y, &c);
-            if (c.glyph == 'F') {
-                found = true;
-                assert_int_equal(c.fg.g, 51); // 255 * 0.2
-            }
-        }
-    }
-    assert_true(found);
+    Cell c;
+    grid_get(g, 5, 9, &c);
+    assert_int_equal(c.glyph, 'F');
+    assert_int_equal(c.fg.g, 51);
     
     map_destroy(m);
     grid_destroy(g);
@@ -193,7 +188,64 @@ static void test_decal_fisheye_correction(void **state) {
     grid_destroy(g);
 }
 
+
+static void test_decal_art_format(void **state) {
+    (void)state;
+    system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites");
+    
+    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
+    fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
+    fclose(fmap);
+    
+    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "w");
+    fprintf(fdecal, "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHELLO\nWORLD\n");
+    fclose(fdecal);
+
+    WorldState world;
+    world_init(&world);
+    
+    Map *m = asset_loader_load_map_data(&world, "tests/assets_test", 1);
+    assert_non_null(m);
+    assert_int_equal(world.num_decals, 1);
+    assert_int_equal(world.decals[0].pattern_cols, 5);
+    assert_int_equal(world.decals[0].pattern_rows, 2);
+    assert_int_equal(world.decals[0].pattern[0].glyph, 'H');
+    assert_int_equal(world.decals[0].pattern[4].glyph, 'O');
+    assert_int_equal(world.decals[0].pattern[5].glyph, 'W');
+    assert_int_equal(world.decals[0].pattern[9].glyph, 'D');
+    
+    map_destroy(m);
+    system("rm -rf tests/assets_test");
+}
+
+static void test_decal_art_format_failure(void **state) {
+    (void)state;
+    system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites");
+    
+    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
+    fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
+    fclose(fmap);
+    
+    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "w");
+    fprintf(fdecal, "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHEL\nWOR\n");
+    fclose(fdecal);
+
+    WorldState world;
+    world_init(&world);
+    
+    Map *m = asset_loader_load_map_data(&world, "tests/assets_test", 1);
+    assert_non_null(m);
+    assert_int_equal(world.num_decals, 1);
+    assert_int_equal(world.decals[0].pattern_cols, 5);
+    assert_int_equal(world.decals[0].pattern_rows, 2);
+    assert_int_equal(world.decals[0].pattern[0].glyph, '!');
+    
+    map_destroy(m);
+    system("rm -rf tests/assets_test");
+}
+
 int main(void) {
+
     config_init_defaults();
     
     const struct CMUnitTest tests[] = {
@@ -201,6 +253,8 @@ int main(void) {
         cmocka_unit_test(test_decal_rendering_wall),
         cmocka_unit_test(test_decal_rendering_floor),
         cmocka_unit_test(test_decal_fisheye_correction),
+        cmocka_unit_test(test_decal_art_format),
+        cmocka_unit_test(test_decal_art_format_failure),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

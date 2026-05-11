@@ -95,11 +95,17 @@ static bool load_decal(WorldState *world, const char *filepath) {
     d.pattern_rows = 1;
     int default_material = 1;
 
-    char p_buf[32][256] = {0};
-    char m_buf[32][256] = {0};
+    char p_buf[64][256] = {0};
+    char m_buf[64][256] = {0};
+    bool art_mode = false;
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "art=", 4) == 0 || strcmp(line, "art\n") == 0 || strcmp(line, "art\r\n") == 0) {
+            art_mode = true;
+            break;
+        }
+
         char *key = NULL;
         char *val = NULL;
         parse_key_val(line, &key, &val);
@@ -119,43 +125,75 @@ static bool load_decal(WorldState *world, const char *filepath) {
             else if (strcmp(key, "default_material") == 0) default_material = atoi(val);
             else if (strncmp(key, "pattern_", 8) == 0) {
                 int r = atoi(key + 8);
-                if (r >= 0 && r < 32) {
+                if (r >= 0 && r < 64) {
                     strncpy(p_buf[r], val, 255);
                 }
             }
             else if (strncmp(key, "material_", 9) == 0) {
                 int r = atoi(key + 9);
-                if (r >= 0 && r < 32) {
+                if (r >= 0 && r < 64) {
                     strncpy(m_buf[r], val, 255);
                 }
             }
         }
     }
-    fclose(f);
     
     d.pattern = calloc(d.pattern_cols * d.pattern_rows, sizeof(PatternCell));
     if (d.pattern) {
-        for (int r = 0; r < d.pattern_rows; r++) {
-            int mats[256];
-            for (int i = 0; i < 256; i++) mats[i] = default_material;
-            if (m_buf[r][0] != '\0') {
-                char *p = m_buf[r];
-                int c = 0;
-                while (*p && c < d.pattern_cols) {
-                    mats[c++] = atoi(p);
-                    while (*p && *p != ',') p++;
-                    if (*p == ',') p++;
+        bool success = true;
+        if (art_mode) {
+            for (int r = 0; r < d.pattern_rows; r++) {
+                if (!fgets(line, sizeof(line), f)) {
+                    success = false;
+                    break;
+                }
+                int len = (int)strlen(line);
+                while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
+                    line[--len] = '\0';
+                }
+                if (len < d.pattern_cols) {
+                    success = false;
+                    break;
+                }
+                for (int c = 0; c < d.pattern_cols; c++) {
+                    char g = line[c];
+                    if (g == '\t') g = ' ';
+                    d.pattern[r * d.pattern_cols + c].glyph = g;
+                    d.pattern[r * d.pattern_cols + c].material_id = default_material;
                 }
             }
-            for (int c = 0; c < d.pattern_cols; c++) {
-                char glyph = ' ';
-                if (c < (int)strlen(p_buf[r])) glyph = p_buf[r][c];
-                d.pattern[r * d.pattern_cols + c].glyph = glyph;
-                d.pattern[r * d.pattern_cols + c].material_id = mats[c];
+        } else {
+            for (int r = 0; r < d.pattern_rows; r++) {
+                int mats[256];
+                for (int i = 0; i < 256; i++) mats[i] = default_material;
+                if (m_buf[r][0] != '\0') {
+                    char *p = m_buf[r];
+                    int c = 0;
+                    while (*p && c < d.pattern_cols) {
+                        mats[c++] = atoi(p);
+                        while (*p && *p != ',') p++;
+                        if (*p == ',') p++;
+                    }
+                }
+                for (int c = 0; c < d.pattern_cols; c++) {
+                    char glyph = ' ';
+                    if (c < (int)strlen(p_buf[r])) glyph = p_buf[r][c];
+                    d.pattern[r * d.pattern_cols + c].glyph = glyph;
+                    d.pattern[r * d.pattern_cols + c].material_id = mats[c];
+                }
+            }
+        }
+        
+        if (!success) {
+            fprintf(stderr, "Decal load failed: %s (dimensions mismatch)\n", filepath);
+            for (int i = 0; i < d.pattern_cols * d.pattern_rows; i++) {
+                d.pattern[i].glyph = '!';
+                d.pattern[i].material_id = default_material;
             }
         }
     }
     
+    fclose(f);
     world_add_decal(world, d);
     return true;
 }

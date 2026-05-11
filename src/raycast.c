@@ -1,6 +1,7 @@
 #include "raycast.h"
 #include "config.h"
 #include <math.h>
+#include "math.h"
 #include <stdlib.h>
 
 RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist) {
@@ -85,6 +86,38 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
     double z_buffer[1024];
     int max_x_idx = grid->width < 1024 ? grid->width : 1024;
 
+    int decal_anchor_x[MAX_DECALS];
+    int decal_anchor_y[MAX_DECALS];
+    bool decal_visible[MAX_DECALS];
+
+    for (int i = 0; i < world->num_decals; i++) {
+        decal_visible[i] = false;
+        Decal *d = &world->decals[i];
+        if (d->surface == DECAL_SURFACE_FLOOR || d->surface == DECAL_SURFACE_CEILING) {
+            double dx = d->x - cam->transform.pos.x;
+            double dy = d->y - cam->transform.pos.y;
+            double angle = atan2(dy, dx);
+            double diff_angle = angle - cam->transform.angle;
+            while (diff_angle < -PI) diff_angle += 2 * PI;
+            while (diff_angle >= PI) diff_angle -= 2 * PI;
+            
+            if (fabs(diff_angle) < cam->fov) {
+                double camera_x_anchor = tan(diff_angle) / tan(cam->fov / 2.0);
+                decal_anchor_x[i] = (int)((camera_x_anchor + 1.0) * grid->width / 2.0) - d->pattern_cols / 2;
+                
+                double trueDist = sqrt(dx*dx + dy*dy) * cos(diff_angle);
+                if (trueDist > 0.001) {
+                    if (d->surface == DECAL_SURFACE_FLOOR) {
+                        decal_anchor_y[i] = (int)((grid->height / trueDist + grid->height) / 2.0 + cam->pitch) - d->pattern_rows / 2;
+                    } else {
+                        decal_anchor_y[i] = (int)(cam->pitch - (grid->height / trueDist - grid->height) / 2.0) - d->pattern_rows / 2;
+                    }
+                    decal_visible[i] = true;
+                }
+            }
+        }
+    }
+
     for (int x = 0; x < max_x_idx; x++) {
         double camera_x = 2 * x / (double)grid->width - 1;
         double ray_angle = cam->transform.angle + atan(camera_x * tan(cam->fov / 2.0));
@@ -118,6 +151,37 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
         if (draw_start < 0) draw_start = 0;
         int draw_end = line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_end >= grid->height) draw_end = grid->height - 1;
+        
+        int wall_decal_anchor_x[MAX_DECALS];
+        int wall_decal_anchor_y[MAX_DECALS];
+        bool wall_decal_visible[MAX_DECALS];
+
+        if (ray.hit) {
+            for (int i = 0; i < world->num_decals; i++) {
+                wall_decal_visible[i] = false;
+                Decal *d = &world->decals[i];
+                if (d->surface == DECAL_SURFACE_WALL && d->map_x == ray.map_x && d->map_y == ray.map_y && d->side == ray.side) {
+                    double wx, wy;
+                    if (ray.side == 0) {
+                        wx = cam->transform.pos.x + ray.distance * dir_x;
+                        wy = floor(cam->transform.pos.y + ray.distance * dir_y) + d->u;
+                    } else {
+                        wx = floor(cam->transform.pos.x + ray.distance * dir_x) + d->u;
+                        wy = cam->transform.pos.y + ray.distance * dir_y;
+                    }
+                    double wdx = wx - cam->transform.pos.x;
+                    double wdy = wy - cam->transform.pos.y;
+                    double wangle = atan2(wdy, wdx);
+                    double wdiff_angle = wangle - cam->transform.angle;
+                    while (wdiff_angle < -PI) wdiff_angle += 2 * PI;
+                    while (wdiff_angle >= PI) wdiff_angle -= 2 * PI;
+                    double wcamera_x_anchor = tan(wdiff_angle) / tan(cam->fov / 2.0);
+                    wall_decal_anchor_x[i] = (int)((wcamera_x_anchor + 1.0) * grid->width / 2.0);
+                    wall_decal_anchor_y[i] = (int)(-line_height / 2 + grid->height / 2 + (int)cam->pitch + d->v * line_height);
+                    wall_decal_visible[i] = true;
+                }
+            }
+        }
 
         // WALL RENDERING
         if (ray.hit) {
@@ -139,7 +203,6 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id], ray.distance, light_level);
 
             for (int y = draw_start; y <= draw_end; y++) {
-                double v = (y - (grid->height / 2.0 + cam->pitch - line_height / 2.0)) / (double)line_height;
                 
                 uint8_t glyph = wall_glyph;
                 SDL_Color fg = wall_color;
@@ -148,10 +211,10 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 // Check decals
                 for (int i = 0; i < world->num_decals; i++) {
                     Decal *d = &world->decals[i];
-                    if (d->surface == DECAL_SURFACE_WALL && d->map_x == ray.map_x && d->map_y == ray.map_y && d->side == ray.side) {
-                        if (wall_x >= d->u && wall_x < d->u + d->width && v >= d->v && v < d->v + d->height) {
-                            int px = (int)((wall_x - d->u) / d->width * d->pattern_cols);
-                            int py = (int)((v - d->v) / d->height * d->pattern_rows);
+                    if (wall_decal_visible[i] && d->surface == DECAL_SURFACE_WALL && d->map_x == ray.map_x && d->map_y == ray.map_y && d->side == ray.side) {
+                        {
+                            int px = x - wall_decal_anchor_x[i];
+                            int py = y - wall_decal_anchor_y[i];
                             if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
                                 PatternCell pc = d->pattern[py * d->pattern_cols + px];
                                 if (pc.glyph != ' ' && pc.glyph != '\0') {
@@ -185,11 +248,10 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
 
             for (int i = 0; i < world->num_decals; i++) {
                 Decal *d = &world->decals[i];
-                if (d->surface == DECAL_SURFACE_CEILING) {
-                    if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
-                        curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
-                        int px = (int)((curX - (d->x - d->width/2.0)) / d->width * d->pattern_cols);
-                        int py = (int)((curY - (d->y - d->height/2.0)) / d->height * d->pattern_rows);
+                if (d->surface == DECAL_SURFACE_CEILING && decal_visible[i]) {
+                    {
+                        int px = x - decal_anchor_x[i];
+                        int py = y - decal_anchor_y[i];
                         if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
                             PatternCell pc = d->pattern[py * d->pattern_cols + px];
                             if (pc.glyph != ' ' && pc.glyph != '\0') {
@@ -236,11 +298,10 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
 
             for (int i = 0; i < world->num_decals; i++) {
                 Decal *d = &world->decals[i];
-                if (d->surface == DECAL_SURFACE_FLOOR) {
-                    if (curX >= d->x - d->width/2.0 && curX < d->x + d->width/2.0 &&
-                        curY >= d->y - d->height/2.0 && curY < d->y + d->height/2.0) {
-                        int px = (int)((curX - (d->x - d->width/2.0)) / d->width * d->pattern_cols);
-                        int py = (int)((curY - (d->y - d->height/2.0)) / d->height * d->pattern_rows);
+                if (d->surface == DECAL_SURFACE_FLOOR && decal_visible[i]) {
+                    {
+                        int px = x - decal_anchor_x[i];
+                        int py = y - decal_anchor_y[i];
                         if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
                             PatternCell pc = d->pattern[py * d->pattern_cols + px];
                             if (pc.glyph != ' ' && pc.glyph != '\0') {
@@ -272,7 +333,6 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             grid_set(grid, x, y, glyph, fg, bg);
         }
     }
-
     // RENDER LIGHT SOURCES
     for (int i = 0; i < world->num_lights; i++) {
         Light *l = &world->lights[i];
