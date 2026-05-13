@@ -113,6 +113,7 @@ static bool load_decal(WorldState *world, const char *filepath) {
             if (strcmp(key, "surface") == 0) d.surface = atoi(val);
             else if (strcmp(key, "x") == 0) d.x = atof(val);
             else if (strcmp(key, "y") == 0) d.y = atof(val);
+            else if (strcmp(key, "z") == 0) d.z = atof(val);
             else if (strcmp(key, "map_x") == 0) d.map_x = atoi(val);
             else if (strcmp(key, "map_y") == 0) d.map_y = atoi(val);
             else if (strcmp(key, "side") == 0) d.side = atoi(val);
@@ -120,6 +121,7 @@ static bool load_decal(WorldState *world, const char *filepath) {
             else if (strcmp(key, "v") == 0) d.v = atof(val);
             else if (strcmp(key, "width") == 0) d.width = atof(val);
             else if (strcmp(key, "height") == 0) d.height = atof(val);
+            else if (strcmp(key, "depth") == 0) d.depth = atof(val);
             else if (strcmp(key, "rotation") == 0) d.rotation = atof(val);
             else if (strcmp(key, "pattern_cols") == 0) d.pattern_cols = atoi(val);
             else if (strcmp(key, "pattern_rows") == 0) d.pattern_rows = atoi(val);

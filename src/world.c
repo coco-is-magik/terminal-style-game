@@ -29,5 +29,27 @@ void world_add_sprite(WorldState *world, double x, double y, int sprite_id) {
 
 void world_add_decal(WorldState *world, Decal decal) {
     if (!world || world->num_decals >= MAX_DECALS) return;
+    
+    // Legacy decal migration to world space
+    if (decal.surface == DECAL_SURFACE_WALL && decal.depth == 0.0) {
+        decal.depth = 0.1;
+        decal.z = decal.v + decal.height * 0.5;
+        if (decal.side == 0) { // NS wall
+            decal.rotation = 0.0;
+            decal.x = decal.map_x + 1.0; 
+            decal.y = decal.map_y + decal.u + decal.width * 0.5;
+        } else { // EW wall
+            decal.rotation = PI / 2.0;
+            decal.x = decal.map_x + decal.u + decal.width * 0.5;
+            decal.y = decal.map_y + 1.0;
+        }
+    } else if (decal.depth == 0.0) {
+        decal.depth = 0.1;
+    }
+
+    if (decal.surface == DECAL_SURFACE_CEILING && decal.z == 0.0) {
+        decal.z = 1.0;
+    }
+
     world->decals[world->num_decals++] = decal;
 }

@@ -17,7 +17,7 @@ typedef struct {
     
     // For wall: map_x, map_y, side
     // For floor/ceiling: world x, y center
-    double x, y;
+    double x, y, z;
     int map_x, map_y;
     int side; // 0 for NS, 1 for EW
     
@@ -25,7 +25,7 @@ typedef struct {
     // For wall: u is horizontal (0-1), v is vertical (0-1)
     // For floor/ceiling: width and height in world units
     double u, v; 
-    double width, height;
+    double width, height, depth;
     double rotation;
     
     int pattern_cols;
