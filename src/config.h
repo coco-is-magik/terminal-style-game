@@ -1,52 +1,77 @@
+/**
+ * config.h — Engine configuration struct, enums, and API
+ *
+ * Defines the EngineConfig struct holding all tunable engine parameters
+ * (window size, grid dimensions, lighting, raycasting, etc.), the
+ * RunMode and VisualMode enums, and the functions for loading and
+ * accessing configuration.
+ *
+ * See config.c for the implementation.
+ */
+
 #ifndef CONFIG_H
 #define CONFIG_H
 
 #include <stdbool.h>
 
+/**
+ * EngineConfig — All tunable engine parameters
+ *
+ * Organised into logical groups:
+ *   - Window & grid
+ *   - Lighting
+ *   - Raycasting
+ *   - Default assets
+ *   - Debug options
+ */
 typedef struct {
-    int window_width;
-    int window_height;
-    int grid_width;
-    int grid_height;
-    int cell_width;
-    int cell_height;
-    int target_fps;
-    
-    double ambient_light;
-    double light_bounce_attenuation;
-    double light_falloff_default;
-    
-    double raycast_max_distance;
-    double side_shadow_attenuation;
-    
-    int default_material_id;
-    int default_palette_id;
-    
-    bool debug_display_enabled;
+    /* ---- Window & grid ---- */
+    int window_width;          /* Window width in screen pixels (default 1920) */
+    int window_height;         /* Window height in screen pixels (default 1080) */
+    int grid_width;            /* Number of glyph columns (default 260) */
+    int grid_height;           /* Number of glyph rows (default 160) */
+    int cell_width;            /* Glyph width in pixels (default 8) */
+    int cell_height;           /* Glyph height in pixels (default 8) */
+    int target_fps;            /* Target frames per second (default 120) */
+
+    /* ---- Lighting ---- */
+    double ambient_light;             /* Minimum light level (default 0.2 = 20%) */
+    double light_bounce_attenuation;  /* Light bleed through obstacles (default 0.2) */
+    double light_falloff_default;     /* Parsed setting; currently unused by lighting.c */
+
+    /* ---- Raycasting ---- */
+    double raycast_max_distance;      /* Max ray distance in cells (default 20.0) */
+    double side_shadow_attenuation;   /* Dimming for EW walls (default 0.6) */
+
+    /* ---- Default assets ---- */
+    int default_material_id;   /* Material for non-digit map chars (default 1) */
+    int default_palette_id;    /* Parsed setting; currently unused by asset lookup */
+
+    /* ---- Debug ---- */
+    bool debug_display_enabled;       /* Show HUD overlay (default true) */
 } EngineConfig;
 
-// Initialize with hardcoded defaults
+/* ---- Configuration API ---- */
+
 void config_init_defaults(void);
-
-// Load from a key=value file, overriding defaults
 bool config_load_from_file(const char *filepath);
-
-// Get the current configuration (read-only pointer)
 const EngineConfig* config_get(void);
-
-// Set configuration (for programmatic overrides)
 void config_set(const EngineConfig *new_config);
 
+/* ---- Run mode enum ---- */
+
 typedef enum {
-    RUN_MODE_NORMAL,
-    RUN_MODE_BENCHMARK_STRESS,
-    RUN_MODE_STABILITY
+    RUN_MODE_NORMAL,              /* Interactive play mode */
+    RUN_MODE_BENCHMARK_STRESS,    /* Timed stress-test, prints JSON results */
+    RUN_MODE_STABILITY            /* Stability test (detects leaks/crashes) */
 } RunMode;
 
+/* ---- Visual mode enum ---- */
+
 typedef enum {
-    VISUAL_NORMAL,
-    VISUAL_STRESS,
-    VISUAL_RAYCAST
+    VISUAL_NORMAL,       /* Animated sine-wave pattern (debug/testing) */
+    VISUAL_STRESS,       /* Chaotic CPU-intensive pattern (benchmark) */
+    VISUAL_RAYCAST       /* Full 3D raycasted world rendering */
 } VisualMode;
 
-#endif
+#endif /* CONFIG_H */
