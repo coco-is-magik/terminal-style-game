@@ -109,6 +109,17 @@ typedef struct {
 void world_init(WorldState *world);
 
 /**
+ * world_clear() — Free WorldState-owned dynamic resources and reset it
+ *
+ * Frees decal pattern arrays owned by the world, then returns the WorldState
+ * to the same default state produced by world_init().  The WorldState object
+ * itself is not freed; callers may allocate it on the stack or embed it.
+ *
+ * @param world  Pointer to WorldState to clear (NULL-safe)
+ */
+void world_clear(WorldState *world);
+
+/**
  * world_add_light() — Add a point light to the world
  *
  * Appends a Light to the lights array.  Silently drops the light if

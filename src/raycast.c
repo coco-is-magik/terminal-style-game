@@ -19,7 +19,7 @@
  *     a. Fires a ray to find the nearest wall
  *     b. Draws the wall slice with correct height, glyph, lighting, and decals
  *     c. Draws the ceiling and floor with distance-based shading
- *     d. After all columns, renders floor/ceiling decals by projecting pattern cells
+ *     d. Samples decals on walls, floor, and ceiling in surface-local space
  *     e. Renders light sources as '*' billboards
  *
  * The coordinate system assumes:
@@ -47,13 +47,13 @@
 #define DECAL_DEBUG_MODE 0
 
 /* ===================================================================
- *  Decal sampling (wall decals)
+ *  Decal sampling
  * =================================================================== */
 
 /**
  * sample_decal() — Test whether a world-space point lies on a decal surface
  *
- * This is the core decal-hit-test function for WALL decals.  It:
+ * This is the core decal-hit-test function for all decal surfaces.  It:
  *   1. Computes the vector from the decal origin to the world point
  *   2. Builds a local coordinate system (tangent, bitangent, normal) based
  *      on the decal's surface type and rotation
@@ -189,6 +189,35 @@ static bool sample_decal(Decal *d, double world_x, double world_y, double world_
     return false; /* No glyph at this cell or out of range */
 }
 
+/**
+ * sample_surface_decal() — Sample the first decal hit on a specific surface
+ *
+ * All decal surfaces use the same world-to-local sampling model.  The caller
+ * provides the already-reconstructed world-space point and the normal of the
+ * surface currently being rendered; sample_decal() handles the surface basis,
+ * UV quantisation, depth check, and material colour lookup.
+ */
+static bool sample_surface_decal(WorldState *world, DecalSurface surface,
+                                 double world_x, double world_y, double world_z,
+                                 double surf_nx, double surf_ny, double surf_nz,
+                                 uint8_t *out_glyph, SDL_Color *out_fg,
+                                 AssetRegistry *assets, double distance,
+                                 double light_level) {
+    for (int i = 0; i < world->num_decals; i++) {
+        Decal *d = &world->decals[i];
+        if (d->surface != surface) continue;
+
+        if (sample_decal(d, world_x, world_y, world_z,
+                         surf_nx, surf_ny, surf_nz,
+                         out_glyph, out_fg, assets,
+                         distance, light_level)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /* ===================================================================
  *  DDA Raycasting
  * =================================================================== */
@@ -321,8 +350,7 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  *   5. Draws ceiling and floor with distance-based shading from the light map
  *
  * After all columns are processed, a second pass renders:
- *   6. Floor/ceiling decals (discrete sprites projected into screen space)
- *   7. Light source '*' markers
+ *   6. Light source '*' markers
  *
  * @param grid    The character grid to render into
  * @param map     The tile map (for wall data + light_map)
@@ -454,18 +482,11 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 double surf_ny = (ray.side == 1) ? -step_y : 0;
                 double surf_nz = 0;
 
-                /* Iterate over all wall decals and check each one */
-                for (int i = 0; i < world->num_decals; i++) {
-                    Decal *d = &world->decals[i];
-                    if (d->surface == DECAL_SURFACE_WALL) {
-                        if (sample_decal(d, world_x, world_y, world_z,
-                                         surf_nx, surf_ny, surf_nz,
-                                         &glyph, &fg, assets,
-                                         ray.distance, light_level)) {
-                            break;   /* First matching decal wins */
-                        }
-                    }
-                }
+                (void)sample_surface_decal(world, DECAL_SURFACE_WALL,
+                                           world_x, world_y, world_z,
+                                           surf_nx, surf_ny, surf_nz,
+                                           &glyph, &fg, assets,
+                                           ray.distance, light_level);
 
                 grid_set(grid, x, y, glyph, fg, bg);
             }
@@ -491,11 +512,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             SDL_Color bg = {50, 50, 50, 255};   /* Grey ceiling */
 
             /* Apply light map */
+            double light_level = 1.0;
             if (map->light_map) {
                 int map_x = (int)curX;
                 int map_y = (int)curY;
                 if (map_in_bounds(map, map_x, map_y)) {
-                    double light_level = map->light_map[map_y * map->width + map_x];
+                    light_level = map->light_map[map_y * map->width + map_x];
                     if (light_level > 1.0) light_level = 1.0;
                     fg.r = (uint8_t)(fg.r * light_level);
                     fg.g = (uint8_t)(fg.g * light_level);
@@ -505,6 +527,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                     bg.b = (uint8_t)(bg.b * light_level);
                 }
             }
+
+            (void)sample_surface_decal(world, DECAL_SURFACE_CEILING,
+                                       curX, curY, 1.0,
+                                       0.0, 0.0, -1.0,
+                                       &glyph, &fg, assets,
+                                       trueDist, light_level);
 
             grid_set(grid, x, y, glyph, fg, bg);
         }
@@ -525,11 +553,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             SDL_Color fg = {255, 255, 255, 255};
             SDL_Color bg = {30, 30, 30, 255};   /* Darker floor */
 
+            double light_level = 1.0;
             if (map->light_map) {
                 int map_x = (int)curX;
                 int map_y = (int)curY;
                 if (map_in_bounds(map, map_x, map_y)) {
-                    double light_level = map->light_map[map_y * map->width + map_x];
+                    light_level = map->light_map[map_y * map->width + map_x];
                     if (light_level > 1.0) light_level = 1.0;
                     fg.r = (uint8_t)(fg.r * light_level);
                     fg.g = (uint8_t)(fg.g * light_level);
@@ -540,103 +569,13 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 }
             }
 
+            (void)sample_surface_decal(world, DECAL_SURFACE_FLOOR,
+                                       curX, curY, 0.0,
+                                       0.0, 0.0, 1.0,
+                                       &glyph, &fg, assets,
+                                       trueDist, light_level);
+
             grid_set(grid, x, y, glyph, fg, bg);
-        }
-    }
-
-    /* ================================================================
-     *  POST-PASS: DISCRETE DECALS (Floor/Ceiling)
-     *  Rendered by projecting each decal pattern cell into screen space.
-     * ================================================================ */
-
-    for (int i = 0; i < world->num_decals; i++) {
-        Decal *d = &world->decals[i];
-        if (d->surface == DECAL_SURFACE_WALL) continue; /* Already handled above */
-
-        /* Build rotation matrix for this decal's orientation */
-        double cos_r = cos(d->rotation);
-        double sin_r = sin(d->rotation);
-
-        /* Base Tangent (+X) and Bitangent (+Y) for the ground plane */
-        double tx = cos_r, ty = sin_r;
-        double bx = -sin_r, by = cos_r;
-
-        /* Iterate over each cell in the decal's pattern grid */
-        for (int py = 0; py < d->pattern_rows; py++) {
-            for (int px = 0; px < d->pattern_cols; px++) {
-                PatternCell pc = d->pattern[py * d->pattern_cols + px];
-                if (pc.glyph == ' ' || pc.glyph == '\0') continue; /* Skip empty */
-
-                /* UV coordinate of the centre of this pattern cell */
-                double u = (px + 0.5) / d->pattern_cols;
-                double v = (py + 0.5) / d->pattern_rows;
-
-                /* Local coordinates relative to decal centre */
-                double local_x = (u - 0.5) * d->width;
-                double local_y = (v - 0.5) * d->height;
-
-                /* World coordinates */
-                double world_x = d->x + local_x * tx + local_y * bx;
-                double world_y = d->y + local_x * ty + local_y * by;
-
-                /* ---- Project world point into screen space ---- */
-                double dx = world_x - cam->transform.pos.x;
-                double dy = world_y - cam->transform.pos.y;
-
-                /* Camera basis vectors */
-                double dir_x = cos(cam->transform.angle);
-                double dir_y = sin(cam->transform.angle);
-                double plane_x = -sin(cam->transform.angle) * tan(cam->fov / 2.0);
-                double plane_y =  cos(cam->transform.angle) * tan(cam->fov / 2.0);
-
-                /* Transform world point into camera space using the camera's
-                 * basis, similar to a sprite/decal projection matrix:
-                 *   transform_x = horizontal screen position
-                 *   transform_y = depth (distance from camera plane) */
-                double inv_det = 1.0 / (plane_x * dir_y - dir_x * plane_y);
-                double transform_x = inv_det * (dir_y * dx - dir_x * dy);
-                double transform_y = inv_det * (-plane_y * dx + plane_x * dy);
-
-                if (transform_y <= 0) continue; /* Behind the camera — skip */
-
-                /* Screen X coordinate */
-                int screen_x = (int)((grid->width / 2.0) * (1.0 + transform_x / transform_y));
-                if (screen_x < 0 || screen_x >= grid->width) continue;
-
-                /* Z-buffer occlusion check */
-                if (transform_y >= z_buffer[screen_x]) continue; /* Hidden behind a wall */
-
-                /* ---- Compute screen Y for floor vs ceiling ---- */
-                int screen_y;
-                if (d->surface == DECAL_SURFACE_FLOOR) {
-                    double floor_dist = transform_y;
-                    double denom = grid->height / floor_dist;
-                    screen_y = (int)((denom + grid->height) / 2.0 + cam->pitch);
-                } else { /* CEILING */
-                    double ceil_dist = transform_y;
-                    double denom = grid->height / ceil_dist;
-                    screen_y = (int)((grid->height - denom) / 2.0 + cam->pitch);
-                }
-
-                /* ---- Draw the decal cell on screen ---- */
-                if (screen_y >= 0 && screen_y < grid->height) {
-                    Cell existing;
-                    if (grid_get(grid, screen_x, screen_y, &existing)) {
-                        Material *d_mat = &assets->materials[pc.material_id];
-
-                        /* Lighting */
-                        double light_level = 1.0;
-                        if (map->light_map && map_in_bounds(map, (int)world_x, (int)world_y)) {
-                            light_level = map->light_map[(int)world_y * map->width + (int)world_x];
-                            if (light_level > 1.0) light_level = 1.0;
-                        }
-
-                        SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
-                                                       transform_y, light_level);
-                        grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
-                    }
-                }
-            }
         }
     }
 

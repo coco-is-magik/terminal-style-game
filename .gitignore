@@ -2,4 +2,6 @@ build/
 vendor/
 example-code/
 .*/
+.*
 !.git/
+!.gitignore

@@ -429,6 +429,7 @@ int app_main(int argc, char* argv[]) {
     /* ================================================================
      *  9. Cleanup — release all resources
      * ================================================================ */
+    world_clear(&world);
     if (map) map_destroy(map);
     grid_destroy(grid);
     renderer_destroy(ren);

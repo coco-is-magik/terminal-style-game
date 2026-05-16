@@ -19,6 +19,16 @@
 #include "../src/config.h"
 #include "../src/asset_loader.h"
 
+static int count_grid_glyph(Grid *g, uint8_t glyph) {
+    int count = 0;
+
+    for (int i = 0; i < g->width * g->height; i++) {
+        if (g->cells[i].glyph == glyph) count++;
+    }
+
+    return count;
+}
+
 
 static void test_world_decal_add(void **state) {
     (void)state;
@@ -39,6 +49,8 @@ static void test_world_decal_add(void **state) {
     world_add_decal(&world, d);
     assert_int_equal(world.num_decals, 1);
     assert_int_equal(world.decals[0].pattern[0].glyph, 'T');
+
+    world_clear(&world);
 }
 
 static void test_decal_rendering_wall(void **state) {
@@ -80,6 +92,7 @@ static void test_decal_rendering_wall(void **state) {
     assert_int_equal(c.glyph, 'D');
     assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
     
+    world_clear(&world);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -127,6 +140,7 @@ static void test_decal_rendering_floor(void **state) {
     assert_int_equal(c.glyph, 'F');
     assert_int_equal(c.fg.g, 51);
     
+    world_clear(&world);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -189,6 +203,7 @@ static void test_decal_fisheye_correction(void **state) {
     assert_true(line_y != -1);
     assert_true(is_straight);
 
+    world_clear(&world);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -219,6 +234,7 @@ static void test_decal_art_format(void **state) {
     assert_int_equal(world.decals[0].pattern[5].glyph, 'W');
     assert_int_equal(world.decals[0].pattern[9].glyph, 'D');
     
+    world_clear(&world);
     map_destroy(m);
     system("rm -rf tests/assets_test");
 }
@@ -245,11 +261,12 @@ static void test_decal_art_format_failure(void **state) {
     assert_int_equal(world.decals[0].pattern_rows, 2);
     assert_int_equal(world.decals[0].pattern[0].glyph, '!');
     
+    world_clear(&world);
     map_destroy(m);
     system("rm -rf tests/assets_test");
 }
 
-static void test_decal_floor_discrete(void **state) {
+static void test_decal_floor_continuous_sampling(void **state) {
     (void)state;
     Grid *g = grid_create(20, 20);
     Map *m = map_create(5, 5);
@@ -282,21 +299,71 @@ static void test_decal_floor_discrete(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    int count_A = 0, count_B = 0, count_C = 0, count_D = 0;
-    for(int i=0; i<g->width*g->height; i++) {
-        if(g->cells[i].glyph == 'A') count_A++;
-        if(g->cells[i].glyph == 'B') count_B++;
-        if(g->cells[i].glyph == 'C') count_C++;
-        if(g->cells[i].glyph == 'D') count_D++;
-    }
+    int count_A = count_grid_glyph(g, 'A');
+    int count_B = count_grid_glyph(g, 'B');
+    int count_C = count_grid_glyph(g, 'C');
+    int count_D = count_grid_glyph(g, 'D');
+    int total = count_A + count_B + count_C + count_D;
     
-    // In discrete projected glyph rendering, each source cell should project to roughly one screen cell,
-    // not smear across dozens of horizontal pixels.
-    assert_true(count_A > 0 && count_A < 4);
-    assert_true(count_B > 0 && count_B < 4);
-    assert_true(count_C > 0 && count_C < 4);
-    assert_true(count_D > 0 && count_D < 4);
+    // Floor decals should be sampled from surface-local UVs at every rendered
+    // floor point, not projected as one isolated screen glyph per source cell.
+    assert_true(count_A > 0);
+    assert_true(count_B > 0);
+    assert_true(count_C > 0);
+    assert_true(count_D > 0);
+    assert_true(total > d.pattern_cols * d.pattern_rows);
 
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_ceiling_continuous_sampling(void **state) {
+    (void)state;
+    Grid *g = grid_create(20, 20);
+    Map *m = map_create(5, 5);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0); // Looking +X
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_CEILING;
+    d.x = 4.0; d.y = 2.5; d.z = 0.0; // world_add_decal moves ceiling decals to z=1
+    d.rotation = 0.0;
+    d.width = 1.0; d.height = 1.0;
+    d.depth = 0.1;
+    d.pattern_cols = 2; d.pattern_rows = 2;
+    d.pattern = malloc(4 * sizeof(PatternCell));
+    d.pattern[0] = (PatternCell){'A', 1}; d.pattern[1] = (PatternCell){'B', 1};
+    d.pattern[2] = (PatternCell){'C', 1}; d.pattern[3] = (PatternCell){'D', 1};
+
+    world_add_decal(&world, d);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    int count_A = count_grid_glyph(g, 'A');
+    int count_B = count_grid_glyph(g, 'B');
+    int count_C = count_grid_glyph(g, 'C');
+    int count_D = count_grid_glyph(g, 'D');
+    int total = count_A + count_B + count_C + count_D;
+
+    assert_true(count_A > 0);
+    assert_true(count_B > 0);
+    assert_true(count_C > 0);
+    assert_true(count_D > 0);
+    assert_true(total > d.pattern_cols * d.pattern_rows);
+
+    world_clear(&world);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -347,6 +414,7 @@ static void test_decal_wall_orientation(void **state) {
     assert_true(b_y != -1);
     assert_true(t_y < b_y); // T should be above B (lower Y value in screen space)
 
+    world_clear(&world);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -362,7 +430,8 @@ int main(void) {
         cmocka_unit_test(test_decal_fisheye_correction),
         cmocka_unit_test(test_decal_art_format),
         cmocka_unit_test(test_decal_art_format_failure),
-        cmocka_unit_test(test_decal_floor_discrete),
+        cmocka_unit_test(test_decal_floor_continuous_sampling),
+        cmocka_unit_test(test_decal_ceiling_continuous_sampling),
         cmocka_unit_test(test_decal_wall_orientation),
     };
 

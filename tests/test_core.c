@@ -163,6 +163,7 @@ static void test_asset_loader(void **state) {
     assert_true(world.num_decals > 0);
     assert_true(world.num_lights > 0);
     
+    world_clear(&world);
     map_destroy(map);
 }
 

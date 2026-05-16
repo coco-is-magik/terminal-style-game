@@ -1,13 +1,14 @@
 CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Wpedantic
+CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
 
 VENDOR_DIR := $(pwd)/vendor/dist
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
 
-INCLUDES := -I$(VENDOR_DIR)/include
-LIBS := -L$(VENDOR_DIR)/lib64 -lSDL3 -lSDL3_mixer -lenet -lm
+INCLUDES := -I"$(VENDOR_DIR)/include"
+LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet -lm
+TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
 
 APP := $(BUILD_DIR)/ascii-fps
@@ -29,13 +30,13 @@ $(APP): $(SRC_FILES) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(SRC_FILES) -o $(APP) $(LIBS) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_CORE_RUNNER): tests/test_core.c $(TEST_SRC) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c $(TEST_SRC) -o $(TEST_CORE_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_core.c $(TEST_SRC) -o $(TEST_CORE_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_DECALS_RUNNER): tests/test_decals.c $(TEST_SRC) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decals.c $(TEST_SRC) -o $(TEST_DECALS_RUNNER) -L$(VENDOR_DIR)/lib64 -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm $(RPATH)
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decals.c $(TEST_SRC) -o $(TEST_DECALS_RUNNER) $(TEST_LIBS) $(RPATH)
 
 run: $(APP)
 	./$(APP) --mode raycast

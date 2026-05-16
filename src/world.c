@@ -19,6 +19,7 @@
  */
 
 #include "world.h"        /* WorldState, Light, SpriteEntity, Decal, constants */
+#include <stdlib.h>        /* free() */
 #include <string.h>        /* memset() */
 
 /**
@@ -45,6 +46,24 @@ void world_init(WorldState *world) {
     world->spawn_pos.x = 1.5;
     world->spawn_pos.y = 1.5;
     world->spawn_angle = 0.0;    /* 0 radians = facing east (+X direction) */
+}
+
+/**
+ * world_clear() — Free dynamic resources owned by a WorldState
+ *
+ * Decal pattern arrays are heap-allocated by the decal loader or tests and
+ * ownership transfers to WorldState when world_add_decal() stores the decal.
+ * This function releases those arrays and resets the world to defaults.
+ */
+void world_clear(WorldState *world) {
+    if (!world) return;
+
+    for (int i = 0; i < world->num_decals; i++) {
+        free(world->decals[i].pattern);
+        world->decals[i].pattern = NULL;
+    }
+
+    world_init(world);
 }
 
 /**
