@@ -17,9 +17,9 @@
  *   3. raycast_render()  — The main per-frame render function.  For each column
  *                          of the screen grid, it:
  *     a. Fires a ray to find the nearest wall
- *     b. Draws the wall slice with correct height, glyph, lighting, and decals
+ *     b. Draws the wall slice with correct height, glyph, and lighting
  *     c. Draws the ceiling and floor with distance-based shading
- *     d. Samples decals on walls, floor, and ceiling in surface-local space
+ *     d. Projects decal cells from surface-local space into screen cells
  *     e. Renders light sources as '*' billboards
  *
  * The coordinate system assumes:
@@ -47,175 +47,138 @@
 #define DECAL_DEBUG_MODE 0
 
 /* ===================================================================
- *  Decal sampling
+ *  Decal projection helpers
  * =================================================================== */
 
-/**
- * sample_decal() — Test whether a world-space point lies on a decal surface
- *
- * This is the core decal-hit-test function for all decal surfaces.  It:
- *   1. Computes the vector from the decal origin to the world point
- *   2. Builds a local coordinate system (tangent, bitangent, normal) based
- *      on the decal's surface type and rotation
- *   3. Rejects the point if the surface normal doesn't face the decal normal
- *      (dot product < 0.5) — prevents decals from being visible from the back
- *   4. Projects the world point into decal-local UV coordinates
- *   5. Checks if (u, v) is within the decal's [0,1) bounds and within depth
- *   6. Samples the decal's pattern at the quantised (px, py) cell
- *   7. If a non-space glyph is found, sets out_glyph and out_fg with the
- *      properly lit colour from the decal's material palette
- *
- * @param d           Pointer to the Decal to test
- * @param world_x     World-space X of the point being tested
- * @param world_y     World-space Y of the point being tested
- * @param world_z     World-space Z (height) of the point being tested
- * @param surf_nx     Surface normal X at the hit point (from raycast)
- * @param surf_ny     Surface normal Y at the hit point
- * @param surf_nz     Surface normal Z at the hit point (always 0 for walls)
- * @param out_glyph   Output: the glyph character to render (if hit)
- * @param out_fg      Output: the foreground colour to render (if hit)
- * @param assets      AssetRegistry for looking up palettes and materials
- * @param distance    Distance from camera (for distance-based palette sampling)
- * @param light_level Current light level at the wall tile
- * @return            true if the point hits the decal, false otherwise
- */
-static bool sample_decal(Decal *d, double world_x, double world_y, double world_z,
-                        double surf_nx, double surf_ny, double surf_nz,
-                        uint8_t *out_glyph, SDL_Color *out_fg, AssetRegistry *assets,
-                        double distance, double light_level) {
-
-    /* ---- Vector from decal origin to world point ---- */
-    double dx = world_x - d->x;
-    double dy = world_y - d->y;
-    double dz = world_z - d->z;
-
-    /* ---- Build decal-local coordinate system ---- */
-    /* Each decal has three orthogonal axes:
-     *   Normal (N)   — points out of the surface
-     *   Tangent (T)  — horizontal along the surface
-     *   Bitangent (B) — vertical along the surface (downward for walls)
-     *
-     * These are pre-rotated by d->rotation around the normal axis. */
-
-    double decal_nx = 0, decal_ny = 0, decal_nz = 0;
-    double decal_tx = 0, decal_ty = 0, decal_tz = 0;
-    double decal_bx = 0, decal_by = 0, decal_bz = 0;
-
+static void decal_basis(const Decal *d,
+                        double *nx, double *ny, double *nz,
+                        double *tx, double *ty, double *tz,
+                        double *bx, double *by, double *bz) {
     double cos_r = cos(d->rotation);
     double sin_r = sin(d->rotation);
 
     switch (d->surface) {
         case DECAL_SURFACE_WALL:
-            /* Wall decal: N = horizontal (in the X/Y plane), T = perpendicular
-             * to N in the X/Y plane, B = +Z (downward) */
-            decal_nx = cos_r; decal_ny = sin_r; decal_nz = 0;
-            decal_tx = -sin_r; decal_ty = cos_r; decal_tz = 0;
-            decal_bx = 0; decal_by = 0; decal_bz = 1.0;
+            *nx = cos_r; *ny = sin_r; *nz = 0.0;
+            *tx = sin_r; *ty = -cos_r; *tz = 0.0;
+            *bx = 0.0;   *by = 0.0;    *bz = -1.0;
             break;
-
         case DECAL_SURFACE_FLOOR:
-            /* Floor decal: N = +Z (upward), T = +X, B = +Y (both rotated) */
-            decal_nx = 0; decal_ny = 0; decal_nz = 1.0;
-            decal_tx = cos_r; decal_ty = sin_r; decal_tz = 0;
-            decal_bx = -sin_r; decal_by = cos_r; decal_bz = 0;
+            *nx = 0.0;   *ny = 0.0;   *nz = 1.0;
+            *tx = cos_r; *ty = sin_r; *tz = 0.0;
+            *bx = -sin_r; *by = cos_r; *bz = 0.0;
             break;
-
-        default: // CEILING
-            /* Ceiling decal: N = -Z (downward), T = +X, B = +Y (both rotated) */
-            decal_nx = 0; decal_ny = 0; decal_nz = -1.0;
-            decal_tx = cos_r; decal_ty = sin_r; decal_tz = 0;
-            decal_bx = -sin_r; decal_by = cos_r; decal_bz = 0;
+        default:
+            *nx = 0.0;   *ny = 0.0;   *nz = -1.0;
+            *tx = cos_r; *ty = sin_r; *tz = 0.0;
+            *bx = -sin_r; *by = cos_r; *bz = 0.0;
             break;
     }
-
-    /* ---- Normal filtering ---- */
-    /* Dot product of the surface normal and decal normal.
-     * If the surface is facing away from the decal (nd < 0.5), we reject
-     * the hit — this prevents the decal from rendering on walls facing
-     * the "wrong" way (e.g. a poster on the north side of a wall visible
-     * from the south side through the backface). */
-    double nd = surf_nx * decal_nx + surf_ny * decal_ny + surf_nz * decal_nz;
-    if (nd < 0.5) return false;
-
-    /* ---- Project world position into decal-local coordinates ---- */
-    /* Local X = distance along decal tangent (horizontal on the decal) */
-    double local_x = dx * decal_tx + dy * decal_ty + dz * decal_tz;
-    /* Local Y = distance along decal bitangent (vertical on the decal) */
-    double local_y = dx * decal_bx + dy * decal_by + dz * decal_bz;
-    /* Local Z = signed distance from the decal plane (depth) */
-    double local_z = dx * decal_nx + dy * decal_ny + dz * decal_nz;
-
-    /* ---- UV coordinate calculation and bounds check ---- */
-    /* Convert local position to normalised UV coordinates centred on the decal:
-     *   u = 0 at left edge, u = 1 at right edge
-     *   v = 0 at bottom edge, v = 1 at top edge */
-    double u = local_x / d->width + 0.5;
-    double v = local_y / d->height + 0.5;
-
-    if (u < 0.0 || u >= 1.0 || v < 0.0 || v >= 1.0) return false;
-
-    /* Depth clipping: reject if the point is too far in front of or behind
-     * the decal plane (prevents the decal from "bleeding" onto walls that
-     * are set back from the decal surface). */
-    double depth_val = (d->depth > 0) ? d->depth : 0.1;
-    if (fabs(local_z) > depth_val * 0.5) return false;
-
-    /* ---- Sample the decal's pattern grid ---- */
-    /* Quantise UV coordinates to integer (px, py) indices into the pattern */
-    int px = (int)floor(u * d->pattern_cols);
-    int py = (int)floor(v * d->pattern_rows);
-
-    if (px >= 0 && px < d->pattern_cols && py >= 0 && py < d->pattern_rows) {
-        PatternCell pc = d->pattern[py * d->pattern_cols + px];
-
-        /* Skip empty/transparent cells */
-        if (pc.glyph != ' ' && pc.glyph != '\0') {
-            Material *d_mat = &assets->materials[pc.material_id];
-            /* Sample the material's palette at this distance and light level */
-            *out_fg = palette_sample(&assets->palettes[d_mat->palette_id], distance, light_level);
-            *out_glyph = pc.glyph;
-
-            if (DECAL_DEBUG_MODE) {
-                printf("Decal Hit: surface=%d d=(%.2f, %.2f, %.2f) world=(%.2f, %.2f, %.2f) "
-                       "local=(%.2f, %.2f, %.2f) uv=(%.2f, %.2f) px=%d py=%d\n",
-                       d->surface, d->x, d->y, d->z, world_x, world_y, world_z,
-                       local_x, local_y, local_z, u, v, px, py);
-            }
-
-            return true;
-        }
-    }
-
-    return false; /* No glyph at this cell or out of range */
 }
 
-/**
- * sample_surface_decal() — Sample the first decal hit on a specific surface
- *
- * All decal surfaces use the same world-to-local sampling model.  The caller
- * provides the already-reconstructed world-space point and the normal of the
- * surface currently being rendered; sample_decal() handles the surface basis,
- * UV quantisation, depth check, and material colour lookup.
- */
-static bool sample_surface_decal(WorldState *world, DecalSurface surface,
-                                 double world_x, double world_y, double world_z,
-                                 double surf_nx, double surf_ny, double surf_nz,
-                                 uint8_t *out_glyph, SDL_Color *out_fg,
-                                 AssetRegistry *assets, double distance,
-                                 double light_level) {
-    for (int i = 0; i < world->num_decals; i++) {
-        Decal *d = &world->decals[i];
-        if (d->surface != surface) continue;
+static bool project_world_point(Grid *grid, Camera *cam,
+                                double world_x, double world_y, double world_z,
+                                int *screen_x, int *screen_y, double *depth) {
+    double dx = world_x - cam->transform.pos.x;
+    double dy = world_y - cam->transform.pos.y;
+    double dir_x = cos(cam->transform.angle);
+    double dir_y = sin(cam->transform.angle);
+    double plane_x = -sin(cam->transform.angle) * tan(cam->fov / 2.0);
+    double plane_y =  cos(cam->transform.angle) * tan(cam->fov / 2.0);
+    double det = plane_x * dir_y - dir_x * plane_y;
 
-        if (sample_decal(d, world_x, world_y, world_z,
-                         surf_nx, surf_ny, surf_nz,
-                         out_glyph, out_fg, assets,
-                         distance, light_level)) {
-            return true;
+    if (fabs(det) < 0.000001) return false;
+
+    double inv_det = 1.0 / det;
+    double transform_x = inv_det * (dir_y * dx - dir_x * dy);
+    double transform_y = inv_det * (-plane_y * dx + plane_x * dy);
+
+    if (transform_y <= 0.001) return false;
+
+    *screen_x = (int)((grid->width / 2.0) * (1.0 + transform_x / transform_y));
+    *screen_y = (int)(grid->height / 2.0 + cam->pitch +
+                      (0.5 - world_z) * grid->height / transform_y);
+    *depth = transform_y;
+
+    return *screen_x >= 0 && *screen_x < grid->width &&
+           *screen_y >= 0 && *screen_y < grid->height;
+}
+
+static double decal_light_level(Map *map, const Decal *d,
+                                double world_x, double world_y,
+                                double normal_y) {
+    double light_level = 1.0;
+
+    if (map->light_map) {
+        int map_x = (int)world_x;
+        int map_y = (int)world_y;
+        if (map_in_bounds(map, map_x, map_y)) {
+            light_level = map->light_map[map_y * map->width + map_x];
+            if (light_level > 1.0) light_level = 1.0;
         }
     }
 
-    return false;
+    if (d->surface == DECAL_SURFACE_WALL && fabs(normal_y) > 0.5) {
+        light_level *= config_get()->side_shadow_attenuation;
+    }
+
+    return light_level;
+}
+
+static void render_decals(Grid *grid, Map *map, Camera *cam,
+                          AssetRegistry *assets, WorldState *world,
+                          const double *z_buffer, int z_count) {
+    const double camera_z = 0.5;
+
+    for (int i = 0; i < world->num_decals; i++) {
+        Decal *d = &world->decals[i];
+        if (!d->pattern || d->pattern_cols <= 0 || d->pattern_rows <= 0) continue;
+        if (d->width <= 0.0 || d->height <= 0.0) continue;
+
+        double nx, ny, nz, tx, ty, tz, bx, by, bz;
+        decal_basis(d, &nx, &ny, &nz, &tx, &ty, &tz, &bx, &by, &bz);
+
+        double view_x = cam->transform.pos.x - d->x;
+        double view_y = cam->transform.pos.y - d->y;
+        double view_z = camera_z - d->z;
+        if (view_x * nx + view_y * ny + view_z * nz <= 0.0) continue;
+
+        for (int py = 0; py < d->pattern_rows; py++) {
+            for (int px = 0; px < d->pattern_cols; px++) {
+                PatternCell pc = d->pattern[py * d->pattern_cols + px];
+                if (pc.glyph == ' ' || pc.glyph == '\0') continue;
+
+                double local_x = (((double)px + 0.5) / (double)d->pattern_cols - 0.5) * d->width;
+                double local_y = (((double)py + 0.5) / (double)d->pattern_rows - 0.5) * d->height;
+                double world_x = d->x + local_x * tx + local_y * bx;
+                double world_y = d->y + local_x * ty + local_y * by;
+                double world_z = d->z + local_x * tz + local_y * bz;
+                int screen_x, screen_y;
+                double depth;
+
+                if (!project_world_point(grid, cam, world_x, world_y, world_z,
+                                         &screen_x, &screen_y, &depth)) {
+                    continue;
+                }
+                if (screen_x >= z_count) continue;
+                if (depth > z_buffer[screen_x] + 0.001) continue;
+
+                Cell existing;
+                if (!grid_get(grid, screen_x, screen_y, &existing)) continue;
+
+                Material *d_mat = &assets->materials[pc.material_id];
+                double light_level = decal_light_level(map, d, world_x, world_y, ny);
+                SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
+                                               depth, light_level);
+                grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
+
+                if (DECAL_DEBUG_MODE) {
+                    printf("Decal Cell: surface=%d px=%d py=%d world=(%.2f, %.2f, %.2f) screen=(%d, %d)\n",
+                           d->surface, px, py, world_x, world_y, world_z, screen_x, screen_y);
+                }
+            }
+        }
+    }
 }
 
 /* ===================================================================
@@ -455,38 +418,11 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id],
                                                    ray.distance, light_level);
 
-            /* Exact (floating-point) line height for UV calculation */
-            double exact_line_height = grid->height / perp_dist;
-
             /* ---- Draw each pixel of the wall slice ---- */
             for (int y = draw_start; y <= draw_end; y++) {
-                /* Vertical texture coordinate (v): 0.0 = top, 1.0 = bottom */
-                double v = (y - (grid->height / 2.0 + cam->pitch - exact_line_height / 2.0))
-                            / exact_line_height;
-
                 uint8_t glyph = wall_glyph;
                 SDL_Color fg = wall_color;
                 SDL_Color bg = {0, 0, 0, 255};
-
-                /* ---- Wall decal check ---- */
-                /* Reconstruct the world-space coordinates of this wall pixel
-                 * so we can test it against wall decals. */
-                double world_x = cam->transform.pos.x + ray.distance * dir_x;
-                double world_y = cam->transform.pos.y + ray.distance * dir_y;
-                double world_z = v;   /* Height on the wall */
-
-                /* Surface normal (pointing away from the wall face) */
-                int step_x = (dir_x > 0) ? 1 : -1;
-                int step_y = (dir_y > 0) ? 1 : -1;
-                double surf_nx = (ray.side == 0) ? -step_x : 0;
-                double surf_ny = (ray.side == 1) ? -step_y : 0;
-                double surf_nz = 0;
-
-                (void)sample_surface_decal(world, DECAL_SURFACE_WALL,
-                                           world_x, world_y, world_z,
-                                           surf_nx, surf_ny, surf_nz,
-                                           &glyph, &fg, assets,
-                                           ray.distance, light_level);
 
                 grid_set(grid, x, y, glyph, fg, bg);
             }
@@ -528,12 +464,6 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 }
             }
 
-            (void)sample_surface_decal(world, DECAL_SURFACE_CEILING,
-                                       curX, curY, 1.0,
-                                       0.0, 0.0, -1.0,
-                                       &glyph, &fg, assets,
-                                       trueDist, light_level);
-
             grid_set(grid, x, y, glyph, fg, bg);
         }
 
@@ -569,15 +499,11 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
                 }
             }
 
-            (void)sample_surface_decal(world, DECAL_SURFACE_FLOOR,
-                                       curX, curY, 0.0,
-                                       0.0, 0.0, 1.0,
-                                       &glyph, &fg, assets,
-                                       trueDist, light_level);
-
             grid_set(grid, x, y, glyph, fg, bg);
         }
     }
+
+    render_decals(grid, map, cam, assets, world, z_buffer, max_x_idx);
 
     /* ================================================================
      *  POST-PASS: LIGHT SOURCE RENDERING

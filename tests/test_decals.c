@@ -29,6 +29,21 @@ static int count_grid_glyph(Grid *g, uint8_t glyph) {
     return count;
 }
 
+static bool find_grid_glyph(Grid *g, uint8_t glyph, int *out_x, int *out_y) {
+    for (int y = 0; y < g->height; y++) {
+        for (int x = 0; x < g->width; x++) {
+            Cell c;
+            grid_get(g, x, y, &c);
+            if (c.glyph == glyph) {
+                *out_x = x;
+                *out_y = y;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 static void test_world_decal_add(void **state) {
     (void)state;
@@ -86,10 +101,11 @@ static void test_decal_rendering_wall(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    // The decal covers the whole wall, so we expect 'D' in the middle of the wall
+    int dx, dy;
+    assert_true(find_grid_glyph(g, 'D', &dx, &dy));
+    assert_int_equal(count_grid_glyph(g, 'D'), 1);
     Cell c;
-    grid_get(g, 5, 5, &c);
-    assert_int_equal(c.glyph, 'D');
+    grid_get(g, dx, dy, &c);
     assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
     
     world_clear(&world);
@@ -119,7 +135,7 @@ static void test_decal_rendering_floor(void **state) {
     d.surface = DECAL_SURFACE_FLOOR;
     d.x = 3.75; d.y = 2.5; d.z = 0.0; // 1.25 units in front of camera
     d.rotation = 0.0;
-    d.width = 1.0; d.height = 1.0;
+    d.width = 1.0; d.height = 0.5;
     d.depth = 0.1;
     d.pattern_cols = 1; d.pattern_rows = 1;
     d.pattern = malloc(sizeof(PatternCell));
@@ -307,11 +323,11 @@ static void test_decal_floor_continuous_sampling(void **state) {
     
     // Floor decals should be sampled from surface-local UVs at every rendered
     // floor point, not projected as one isolated screen glyph per source cell.
-    assert_true(count_A > 0);
-    assert_true(count_B > 0);
-    assert_true(count_C > 0);
-    assert_true(count_D > 0);
-    assert_true(total > d.pattern_cols * d.pattern_rows);
+    assert_int_equal(count_A, 1);
+    assert_int_equal(count_B, 1);
+    assert_int_equal(count_C, 1);
+    assert_int_equal(count_D, 1);
+    assert_int_equal(total, d.pattern_cols * d.pattern_rows);
 
     world_clear(&world);
     map_destroy(m);
@@ -357,11 +373,123 @@ static void test_decal_ceiling_continuous_sampling(void **state) {
     int count_D = count_grid_glyph(g, 'D');
     int total = count_A + count_B + count_C + count_D;
 
-    assert_true(count_A > 0);
-    assert_true(count_B > 0);
-    assert_true(count_C > 0);
-    assert_true(count_D > 0);
-    assert_true(total > d.pattern_cols * d.pattern_rows);
+    assert_int_equal(count_A, 1);
+    assert_int_equal(count_B, 1);
+    assert_int_equal(count_C, 1);
+    assert_int_equal(count_D, 1);
+    assert_int_equal(total, d.pattern_cols * d.pattern_rows);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_wall_authoritative_dimensions(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 1.0; d.height = 1.0;
+    d.depth = 0.1;
+    d.pattern_cols = 4; d.pattern_rows = 1;
+    d.pattern = malloc(4 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1};
+    d.pattern[1] = (PatternCell){'B', 1};
+    d.pattern[2] = (PatternCell){'C', 1};
+    d.pattern[3] = (PatternCell){'D', 1};
+
+    world_add_decal(&world, d);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    int ax, ay, bx, by, cx, cy, dx, dy;
+    assert_true(find_grid_glyph(g, 'A', &ax, &ay));
+    assert_true(find_grid_glyph(g, 'B', &bx, &by));
+    assert_true(find_grid_glyph(g, 'C', &cx, &cy));
+    assert_true(find_grid_glyph(g, 'D', &dx, &dy));
+    assert_int_equal(count_grid_glyph(g, 'A'), 1);
+    assert_int_equal(count_grid_glyph(g, 'B'), 1);
+    assert_int_equal(count_grid_glyph(g, 'C'), 1);
+    assert_int_equal(count_grid_glyph(g, 'D'), 1);
+
+    assert_true(ay == by && by == cy && cy == dy);
+    assert_true((ax < bx && bx < cx && cx < dx) ||
+                (dx < cx && cx < bx && bx < ax));
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_wall_backface_rejected(void **state) {
+    (void)state;
+    Grid *g = grid_create(20, 20);
+    Map *m = map_create(5, 5);
+    map_set(m, 3, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal back;
+    memset(&back, 0, sizeof(Decal));
+    back.surface = DECAL_SURFACE_WALL;
+    back.x = 3.0; back.y = 2.5; back.z = 0.5;
+    back.rotation = 0.0;
+    back.width = 1.0; back.height = 1.0;
+    back.depth = 0.1;
+    back.pattern_cols = 1; back.pattern_rows = 1;
+    back.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(back.pattern);
+    back.pattern[0] = (PatternCell){'B', 1};
+    world_add_decal(&world, back);
+
+    Decal front;
+    memset(&front, 0, sizeof(Decal));
+    front.surface = DECAL_SURFACE_WALL;
+    front.x = 3.0; front.y = 2.5; front.z = 0.5;
+    front.rotation = PI;
+    front.width = 1.0; front.height = 1.0;
+    front.depth = 0.1;
+    front.pattern_cols = 1; front.pattern_rows = 1;
+    front.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(front.pattern);
+    front.pattern[0] = (PatternCell){'F', 1};
+    world_add_decal(&world, front);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    Cell c;
+    grid_get(g, 10, 10, &c);
+    assert_int_equal(c.glyph, 'F');
+    assert_int_equal(count_grid_glyph(g, 'B'), 0);
 
     world_clear(&world);
     map_destroy(m);
@@ -390,7 +518,7 @@ static void test_decal_wall_orientation(void **state) {
     d.surface = DECAL_SURFACE_WALL;
     d.x = 3.0; d.y = 2.5; d.z = 0.5;
     d.rotation = PI; // Face -X
-    d.width = 1.0; d.height = 1.0;
+    d.width = 1.0; d.height = 0.8;
     d.depth = 0.1;
     d.pattern_cols = 1; d.pattern_rows = 2;
     d.pattern = malloc(2 * sizeof(PatternCell));
@@ -402,13 +530,16 @@ static void test_decal_wall_orientation(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    int t_y = -1, b_y = -1;
+    int t_x = -1, t_y = -1, b_x = -1, b_y = -1;
     for(int y=0; y<g->height; y++) {
         Cell c;
         grid_get(g, 5, y, &c);
         if(c.glyph == 'T') t_y = y;
         if(c.glyph == 'B') b_y = y;
     }
+
+    if (t_y == -1) assert_true(find_grid_glyph(g, 'T', &t_x, &t_y));
+    if (b_y == -1) assert_true(find_grid_glyph(g, 'B', &b_x, &b_y));
     
     assert_true(t_y != -1);
     assert_true(b_y != -1);
@@ -432,6 +563,8 @@ int main(void) {
         cmocka_unit_test(test_decal_art_format_failure),
         cmocka_unit_test(test_decal_floor_continuous_sampling),
         cmocka_unit_test(test_decal_ceiling_continuous_sampling),
+        cmocka_unit_test(test_decal_wall_authoritative_dimensions),
+        cmocka_unit_test(test_decal_wall_backface_rejected),
         cmocka_unit_test(test_decal_wall_orientation),
     };
 
