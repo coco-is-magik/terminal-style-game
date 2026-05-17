@@ -281,6 +281,8 @@ static bool load_decal(WorldState *world, const char *filepath) {
             else if (strcmp(key, "v") == 0) d.v = atof(val);
             else if (strcmp(key, "width") == 0) d.width = atof(val);
             else if (strcmp(key, "height") == 0) d.height = atof(val);
+            else if (strcmp(key, "glyph_step_u") == 0) d.glyph_step_u = atof(val);
+            else if (strcmp(key, "glyph_step_v") == 0) d.glyph_step_v = atof(val);
             else if (strcmp(key, "depth") == 0) d.depth = atof(val);
             else if (strcmp(key, "rotation") == 0) d.rotation = atof(val);
 

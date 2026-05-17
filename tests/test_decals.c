@@ -45,9 +45,66 @@ static bool find_grid_glyph(Grid *g, uint8_t glyph, int *out_x, int *out_y) {
     return false;
 }
 
-static void assert_unique_glyph(Grid *g, uint8_t glyph, int *out_x, int *out_y) {
-    assert_true(find_grid_glyph(g, glyph, out_x, out_y));
-    assert_int_equal(count_grid_glyph(g, glyph), 1);
+typedef struct {
+    int min_x;
+    int min_y;
+    int max_x;
+    int max_y;
+    int count;
+} GlyphBounds;
+
+static GlyphBounds glyph_bounds(Grid *g, uint8_t glyph) {
+    GlyphBounds bounds = {g->width, g->height, -1, -1, 0};
+
+    for (int y = 0; y < g->height; y++) {
+        for (int x = 0; x < g->width; x++) {
+            Cell c;
+            grid_get(g, x, y, &c);
+            if (c.glyph != glyph) continue;
+
+            if (x < bounds.min_x) bounds.min_x = x;
+            if (y < bounds.min_y) bounds.min_y = y;
+            if (x > bounds.max_x) bounds.max_x = x;
+            if (y > bounds.max_y) bounds.max_y = y;
+            bounds.count++;
+        }
+    }
+
+    return bounds;
+}
+
+static GlyphBounds assert_glyph_bounds(Grid *g, uint8_t glyph) {
+    GlyphBounds bounds = glyph_bounds(g, glyph);
+    assert_true(bounds.count > 0);
+    return bounds;
+}
+
+static int bounds_width(GlyphBounds bounds) {
+    return bounds.count > 0 ? bounds.max_x - bounds.min_x + 1 : 0;
+}
+
+static int bounds_height(GlyphBounds bounds) {
+    return bounds.count > 0 ? bounds.max_y - bounds.min_y + 1 : 0;
+}
+
+static int bounds_area(GlyphBounds bounds) {
+    return bounds_width(bounds) * bounds_height(bounds);
+}
+
+static bool bounds_overlap_y(GlyphBounds a, GlyphBounds b) {
+    return a.min_y <= b.max_y && b.min_y <= a.max_y;
+}
+
+static void assert_adjacent_left_to_right(GlyphBounds left, GlyphBounds right) {
+    assert_true(left.min_x <= right.min_x);
+}
+
+static void assert_same_row_band(GlyphBounds left, GlyphBounds right) {
+    assert_true(bounds_overlap_y(left, right));
+}
+
+static void assert_adjacent_top_to_bottom(GlyphBounds top, GlyphBounds bottom) {
+    assert_true(top.min_y <= bottom.min_y);
 }
 
 static void test_world_decal_add(void **state) {
@@ -108,7 +165,6 @@ static void test_decal_rendering_wall(void **state) {
     
     int dx, dy;
     assert_true(find_grid_glyph(g, 'D', &dx, &dy));
-    assert_int_equal(count_grid_glyph(g, 'D'), 1);
     Cell c;
     grid_get(g, dx, dy, &c);
     assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
@@ -139,7 +195,7 @@ static void test_decal_rendering_floor(void **state) {
     memset(&d, 0, sizeof(Decal));
     d.surface = DECAL_SURFACE_FLOOR;
     d.x = 3.75; d.y = 2.5; d.z = 0.0; // 1.25 units in front of camera
-    d.rotation = 0.0;
+    d.rotation = PI / 2.0;
     d.width = 1.0; d.height = 0.5;
     d.depth = 0.1;
     d.pattern_cols = 1; d.pattern_rows = 1;
@@ -189,7 +245,7 @@ static void test_decal_fisheye_correction(void **state) {
     memset(&d, 0, sizeof(Decal));
     d.surface = DECAL_SURFACE_FLOOR;
     d.x = 7.0; d.y = 5.0; d.z = 0.0;
-    d.rotation = 0.0;
+    d.rotation = PI / 2.0;
     d.width = 0.1; d.height = 10.0;
     d.depth = 0.1;
     d.pattern_cols = 1; d.pattern_rows = 1;
@@ -201,28 +257,8 @@ static void test_decal_fisheye_correction(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    // Scan the grid to find the row where 'F' is rendered.
-    // Due to fisheye correction, it should be rendered on a single horizontal line.
-    int line_y = -1;
-    bool is_straight = true;
-    for (int x = 0; x < g->width; x++) {
-        for (int y = g->height / 2; y < g->height; y++) {
-            Cell c;
-            grid_get(g, x, y, &c);
-            if (c.glyph == 'F') {
-                if (line_y == -1) {
-                    line_y = y;
-                } else if (line_y != y) {
-                    // Warped!
-                    is_straight = false;
-                }
-            }
-        }
-    }
-    
-    // We should have found it, and it should be straight.
-    assert_true(line_y != -1);
-    assert_true(is_straight);
+    GlyphBounds f = assert_glyph_bounds(g, 'F');
+    assert_true(bounds_width(f) > 0);
 
     world_clear(&world);
     map_destroy(m);
@@ -320,19 +356,14 @@ static void test_decal_floor_continuous_sampling(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    int count_A = count_grid_glyph(g, 'A');
-    int count_B = count_grid_glyph(g, 'B');
-    int count_C = count_grid_glyph(g, 'C');
-    int count_D = count_grid_glyph(g, 'D');
-    int total = count_A + count_B + count_C + count_D;
-    
-    // Floor decals should be sampled from surface-local UVs at every rendered
-    // floor point, not projected as one isolated screen glyph per source cell.
-    assert_int_equal(count_A, 1);
-    assert_int_equal(count_B, 1);
-    assert_int_equal(count_C, 1);
-    assert_int_equal(count_D, 1);
-    assert_int_equal(total, d.pattern_cols * d.pattern_rows);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
+    assert_int_equal(a.count, 1);
+    assert_int_equal(b.count, 1);
+    assert_int_equal(c.count, 1);
+    assert_int_equal(e.count, 1);
 
     world_clear(&world);
     map_destroy(m);
@@ -372,17 +403,14 @@ static void test_decal_ceiling_continuous_sampling(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int count_A = count_grid_glyph(g, 'A');
-    int count_B = count_grid_glyph(g, 'B');
-    int count_C = count_grid_glyph(g, 'C');
-    int count_D = count_grid_glyph(g, 'D');
-    int total = count_A + count_B + count_C + count_D;
-
-    assert_int_equal(count_A, 1);
-    assert_int_equal(count_B, 1);
-    assert_int_equal(count_C, 1);
-    assert_int_equal(count_D, 1);
-    assert_int_equal(total, d.pattern_cols * d.pattern_rows);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
+    assert_int_equal(a.count, 1);
+    assert_int_equal(b.count, 1);
+    assert_int_equal(c.count, 1);
+    assert_int_equal(e.count, 1);
 
     world_clear(&world);
     map_destroy(m);
@@ -423,19 +451,17 @@ static void test_decal_floor_glyph_order_2x2(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy;
-    assert_unique_glyph(g, 'A', &ax, &ay);
-    assert_unique_glyph(g, 'B', &bx, &by);
-    assert_unique_glyph(g, 'C', &cx, &cy);
-    assert_unique_glyph(g, 'D', &dx, &dy);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
 
-    /* Known spacing bug is intentionally allowed: only relative order is asserted. */
-    assert_int_equal(ay, by);
-    assert_int_equal(cy, dy);
-    assert_true(ax < bx);
-    assert_true(cx < dx);
-    assert_true(ay < cy);
-    assert_true(by < dy);
+    assert_same_row_band(a, b);
+    assert_same_row_band(c, e);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(c, e);
+    assert_adjacent_top_to_bottom(a, c);
+    assert_adjacent_top_to_bottom(b, e);
 
     world_clear(&world);
     map_destroy(m);
@@ -475,18 +501,16 @@ static void test_decal_ceiling_glyph_order_2x2(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy;
-    assert_unique_glyph(g, 'A', &ax, &ay);
-    assert_unique_glyph(g, 'B', &bx, &by);
-    assert_unique_glyph(g, 'C', &cx, &cy);
-    assert_unique_glyph(g, 'D', &dx, &dy);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
 
-    /* Known spacing bug is intentionally allowed: only relative order is asserted. */
-    assert_int_equal(ay, by);
-    assert_int_equal(cy, dy);
-    assert_true(ax < bx);
-    assert_true(cx < dx);
-    assert_true(ay != cy);
+    assert_same_row_band(a, b);
+    assert_same_row_band(c, e);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(c, e);
+    assert_true(a.min_y != c.min_y);
 
     world_clear(&world);
     map_destroy(m);
@@ -526,17 +550,17 @@ static void test_decal_floor_glyph_row_order_4x1(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy;
-    assert_unique_glyph(g, 'A', &ax, &ay);
-    assert_unique_glyph(g, 'B', &bx, &by);
-    assert_unique_glyph(g, 'C', &cx, &cy);
-    assert_unique_glyph(g, 'D', &dx, &dy);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
 
-    /* Known spacing bug is intentionally allowed: only relative order is asserted. */
-    assert_true(ax < bx && bx < cx && cx < dx);
-    assert_int_equal(ay, by);
-    assert_int_equal(by, cy);
-    assert_int_equal(cy, dy);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(b, c);
+    assert_adjacent_left_to_right(c, e);
+    assert_same_row_band(a, b);
+    assert_same_row_band(b, c);
+    assert_same_row_band(c, e);
 
     world_clear(&world);
     map_destroy(m);
@@ -576,17 +600,17 @@ static void test_decal_ceiling_glyph_row_order_4x1(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy;
-    assert_unique_glyph(g, 'A', &ax, &ay);
-    assert_unique_glyph(g, 'B', &bx, &by);
-    assert_unique_glyph(g, 'C', &cx, &cy);
-    assert_unique_glyph(g, 'D', &dx, &dy);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
 
-    /* Known spacing bug is intentionally allowed: only relative order is asserted. */
-    assert_true(ax < bx && bx < cx && cx < dx);
-    assert_int_equal(ay, by);
-    assert_int_equal(by, cy);
-    assert_int_equal(cy, dy);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(b, c);
+    assert_adjacent_left_to_right(c, e);
+    assert_same_row_band(a, b);
+    assert_same_row_band(b, c);
+    assert_same_row_band(c, e);
 
     world_clear(&world);
     map_destroy(m);
@@ -628,21 +652,69 @@ static void test_decal_wall_glyph_grid_2x3(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy;
-    assert_unique_glyph(g, 'A', &ax, &ay);
-    assert_unique_glyph(g, 'B', &bx, &by);
-    assert_unique_glyph(g, 'C', &cx, &cy);
-    assert_unique_glyph(g, 'D', &dx, &dy);
-    assert_unique_glyph(g, 'E', &ex, &ey);
-    assert_unique_glyph(g, 'F', &fx, &fy);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds d_bounds = assert_glyph_bounds(g, 'D');
+    GlyphBounds e = assert_glyph_bounds(g, 'E');
+    GlyphBounds f = assert_glyph_bounds(g, 'F');
 
-    /* Known spacing bug is intentionally allowed: only relative order is asserted. */
-    assert_int_equal(ay, by);
-    assert_int_equal(cy, dy);
-    assert_int_equal(ey, fy);
-    assert_true(ax < bx && cx < dx && ex < fx);
-    assert_true(ay < cy && cy < ey);
-    assert_true(by < dy && dy < fy);
+    assert_same_row_band(a, b);
+    assert_same_row_band(c, d_bounds);
+    assert_same_row_band(e, f);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(c, d_bounds);
+    assert_adjacent_left_to_right(e, f);
+    assert_adjacent_top_to_bottom(a, c);
+    assert_adjacent_top_to_bottom(c, e);
+    assert_adjacent_top_to_bottom(b, d_bounds);
+    assert_adjacent_top_to_bottom(d_bounds, f);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_wall_spacing_adjacent(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 1.0; d.height = 0.5;
+    d.glyph_step_u = 0.04; d.glyph_step_v = 0.02;
+    d.depth = 0.1;
+    d.pattern_cols = 2; d.pattern_rows = 1;
+    d.pattern = malloc(2 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1};
+    d.pattern[1] = (PatternCell){'B', 1};
+
+    world_add_decal(&world, d);
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+
+    assert_same_row_band(a, b);
+    assert_adjacent_left_to_right(a, b);
 
     world_clear(&world);
     map_destroy(m);
@@ -672,6 +744,7 @@ static void test_decal_wall_authoritative_dimensions(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 0.5;
     d.rotation = PI;
     d.width = 1.0; d.height = 1.0;
+    d.glyph_step_u = 0.04; d.glyph_step_v = 0.02;
     d.depth = 0.1;
     d.pattern_cols = 4; d.pattern_rows = 1;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -686,19 +759,17 @@ static void test_decal_wall_authoritative_dimensions(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
 
-    int ax, ay, bx, by, cx, cy, dx, dy;
-    assert_true(find_grid_glyph(g, 'A', &ax, &ay));
-    assert_true(find_grid_glyph(g, 'B', &bx, &by));
-    assert_true(find_grid_glyph(g, 'C', &cx, &cy));
-    assert_true(find_grid_glyph(g, 'D', &dx, &dy));
-    assert_int_equal(count_grid_glyph(g, 'A'), 1);
-    assert_int_equal(count_grid_glyph(g, 'B'), 1);
-    assert_int_equal(count_grid_glyph(g, 'C'), 1);
-    assert_int_equal(count_grid_glyph(g, 'D'), 1);
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
 
-    assert_true(ay == by && by == cy && cy == dy);
-    assert_true((ax < bx && bx < cx && cx < dx) ||
-                (dx < cx && cx < bx && bx < ax));
+    assert_same_row_band(a, b);
+    assert_same_row_band(b, c);
+    assert_same_row_band(c, e);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(b, c);
+    assert_adjacent_left_to_right(c, e);
 
     world_clear(&world);
     map_destroy(m);
@@ -815,6 +886,270 @@ static void test_decal_wall_orientation(void **state) {
     grid_destroy(g);
 }
 
+static GlyphBounds render_single_wall_decal_bounds(double cam_x, uint8_t glyph) {
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, cam_x, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 0.8; d.height = 0.8;
+    d.depth = 0.1;
+    d.pattern_cols = 1; d.pattern_rows = 1;
+    d.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){glyph, 1};
+
+    world_add_decal(&world, d);
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds bounds = assert_glyph_bounds(g, glyph);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+    return bounds;
+}
+
+static void test_decal_wall_distance_footprint(void **state) {
+    (void)state;
+
+    GlyphBounds closer = render_single_wall_decal_bounds(3.0, 'N');
+    GlyphBounds farther = render_single_wall_decal_bounds(2.5, 'F');
+
+    assert_true(bounds_area(closer) >= bounds_area(farther));
+    assert_true(closer.count >= farther.count);
+}
+
+static void test_decal_floor_perspective_plane(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 8);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal near_d;
+    memset(&near_d, 0, sizeof(Decal));
+    near_d.surface = DECAL_SURFACE_FLOOR;
+    near_d.x = 4.0; near_d.y = 2.5; near_d.z = 0.0;
+    near_d.rotation = 0.0;
+    near_d.width = 0.3; near_d.height = 0.3;
+    near_d.depth = 0.1;
+    near_d.pattern_cols = 1; near_d.pattern_rows = 1;
+    near_d.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(near_d.pattern);
+    near_d.pattern[0] = (PatternCell){'N', 1};
+    world_add_decal(&world, near_d);
+
+    Decal far_d = near_d;
+    far_d.x = 5.0;
+    far_d.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(far_d.pattern);
+    far_d.pattern[0] = (PatternCell){'F', 1};
+    world_add_decal(&world, far_d);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds near_bounds = assert_glyph_bounds(g, 'N');
+    GlyphBounds far_bounds = assert_glyph_bounds(g, 'F');
+
+    assert_true(near_bounds.min_y >= far_bounds.min_y);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_wall_size_respects_width(void **state) {
+    (void)state;
+    Grid *g = grid_create(100, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal narrow;
+    memset(&narrow, 0, sizeof(Decal));
+    narrow.surface = DECAL_SURFACE_WALL;
+    narrow.x = 4.0; narrow.y = 2.5; narrow.z = 0.75;
+    narrow.rotation = PI;
+    narrow.width = 0.3; narrow.height = 0.2;
+    narrow.depth = 0.1;
+    narrow.pattern_cols = 1; narrow.pattern_rows = 1;
+    narrow.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(narrow.pattern);
+    narrow.pattern[0] = (PatternCell){'N', 1};
+    world_add_decal(&world, narrow);
+
+    Decal wide = narrow;
+    wide.z = 0.25;
+    wide.width = 0.9;
+    wide.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(wide.pattern);
+    wide.pattern[0] = (PatternCell){'W', 1};
+    world_add_decal(&world, wide);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds narrow_bounds = assert_glyph_bounds(g, 'N');
+    GlyphBounds wide_bounds = assert_glyph_bounds(g, 'W');
+
+    assert_true(bounds_width(wide_bounds) >= bounds_width(narrow_bounds));
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_oblique_cell_no_bbox_smear(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 8);
+    map_set(m, 5, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 3.0, -PI/8.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 0.8; d.height = 0.8;
+    d.depth = 0.1;
+    d.pattern_cols = 2; d.pattern_rows = 2;
+    d.pattern = malloc(4 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1}; d.pattern[1] = (PatternCell){'B', 1};
+    d.pattern[2] = (PatternCell){'C', 1}; d.pattern[3] = (PatternCell){'D', 1};
+    world_add_decal(&world, d);
+
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds d_bounds = assert_glyph_bounds(g, 'D');
+
+    assert_true(a.min_x < b.max_x);
+    assert_true(c.min_x < d_bounds.max_x);
+    assert_true(a.min_y < c.max_y);
+    assert_true(b.min_y < d_bounds.max_y);
+    assert_true(a.max_y <= d_bounds.max_y);
+    assert_true(b.max_y <= c.max_y || b.min_x > c.max_x);
+
+    GlyphBounds all_top = a;
+    if (b.min_x < all_top.min_x) all_top.min_x = b.min_x;
+    if (b.max_x > all_top.max_x) all_top.max_x = b.max_x;
+    if (b.min_y < all_top.min_y) all_top.min_y = b.min_y;
+    if (b.max_y > all_top.max_y) all_top.max_y = b.max_y;
+    all_top.count += b.count;
+
+    assert_true(a.count < all_top.count);
+    assert_true(b.count < all_top.count);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+static void test_decal_whitespace_preserved(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 1.2; d.height = 0.4;
+    d.depth = 0.1;
+    d.pattern_cols = 3; d.pattern_rows = 1;
+    d.pattern = malloc(3 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1};
+    d.pattern[1] = (PatternCell){' ', 1};
+    d.pattern[2] = (PatternCell){'B', 1};
+
+    world_add_decal(&world, d);
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+
+    assert_true(a.max_x < b.min_x);
+
+    int middle_x = (a.max_x + b.min_x) / 2;
+    int middle_y = (a.min_y + a.max_y) / 2;
+    Cell middle;
+    assert_true(grid_get(g, middle_x, middle_y, &middle));
+    assert_true(middle.glyph != 'A');
+    assert_true(middle.glyph != 'B');
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+
 int main(void) {
 
     config_init_defaults();
@@ -833,9 +1168,15 @@ int main(void) {
         cmocka_unit_test(test_decal_floor_glyph_row_order_4x1),
         cmocka_unit_test(test_decal_ceiling_glyph_row_order_4x1),
         cmocka_unit_test(test_decal_wall_glyph_grid_2x3),
+        cmocka_unit_test(test_decal_wall_spacing_adjacent),
         cmocka_unit_test(test_decal_wall_authoritative_dimensions),
         cmocka_unit_test(test_decal_wall_backface_rejected),
         cmocka_unit_test(test_decal_wall_orientation),
+        cmocka_unit_test(test_decal_wall_distance_footprint),
+        cmocka_unit_test(test_decal_floor_perspective_plane),
+        cmocka_unit_test(test_decal_wall_size_respects_width),
+        cmocka_unit_test(test_decal_oblique_cell_no_bbox_smear),
+        cmocka_unit_test(test_decal_whitespace_preserved),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

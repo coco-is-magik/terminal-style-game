@@ -78,7 +78,7 @@ static void decal_basis(const Decal *d,
 
 static bool project_world_point(Grid *grid, Camera *cam,
                                 double world_x, double world_y, double world_z,
-                                int *screen_x, int *screen_y, double *depth) {
+                                double *screen_x, double *screen_y, double *depth) {
     double dx = world_x - cam->transform.pos.x;
     double dy = world_y - cam->transform.pos.y;
     double dir_x = cos(cam->transform.angle);
@@ -95,13 +95,12 @@ static bool project_world_point(Grid *grid, Camera *cam,
 
     if (transform_y <= 0.001) return false;
 
-    *screen_x = (int)((grid->width / 2.0) * (1.0 + transform_x / transform_y));
-    *screen_y = (int)(grid->height / 2.0 + cam->pitch +
-                      (0.5 - world_z) * grid->height / transform_y);
+    *screen_x = (grid->width / 2.0) * (1.0 + transform_x / transform_y);
+    *screen_y = grid->height / 2.0 + cam->pitch +
+                (0.5 - world_z) * grid->height / transform_y;
     *depth = transform_y;
 
-    return *screen_x >= 0 && *screen_x < grid->width &&
-           *screen_y >= 0 && *screen_y < grid->height;
+    return true;
 }
 
 static double decal_light_level(Map *map, const Decal *d,
@@ -129,6 +128,16 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                           AssetRegistry *assets, WorldState *world,
                           const double *z_buffer, int z_count) {
     const double camera_z = 0.5;
+    static double decal_depth[1024 * 1024];
+    static int decal_order[1024 * 1024];
+    int cell_count = grid->width * grid->height;
+
+    if (cell_count > (int)(sizeof(decal_depth) / sizeof(decal_depth[0]))) return;
+
+    for (int i = 0; i < cell_count; i++) {
+        decal_depth[i] = 1.0e30;
+        decal_order[i] = 2147483647;
+    }
 
     for (int i = 0; i < world->num_decals; i++) {
         Decal *d = &world->decals[i];
@@ -148,20 +157,39 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 PatternCell pc = d->pattern[py * d->pattern_cols + px];
                 if (pc.glyph == ' ' || pc.glyph == '\0') continue;
 
-                double local_x = (((double)px + 0.5) / (double)d->pattern_cols - 0.5) * d->width;
-                double local_y = (((double)py + 0.5) / (double)d->pattern_rows - 0.5) * d->height;
-                double world_x = d->x + local_x * tx + local_y * bx;
-                double world_y = d->y + local_x * ty + local_y * by;
-                double world_z = d->z + local_x * tz + local_y * bz;
-                int screen_x, screen_y;
-                double depth;
+                double glyph_step_u = d->glyph_step_u > 0.0 ?
+                                      d->glyph_step_u : d->width / (double)d->pattern_cols;
+                double glyph_step_v = d->glyph_step_v > 0.0 ?
+                                      d->glyph_step_v : d->height / (double)d->pattern_rows;
+                double local_u = ((double)px - ((double)d->pattern_cols - 1.0) * 0.5) * glyph_step_u;
+                double local_v = ((double)py - ((double)d->pattern_rows - 1.0) * 0.5) * glyph_step_v;
+                double world_x = d->x + local_u * tx + local_v * bx;
+                double world_y = d->y + local_u * ty + local_v * by;
+                double world_z = d->z + local_u * tz + local_v * bz;
+                double screen_x_f, screen_y_f, depth;
 
                 if (!project_world_point(grid, cam, world_x, world_y, world_z,
-                                         &screen_x, &screen_y, &depth)) {
+                                         &screen_x_f, &screen_y_f, &depth)) {
+                    continue;
+                }
+
+                int screen_x = (int)floor(screen_x_f);
+                int screen_y = (int)floor(screen_y_f);
+
+                if (screen_x < 0 || screen_x >= grid->width ||
+                    screen_y < 0 || screen_y >= grid->height) {
                     continue;
                 }
                 if (screen_x >= z_count) continue;
                 if (depth > z_buffer[screen_x] + 0.001) continue;
+
+                int cell_index = screen_y * grid->width + screen_x;
+                int source_order = i * 1000000 + py * d->pattern_cols + px;
+                if (depth > decal_depth[cell_index] + 0.000001) continue;
+                if (fabs(depth - decal_depth[cell_index]) <= 0.000001 &&
+                    source_order >= decal_order[cell_index]) {
+                    continue;
+                }
 
                 Cell existing;
                 if (!grid_get(grid, screen_x, screen_y, &existing)) continue;
@@ -171,9 +199,11 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
                                                depth, light_level);
                 grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
+                decal_depth[cell_index] = depth;
+                decal_order[cell_index] = source_order;
 
                 if (DECAL_DEBUG_MODE) {
-                    printf("Decal Cell: surface=%d px=%d py=%d world=(%.2f, %.2f, %.2f) screen=(%d, %d)\n",
+                    printf("Decal Anchor: surface=%d px=%d py=%d world=(%.2f, %.2f, %.2f) screen=(%d, %d)\n",
                            d->surface, px, py, world_x, world_y, world_z, screen_x, screen_y);
                 }
             }

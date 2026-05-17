@@ -56,6 +56,8 @@ typedef struct {
     /* --- Size and orientation --- */
     double width;               /* Width in world units (for floor/ceiling) or UV units */
     double height;              /* Height in world units (for floor/ceiling) or UV units */
+    double glyph_step_u;         /* Optional world-space distance between adjacent glyph anchors on U */
+    double glyph_step_v;         /* Optional world-space distance between adjacent glyph anchors on V */
     double depth;               /* Depth offset from the surface (prevents z-fighting) */
     double rotation;            /* Rotation angle in radians (around surface normal) */
 
