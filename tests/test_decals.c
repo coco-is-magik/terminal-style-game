@@ -91,6 +91,12 @@ static int bounds_area(GlyphBounds bounds) {
     return bounds_width(bounds) * bounds_height(bounds);
 }
 
+static void assert_unique_glyph(Grid *g, uint8_t glyph, int *out_x, int *out_y) {
+    GlyphBounds bounds = assert_glyph_bounds(g, glyph);
+    assert_int_equal(bounds.count, 1);
+    assert_true(find_grid_glyph(g, glyph, out_x, out_y));
+}
+
 static bool bounds_overlap_y(GlyphBounds a, GlyphBounds b) {
     return a.min_y <= b.max_y && b.min_y <= a.max_y;
 }
@@ -239,26 +245,43 @@ static void test_decal_fisheye_correction(void **state) {
     WorldState world;
     world_init(&world);
     
-    // Add a very wide, thin decal on the floor exactly 2 units in front
-    // This will appear as a straight horizontal line if fisheye is corrected
+    // Add a horizontal row decal on the floor exactly 2 units in front.
+    // Every anchor has the same world X depth, so fisheye correction should
+    // keep all projected glyphs on one screen row.
     Decal d;
     memset(&d, 0, sizeof(Decal));
     d.surface = DECAL_SURFACE_FLOOR;
     d.x = 7.0; d.y = 5.0; d.z = 0.0;
     d.rotation = PI / 2.0;
-    d.width = 0.1; d.height = 10.0;
+    d.width = 1.0; d.height = 0.1;
+    d.glyph_step_u = 0.2;
+    d.glyph_step_v = 0.1;
     d.depth = 0.1;
-    d.pattern_cols = 1; d.pattern_rows = 1;
-    d.pattern = malloc(sizeof(PatternCell));
-    d.pattern[0] = (PatternCell){'F', 1};
+    d.pattern_cols = 5; d.pattern_rows = 1;
+    d.pattern = malloc(5 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1};
+    d.pattern[1] = (PatternCell){'B', 1};
+    d.pattern[2] = (PatternCell){'C', 1};
+    d.pattern[3] = (PatternCell){'D', 1};
+    d.pattern[4] = (PatternCell){'E', 1};
 
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world);
     
-    GlyphBounds f = assert_glyph_bounds(g, 'F');
-    assert_true(bounds_width(f) > 0);
+    int ax, ay, bx, by, cx, cy, dx, dy, ex, ey;
+    assert_unique_glyph(g, 'A', &ax, &ay);
+    assert_unique_glyph(g, 'B', &bx, &by);
+    assert_unique_glyph(g, 'C', &cx, &cy);
+    assert_unique_glyph(g, 'D', &dx, &dy);
+    assert_unique_glyph(g, 'E', &ex, &ey);
+
+    assert_int_equal(ay, by);
+    assert_int_equal(by, cy);
+    assert_int_equal(cy, dy);
+    assert_int_equal(dy, ey);
 
     world_clear(&world);
     map_destroy(m);
