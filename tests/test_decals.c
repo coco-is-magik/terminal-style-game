@@ -368,6 +368,9 @@ static void test_decal_floor_continuous_sampling(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 0.0;
     d.rotation = 0.0;
     d.width = 1.0; d.height = 1.0;
+    /* Explicit step: large enough to project each anchor to a distinct cell
+     * at the ~1.5-unit camera distance in a 20-cell-wide grid. */
+    d.glyph_step_u = 0.3; d.glyph_step_v = 0.3;
     d.depth = 0.1;
     d.pattern_cols = 2; d.pattern_rows = 2;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -415,6 +418,8 @@ static void test_decal_ceiling_continuous_sampling(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 0.0; // world_add_decal moves ceiling decals to z=1
     d.rotation = 0.0;
     d.width = 1.0; d.height = 1.0;
+    /* Explicit step: see floor_continuous_sampling rationale above. */
+    d.glyph_step_u = 0.3; d.glyph_step_v = 0.3;
     d.depth = 0.1;
     d.pattern_cols = 2; d.pattern_rows = 2;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -463,6 +468,8 @@ static void test_decal_floor_glyph_order_2x2(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 0.0;
     d.rotation = PI / 2.0;
     d.width = 1.0; d.height = 1.0;
+    /* Explicit step: large enough to project each anchor to a distinct cell. */
+    d.glyph_step_u = 0.2; d.glyph_step_v = 0.2;
     d.depth = 0.1;
     d.pattern_cols = 2; d.pattern_rows = 2;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -513,6 +520,8 @@ static void test_decal_ceiling_glyph_order_2x2(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 1.0;
     d.rotation = PI / 2.0;
     d.width = 1.0; d.height = 1.0;
+    /* Explicit step: large enough to project each anchor to a distinct cell. */
+    d.glyph_step_u = 0.2; d.glyph_step_v = 0.2;
     d.depth = 0.1;
     d.pattern_cols = 2; d.pattern_rows = 2;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -562,6 +571,8 @@ static void test_decal_floor_glyph_row_order_4x1(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 0.0;
     d.rotation = PI / 2.0;
     d.width = 1.0; d.height = 0.25;
+    /* Explicit step: large enough to spread 4 glyphs across distinct cells. */
+    d.glyph_step_u = 0.15; d.glyph_step_v = 0.15;
     d.depth = 0.1;
     d.pattern_cols = 4; d.pattern_rows = 1;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -612,6 +623,8 @@ static void test_decal_ceiling_glyph_row_order_4x1(void **state) {
     d.x = 4.0; d.y = 2.5; d.z = 1.0;
     d.rotation = PI / 2.0;
     d.width = 1.0; d.height = 0.25;
+    /* Explicit step: large enough to spread 4 glyphs across distinct cells. */
+    d.glyph_step_u = 0.15; d.glyph_step_v = 0.15;
     d.depth = 0.1;
     d.pattern_cols = 4; d.pattern_rows = 1;
     d.pattern = malloc(4 * sizeof(PatternCell));
@@ -1173,6 +1186,269 @@ static void test_decal_whitespace_preserved(void **state) {
 }
 
 
+/* Default glyph-step (no explicit step set) must not repeat glyphs. */
+static void test_decal_default_spacing_no_smear(void **state) {
+    (void)state;
+    Grid *g = grid_create(80, 80);
+    Map *m = map_create(8, 5);
+    map_set(m, 4, 2, 1);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+
+    WorldState world;
+    world_init(&world);
+
+    /* No glyph_step_u/v set — fallback to DEFAULT_DECAL_GLYPH_COMPRESSION path. */
+    Decal d;
+    memset(&d, 0, sizeof(Decal));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 4.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 1.0; d.height = 0.5;
+    /* glyph_step_u = 0, glyph_step_v = 0 — relies on default compression */
+    d.depth = 0.1;
+    d.pattern_cols = 4; d.pattern_rows = 1;
+    d.pattern = malloc(4 * sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'A', 1};
+    d.pattern[1] = (PatternCell){'B', 1};
+    d.pattern[2] = (PatternCell){'C', 1};
+    d.pattern[3] = (PatternCell){'D', 1};
+
+    world_add_decal(&world, d);
+    lighting_update(m, &world);
+    raycast_render(g, m, &cam, &assets, &world);
+
+    /* Each glyph must appear exactly once — no smearing or repetition. */
+    GlyphBounds a = assert_glyph_bounds(g, 'A');
+    GlyphBounds b = assert_glyph_bounds(g, 'B');
+    GlyphBounds c = assert_glyph_bounds(g, 'C');
+    GlyphBounds e = assert_glyph_bounds(g, 'D');
+    assert_int_equal(a.count, 1);
+    assert_int_equal(b.count, 1);
+    assert_int_equal(c.count, 1);
+    assert_int_equal(e.count, 1);
+
+    /* Glyphs must appear in left-to-right order. */
+    assert_same_row_band(a, b);
+    assert_same_row_band(b, c);
+    assert_same_row_band(c, e);
+    assert_adjacent_left_to_right(a, b);
+    assert_adjacent_left_to_right(b, c);
+    assert_adjacent_left_to_right(c, e);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
+/* An explicit glyph_step_u/v override must produce a larger inter-glyph
+ * spacing than the compressed default. */
+static void test_decal_default_spacing_explicit_overrides(void **state) {
+    (void)state;
+
+    /* --- Decal with default (compressed) spacing. --- */
+    Grid *g_default = grid_create(80, 80);
+    Map *m_default = map_create(8, 5);
+    map_set(m_default, 4, 2, 1);
+    Camera cam_default;
+    camera_init(&cam_default, 2.5, 2.5, 0.0, PI/2.0);
+    AssetRegistry assets_default;
+    asset_registry_init(&assets_default);
+    asset_registry_set_palette(&assets_default, 1,
+        (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets_default, 1, 1, "####");
+    WorldState world_default;
+    world_init(&world_default);
+
+    Decal dd;
+    memset(&dd, 0, sizeof(Decal));
+    dd.surface = DECAL_SURFACE_WALL;
+    dd.x = 4.0; dd.y = 2.5; dd.z = 0.5;
+    dd.rotation = PI;
+    dd.width = 1.0; dd.height = 0.5;
+    /* glyph_step_u = 0 → default compression applies */
+    dd.depth = 0.1;
+    dd.pattern_cols = 2; dd.pattern_rows = 1;
+    dd.pattern = malloc(2 * sizeof(PatternCell));
+    assert_non_null(dd.pattern);
+    dd.pattern[0] = (PatternCell){'A', 1};
+    dd.pattern[1] = (PatternCell){'B', 1};
+    world_add_decal(&world_default, dd);
+    lighting_update(m_default, &world_default);
+    raycast_render(g_default, m_default, &cam_default, &assets_default, &world_default);
+
+    GlyphBounds def_a = assert_glyph_bounds(g_default, 'A');
+    GlyphBounds def_b = assert_glyph_bounds(g_default, 'B');
+    int default_gap = def_b.min_x - def_a.max_x;
+
+    world_clear(&world_default);
+    map_destroy(m_default);
+    grid_destroy(g_default);
+
+    /* --- Decal with explicit large glyph_step_u. --- */
+    Grid *g_explicit = grid_create(80, 80);
+    Map *m_explicit = map_create(8, 5);
+    map_set(m_explicit, 4, 2, 1);
+    Camera cam_explicit;
+    camera_init(&cam_explicit, 2.5, 2.5, 0.0, PI/2.0);
+    AssetRegistry assets_explicit;
+    asset_registry_init(&assets_explicit);
+    asset_registry_set_palette(&assets_explicit, 1,
+        (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets_explicit, 1, 1, "####");
+    WorldState world_explicit;
+    world_init(&world_explicit);
+
+    Decal de;
+    memset(&de, 0, sizeof(Decal));
+    de.surface = DECAL_SURFACE_WALL;
+    de.x = 4.0; de.y = 2.5; de.z = 0.5;
+    de.rotation = PI;
+    de.width = 1.0; de.height = 0.5;
+    /* explicit glyph_step_u is intentionally larger than the default */
+    de.glyph_step_u = 0.1; de.glyph_step_v = 0.05;
+    de.depth = 0.1;
+    de.pattern_cols = 2; de.pattern_rows = 1;
+    de.pattern = malloc(2 * sizeof(PatternCell));
+    assert_non_null(de.pattern);
+    de.pattern[0] = (PatternCell){'C', 1};
+    de.pattern[1] = (PatternCell){'D', 1};
+    world_add_decal(&world_explicit, de);
+    lighting_update(m_explicit, &world_explicit);
+    raycast_render(g_explicit, m_explicit, &cam_explicit, &assets_explicit, &world_explicit);
+
+    GlyphBounds exp_c = assert_glyph_bounds(g_explicit, 'C');
+    GlyphBounds exp_d = assert_glyph_bounds(g_explicit, 'D');
+    int explicit_gap = exp_d.min_x - exp_c.max_x;
+
+    world_clear(&world_explicit);
+    map_destroy(m_explicit);
+    grid_destroy(g_explicit);
+
+    /* The explicit step (0.1 world units) must produce a wider gap than the
+     * default-compressed step (1.0 / 2 / 8.0 = 0.0625 world units). */
+    assert_true(explicit_gap > default_gap);
+}
+
+/* Default-spacing decals must render the same way on wall, floor, and ceiling
+ * (identical step formula, no surface-specific spacing divergence). */
+static void test_decal_default_spacing_surface_consistency(void **state) {
+    (void)state;
+
+    /* Wall decal — 2-glyph row, no explicit step. */
+    {
+        Grid *g = grid_create(80, 80);
+        Map *m = map_create(8, 5);
+        map_set(m, 4, 2, 1);
+        Camera cam;
+        camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+        AssetRegistry assets;
+        asset_registry_init(&assets);
+        asset_registry_set_palette(&assets, 1,
+            (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+        asset_registry_set_material(&assets, 1, 1, "####");
+        WorldState world;
+        world_init(&world);
+        Decal d;
+        memset(&d, 0, sizeof(Decal));
+        d.surface = DECAL_SURFACE_WALL;
+        d.x = 4.0; d.y = 2.5; d.z = 0.5;
+        d.rotation = PI;
+        d.width = 1.0; d.height = 0.5;
+        d.depth = 0.1;
+        d.pattern_cols = 2; d.pattern_rows = 1;
+        d.pattern = malloc(2 * sizeof(PatternCell));
+        assert_non_null(d.pattern);
+        d.pattern[0] = (PatternCell){'A', 1};
+        d.pattern[1] = (PatternCell){'B', 1};
+        world_add_decal(&world, d);
+        lighting_update(m, &world);
+        raycast_render(g, m, &cam, &assets, &world);
+        assert_glyph_bounds(g, 'A');
+        assert_glyph_bounds(g, 'B');
+        world_clear(&world);
+        map_destroy(m);
+        grid_destroy(g);
+    }
+
+    /* Floor decal — 2-glyph row, no explicit step. */
+    {
+        Grid *g = grid_create(80, 80);
+        Map *m = map_create(8, 8);
+        Camera cam;
+        camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+        AssetRegistry assets;
+        asset_registry_init(&assets);
+        asset_registry_set_palette(&assets, 1,
+            (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+        asset_registry_set_material(&assets, 1, 1, "####");
+        WorldState world;
+        world_init(&world);
+        Decal d;
+        memset(&d, 0, sizeof(Decal));
+        d.surface = DECAL_SURFACE_FLOOR;
+        d.x = 4.0; d.y = 2.5; d.z = 0.0;
+        d.rotation = PI / 2.0;
+        d.width = 1.0; d.height = 0.5;
+        d.depth = 0.1;
+        d.pattern_cols = 2; d.pattern_rows = 1;
+        d.pattern = malloc(2 * sizeof(PatternCell));
+        assert_non_null(d.pattern);
+        d.pattern[0] = (PatternCell){'C', 1};
+        d.pattern[1] = (PatternCell){'D', 1};
+        world_add_decal(&world, d);
+        lighting_update(m, &world);
+        raycast_render(g, m, &cam, &assets, &world);
+        assert_glyph_bounds(g, 'C');
+        assert_glyph_bounds(g, 'D');
+        world_clear(&world);
+        map_destroy(m);
+        grid_destroy(g);
+    }
+
+    /* Ceiling decal — 2-glyph row, no explicit step. */
+    {
+        Grid *g = grid_create(80, 80);
+        Map *m = map_create(8, 8);
+        Camera cam;
+        camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
+        AssetRegistry assets;
+        asset_registry_init(&assets);
+        asset_registry_set_palette(&assets, 1,
+            (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
+        asset_registry_set_material(&assets, 1, 1, "####");
+        WorldState world;
+        world_init(&world);
+        Decal d;
+        memset(&d, 0, sizeof(Decal));
+        d.surface = DECAL_SURFACE_CEILING;
+        d.x = 4.0; d.y = 2.5; d.z = 1.0;
+        d.rotation = PI / 2.0;
+        d.width = 1.0; d.height = 0.5;
+        d.depth = 0.1;
+        d.pattern_cols = 2; d.pattern_rows = 1;
+        d.pattern = malloc(2 * sizeof(PatternCell));
+        assert_non_null(d.pattern);
+        d.pattern[0] = (PatternCell){'E', 1};
+        d.pattern[1] = (PatternCell){'F', 1};
+        world_add_decal(&world, d);
+        lighting_update(m, &world);
+        raycast_render(g, m, &cam, &assets, &world);
+        assert_glyph_bounds(g, 'E');
+        assert_glyph_bounds(g, 'F');
+        world_clear(&world);
+        map_destroy(m);
+        grid_destroy(g);
+    }
+}
+
 int main(void) {
 
     config_init_defaults();
@@ -1200,6 +1476,9 @@ int main(void) {
         cmocka_unit_test(test_decal_wall_size_respects_width),
         cmocka_unit_test(test_decal_oblique_cell_no_bbox_smear),
         cmocka_unit_test(test_decal_whitespace_preserved),
+        cmocka_unit_test(test_decal_default_spacing_no_smear),
+        cmocka_unit_test(test_decal_default_spacing_explicit_overrides),
+        cmocka_unit_test(test_decal_default_spacing_surface_consistency),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -46,6 +46,12 @@
  * Useful for debugging decal positioning and UV mapping. */
 #define DECAL_DEBUG_MODE 0
 
+/* Converts legacy decal footprint spacing (width / pattern_cols) into
+ * terminal-friendly ASCII glyph-anchor spacing.  Without this factor
+ * the step between adjacent anchors would span a full fraction of the
+ * 3-D decal footprint and produce large visible gaps in the terminal. */
+#define DEFAULT_DECAL_GLYPH_COMPRESSION 8.0
+
 /* ===================================================================
  *  Decal projection helpers
  * =================================================================== */
@@ -157,10 +163,10 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 PatternCell pc = d->pattern[py * d->pattern_cols + px];
                 if (pc.glyph == ' ' || pc.glyph == '\0') continue;
 
-                double glyph_step_u = d->glyph_step_u > 0.0 ?
-                                      d->glyph_step_u : d->width / (double)d->pattern_cols;
-                double glyph_step_v = d->glyph_step_v > 0.0 ?
-                                      d->glyph_step_v : d->height / (double)d->pattern_rows;
+                double glyph_step_u = d->glyph_step_u > 0.0 ? d->glyph_step_u :
+                                      d->width / (double)d->pattern_cols / DEFAULT_DECAL_GLYPH_COMPRESSION;
+                double glyph_step_v = d->glyph_step_v > 0.0 ? d->glyph_step_v :
+                                      d->height / (double)d->pattern_rows / DEFAULT_DECAL_GLYPH_COMPRESSION;
                 double local_u = ((double)px - ((double)d->pattern_cols - 1.0) * 0.5) * glyph_step_u;
                 double local_v = ((double)py - ((double)d->pattern_rows - 1.0) * 0.5) * glyph_step_v;
                 double world_x = d->x + local_u * tx + local_v * bx;
