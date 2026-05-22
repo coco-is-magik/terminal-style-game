@@ -35,6 +35,8 @@
 #include "assets.h"        /* AssetRegistry struct (palettes, materials, sprites) */
 #include "asset_loader.h"  /* asset_loader_load_registry(), asset_loader_load_map_data() */
 #include "lighting.h"      /* lighting_update() — per-frame light propagation on the map */
+#include "ui_asset.h"      /* UIButtonAsset, ui_asset_load/destroy, ui_button_render */
+#include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
 #include <stdlib.h>        /* atof() */
 #include <string.h>        /* strcmp() */
@@ -172,7 +174,7 @@ static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, 
              "Grid: %dx%d\n"
              "Frame: %llu\n"
              "Mode: %s\n"
-             "Press ESC to quit\n"
+             "Press ESC for menu\n"
              "---\n"
              "[1-Second Rolling Stats]\n"
              "Target FPS: %d\n"
@@ -196,6 +198,111 @@ static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, 
     SDL_Color ui_bg = stats->pub_min_spare_time_ms < 0 ? (SDL_Color){150, 0, 0, 255} : (SDL_Color){0, 0, 0, 255};
 
     grid_print(grid, 2, 2, ui_text, ui_fg, ui_bg);
+}
+
+/* ===================================================================
+ *  Menu rendering helpers
+ * =================================================================== */
+
+/* Layout constants for button slots (must match asset width=20, height=3) */
+#define MENU_BUTTON_W   20
+#define MENU_BUTTON_H    3
+#define MENU_BUTTON_GAP  1
+
+/* Total number of button assets (btns[0] unused, btns[1..8] loaded) */
+#define BTN_COUNT        9
+
+/**
+ * MenuDef — Describes the contents and layout of one menu screen
+ */
+typedef struct {
+    int         count;          /* Number of buttons */
+    int         asset_ids[4];   /* Button asset IDs (indices into btns[]) */
+    const char *labels[4];      /* Fallback text labels */
+    const char *title;          /* Optional title line above buttons (NULL = none) */
+} MenuDef;
+
+/**
+ * MENU_DEFS — Per-menu static definitions, indexed by MenuId
+ *
+ * Asset mapping:
+ *   1=Start Game  2=Asset Editor  3=Quit (main)
+ *   4=Resume      5=Main Menu     6=Quit (secondary)
+ *   7=Yes         8=No
+ */
+static const MenuDef MENU_DEFS[] = {
+    /* [MENU_NONE]         */ {0, {0,0,0,0}, {NULL,NULL,NULL,NULL},            NULL},
+    /* [MENU_MAIN]         */ {3, {1,2,3,0}, {"START GAME","ASSET EDITOR","QUIT",NULL}, NULL},
+    /* [MENU_PAUSE]        */ {3, {4,5,6,0}, {"RESUME","MAIN MENU","QUIT",NULL},        "-- PAUSED --"},
+    /* [MENU_EDITOR]       */ {2, {4,5,0,0}, {"BACK TO EDITOR","MAIN MENU",NULL,NULL},  "-- EDITOR --"},
+    /* [MENU_CONFIRM_QUIT] */ {2, {7,8,0,0}, {"YES","NO",NULL,NULL},                    "QUIT? ARE YOU SURE?"},
+};
+
+/**
+ * draw_fallback_button() — Render a plain text button when the asset is missing
+ */
+static void draw_fallback_button(Grid *grid, int x, int y,
+                                 const char *label, bool selected) {
+    char buf[64];
+    if (selected) {
+        snprintf(buf, sizeof(buf), "[ > %s < ]", label);
+    } else {
+        snprintf(buf, sizeof(buf), "[   %s   ]", label);
+    }
+    SDL_Color fg = selected ? (SDL_Color){ 50, 255,  50, 255}
+                            : (SDL_Color){200, 200, 200, 255};
+    SDL_Color bg = selected ? (SDL_Color){  0,  40,   0, 255}
+                            : (SDL_Color){  0,   0,   0, 255};
+    grid_print(grid, x, y, buf, fg, bg);
+}
+
+/**
+ * draw_active_menu() — Render the currently active menu to the grid
+ *
+ * Looks up the MenuDef for `active`, optionally draws a title line, then
+ * centres the button stack vertically and horizontally.
+ *
+ * @param grid    Target grid
+ * @param active  Which menu to render (MENU_NONE is a no-op)
+ * @param sel     Selected button index for this menu
+ * @param btns    Button asset array, btns[0] unused, btns[1..BTN_COUNT-1] loaded
+ */
+static void draw_active_menu(Grid *grid, MenuId active, int sel,
+                              UIButtonAsset **btns) {
+    if (active == MENU_NONE || (int)active >= (int)(sizeof(MENU_DEFS)/sizeof(MENU_DEFS[0])))
+        return;
+    const MenuDef *def = &MENU_DEFS[(int)active];
+    if (def->count == 0) return;
+
+    /* Title row: 1 line of text + 1 blank gap */
+    int title_rows = (def->title != NULL) ? 2 : 0;
+    int total_h = title_rows
+                  + def->count * MENU_BUTTON_H
+                  + (def->count - 1) * MENU_BUTTON_GAP;
+    int start_x = (grid->width  - MENU_BUTTON_W) / 2;
+    int start_y = (grid->height - total_h)        / 2;
+
+    if (def->title != NULL) {
+        SDL_Color tfg = {255, 255, 255, 255};
+        SDL_Color tbg = {  0,   0,   0, 255};
+        int tlen = (int)strlen(def->title);
+        int tx   = start_x + (MENU_BUTTON_W - tlen) / 2;
+        if (tx < 0) tx = 0;
+        grid_print(grid, tx, start_y, def->title, tfg, tbg);
+    }
+
+    int btn_y0 = start_y + title_rows;
+    for (int i = 0; i < def->count; i++) {
+        int btn_y    = btn_y0 + i * (MENU_BUTTON_H + MENU_BUTTON_GAP);
+        bool selected = (i == sel);
+        UIButtonState state = selected ? UI_BUTTON_SELECTED : UI_BUTTON_NORMAL;
+        int aid = def->asset_ids[i];
+        if (aid > 0 && aid < BTN_COUNT && btns[aid]) {
+            ui_button_render(grid, start_x, btn_y, btns[aid], state);
+        } else {
+            draw_fallback_button(grid, start_x, btn_y, def->labels[i], selected);
+        }
+    }
 }
 
 /* ===================================================================
@@ -254,12 +361,8 @@ int app_main(int argc, char* argv[]) {
         return 0;   /* Not a fatal error — just can't draw */
     }
 
-    /* In normal (interactive) mode, lock mouse pointer to the window
-     * so the user can look around freely (FPS-style).  Non-interactive
-     * modes do not need mouse locking. */
-    if (mode == RUN_MODE_NORMAL) {
-        SDL_SetWindowRelativeMouseMode(ren->window, true);
-    }
+    /* Mouse locking is deferred: it is enabled when the player starts the game
+     * from the menu.  Non-interactive modes (benchmark/stability) never lock. */
 
     /* -----------------------------------------------------------------
      *  4. Create the character Grid
@@ -304,7 +407,35 @@ int app_main(int argc, char* argv[]) {
     camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
 
     /* -----------------------------------------------------------------
-     *  7. Main-loop state variables
+     *  7. App state, menu stack, and UI button assets
+     * ----------------------------------------------------------------- */
+    /* Interactive runs start at the main menu; benchmarks skip it */
+    AppState app_state = (mode == RUN_MODE_NORMAL) ? APP_STATE_MAIN_MENU
+                                                   : APP_STATE_PLAYING;
+    MenuStack ms;
+    menu_stack_init(&ms);
+    if (mode == RUN_MODE_NORMAL) {
+        menu_stack_push(&ms, MENU_MAIN);
+    }
+
+    /* Per-menu selection state (one int per MenuId, indexed by MenuId value) */
+    int menu_selected[MENU_ID_COUNT];
+    for (int i = 0; i < MENU_ID_COUNT; i++) menu_selected[i] = 0;
+
+    /* Load all button assets 1..8 (non-fatal; draw_active_menu falls back to text) */
+    UIButtonAsset *btns[BTN_COUNT];
+    for (int i = 0; i < BTN_COUNT; i++) btns[i] = NULL;
+    if (mode == RUN_MODE_NORMAL) {
+        for (int i = 1; i < BTN_COUNT; i++) {
+            btns[i] = ui_asset_load(i, "assets");
+        }
+    }
+
+    /* Mouse lock state — recomputed each frame based on app state */
+    bool mouse_locked = false;
+
+    /* -----------------------------------------------------------------
+     *  8. Main-loop state variables
      * ----------------------------------------------------------------- */
     uint64_t frame_count = 0;       /* Total frames rendered so far */
     PerfStats perf_stats;           /* Rolling one-second performance window */
@@ -353,25 +484,130 @@ int app_main(int argc, char* argv[]) {
          * skips interactive keyboard/mouse handling. */
         input_process(&input, mode != RUN_MODE_NORMAL);
         
-        /* --- 8c. Camera update (raycast mode only) --- */
+        /* --- 8c. Mouse lock — derived from app state each frame --- */
+        {
+            bool want_lock = (mode == RUN_MODE_NORMAL)
+                             && (app_state == APP_STATE_PLAYING)
+                             && (ms.depth == 0);
+            if (want_lock != mouse_locked) {
+                SDL_SetWindowRelativeMouseMode(ren->window, want_lock);
+                mouse_locked = want_lock;
+            }
+        }
+
+        /* --- 8d. ESC routing (context-aware) --- */
+        if (input.esc) {
+            if (app_state == APP_STATE_MAIN_MENU) {
+                /* Main menu is the root: ESC is ignored */
+            } else if (ms.depth > 0) {
+                /* Pop the top overlay menu */
+                menu_stack_pop(&ms);
+            } else if (app_state == APP_STATE_PLAYING) {
+                /* Enter pause menu */
+                menu_stack_push(&ms, MENU_PAUSE);
+            } else if (app_state == APP_STATE_EDITOR) {
+                /* Enter editor menu */
+                menu_stack_push(&ms, MENU_EDITOR);
+            }
+        }
+
+        /* --- 8e. Menu navigation and confirm --- */
+        MenuId active_menu = menu_stack_peek(&ms);
+        if (active_menu != MENU_NONE) {
+            int mid = (int)active_menu;
+            int count = (mid < (int)(sizeof(MENU_DEFS)/sizeof(MENU_DEFS[0])))
+                        ? MENU_DEFS[mid].count : 0;
+
+            /* Up/down navigation — wrap-around */
+            if (count > 0) {
+                if (input.up)
+                    menu_selected[mid] = (menu_selected[mid] - 1 + count) % count;
+                if (input.down)
+                    menu_selected[mid] = (menu_selected[mid] + 1) % count;
+            }
+
+            /* Confirm: dispatch based on menu type and current selection */
+            if (input.confirm && count > 0) {
+                int sel = menu_selected[mid];
+                if (active_menu == MENU_MAIN) {
+                    if (sel == 0) {          /* Start Game */
+                        menu_stack_clear(&ms);
+                        app_state = APP_STATE_PLAYING;
+                    } else if (sel == 1) {   /* Asset Editor */
+                        menu_stack_clear(&ms);
+                        app_state = APP_STATE_EDITOR;
+                    } else {                 /* Quit → confirm dialog */
+                        menu_stack_push(&ms, MENU_CONFIRM_QUIT);
+                    }
+                } else if (active_menu == MENU_PAUSE) {
+                    if (sel == 0) {          /* Resume → pop pause menu */
+                        menu_stack_pop(&ms);
+                    } else if (sel == 1) {   /* Main Menu */
+                        menu_stack_clear(&ms);
+                        app_state = APP_STATE_MAIN_MENU;
+                        menu_stack_push(&ms, MENU_MAIN);
+                    } else {                 /* Quit → confirm dialog */
+                        menu_stack_push(&ms, MENU_CONFIRM_QUIT);
+                    }
+                } else if (active_menu == MENU_EDITOR) {
+                    if (sel == 0) {          /* Back to Editor → pop */
+                        menu_stack_pop(&ms);
+                    } else {                 /* Main Menu */
+                        menu_stack_clear(&ms);
+                        app_state = APP_STATE_MAIN_MENU;
+                        menu_stack_push(&ms, MENU_MAIN);
+                    }
+                } else if (active_menu == MENU_CONFIRM_QUIT) {
+                    if (sel == 0) {          /* Yes → quit */
+                        input.quit = true;
+                    } else {                 /* No → pop confirm */
+                        menu_stack_pop(&ms);
+                    }
+                }
+                /* Refresh active_menu after potential state change */
+                active_menu = menu_stack_peek(&ms);
+            }
+        }
+
+        /* --- 8f. Draw frame contents --- */
         double delta_time_sec = delta_time_ms / 1000.0;
-        if (visual_mode == VISUAL_RAYCAST) {
-            camera_update(&cam, map, &input, delta_time_sec);
-        }
+        active_menu = menu_stack_peek(&ms);
 
-        /* --- 8d. Draw the frame contents into the Grid --- */
-        if (visual_mode == VISUAL_STRESS) {
-            draw_stress_pattern(grid, frame_count);
-        } else if (visual_mode == VISUAL_RAYCAST) {
-            lighting_update(map, &world);                /* Run light propagation on the map */
-            raycast_render(grid, map, &cam, &assets, &world);  /* Full 3D raycast render pass */
+        if (active_menu != MENU_NONE) {
+            /* A menu is open — clear the screen and render the menu */
+            SDL_Color mbg = {0, 0, 0, 255};
+            grid_clear(grid, mbg);
+            draw_active_menu(grid, active_menu,
+                             menu_selected[(int)active_menu], btns);
+
+        } else if (app_state == APP_STATE_PLAYING) {
+            /* Game world */
+            if (visual_mode == VISUAL_RAYCAST) {
+                camera_update(&cam, map, &input, delta_time_sec);
+                lighting_update(map, &world);
+                raycast_render(grid, map, &cam, &assets, &world);
+            } else if (visual_mode == VISUAL_STRESS) {
+                draw_stress_pattern(grid, frame_count);
+            } else {
+                draw_world_pattern(grid, frame_count);
+            }
+            if (cfg->debug_display_enabled) {
+                draw_ui_overlay(grid, frame_count, &perf_stats, visual_mode,
+                                cfg->target_fps);
+            }
+
+        } else if (app_state == APP_STATE_EDITOR) {
+            SDL_Color ae_bg = {0, 0, 0, 255};
+            SDL_Color ae_fg = {255, 255, 255, 255};
+            grid_clear(grid, ae_bg);
+            grid_print(grid, 2, 2,
+                       "ASSET EDITOR (placeholder)\nPress ESC for editor menu",
+                       ae_fg, ae_bg);
+
         } else {
-            draw_world_pattern(grid, frame_count);
-        }
-
-        /* --- 8e. Debug overlay --- */
-        if (cfg->debug_display_enabled) {
-            draw_ui_overlay(grid, frame_count, &perf_stats, visual_mode, cfg->target_fps);
+            /* APP_STATE_MAIN_MENU with empty stack — should not happen, clear only */
+            SDL_Color bg = {0, 0, 0, 255};
+            grid_clear(grid, bg);
         }
 
         /* --- 8f. Transfer the Grid to the screen (SDL rendering) --- */
@@ -429,6 +665,9 @@ int app_main(int argc, char* argv[]) {
     /* ================================================================
      *  9. Cleanup — release all resources
      * ================================================================ */
+    for (int i = 1; i < BTN_COUNT; i++) {
+        ui_asset_destroy(btns[i]);
+    }
     world_clear(&world);
     if (map) map_destroy(map);
     grid_destroy(grid);

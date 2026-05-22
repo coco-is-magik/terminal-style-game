@@ -29,6 +29,10 @@ typedef struct {
     bool right;             /* D key held */
     float mouse_dx;         /* Accumulated relative mouse X movement (pixels) */
     float mouse_dy;         /* Accumulated relative mouse Y movement (pixels) */
+    bool up;                /* Up arrow key — edge-triggered: true for one frame on press */
+    bool down;              /* Down arrow key — edge-triggered */
+    bool confirm;           /* Enter key — edge-triggered */
+    bool esc;               /* ESC key — edge-triggered: true for one frame on press (non-repeat) */
 } InputState;
 
 /**

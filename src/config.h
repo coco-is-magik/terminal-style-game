@@ -74,4 +74,12 @@ typedef enum {
     VISUAL_RAYCAST       /* Full 3D raycasted world rendering */
 } VisualMode;
 
+/* ---- App state enum ---- */
+
+typedef enum {
+    APP_STATE_MAIN_MENU,     /* Main menu: button selection */
+    APP_STATE_PLAYING,       /* In-game: raycast world rendering */
+    APP_STATE_EDITOR   /* Asset editor (placeholder) */
+} AppState;
+
 #endif /* CONFIG_H */

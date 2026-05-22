@@ -1,0 +1,9 @@
+id=4
+width=20
+height=3
+normal_0=+------------------+
+normal_1=|      RESUME      |
+normal_2=+------------------+
+selected_0=*==================*
+selected_1=|    > RESUME <    |
+selected_2=*==================*

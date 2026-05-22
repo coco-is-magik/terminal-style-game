@@ -54,11 +54,16 @@
  * @param headless_mode If true, skip keyboard/mouse input (for benchmarks)
  */
 void input_process(InputState *input, bool headless_mode) {
-    /* ---- Reset mouse deltas ---- */
-    /* These are re-accumulated from scratch each frame so that stale
-     * values from two frames ago don't carry over. */
+    /* ---- Reset per-frame fields ---- */
+    /* Mouse deltas are re-accumulated from scratch each frame. */
     input->mouse_dx = 0.0f;
     input->mouse_dy = 0.0f;
+    /* Edge-triggered navigation fields: reset each frame so they are true
+     * for exactly one frame per key press (non-repeat only). */
+    input->up      = false;
+    input->down    = false;
+    input->confirm = false;
+    input->esc     = false;
 
     /* ---- Poll the SDL event queue ---- */
     SDL_Event e;
@@ -72,9 +77,25 @@ void input_process(InputState *input, bool headless_mode) {
          * In headless mode, we skip keyboard events and mouse motion
          * so the simulation runs without user interference. */
         if (!headless_mode) {
-            /* ESC key → quit */
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) {
-                input->quit = true;
+            /* Key press events (non-repeat for navigation keys) */
+            if (e.type == SDL_EVENT_KEY_DOWN) {
+                switch (e.key.key) {
+                    case SDLK_ESCAPE:
+                        if (!e.key.repeat) input->esc = true;
+                        break;
+                    /* Edge-triggered navigation: only on initial press, not repeat */
+                    case SDLK_UP:
+                        if (!e.key.repeat) input->up = true;
+                        break;
+                    case SDLK_DOWN:
+                        if (!e.key.repeat) input->down = true;
+                        break;
+                    case SDLK_RETURN:
+                        if (!e.key.repeat) input->confirm = true;
+                        break;
+                    default:
+                        break;
+                }
             }
             /* Relative mouse motion → look around.
              * xrel/yrel are the delta from the last mouse position in
