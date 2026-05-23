@@ -35,8 +35,9 @@
 #include "../src/config.h"
 #include "../src/input.h"
 
-/* Path where F5 autosave writes — relative to project root */
-#define TMP_AUTOSAVE "assets/decals/autosave.txt"
+/* Temporary named file used by the roundtrip test */
+#define TMP_NAMED_PATH  "assets/decals/test_roundtrip_tmp.txt"
+#define TMP_NAMED_BASE  "test_roundtrip_tmp"
 
 /* ===================================================================
  *  Helpers
@@ -425,100 +426,120 @@ static void test_esc_dirty_returns_confirm(void **state) {
  * =================================================================== */
 
 /**
- * test_save_load_roundtrip — F5 saves to autosave; F9 reloads it.
+ * test_save_load_roundtrip — Named save via F5, named load via load-select.
  *
- * Places known glyphs, saves, corrupts the canvas, reloads, then
- * verifies the original glyphs are restored.
+ * Places known glyphs, sets current_filename so F5 saves directly,
+ * corrupts the canvas, manually sets the load-select list to the same file,
+ * presses Enter to load, and verifies the pattern is restored.
  */
 static void test_save_load_roundtrip(void **state) {
     (void)state;
 
-    /* Remove any stale autosave from a previous test run */
-    remove(TMP_AUTOSAVE);
+    remove(TMP_NAMED_PATH);
 
     EngineConfig cfg = make_cfg(4, 3);
     AssetDesignerState ad;
     asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
 
-    /* Paint known glyphs at specific indices */
+    /* Pre-set current_filename so F5 saves directly without entering prompt */
+    strncpy(ad.current_filename, TMP_NAMED_BASE, AD_FILENAME_MAX - 1);
+
+    /* Paint known glyphs */
     ad.decal.pattern[0].glyph = 'A';
     ad.decal.pattern[1].glyph = 'B';
     ad.decal.pattern[4].glyph = 'C';  /* row 1, col 0 of a 4-wide canvas */
     ad.dirty = 1;
 
-    /* Press F5 to autosave */
+    /* F5 — saves directly because current_filename is set */
     InputState in = no_input();
     in.save = true;
     asset_designer_update(&ad, &in);
 
-    /* After save the dirty flag must be cleared */
     assert_int_equal(ad.dirty, 0);
 
-    /* Corrupt the in-memory canvas to prove the reload actually fires */
+    /* Corrupt canvas to prove the reload actually fires */
     for (int i = 0; i < 4 * 3; i++) {
         ad.decal.pattern[i].glyph = 'Z';
     }
 
-    /* Press F9 to autoload */
+    /* Manually populate the file list (avoids needing opendir in tests) */
+    strncpy(ad.file_list[0], TMP_NAMED_BASE, AD_FILENAME_MAX - 1);
+    ad.file_count   = 1;
+    ad.file_sel_idx = 0;
+    ad.mode = AD_LOAD_SELECT;
+
+    /* Enter — load the selected file */
     in = no_input();
-    in.load = true;
+    in.confirm = true;
     asset_designer_update(&ad, &in);
 
-    /* Verify the original pattern was restored */
+    /* Pattern must be restored */
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
     assert_int_equal(ad.dirty, 0);
     assert_int_equal(ad.decal.pattern[0].glyph, 'A');
     assert_int_equal(ad.decal.pattern[1].glyph, 'B');
     assert_int_equal(ad.decal.pattern[4].glyph, 'C');
 
+    /* current_filename must be set to the loaded basename */
+    assert_string_equal(ad.current_filename, TMP_NAMED_BASE);
+
     asset_designer_destroy(&ad);
-    remove(TMP_AUTOSAVE);
+    remove(TMP_NAMED_PATH);
 }
 
 /**
- * test_save_no_dirty_no_overwrite — F5 when dirty=0 shows a status message
- * and does NOT create a file if one did not exist.
+ * test_f5_no_filename_enters_save_prompt — F5 with no current_filename opens
+ * the save-prompt sub-mode instead of writing a file.
  */
-static void test_save_no_dirty_no_overwrite(void **state) {
+static void test_f5_no_filename_enters_save_prompt(void **state) {
     (void)state;
-
-    remove(TMP_AUTOSAVE);
 
     EngineConfig cfg = make_cfg(5, 5);
     AssetDesignerState ad;
     asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
 
-    assert_int_equal(ad.dirty, 0);
+    /* No filename set */
+    assert_int_equal(ad.current_filename[0], '\0');
 
     InputState in = no_input();
     in.save = true;
     asset_designer_update(&ad, &in);
 
-    /* File must NOT have been created (no dirty changes) */
-    FILE *f = fopen(TMP_AUTOSAVE, "r");
-    assert_null(f);
+    /* Must enter save-prompt, not stay in edit mode */
+    assert_int_equal(ad.mode, (int)AD_SAVE_PROMPT);
+    /* filename_buffer must be empty (no prefill with no current name) */
+    assert_int_equal(ad.filename_buffer[0], '\0');
+    /* Dirty flag is unchanged (nothing was saved) */
+    assert_int_equal(ad.dirty, 0);
 
     asset_designer_destroy(&ad);
 }
 
 /**
- * test_load_missing_no_crash — F9 when autosave does not exist sets a status
- * message but does not crash or corrupt state.
+ * test_f9_enters_load_select — F9 opens the load-select sub-mode.
+ * Esc returns to edit mode without loading anything.
  */
-static void test_load_missing_no_crash(void **state) {
+static void test_f9_enters_load_select(void **state) {
     (void)state;
-
-    remove(TMP_AUTOSAVE);
 
     EngineConfig cfg = make_cfg(5, 5);
     AssetDesignerState ad;
     asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
 
+    /* F9 — enter load selector (scan result may be empty, that's fine) */
     InputState in = no_input();
     in.load = true;
     asset_designer_update(&ad, &in);
 
-    /* State must still be valid */
+    assert_int_equal(ad.mode, (int)AD_LOAD_SELECT);
     assert_non_null(ad.decal.pattern);
+
+    /* Esc — cancel, return to edit mode */
+    in = no_input();
+    in.esc = true;
+    asset_designer_update(&ad, &in);
+
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
     assert_int_equal(ad.canvas_cols, 5);
     assert_int_equal(ad.canvas_rows, 5);
 
@@ -531,9 +552,6 @@ static void test_load_missing_no_crash(void **state) {
 
 /**
  * test_destroy_idempotent — Calling destroy twice must not crash.
- *
- * The second call sees pattern == NULL; free(NULL) is defined behaviour,
- * so this must be safe.
  */
 static void test_destroy_idempotent(void **state) {
     (void)state;
@@ -547,28 +565,362 @@ static void test_destroy_idempotent(void **state) {
 }
 
 /* ===================================================================
+ *  Tests — Filename validation
+ * =================================================================== */
+
+static void test_validate_basename_accepts_valid(void **state) {
+    (void)state;
+    assert_int_equal(ad_validate_basename("my_decal"),      1);
+    assert_int_equal(ad_validate_basename("decal-01"),      1);
+    assert_int_equal(ad_validate_basename("ABC"),           1);
+    assert_int_equal(ad_validate_basename("abc123"),        1);
+    assert_int_equal(ad_validate_basename("a"),             1);
+    assert_int_equal(ad_validate_basename("_"),             1);
+    assert_int_equal(ad_validate_basename("-"),             1);
+}
+
+static void test_validate_basename_rejects_empty(void **state) {
+    (void)state;
+    assert_int_equal(ad_validate_basename(""),   0);
+    assert_int_equal(ad_validate_basename(NULL), 0);
+}
+
+static void test_validate_basename_rejects_dotdot(void **state) {
+    (void)state;
+    assert_int_equal(ad_validate_basename("."),  0);
+    assert_int_equal(ad_validate_basename(".."), 0);
+}
+
+static void test_validate_basename_rejects_slash(void **state) {
+    (void)state;
+    assert_int_equal(ad_validate_basename("a/b"),   0);
+    assert_int_equal(ad_validate_basename("a\\b"),  0);
+    assert_int_equal(ad_validate_basename("/etc"),  0);
+}
+
+static void test_validate_basename_rejects_bad_chars(void **state) {
+    (void)state;
+    assert_int_equal(ad_validate_basename("my file"),    0);  /* space */
+    assert_int_equal(ad_validate_basename("my.decal"),   0);  /* dot */
+    assert_int_equal(ad_validate_basename("my!decal"),   0);  /* bang */
+    assert_int_equal(ad_validate_basename("my\tdecal"),  0);  /* tab */
+}
+
+/* ===================================================================
+ *  Tests — Save-prompt sub-mode
+ * =================================================================== */
+
+/**
+ * test_f5_with_current_filename_saves_directly — When current_filename is set,
+ * F5 saves immediately without entering save-prompt mode.
+ */
+static void test_f5_with_current_filename_saves_directly(void **state) {
+    (void)state;
+
+    char tmp_path[128];
+    snprintf(tmp_path, sizeof(tmp_path), "%s%s.txt", AD_DECALS_DIR, TMP_NAMED_BASE);
+    remove(tmp_path);
+
+    EngineConfig cfg = make_cfg(4, 3);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    strncpy(ad.current_filename, TMP_NAMED_BASE, AD_FILENAME_MAX - 1);
+    ad.decal.pattern[0].glyph = 'X';
+    ad.dirty = 1;
+
+    InputState in = no_input();
+    in.save = true;
+    asset_designer_update(&ad, &in);
+
+    /* Must stay in edit mode, not enter save-prompt */
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
+    assert_int_equal(ad.dirty, 0);
+    /* File must have been created */
+    FILE *f = fopen(tmp_path, "r");
+    assert_non_null(f);
+    if (f) fclose(f);
+
+    asset_designer_destroy(&ad);
+    remove(tmp_path);
+}
+
+/**
+ * test_f10_always_enters_save_prompt — F10 opens save-prompt even when
+ * current_filename is already set.
+ */
+static void test_f10_always_enters_save_prompt(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(5, 5);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    /* With a current filename */
+    strncpy(ad.current_filename, "existing", AD_FILENAME_MAX - 1);
+
+    InputState in = no_input();
+    in.save_as = true;
+    asset_designer_update(&ad, &in);
+
+    assert_int_equal(ad.mode, (int)AD_SAVE_PROMPT);
+
+    asset_designer_destroy(&ad);
+}
+
+/**
+ * test_f10_prefills_current_filename — F10 pre-fills filename_buffer with
+ * current_filename so the user can edit it.
+ */
+static void test_f10_prefills_current_filename(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(5, 5);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    strncpy(ad.current_filename, "myfile", AD_FILENAME_MAX - 1);
+
+    InputState in = no_input();
+    in.save_as = true;
+    asset_designer_update(&ad, &in);
+
+    assert_string_equal(ad.filename_buffer, "myfile");
+    assert_int_equal(ad.filename_pos, 6);
+
+    asset_designer_destroy(&ad);
+}
+
+/**
+ * test_save_prompt_text_input — Chars typed via text_input are appended to
+ * filename_buffer, filtered to [A-Za-z0-9_-].
+ */
+static void test_save_prompt_text_input(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(5, 5);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    ad.mode = AD_SAVE_PROMPT;
+    ad.filename_buffer[0] = '\0';
+    ad.filename_pos = 0;
+
+    /* Simulate typing "my-decal" plus invalid chars (space, dot) */
+    InputState in = no_input();
+    const char *typed = "my-decal .";  /* space and dot must be rejected */
+    strncpy(in.text_input, typed, sizeof(in.text_input) - 1);
+    in.text_input_len = (int)strlen(typed);
+
+    asset_designer_update(&ad, &in);
+
+    /* Only [A-Za-z0-9_-] chars survive: "my-decal" */
+    assert_string_equal(ad.filename_buffer, "my-decal");
+    assert_int_equal(ad.filename_pos, 8);
+
+    asset_designer_destroy(&ad);
+}
+
+/**
+ * test_save_prompt_backspace — Erase key removes the last char.
+ */
+static void test_save_prompt_backspace(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(5, 5);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    ad.mode = AD_SAVE_PROMPT;
+    strncpy(ad.filename_buffer, "abc", AD_FILENAME_MAX - 1);
+    ad.filename_pos = 3;
+
+    InputState in = no_input();
+    in.erase = true;
+    asset_designer_update(&ad, &in);
+
+    assert_string_equal(ad.filename_buffer, "ab");
+    assert_int_equal(ad.filename_pos, 2);
+
+    asset_designer_destroy(&ad);
+}
+
+/**
+ * test_save_prompt_esc_cancels — Esc in save-prompt returns to edit mode
+ * and clears the filename buffer.
+ */
+static void test_save_prompt_esc_cancels(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(5, 5);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    ad.mode = AD_SAVE_PROMPT;
+    strncpy(ad.filename_buffer, "partial", AD_FILENAME_MAX - 1);
+    ad.filename_pos = 7;
+
+    InputState in = no_input();
+    in.esc = true;
+    asset_designer_update(&ad, &in);
+
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
+    assert_int_equal(ad.filename_buffer[0], '\0');
+    assert_int_equal(ad.filename_pos, 0);
+
+    asset_designer_destroy(&ad);
+}
+
+/**
+ * test_save_prompt_enter_commits_valid — Enter in AD_SAVE_PROMPT with a valid
+ * filename saves the file, sets current_filename, clears dirty, and returns
+ * mode to AD_DECAL_EDIT.
+ *
+ * This is the primary regression test for the text-input bug:
+ * if SDL_StartTextInput() was never called, text_input stays empty and
+ * this flow is never exercised at runtime.  The logic path is tested
+ * independently of SDL's text event pipeline.
+ */
+static void test_save_prompt_enter_commits_valid(void **state) {
+    (void)state;
+
+    const char *basename = "test_commit_tmp";
+    char path[128];
+    snprintf(path, sizeof(path), "%s%s.txt", AD_DECALS_DIR, basename);
+    remove(path);
+
+    EngineConfig cfg = make_cfg(4, 3);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    /* Enter save-prompt with a pre-typed valid name */
+    ad.mode = AD_SAVE_PROMPT;
+    strncpy(ad.filename_buffer, basename, AD_FILENAME_MAX - 1);
+    ad.filename_pos = (int)strlen(basename);
+    ad.dirty = 1;
+
+    /* Press Enter */
+    InputState in = no_input();
+    in.confirm = true;
+    asset_designer_update(&ad, &in);
+
+    /* Mode must return to edit */
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
+    /* Dirty must be cleared after successful save */
+    assert_int_equal(ad.dirty, 0);
+    /* current_filename must be set */
+    assert_string_equal(ad.current_filename, basename);
+    /* Buffer must be cleared after successful save */
+    assert_int_equal(ad.filename_buffer[0], '\0');
+    assert_int_equal(ad.filename_pos, 0);
+    /* The file must exist on disk */
+    FILE *f = fopen(path, "r");
+    assert_non_null(f);
+    if (f) fclose(f);
+
+    asset_designer_destroy(&ad);
+    remove(path);
+}
+
+/**
+ * test_save_prompt_enter_rejects_invalid — Enter in AD_SAVE_PROMPT with an
+ * invalid filename sets a status message and stays in save-prompt mode.
+ * No file should be created.
+ */
+static void test_save_prompt_enter_rejects_invalid(void **state) {
+    (void)state;
+
+    const char *bad_names[] = { "", "my file", "..", "../etc", "bad.name" };
+    size_t n = sizeof(bad_names) / sizeof(bad_names[0]);
+
+    EngineConfig cfg = make_cfg(4, 3);
+
+    for (size_t i = 0; i < n; i++) {
+        AssetDesignerState ad;
+        asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+        ad.mode = AD_SAVE_PROMPT;
+        strncpy(ad.filename_buffer, bad_names[i], AD_FILENAME_MAX - 1);
+        ad.filename_pos = (int)strlen(bad_names[i]);
+
+        InputState in = no_input();
+        in.confirm = true;
+        asset_designer_update(&ad, &in);
+
+        /* Must stay in save-prompt */
+        assert_int_equal(ad.mode, (int)AD_SAVE_PROMPT);
+        /* Status message must be set */
+        assert_true(ad.status_frames > 0);
+
+        asset_designer_destroy(&ad);
+    }
+}
+
+/**
+ * test_init_mode_and_filename — Fresh init has AD_DECAL_EDIT mode and
+ * empty current_filename.
+ */
+static void test_init_mode_and_filename(void **state) {
+    (void)state;
+
+    EngineConfig cfg = make_cfg(10, 8);
+    AssetDesignerState ad;
+    asset_designer_init(&ad, &cfg, APP_STATE_MAIN_MENU);
+
+    assert_int_equal(ad.mode, (int)AD_DECAL_EDIT);
+    assert_int_equal(ad.current_filename[0], '\0');
+    assert_int_equal(ad.filename_buffer[0],  '\0');
+    assert_int_equal(ad.filename_pos, 0);
+
+    asset_designer_destroy(&ad);
+}
+
+/* ===================================================================
  *  Entry point
  * =================================================================== */
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        /* --- Init --- */
         cmocka_unit_test(test_init_defaults),
         cmocka_unit_test(test_init_clamps_large),
         cmocka_unit_test(test_init_clamps_small),
+        cmocka_unit_test(test_init_mode_and_filename),
+        /* --- Cursor --- */
         cmocka_unit_test(test_cursor_moves_all_directions),
         cmocka_unit_test(test_cursor_clamps_at_zero),
         cmocka_unit_test(test_cursor_clamps_at_max),
+        /* --- Place / erase --- */
         cmocka_unit_test(test_place_glyph_marks_dirty),
         cmocka_unit_test(test_erase_marks_dirty),
         cmocka_unit_test(test_place_space_no_dirty),
+        /* --- Glyph palette --- */
         cmocka_unit_test(test_glyph_cycle_forward),
         cmocka_unit_test(test_glyph_cycle_backward),
         cmocka_unit_test(test_glyph_cycle_wraps),
+        /* --- Exit --- */
         cmocka_unit_test(test_esc_clean_returns_exit),
         cmocka_unit_test(test_esc_dirty_returns_confirm),
+        /* --- Save / Load --- */
         cmocka_unit_test(test_save_load_roundtrip),
-        cmocka_unit_test(test_save_no_dirty_no_overwrite),
-        cmocka_unit_test(test_load_missing_no_crash),
+        cmocka_unit_test(test_f5_no_filename_enters_save_prompt),
+        cmocka_unit_test(test_f5_with_current_filename_saves_directly),
+        cmocka_unit_test(test_f9_enters_load_select),
+        /* --- Save-prompt sub-mode --- */
+        cmocka_unit_test(test_f10_always_enters_save_prompt),
+        cmocka_unit_test(test_f10_prefills_current_filename),
+        cmocka_unit_test(test_save_prompt_text_input),
+        cmocka_unit_test(test_save_prompt_backspace),
+        cmocka_unit_test(test_save_prompt_esc_cancels),
+        cmocka_unit_test(test_save_prompt_enter_commits_valid),
+        cmocka_unit_test(test_save_prompt_enter_rejects_invalid),
+        /* --- Filename validation --- */
+        cmocka_unit_test(test_validate_basename_accepts_valid),
+        cmocka_unit_test(test_validate_basename_rejects_empty),
+        cmocka_unit_test(test_validate_basename_rejects_dotdot),
+        cmocka_unit_test(test_validate_basename_rejects_slash),
+        cmocka_unit_test(test_validate_basename_rejects_bad_chars),
+        /* --- Destroy --- */
         cmocka_unit_test(test_destroy_idempotent),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

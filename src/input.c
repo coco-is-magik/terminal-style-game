@@ -72,6 +72,9 @@ void input_process(InputState *input, bool headless_mode) {
     input->load       = false;
     input->prev_glyph = false;
     input->next_glyph = false;
+    input->save_as    = false;
+    input->text_input[0]  = '\0';
+    input->text_input_len = 0;
 
     /* ---- Poll the SDL event queue ---- */
     SDL_Event e;
@@ -125,10 +128,22 @@ void input_process(InputState *input, bool headless_mode) {
                     case SDLK_E:
                         if (!e.key.repeat) input->next_glyph = true;
                         break;
+                    case SDLK_F10:
+                        if (!e.key.repeat) input->save_as = true;
+                        break;
                     default:
                         break;
                 }
             }
+            /* Text typed this frame — used for filename entry in designer */
+            else if (e.type == SDL_EVENT_TEXT_INPUT) {
+                const char *t = e.text.text;
+                while (*t && input->text_input_len < 63) {
+                    input->text_input[input->text_input_len++] = *t++;
+                }
+                input->text_input[input->text_input_len] = '\0';
+            }
+
             /* Relative mouse motion → look around.
              * xrel/yrel are the delta from the last mouse position in
              * pixels.  These are accumulated across multiple motion events

@@ -237,6 +237,12 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         return NULL;
     }
 
+    /* Enable SDL text input so SDL_EVENT_TEXT_INPUT fires for all windows.
+     * This is required for the Asset Designer save-prompt to receive typed
+     * characters.  We leave it enabled globally — consuming code (asset_designer.c)
+     * reads text_input only when in AD_SAVE_PROMPT mode. */
+    SDL_StartTextInput(ren->window);
+
     return ren;
 }
 

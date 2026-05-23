@@ -41,8 +41,15 @@ typedef struct {
     bool erase;         /* Backspace/Delete — erase glyph at cursor, edge-triggered */
     bool save;          /* F5 — autosave current decal, edge-triggered */
     bool load;          /* F9 — autoload saved decal, edge-triggered */
-    bool prev_glyph;    /* Q — cycle glyph palette backward, edge-triggered */
-    bool next_glyph;    /* E — cycle glyph palette forward, edge-triggered */
+    bool prev_glyph;    /* Q   — cycle glyph palette backward, edge-triggered */
+    bool next_glyph;    /* E   — cycle glyph palette forward, edge-triggered */
+    bool save_as;       /* F10 — always enter Save-As prompt, edge-triggered */
+
+    /* Text typed this frame (from SDL_EVENT_TEXT_INPUT).
+     * Cleared at the start of every frame.  nul-terminated.
+     * Only populated in interactive mode; empty string in headless mode. */
+    char text_input[64];
+    int  text_input_len;
 } InputState;
 
 /**
