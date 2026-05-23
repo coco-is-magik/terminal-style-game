@@ -37,6 +37,7 @@
 #include "lighting.h"      /* lighting_update() — per-frame light propagation on the map */
 #include "ui_asset.h"      /* UIButtonAsset, ui_asset_load/destroy, ui_button_render */
 #include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
+#include "asset_designer.h" /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
 #include <stdlib.h>        /* atof() */
 #include <string.h>        /* strcmp() */
@@ -235,7 +236,8 @@ static const MenuDef MENU_DEFS[] = {
     /* [MENU_MAIN]         */ {3, {1,2,3,0}, {"START GAME","ASSET EDITOR","QUIT",NULL}, NULL},
     /* [MENU_PAUSE]        */ {3, {4,5,6,0}, {"RESUME","MAIN MENU","QUIT",NULL},        "-- PAUSED --"},
     /* [MENU_EDITOR]       */ {2, {4,5,0,0}, {"BACK TO EDITOR","MAIN MENU",NULL,NULL},  "-- EDITOR --"},
-    /* [MENU_CONFIRM_QUIT] */ {2, {7,8,0,0}, {"YES","NO",NULL,NULL},                    "QUIT? ARE YOU SURE?"},
+    /* [MENU_CONFIRM_QUIT]           */ {2, {7,8,0,0}, {"YES","NO",NULL,NULL},                      "QUIT? ARE YOU SURE?"},
+    /* [MENU_DESIGNER_EXIT_CONFIRM]  */ {2, {7,8,0,0}, {"DISCARD CHANGES","CANCEL",NULL,NULL},      "UNSAVED CHANGES"},
 };
 
 /**
@@ -441,6 +443,7 @@ int app_main(int argc, char* argv[]) {
     PerfStats perf_stats;           /* Rolling one-second performance window */
     perf_stats_init(&perf_stats);
     InputState input = {0};         /* All fields zero-initialised (quit=false, etc.) */
+    AssetDesignerState ad_state = {0}; /* Decal canvas editor; init'd on entry, destroy'd on exit */
 
     /* High-resolution timer: used to enforce frame budget and detect duration expiry */
     uint64_t initial_time = SDL_GetPerformanceCounter();
@@ -533,9 +536,10 @@ int app_main(int argc, char* argv[]) {
                     if (sel == 0) {          /* Start Game */
                         menu_stack_clear(&ms);
                         app_state = APP_STATE_PLAYING;
-                    } else if (sel == 1) {   /* Asset Editor */
+                    } else if (sel == 1) {   /* Asset Designer */
                         menu_stack_clear(&ms);
-                        app_state = APP_STATE_EDITOR;
+                        asset_designer_init(&ad_state, cfg, APP_STATE_MAIN_MENU);
+                        app_state = APP_STATE_ASSET_DESIGNER;
                     } else {                 /* Quit → confirm dialog */
                         menu_stack_push(&ms, MENU_CONFIRM_QUIT);
                     }
@@ -563,9 +567,31 @@ int app_main(int argc, char* argv[]) {
                     } else {                 /* No → pop confirm */
                         menu_stack_pop(&ms);
                     }
+                } else if (active_menu == MENU_DESIGNER_EXIT_CONFIRM) {
+                    if (sel == 0) {          /* Discard → destroy and exit designer */
+                        asset_designer_destroy(&ad_state);
+                        menu_stack_clear(&ms);
+                        app_state = APP_STATE_MAIN_MENU;
+                        menu_stack_push(&ms, MENU_MAIN);
+                    } else {                 /* Cancel → back to designer */
+                        menu_stack_pop(&ms);
+                    }
                 }
                 /* Refresh active_menu after potential state change */
                 active_menu = menu_stack_peek(&ms);
+            }
+        }
+
+        /* --- 8e.5 Asset designer update (when no menu is overlaying it) --- */
+        if (app_state == APP_STATE_ASSET_DESIGNER && menu_stack_peek(&ms) == MENU_NONE) {
+            AssetDesignerResult ad_result = asset_designer_update(&ad_state, &input);
+            if (ad_result == AD_RESULT_EXIT) {
+                asset_designer_destroy(&ad_state);
+                menu_stack_clear(&ms);
+                app_state = APP_STATE_MAIN_MENU;
+                menu_stack_push(&ms, MENU_MAIN);
+            } else if (ad_result == AD_RESULT_CONFIRM_DISCARD) {
+                menu_stack_push(&ms, MENU_DESIGNER_EXIT_CONFIRM);
             }
         }
 
@@ -603,6 +629,9 @@ int app_main(int argc, char* argv[]) {
             grid_print(grid, 2, 2,
                        "ASSET EDITOR (placeholder)\nPress ESC for editor menu",
                        ae_fg, ae_bg);
+
+        } else if (app_state == APP_STATE_ASSET_DESIGNER) {
+            asset_designer_render(&ad_state, grid);
 
         } else {
             /* APP_STATE_MAIN_MENU with empty stack — should not happen, clear only */
@@ -665,6 +694,7 @@ int app_main(int argc, char* argv[]) {
     /* ================================================================
      *  9. Cleanup — release all resources
      * ================================================================ */
+    asset_designer_destroy(&ad_state);
     for (int i = 1; i < BTN_COUNT; i++) {
         ui_asset_destroy(btns[i]);
     }

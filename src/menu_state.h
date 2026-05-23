@@ -33,8 +33,9 @@ typedef enum {
     MENU_MAIN,             /* Main menu: Start Game, Asset Editor, Quit */
     MENU_PAUSE,            /* Pause menu: Resume, Main Menu, Quit */
     MENU_EDITOR,           /* Editor menu: Back to Editor, Main Menu */
-    MENU_CONFIRM_QUIT,     /* Quit confirmation: Yes, No */
-    MENU_ID_COUNT          /* Sentinel — total number of valid MenuId values */
+    MENU_CONFIRM_QUIT,            /* Quit confirmation: Yes, No */
+    MENU_DESIGNER_EXIT_CONFIRM,   /* Decal designer discard-edits prompt: Discard, Cancel */
+    MENU_ID_COUNT                 /* Sentinel — total number of valid MenuId values */
 } MenuId;
 
 /** Maximum menus that may be simultaneously stacked (nested dialogs) */

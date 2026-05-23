@@ -47,6 +47,10 @@ typedef struct {
     int default_material_id;   /* Material for non-digit map chars (default 1) */
     int default_palette_id;    /* Parsed setting; currently unused by asset lookup */
 
+    /* ---- Asset Designer ---- */
+    int asset_canvas_cols;   /* Canvas width for the decal editor (default 20) */
+    int asset_canvas_rows;   /* Canvas height for the decal editor (default 12) */
+
     /* ---- Debug ---- */
     bool debug_display_enabled;       /* Show HUD overlay (default true) */
 } EngineConfig;
@@ -77,9 +81,10 @@ typedef enum {
 /* ---- App state enum ---- */
 
 typedef enum {
-    APP_STATE_MAIN_MENU,     /* Main menu: button selection */
-    APP_STATE_PLAYING,       /* In-game: raycast world rendering */
-    APP_STATE_EDITOR   /* Asset editor (placeholder) */
+    APP_STATE_MAIN_MENU,        /* Main menu: button selection */
+    APP_STATE_PLAYING,          /* In-game: raycast world rendering */
+    APP_STATE_EDITOR,           /* Map editor (placeholder) */
+    APP_STATE_ASSET_DESIGNER    /* Decal canvas editor */
 } AppState;
 
 #endif /* CONFIG_H */

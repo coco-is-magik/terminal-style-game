@@ -33,6 +33,16 @@ typedef struct {
     bool down;              /* Down arrow key — edge-triggered */
     bool confirm;           /* Enter key — edge-triggered */
     bool esc;               /* ESC key — edge-triggered: true for one frame on press (non-repeat) */
+
+    /* ---- Asset Designer input (ignored outside designer state) ---- */
+    bool arrow_left;    /* Left arrow key — edge-triggered, non-repeat */
+    bool arrow_right;   /* Right arrow key — edge-triggered, non-repeat */
+    bool place;         /* Space bar — place glyph at cursor, edge-triggered */
+    bool erase;         /* Backspace/Delete — erase glyph at cursor, edge-triggered */
+    bool save;          /* F5 — autosave current decal, edge-triggered */
+    bool load;          /* F9 — autoload saved decal, edge-triggered */
+    bool prev_glyph;    /* Q — cycle glyph palette backward, edge-triggered */
+    bool next_glyph;    /* E — cycle glyph palette forward, edge-triggered */
 } InputState;
 
 /**

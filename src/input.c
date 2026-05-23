@@ -60,10 +60,18 @@ void input_process(InputState *input, bool headless_mode) {
     input->mouse_dy = 0.0f;
     /* Edge-triggered navigation fields: reset each frame so they are true
      * for exactly one frame per key press (non-repeat only). */
-    input->up      = false;
-    input->down    = false;
-    input->confirm = false;
-    input->esc     = false;
+    input->up         = false;
+    input->down       = false;
+    input->confirm    = false;
+    input->esc        = false;
+    input->arrow_left  = false;
+    input->arrow_right = false;
+    input->place      = false;
+    input->erase      = false;
+    input->save       = false;
+    input->load       = false;
+    input->prev_glyph = false;
+    input->next_glyph = false;
 
     /* ---- Poll the SDL event queue ---- */
     SDL_Event e;
@@ -92,6 +100,30 @@ void input_process(InputState *input, bool headless_mode) {
                         break;
                     case SDLK_RETURN:
                         if (!e.key.repeat) input->confirm = true;
+                        break;
+                    case SDLK_LEFT:
+                        if (!e.key.repeat) input->arrow_left = true;
+                        break;
+                    case SDLK_RIGHT:
+                        if (!e.key.repeat) input->arrow_right = true;
+                        break;
+                    case SDLK_SPACE:
+                        if (!e.key.repeat) input->place = true;
+                        break;
+                    case SDLK_BACKSPACE:
+                        if (!e.key.repeat) input->erase = true;
+                        break;
+                    case SDLK_F5:
+                        if (!e.key.repeat) input->save = true;
+                        break;
+                    case SDLK_F9:
+                        if (!e.key.repeat) input->load = true;
+                        break;
+                    case SDLK_Q:
+                        if (!e.key.repeat) input->prev_glyph = true;
+                        break;
+                    case SDLK_E:
+                        if (!e.key.repeat) input->next_glyph = true;
                         break;
                     default:
                         break;

@@ -83,6 +83,10 @@ void config_init_defaults(void) {
     g_config.default_material_id = 1;
     g_config.default_palette_id  = 1;
 
+    /* ---- Asset Designer ---- */
+    g_config.asset_canvas_cols = 20;
+    g_config.asset_canvas_rows = 12;
+
     /* ---- Debug ---- */
     g_config.debug_display_enabled = true;
 }
@@ -156,6 +160,10 @@ static void parse_line(char *line) {
     /* --- Default assets (integer values) --- */
     else if (strcmp(key, "default_material_id") == 0) g_config.default_material_id = atoi(val);
     else if (strcmp(key, "default_palette_id")  == 0) g_config.default_palette_id  = atoi(val);
+
+    /* --- Asset Designer canvas size (integer values) --- */
+    else if (strcmp(key, "asset_canvas_cols") == 0) g_config.asset_canvas_cols = atoi(val);
+    else if (strcmp(key, "asset_canvas_rows") == 0) g_config.asset_canvas_rows = atoi(val);
 
     /* --- Debug toggle (0 = false, anything else = true) --- */
     else if (strcmp(key, "debug_display_enabled") == 0) g_config.debug_display_enabled = (atoi(val) != 0);
