@@ -44,6 +44,7 @@ typedef struct {
     bool prev_glyph;    /* Q   — cycle glyph palette backward, edge-triggered */
     bool next_glyph;    /* E   — cycle glyph palette forward, edge-triggered */
     bool save_as;       /* F10 — always enter Save-As prompt, edge-triggered */
+    bool tab;           /* Tab — toggle canvas/metadata focus, edge-triggered */
 
     /* Text typed this frame (from SDL_EVENT_TEXT_INPUT).
      * Cleared at the start of every frame.  nul-terminated.

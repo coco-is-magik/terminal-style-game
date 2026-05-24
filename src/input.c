@@ -73,6 +73,7 @@ void input_process(InputState *input, bool headless_mode) {
     input->prev_glyph = false;
     input->next_glyph = false;
     input->save_as    = false;
+    input->tab        = false;
     input->text_input[0]  = '\0';
     input->text_input_len = 0;
 
@@ -130,6 +131,9 @@ void input_process(InputState *input, bool headless_mode) {
                         break;
                     case SDLK_F10:
                         if (!e.key.repeat) input->save_as = true;
+                        break;
+                    case SDLK_TAB:
+                        if (!e.key.repeat) input->tab = true;
                         break;
                     default:
                         break;

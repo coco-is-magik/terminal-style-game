@@ -9,6 +9,7 @@
  *   AD_DECAL_EDIT   — normal canvas editing (cursor, place, erase, palette)
  *   AD_SAVE_PROMPT  — user types a basename for the save file; Enter saves
  *   AD_LOAD_SELECT  — user navigates a sorted file list; Enter loads selected
+ *   AD_META_EDIT    — user types a replacement value for a metadata field
  *
  * Lifecycle:
  *   1. Allocate (stack or static):   AssetDesignerState ad;
@@ -27,6 +28,17 @@
  *   All files are saved to / loaded from "assets/decals/<basename>.txt".
  *   <basename> must satisfy ad_validate_basename(): [A-Za-z0-9_-] only,
  *   no dots, no slashes, no empty string.  .txt is appended automatically.
+ *
+ * Surface ownership model:
+ *   editor_surface  — editor-facing source of truth; may be AD_SURFACE_ALL.
+ *   decal.surface   — runtime/export field; only written at save/load boundaries
+ *                     via a temporary copy — never mutated during editing.
+ *
+ * Surface=All export:
+ *   When editor_surface == AD_SURFACE_ALL, saving writes one file per concrete
+ *   surface: <basename>_wall.txt, <basename>_floor.txt, <basename>_ceil.txt.
+ *   Each file contains its respective concrete surface value.
+ *   current_filename is set to <basename> (the group name).
  */
 
 #ifndef ASSET_DESIGNER_H
@@ -36,6 +48,24 @@
 #include "config.h"    /* EngineConfig, AppState */
 #include "input.h"     /* InputState */
 #include "grid.h"      /* Grid */
+
+/* ---- Editor surface enum ---- */
+
+/**
+ * AdSurface — Editor-facing surface selector
+ *
+ * Includes AD_SURFACE_ALL as an export-only convenience value.
+ * Does NOT correspond to any runtime DecalSurface value.
+ *
+ * Map to DecalSurface via the AD_CONCRETE_SURFACES table in asset_designer.c.
+ */
+typedef enum {
+    AD_SURFACE_WALL    = 0,   /* maps to DECAL_SURFACE_WALL    */
+    AD_SURFACE_FLOOR   = 1,   /* maps to DECAL_SURFACE_FLOOR   */
+    AD_SURFACE_CEILING = 2,   /* maps to DECAL_SURFACE_CEILING */
+    AD_SURFACE_ALL     = 3,   /* editor-only: export one file per concrete surface */
+    AD_SURFACE_COUNT   = 4    /* total number of AdSurface values (for cycling) */
+} AdSurface;
 
 /* ---- Constants ---- */
 
@@ -59,6 +89,11 @@
 /** How many frames a status message stays visible (~1.5 s at 120 fps) */
 #define AD_STATUS_FRAMES 180
 
+/** Number of editable rows in the metadata panel (surface..material_id) */
+#define AD_META_EDIT_COUNT  6
+/** Total metadata rows including read-only cols/rows display */
+#define AD_META_TOTAL_COUNT 8
+
 /* ---- Sub-mode enum ---- */
 
 /**
@@ -67,11 +102,13 @@
  * AD_DECAL_EDIT   — normal canvas editor
  * AD_SAVE_PROMPT  — filename input overlay (press Enter to save, Esc to cancel)
  * AD_LOAD_SELECT  — file list overlay (arrows to navigate, Enter to load)
+ * AD_META_EDIT    — metadata field text-entry overlay (Enter commits, Esc cancels)
  */
 typedef enum {
     AD_DECAL_EDIT  = 0,
     AD_SAVE_PROMPT = 1,
-    AD_LOAD_SELECT = 2
+    AD_LOAD_SELECT = 2,
+    AD_META_EDIT   = 3
 } AssetDesignerMode;
 
 /* ---- Result enum ---- */
@@ -134,6 +171,28 @@ typedef struct {
     int  file_count;
     int  file_sel_idx;           /* currently highlighted entry */
 
+    /* Metadata panel focus and selection */
+    int metadata_focus;      /* 0 = canvas focus, 1 = metadata panel focus */
+    int metadata_row;        /* currently selected metadata row, 0..AD_META_EDIT_COUNT-1 */
+
+    /* Editor-facing surface (source of truth for surface during editing).
+     * May be AD_SURFACE_ALL.  decal.surface is only set at save/load boundaries. */
+    AdSurface editor_surface;
+
+    /* Material to apply to newly placed glyphs (1..255).
+     * Editor-only state; does not affect existing cells unless the user re-places them. */
+    int current_material_id;
+
+    /* Metadata direct-edit (AD_META_EDIT mode) state.
+     * Entered by pressing Enter on an editable metadata row in metadata focus.
+     * edit_buffer holds the user-typed text; previous value is snapshotted
+     * in meta_prev_* fields so Esc can restore it. */
+    char meta_edit_buffer[32];   /* mutable text being typed */
+    int  meta_edit_len;          /* number of valid chars in meta_edit_buffer */
+    double  meta_prev_double;    /* snapshot for width/height/step_u/step_v */
+    int     meta_prev_int;       /* snapshot for material_id */
+    AdSurface meta_prev_surface; /* snapshot for surface */
+
     /* Transient status message and display-frame countdown */
     char status_msg[128];
     int  status_frames;
@@ -181,8 +240,9 @@ AssetDesignerResult asset_designer_update(AssetDesignerState *s,
  * asset_designer_render() — Draw the editor to the grid
  *
  * In AD_DECAL_EDIT: draws canvas, cursor, glyph indicator, status bar.
- * In AD_SAVE_PROMPT: draws canvas dimmed + filename prompt overlay.
- * In AD_LOAD_SELECT: draws canvas dimmed + file list overlay.
+ * In AD_SAVE_PROMPT: draws canvas + filename prompt overlay.
+ * In AD_LOAD_SELECT: draws canvas + file list overlay.
+ * In AD_META_EDIT:   draws canvas + metadata edit prompt overlay.
  */
 void asset_designer_render(const AssetDesignerState *s, Grid *grid);
 
