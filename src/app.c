@@ -584,7 +584,7 @@ int app_main(int argc, char* argv[]) {
 
         /* --- 8e.5 Asset designer update (when no menu is overlaying it) --- */
         if (app_state == APP_STATE_ASSET_DESIGNER && menu_stack_peek(&ms) == MENU_NONE) {
-            AssetDesignerResult ad_result = asset_designer_update(&ad_state, &input);
+            AssetDesignerResult ad_result = asset_designer_update(&ad_state, &input, &assets);
             if (ad_result == AD_RESULT_EXIT) {
                 asset_designer_destroy(&ad_state);
                 menu_stack_clear(&ms);
@@ -631,7 +631,7 @@ int app_main(int argc, char* argv[]) {
                        ae_fg, ae_bg);
 
         } else if (app_state == APP_STATE_ASSET_DESIGNER) {
-            asset_designer_render(&ad_state, grid);
+            asset_designer_render(&ad_state, grid, &assets);
 
         } else {
             /* APP_STATE_MAIN_MENU with empty stack — should not happen, clear only */

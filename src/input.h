@@ -41,10 +41,20 @@ typedef struct {
     bool erase;         /* Backspace/Delete — erase glyph at cursor, edge-triggered */
     bool save;          /* F5 — autosave current decal, edge-triggered */
     bool load;          /* F9 — autoload saved decal, edge-triggered */
-    bool prev_glyph;    /* Q   — cycle glyph palette backward, edge-triggered */
-    bool next_glyph;    /* E   — cycle glyph palette forward, edge-triggered */
+    bool prev_glyph;    /* [ — cycle glyph palette backward, edge-triggered */
+    bool next_glyph;    /* ] — cycle glyph palette forward, edge-triggered */
     bool save_as;       /* F10 — always enter Save-As prompt, edge-triggered */
     bool tab;           /* Tab — toggle canvas/metadata focus, edge-triggered */
+  /* Held state — physically depressed this frame.
+   * Filled from SDL_GetKeyboardState() snapshot.
+   * Used by asset_designer for auto-repeat and paint-while-moving.
+   * All other consumers should ignore these fields. */
+  bool held_up;           /* Up arrow physically held */
+  bool held_down;         /* Down arrow physically held */
+  bool held_arrow_left;   /* Left arrow physically held */
+  bool held_arrow_right;  /* Right arrow physically held */
+  bool held_place;        /* Space bar physically held */
+  bool held_erase;        /* Backspace physically held */
 
     /* Text typed this frame (from SDL_EVENT_TEXT_INPUT).
      * Cleared at the start of every frame.  nul-terminated.

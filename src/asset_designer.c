@@ -226,6 +226,136 @@ static void ad_load_named(AssetDesignerState *s, const char *basename) {
  * =================================================================== */
 
 
+static void ad_resize_pattern(AssetDesignerState *s, int new_cols, int new_rows) {
+    /* Clamp to valid canvas bounds */
+    if (new_cols < 1) new_cols = 1;
+    if (new_cols > AD_MAX_CANVAS_COLS) new_cols = AD_MAX_CANVAS_COLS;
+    if (new_rows < 1) new_rows = 1;
+    if (new_rows > AD_MAX_CANVAS_ROWS) new_rows = AD_MAX_CANVAS_ROWS;
+
+    int old_cols = s->canvas_cols;
+    int old_rows = s->canvas_rows;
+    if (new_cols == old_cols && new_rows == old_rows) return;  /* no-op */
+
+    PatternCell *new_pat = (PatternCell *)calloc(
+        (size_t)(new_cols * new_rows), sizeof(PatternCell));
+    if (!new_pat) return;  /* allocation failure: leave state unchanged */
+
+    /* Copy the overlapping region from the old pattern */
+    int copy_cols = old_cols < new_cols ? old_cols : new_cols;
+    int copy_rows = old_rows < new_rows ? old_rows : new_rows;
+    for (int r = 0; r < copy_rows; r++) {
+        for (int c = 0; c < copy_cols; c++) {
+            new_pat[r * new_cols + c] = s->decal.pattern[r * old_cols + c];
+        }
+    }
+
+    /* Fill expanded cells (not in the overlap) with space + current material */
+    for (int r = 0; r < new_rows; r++) {
+        for (int c = 0; c < new_cols; c++) {
+            if (r >= copy_rows || c >= copy_cols) {
+                new_pat[r * new_cols + c].glyph = ' ';
+                new_pat[r * new_cols + c].material_id =
+                    (uint8_t)s->current_material_id;
+            }
+        }
+    }
+
+    free(s->decal.pattern);
+    s->decal.pattern       = new_pat;
+    s->decal.pattern_cols  = new_cols;
+    s->decal.pattern_rows  = new_rows;
+    s->canvas_cols         = new_cols;
+    s->canvas_rows         = new_rows;
+
+    /* Clamp cursor into the new bounds */
+    if (s->cursor_col >= new_cols) s->cursor_col = new_cols - 1;
+    if (s->cursor_row >= new_rows) s->cursor_row = new_rows - 1;
+
+    s->dirty = 1;
+}
+
+
+/* Returns the direction from a single-frame edge-triggered navigation input.
+ * 0=up, 1=down, 2=left, 3=right; returns -1 if no direction key was pressed. */
+static int ad_dir_from_edge_input(const InputState *input) {
+    if (input->up)          return 0;
+    if (input->down)        return 1;
+    if (input->arrow_left)  return 2;
+    if (input->arrow_right) return 3;
+    return -1;
+}
+
+/* Returns true if the given direction is currently physically held. */
+static bool ad_dir_is_held(const InputState *input, int dir) {
+    switch (dir) {
+        case 0: return input->held_up;
+        case 1: return input->held_down;
+        case 2: return input->held_arrow_left;
+        case 3: return input->held_arrow_right;
+        default: return false;
+    }
+}
+
+/* Moves the cursor one cell in the given direction.
+ * Returns true if movement actually occurred (i.e. not already at edge). */
+static bool ad_move_cursor_dir(AssetDesignerState *s, int dir) {
+    switch (dir) {
+        case 0:
+            if (s->cursor_row > 0) { s->cursor_row--; return true; }
+            break;
+        case 1:
+            if (s->cursor_row < s->canvas_rows - 1) { s->cursor_row++; return true; }
+            break;
+        case 2:
+            if (s->cursor_col > 0) { s->cursor_col--; return true; }
+            break;
+        case 3:
+            if (s->cursor_col < s->canvas_cols - 1) { s->cursor_col++; return true; }
+            break;
+        default:
+            break;
+    }
+    return false;
+}
+
+
+/* Returns true if glyph c is allowed by the selected material.
+ * If assets == NULL, all printable glyphs are allowed. */
+static bool ad_glyph_allowed(const AssetRegistry *assets,
+                               int material_id, char c) {
+    if (assets == NULL) return true;
+    const Material *mat = &assets->materials[material_id];
+    for (int g = 0; g < 4; g++) {
+        if ((char)mat->glyphs[g] == c) return true;
+    }
+    return false;
+}
+
+/* Returns the first allowed glyph for the material, or fallback if none. */
+static char ad_first_allowed_glyph(const AssetRegistry *assets,
+                                     int material_id, char fallback) {
+    if (assets == NULL) return fallback;
+    const Material *mat = &assets->materials[material_id];
+    for (int g = 0; g < 4; g++) {
+        if (mat->glyphs[g] && (char)mat->glyphs[g] != ' ') {
+            return (char)mat->glyphs[g];
+        }
+    }
+    return fallback;
+}
+
+/* Resets current_glyph to the first allowed material glyph if the current
+ * glyph is no longer allowed by the selected material. */
+static void ad_normalize_glyph(AssetDesignerState *s,
+                                 const AssetRegistry *assets) {
+    if (assets == NULL) return;
+    if (!ad_glyph_allowed(assets, s->current_material_id, s->current_glyph)) {
+        s->current_glyph = ad_first_allowed_glyph(
+            assets, s->current_material_id, '#');
+    }
+}
+
 /**
  * ad_adjust_metadata() — Adjust the selected metadata field by direction
  *
@@ -233,7 +363,8 @@ static void ad_load_named(AssetDesignerState *s, const char *basename) {
  * Only s->decal fields (rows 0-4) set dirty=1; current_material_id (row 5) does not,
  * because it is editor-only state and does not affect previously placed cells.
  */
-static void ad_adjust_metadata(AssetDesignerState *s, int direction) {
+static void ad_adjust_metadata(AssetDesignerState *s, int direction,
+                                const AssetRegistry *assets) {
     switch (s->metadata_row) {
         case 0: /* surface: cycle wall / floor / ceil / all */
             s->editor_surface = (AdSurface)(
@@ -265,7 +396,18 @@ static void ad_adjust_metadata(AssetDesignerState *s, int direction) {
             s->current_material_id += direction;
             if (s->current_material_id < 1)   s->current_material_id = 1;
             if (s->current_material_id > 255)  s->current_material_id = 255;
+            ad_normalize_glyph(s, assets);
             break;
+        case 6: { /* pattern_cols: clamp to [1, AD_MAX_CANVAS_COLS] */
+            int nc = s->canvas_cols + direction;
+            ad_resize_pattern(s, nc, s->canvas_rows);
+            break;
+        }
+        case 7: { /* pattern_rows: clamp to [1, AD_MAX_CANVAS_ROWS] */
+            int nr = s->canvas_rows + direction;
+            ad_resize_pattern(s, s->canvas_cols, nr);
+            break;
+        }
         default:
             break;
     }
@@ -276,7 +418,8 @@ static void ad_adjust_metadata(AssetDesignerState *s, int direction) {
  * =================================================================== */
 
 static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
-                                                const InputState *input) {
+                                                const InputState *input,
+                                                const AssetRegistry *assets) {
     /* Append valid chars from text input.
      * Accept digits, minus, dot (for floats/ints), lowercase letters (for surface names). */
     for (int i = 0; i < input->text_input_len; i++) {
@@ -364,7 +507,33 @@ static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
                     if (end != buf && *end == '\0' && v >= 1 && v <= 255) {
                         s->current_material_id = (int)v;
                         ok = 1;
+                        ad_normalize_glyph(s, assets);
                         /* Does NOT set dirty: current_material_id is editor-only state */
+                    }
+                }
+                break;
+            }
+            case 6: { /* pattern_cols: integer 1..AD_MAX_CANVAS_COLS */
+                if (buf[0] != '\0') {
+                    char *end;
+                    long v = strtol(buf, &end, 10);
+                    if (end != buf && *end == '\0' &&
+                        v >= 1 && v <= AD_MAX_CANVAS_COLS) {
+                        ad_resize_pattern(s, (int)v, s->canvas_rows);
+                        ok = 1;
+                        /* dirty is set by ad_resize_pattern if dims changed */
+                    }
+                }
+                break;
+            }
+            case 7: { /* pattern_rows: integer 1..AD_MAX_CANVAS_ROWS */
+                if (buf[0] != '\0') {
+                    char *end;
+                    long v = strtol(buf, &end, 10);
+                    if (end != buf && *end == '\0' &&
+                        v >= 1 && v <= AD_MAX_CANVAS_ROWS) {
+                        ad_resize_pattern(s, s->canvas_cols, (int)v);
+                        ok = 1;
                     }
                 }
                 break;
@@ -383,6 +552,8 @@ static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
                 case 3: s->decal.glyph_step_u  = s->meta_prev_double;  break;
                 case 4: s->decal.glyph_step_v  = s->meta_prev_double;  break;
                 case 5: s->current_material_id = s->meta_prev_int;     break;
+                case 6: /* cols: ad_resize_pattern not called — no state to restore */ break;
+                case 7: /* rows: ad_resize_pattern not called — no state to restore */ break;
                 default: break;
             }
             ad_set_status(s, "Invalid value.");
@@ -402,6 +573,8 @@ static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
             case 3: s->decal.glyph_step_u  = s->meta_prev_double;  break;
             case 4: s->decal.glyph_step_v  = s->meta_prev_double;  break;
             case 5: s->current_material_id = s->meta_prev_int;     break;
+            case 6: /* no state was mutated during edit */ break;
+            case 7: /* no state was mutated during edit */ break;
             default: break;
         }
         s->meta_edit_buffer[0] = '\0';
@@ -413,7 +586,8 @@ static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
 }
 
 static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
-                                           const InputState *input) {
+                                           const InputState *input,
+                                           const AssetRegistry *assets) {
     /* Tab — toggle focus between canvas and metadata panel */
     if (input->tab) {
         s->metadata_focus = !s->metadata_focus;
@@ -423,8 +597,8 @@ static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
         /* ---- Metadata panel input ---- */
         if (input->up   && s->metadata_row > 0)                      s->metadata_row--;
         if (input->down && s->metadata_row < AD_META_EDIT_COUNT - 1) s->metadata_row++;
-        if (input->arrow_left)  ad_adjust_metadata(s, -1);
-        if (input->arrow_right) ad_adjust_metadata(s,  1);
+        if (input->arrow_left)  ad_adjust_metadata(s, -1, assets);
+        if (input->arrow_right) ad_adjust_metadata(s,  1, assets);
 
         /* Enter on a metadata row — snapshot current value and enter direct-edit */
         if (input->confirm) {
@@ -435,6 +609,8 @@ static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
                 case 3: s->meta_prev_double  = s->decal.glyph_step_u;    break;
                 case 4: s->meta_prev_double  = s->decal.glyph_step_v;    break;
                 case 5: s->meta_prev_int     = s->current_material_id;   break;
+                case 6: s->meta_prev_int     = s->canvas_cols;           break;
+                case 7: s->meta_prev_int     = s->canvas_rows;           break;
                 default: break;
             }
             /* Pre-fill buffer with current value */
@@ -463,6 +639,14 @@ static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
                     snprintf(s->meta_edit_buffer, sizeof(s->meta_edit_buffer),
                              "%d", s->current_material_id);
                     break;
+                case 6:
+                    snprintf(s->meta_edit_buffer, sizeof(s->meta_edit_buffer),
+                             "%d", s->canvas_cols);
+                    break;
+                case 7:
+                    snprintf(s->meta_edit_buffer, sizeof(s->meta_edit_buffer),
+                             "%d", s->canvas_rows);
+                    break;
                 default:
                     s->meta_edit_buffer[0] = '\0';
                     break;
@@ -472,27 +656,55 @@ static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
         }
     } else {
         /* ---- Canvas input ---- */
-        if (input->up         && s->cursor_row > 0)               s->cursor_row--;
-        if (input->down       && s->cursor_row < s->canvas_rows - 1) s->cursor_row++;
-        if (input->arrow_left && s->cursor_col > 0)               s->cursor_col--;
-        if (input->arrow_right&& s->cursor_col < s->canvas_cols - 1) s->cursor_col++;
+        /* Cursor movement with held-key auto-repeat.
+         *
+         * A: Edge trigger → move once immediately, arm the repeat timer
+         * B: Else if last direction is still held → decrement timer; move on expiry
+         * C: Else → disarm (no key held in the last direction)
+         */
+        bool moved = false;
+        int edge_dir = ad_dir_from_edge_input(input);
+        if (edge_dir >= 0) {
+            /* A: fresh press — move now and start repeat countdown */
+            moved = ad_move_cursor_dir(s, edge_dir);
+            s->repeat_dir   = edge_dir;
+            s->repeat_timer = AD_REPEAT_DELAY;
+        } else if (s->repeat_dir >= 0 && ad_dir_is_held(input, s->repeat_dir)) {
+            /* B: still holding last direction — count down and fire when ready */
+            if (s->repeat_timer > 0) {
+                s->repeat_timer--;
+            }
+            if (s->repeat_timer == 0) {
+                moved = ad_move_cursor_dir(s, s->repeat_dir);
+                s->repeat_timer = AD_REPEAT_RATE;
+            }
+        } else {
+            /* C: no relevant key held — disarm */
+            s->repeat_dir   = -1;
+            s->repeat_timer = 0;
+        }
 
-        /* Glyph palette cycling */
-        if (input->prev_glyph)
-            s->glyph_idx = (s->glyph_idx - 1 + AD_GLYPH_COUNT) % AD_GLYPH_COUNT;
-        if (input->next_glyph)
-            s->glyph_idx = (s->glyph_idx + 1) % AD_GLYPH_COUNT;
+        /* Paint/erase-while-moving: apply to the newly entered cell */
+        if (moved) {
+            int idx = s->cursor_row * s->canvas_cols + s->cursor_col;
+            if (input->held_place) {
+                s->decal.pattern[idx].glyph       = (uint8_t)s->current_glyph;
+                s->decal.pattern[idx].material_id = (uint8_t)s->current_material_id;
+                s->dirty = 1;
+            }
+            if (input->held_erase) {
+                s->decal.pattern[idx].glyph       = ' ';
+                s->decal.pattern[idx].material_id = (uint8_t)s->current_material_id;
+                s->dirty = 1;
+            }
+        }
 
         /* Place glyph — also writes current_material_id to the cell */
         if (input->place) {
             int idx = s->cursor_row * s->canvas_cols + s->cursor_col;
-            char g  = AD_GLYPHS[s->glyph_idx];
-            if (s->decal.pattern[idx].glyph       != (uint8_t)g ||
-                s->decal.pattern[idx].material_id != s->current_material_id) {
-                s->decal.pattern[idx].glyph       = (uint8_t)g;
-                s->decal.pattern[idx].material_id = s->current_material_id;
-                s->dirty = 1;
-            }
+            s->decal.pattern[idx].glyph       = (uint8_t)s->current_glyph;
+            s->decal.pattern[idx].material_id = (uint8_t)s->current_material_id;
+            s->dirty = 1;
         }
 
         /* Erase glyph */
@@ -501,6 +713,29 @@ static AssetDesignerResult ad_update_edit(AssetDesignerState *s,
             if (s->decal.pattern[idx].glyph != (uint8_t)' ') {
                 s->decal.pattern[idx].glyph = (uint8_t)' ';
                 s->dirty = 1;
+            }
+        }
+
+        /* Direct glyph typing from text_input.
+         * Skip space (handled by INPUT_PLACE),
+         * skip non-printable ASCII. */
+        {
+            for (int i = 0; i < input->text_input_len; i++) {
+                char c = input->text_input[i];
+                if (c == ' ' || c < 32 || c > 126) continue;
+                if (!ad_glyph_allowed(assets, s->current_material_id, c)) {
+                    snprintf(s->status_msg, sizeof(s->status_msg),
+                             "Glyph '%c' not allowed by material", c);
+                    s->status_frames = AD_STATUS_FRAMES;
+                    continue;
+                }
+                /* Place the glyph */
+                int idx = s->cursor_row * s->canvas_cols + s->cursor_col;
+                s->decal.pattern[idx].glyph       = (uint8_t)c;
+                s->decal.pattern[idx].material_id = (uint8_t)s->current_material_id;
+                s->dirty = 1;
+                s->current_glyph = c;   /* update current glyph on valid typed input */
+                /* Do NOT advance cursor */
             }
         }
     }
@@ -638,10 +873,12 @@ void asset_designer_init(AssetDesignerState *s,
 
     s->cursor_col          = 0;
     s->cursor_row          = 0;
-    s->glyph_idx           = 2;   /* '#' in " .#@XO+-=*" */
+    s->current_glyph       = '#';
     s->editor_surface      = AD_SURFACE_WALL;  /* editor surface default */
     s->current_material_id = 1;   /* default material for newly placed glyphs */
     s->dirty               = 0;
+    s->repeat_dir          = -1;
+    s->repeat_timer        = 0;
     s->mode                = AD_DECAL_EDIT;
     s->current_filename[0] = '\0';
     s->filename_buffer[0]  = '\0';
@@ -653,7 +890,8 @@ void asset_designer_destroy(AssetDesignerState *s) {
 }
 
 AssetDesignerResult asset_designer_update(AssetDesignerState *s,
-                                           const InputState *input) {
+                                           const InputState *input,
+                                           const AssetRegistry *assets) {
     if (!s || !input)         return AD_RESULT_NONE;
     if (!s->decal.pattern)    return AD_RESULT_NONE;
 
@@ -661,7 +899,7 @@ AssetDesignerResult asset_designer_update(AssetDesignerState *s,
 
     switch (s->mode) {
         case AD_DECAL_EDIT:
-            result = ad_update_edit(s, input);
+            result = ad_update_edit(s, input, assets);
             break;
         case AD_SAVE_PROMPT:
             result = ad_update_save_prompt(s, input);
@@ -670,7 +908,7 @@ AssetDesignerResult asset_designer_update(AssetDesignerState *s,
             result = ad_update_load_select(s, input);
             break;
         case AD_META_EDIT:
-            result = ad_update_meta_edit(s, input);
+            result = ad_update_meta_edit(s, input, assets);
             break;
         default:
             break;
@@ -685,7 +923,54 @@ AssetDesignerResult asset_designer_update(AssetDesignerState *s,
     return result;
 }
 
-void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
+/* ===================================================================
+ *  Modal box helpers (render only)
+ * =================================================================== */
+
+static void ad_fill_box(Grid *grid, int x, int y, int w, int h,
+                         SDL_Color fg, SDL_Color bg) {
+    for (int r = 0; r < h; r++) {
+        for (int c = 0; c < w; c++) {
+            if (x + c < grid->width && y + r < grid->height) {
+                grid_set(grid, x + c, y + r, ' ', fg, bg);
+            }
+        }
+    }
+}
+
+static void ad_draw_border(Grid *grid, int x, int y, int w, int h,
+                            SDL_Color fg, SDL_Color bg) {
+    /* corners */
+    if (x < grid->width && y < grid->height)
+        grid_set(grid, x,         y,         '+', fg, bg);
+    if (x + w - 1 < grid->width && y < grid->height)
+        grid_set(grid, x + w - 1, y,         '+', fg, bg);
+    if (x < grid->width && y + h - 1 < grid->height)
+        grid_set(grid, x,         y + h - 1, '+', fg, bg);
+    if (x + w - 1 < grid->width && y + h - 1 < grid->height)
+        grid_set(grid, x + w - 1, y + h - 1, '+', fg, bg);
+    /* top/bottom */
+    for (int c = 1; c < w - 1; c++) {
+        if (x + c < grid->width) {
+            if (y < grid->height)
+                grid_set(grid, x + c, y,         '-', fg, bg);
+            if (y + h - 1 < grid->height)
+                grid_set(grid, x + c, y + h - 1, '-', fg, bg);
+        }
+    }
+    /* left/right */
+    for (int r = 1; r < h - 1; r++) {
+        if (y + r < grid->height) {
+            if (x < grid->width)
+                grid_set(grid, x,         y + r, '|', fg, bg);
+            if (x + w - 1 < grid->width)
+                grid_set(grid, x + w - 1, y + r, '|', fg, bg);
+        }
+    }
+}
+
+void asset_designer_render(const AssetDesignerState *s, Grid *grid,
+                                const AssetRegistry *assets) {
     if (!s || !grid) return;
 
     SDL_Color bg_black  = {  0,   0,   0, 255};
@@ -720,20 +1005,57 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
     /* ---- Key hints (edit mode only) ---- */
     if (s->mode == AD_DECAL_EDIT) {
         grid_print(grid, CANVAS_X0, 1,
-                   "Arrows:Move  Spc:Place  Bksp:Erase  Q/E:Glyph"
-                   "  Tab:Meta  F5:Save  F9:Load  F10:SaveAs  Esc:Exit",
+                   "Arrows:Move  Spc:Place  Bksp:Erase"
+                   "  Tab:Meta  F5:Save  F9:Load  F10:SaveAs  Esc:Exit"
+                   "  Type glyph to paint  Space=stamp  Mat restricts glyphs",
                    fg_gray, bg_black);
     }
 
     /* ---- Glyph indicator ---- */
-    char cur_glyph = AD_GLYPHS[s->glyph_idx];
     char glyph_line[80];
     snprintf(glyph_line, sizeof(glyph_line),
              "Glyph:[%c]  Canvas:%dx%d  Cursor:(%d,%d)",
-             cur_glyph == ' ' ? '_' : cur_glyph,
+             s->current_glyph == ' ' ? '_' : s->current_glyph,
              s->canvas_cols, s->canvas_rows,
              s->cursor_col, s->cursor_row);
     grid_print(grid, CANVAS_X0, 2, glyph_line, fg_green, bg_black);
+
+    /* Canvas border (render-only, never saved) */
+    {
+        int bx = CANVAS_X0 - 1;
+        int by = CANVAS_Y0 - 1;
+        int bw = s->canvas_cols + 2;
+        int bh = s->canvas_rows + 2;
+        SDL_Color bfg = {128, 128, 128, 255};
+        SDL_Color bbg = {0, 0, 0, 255};
+        /* Top-left corner */
+        grid_set(grid, bx, by, '+', bfg, bbg);
+        /* Top-right corner */
+        if (bx + bw - 1 < grid->width)
+            grid_set(grid, bx + bw - 1, by, '+', bfg, bbg);
+        /* Bottom-left corner */
+        if (by + bh - 1 < grid->height)
+            grid_set(grid, bx, by + bh - 1, '+', bfg, bbg);
+        /* Bottom-right corner */
+        if (bx + bw - 1 < grid->width && by + bh - 1 < grid->height)
+            grid_set(grid, bx + bw - 1, by + bh - 1, '+', bfg, bbg);
+        /* Top and bottom horizontal lines */
+        for (int c = 1; c < bw - 1; c++) {
+            if (bx + c < grid->width) {
+                grid_set(grid, bx + c, by,          '-', bfg, bbg);
+                if (by + bh - 1 < grid->height)
+                    grid_set(grid, bx + c, by + bh - 1, '-', bfg, bbg);
+            }
+        }
+        /* Left and right vertical lines */
+        for (int r = 1; r < bh - 1; r++) {
+            if (by + r < grid->height) {
+                grid_set(grid, bx,          by + r, '|', bfg, bbg);
+                if (bx + bw - 1 < grid->width)
+                    grid_set(grid, bx + bw - 1, by + r, '|', bfg, bbg);
+            }
+        }
+    }
 
     /* ---- Canvas cells ---- */
     if (s->decal.pattern) {
@@ -743,18 +1065,41 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
                 int gy = CANVAS_Y0 + r;
                 if (gx >= grid->width || gy >= grid->height) continue;
 
-                uint8_t glyph = s->decal.pattern[r * s->canvas_cols + c].glyph;
+                PatternCell cell = s->decal.pattern[r * s->canvas_cols + c];
+                char ch = (char)cell.glyph;  /* stored glyph, space if empty */
                 bool is_cursor = (s->mode == AD_DECAL_EDIT) &&
                                  (r == s->cursor_row && c == s->cursor_col);
 
-                SDL_Color cell_fg = is_cursor ? bg_black : fg_white;
-                SDL_Color cell_bg = is_cursor ? bg_cursor : bg_black;
-                uint8_t   display = (glyph == (uint8_t)' ' && !is_cursor)
-                                    ? (uint8_t)'.' : glyph;
+                SDL_Color cell_fg, cell_bg;
+                cell_bg = is_cursor ? bg_cursor : bg_black;
 
-                if (glyph == (uint8_t)' ' && !is_cursor) cell_fg = fg_gray;
+                if (ch != ' ' && assets != NULL) {
+                    /* Use the cell's stored material_id for color */
+                    int mid = cell.material_id;
+                    if (mid > 0 && mid < 256 &&
+                        assets->materials[mid].palette_id >= 0 &&
+                        assets->materials[mid].palette_id < 256) {
+                        const Material *mat = &assets->materials[mid];
+                        const Palette  *pal = &assets->palettes[mat->palette_id];
+                        cell_fg = palette_sample(pal, 1.0, 1.0);
+                    } else {
+                        cell_fg = (SDL_Color){200, 200, 200, 255};
+                    }
+                } else if (ch != ' ') {
+                    /* assets == NULL: fall back to white */
+                    cell_fg = fg_white;
+                } else {
+                    /* Empty cell: dim gray */
+                    cell_fg = (SDL_Color){60, 60, 60, 255};
+                }
 
-                grid_set(grid, gx, gy, display, cell_fg, cell_bg);
+                /* Cursor highlight: invert fg/bg */
+                if (is_cursor) {
+                    cell_fg = bg_black;
+                    cell_bg = bg_cursor;
+                }
+
+                grid_set(grid, gx, gy, (uint8_t)ch, cell_fg, cell_bg);
             }
         }
     }
@@ -765,7 +1110,8 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
         int meta_y = CANVAS_Y0 - 1;
 
         const char * const meta_labels[AD_META_EDIT_COUNT] = {
-            "surface ", "width   ", "height  ", "step_u  ", "step_v  ", "material"
+            "surface ", "width   ", "height  ", "step_u  ", "step_v  ", "brush   ",
+            "cols    ", "rows    ",
         };
 
         grid_print(grid, meta_x, meta_y,
@@ -784,24 +1130,40 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
                 case 3:  snprintf(val, sizeof(val), "%.4f", s->decal.glyph_step_u);    break;
                 case 4:  snprintf(val, sizeof(val), "%.4f", s->decal.glyph_step_v);    break;
                 case 5:  snprintf(val, sizeof(val), "%d",   s->current_material_id);   break;
+                case 6:  snprintf(val, sizeof(val), "%d",   s->canvas_cols); break;
+                case 7:  snprintf(val, sizeof(val), "%d",   s->canvas_rows); break;
                 default: val[0] = '\0'; break;
             }
             char line[48];
             snprintf(line, sizeof(line), "%s%s %s", sel ? ">" : " ", meta_labels[r], val);
             if (meta_x < grid->width && meta_y + r < grid->height)
                 grid_print(grid, meta_x, meta_y + r, line, mfg, bg_black);
+
+            /* Material (brush) preview: show all non-space glyphs for this material */
+            if (r == 5 && assets != NULL) {
+                const Material *mat = &assets->materials[s->current_material_id];
+                const Palette  *pal = &assets->palettes[mat->palette_id];
+                SDL_Color mc = palette_sample(pal, 1.0, 1.0);
+                SDL_Color bg0 = {0, 0, 0, 255};
+                /* Build preview string: all non-space, nonzero glyphs */
+                char preview_buf[8];
+                int pi = 0;
+                for (int g = 0; g < 4; g++) {
+                    if (mat->glyphs[g] && (char)mat->glyphs[g] != ' ') {
+                        preview_buf[pi++] = (char)mat->glyphs[g];
+                    }
+                }
+                if (pi == 0) preview_buf[pi++] = '@';  /* fallback */
+                preview_buf[pi] = '\0';
+                /* Render preview at an appropriate x offset (after the value text) */
+                int px = meta_x + 2;  /* use the same x base as the rest of the panel */
+                if (px + 12 < grid->width) {
+                    grid_print(grid, px + 12, meta_y + r, preview_buf, mc, bg0);
+                }
+            }
         }
 
-        int ro_y = meta_y + AD_META_EDIT_COUNT;
-        char ro_cols[32], ro_rows[32];
-        snprintf(ro_cols, sizeof(ro_cols), "  cols     %d (fixed)", s->canvas_cols);
-        snprintf(ro_rows, sizeof(ro_rows), "  rows     %d (fixed)", s->canvas_rows);
-        if (meta_x < grid->width && ro_y < grid->height)
-            grid_print(grid, meta_x, ro_y,     ro_cols, fg_gray, bg_black);
-        if (meta_x < grid->width && ro_y + 1 < grid->height)
-            grid_print(grid, meta_x, ro_y + 1, ro_rows, fg_gray, bg_black);
-
-        int mhint_y = ro_y + 3;
+        int mhint_y = meta_y + AD_META_EDIT_COUNT + 1;
         if (meta_x < grid->width && mhint_y < grid->height)
             grid_print(grid, meta_x, mhint_y,
                        "Tab:focus  L/R:adj  U/D:sel  Enter:edit",
@@ -814,55 +1176,71 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid) {
         grid_print(grid, CANVAS_X0, status_y, s->status_msg, fg_red, bg_black);
     }
 
-    /* ---- Save-prompt overlay ---- */
+    /* ---- Save-prompt overlay (modal box) ---- */
     if (s->mode == AD_SAVE_PROMPT) {
-        int oy = CANVAS_Y0;
-        grid_print(grid, CANVAS_X0, oy,
-                   "[ Save As: type name then Enter ]", fg_cyan, bg_black);
-        char buf[80];
-        snprintf(buf, sizeof(buf), "  Name: %s_", s->filename_buffer);
-        grid_print(grid, CANVAS_X0, oy + 1, buf, fg_white, bg_black);
-        grid_print(grid, CANVAS_X0, oy + 2,
-                   "  Enter:save  Esc:cancel  Backspace:delete",
-                   fg_gray, bg_black);
+        /* Box: cols 20-60, rows 10-17 */
+        int bx = 20, by = 10, bw = 41, bh = 8;
+        SDL_Color box_bg  = {  0,   0,  30, 255};
+        SDL_Color box_bdr = {  0, 180, 220, 255};
+        ad_fill_box(grid, bx, by, bw, bh, fg_white, box_bg);
+        ad_draw_border(grid, bx, by, bw, bh, box_bdr, box_bg);
+        /* Title */
+        grid_print(grid, bx + 2, by + 1, "[ Save As ]", fg_cyan, box_bg);
+        /* Name field */
+        char save_name_buf[AD_FILENAME_MAX + 16];
+        snprintf(save_name_buf, sizeof(save_name_buf),
+                 "Name: %s_", s->filename_buffer);
+        grid_print(grid, bx + 2, by + 3, save_name_buf, fg_white, box_bg);
+        /* Status */
+        if (s->status_frames > 0 && s->status_msg[0]) {
+            grid_print(grid, bx + 2, by + 5, s->status_msg, fg_red, box_bg);
+        }
+        /* Hint */
+        grid_print(grid, bx + 2, by + 6,
+                   "Enter=save  Esc=cancel", fg_gray, box_bg);
     }
 
-    /* ---- Load-select overlay ---- */
+    /* ---- Load-select overlay (modal box) ---- */
     if (s->mode == AD_LOAD_SELECT) {
-        int oy = CANVAS_Y0;
-        grid_print(grid, CANVAS_X0, oy, "[ Load Decal ]", fg_cyan, bg_black);
+        /* Box: cols 20-62, rows 8-22 */
+        int bx = 20, by = 8, bw = 43, bh = 15;
+        SDL_Color box_bg  = {  0,  20,   0, 255};
+        SDL_Color box_bdr = { 50, 200,  50, 255};
+        ad_fill_box(grid, bx, by, bw, bh, fg_white, box_bg);
+        ad_draw_border(grid, bx, by, bw, bh, box_bdr, box_bg);
+        /* Title */
+        grid_print(grid, bx + 2, by + 1, "[ Load Decal ]", fg_cyan, box_bg);
         if (s->file_count == 0) {
-            grid_print(grid, CANVAS_X0, oy + 1,
-                       "  (no decal files found)", fg_gray, bg_black);
+            grid_print(grid, bx + 2, by + 3,
+                       "(no decal files found)", fg_gray, box_bg);
         } else {
             int start = s->file_sel_idx - 4;
             if (start < 0) start = 0;
             int end = start + 10;
             if (end > s->file_count) end = s->file_count;
 
-            for (int i = start; i < end && (oy + 1 + i - start) < grid->height; i++) {
-                int row = oy + 1 + (i - start);
+            for (int i = start; i < end; i++) {
+                int list_row = by + 3 + (i - start);
+                if (list_row >= by + bh - 2) break;
                 bool sel = (i == s->file_sel_idx);
-                SDL_Color fg = sel ? bg_black : fg_white;
-                SDL_Color bg = sel ? bg_sel   : bg_black;
+                SDL_Color lfg = sel ? bg_black : fg_white;
+                SDL_Color lbg = sel ? bg_sel   : box_bg;
                 char entry[72];
                 snprintf(entry, sizeof(entry), "%s%s.txt",
                          sel ? "> " : "  ", s->file_list[i]);
-                grid_print(grid, CANVAS_X0, row, entry, fg, bg);
+                grid_print(grid, bx + 2, list_row, entry, lfg, lbg);
             }
         }
-        int hint_y = oy + 12;
-        if (hint_y < grid->height) {
-            grid_print(grid, CANVAS_X0, hint_y,
-                       "  Arrows:navigate  Enter:load  Esc:cancel",
-                       fg_gray, bg_black);
-        }
+        /* Hint */
+        grid_print(grid, bx + 2, by + bh - 2,
+                   "Enter=load  Esc=cancel", fg_gray, box_bg);
     }
 
     /* ---- Metadata direct-edit overlay ---- */
     if (s->mode == AD_META_EDIT) {
         static const char * const meta_field_labels[AD_META_EDIT_COUNT] = {
-            "surface", "width", "height", "step_u", "step_v", "material"
+            "surface", "width", "height", "step_u", "step_v", "brush",
+            "cols", "rows"
         };
         int oy = CANVAS_Y0 + 2;
         grid_print(grid, CANVAS_X0, oy,

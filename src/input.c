@@ -123,10 +123,10 @@ void input_process(InputState *input, bool headless_mode) {
                     case SDLK_F9:
                         if (!e.key.repeat) input->load = true;
                         break;
-                    case SDLK_Q:
+                    case SDLK_LEFTBRACKET:
                         if (!e.key.repeat) input->prev_glyph = true;
                         break;
-                    case SDLK_E:
+                    case SDLK_RIGHTBRACKET:
                         if (!e.key.repeat) input->next_glyph = true;
                         break;
                     case SDLK_F10:
@@ -172,6 +172,14 @@ void input_process(InputState *input, bool headless_mode) {
         input->backward = state[SDL_SCANCODE_S];
         input->left     = state[SDL_SCANCODE_A];
         input->right    = state[SDL_SCANCODE_D];
+
+        /* Held state for designer auto-repeat and paint-while-moving */
+        input->held_up          = state[SDL_SCANCODE_UP];
+        input->held_down        = state[SDL_SCANCODE_DOWN];
+        input->held_arrow_left  = state[SDL_SCANCODE_LEFT];
+        input->held_arrow_right = state[SDL_SCANCODE_RIGHT];
+        input->held_place       = state[SDL_SCANCODE_SPACE];
+        input->held_erase       = state[SDL_SCANCODE_BACKSPACE];
     }
     /* In the main benchmark path, movement flags remain false because the
      * InputState is zero-initialised before the loop.  This function does not

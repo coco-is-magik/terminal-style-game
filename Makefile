@@ -2,11 +2,11 @@ CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
 
-VENDOR_DIR := $(pwd)/vendor/dist
+#VENDOR_DIR := $(pwd)/vendor/dist
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
 
-INCLUDES := -I"$(VENDOR_DIR)/include"
+INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include"
 LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet -lm
 TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'

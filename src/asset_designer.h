@@ -48,6 +48,7 @@
 #include "config.h"    /* EngineConfig, AppState */
 #include "input.h"     /* InputState */
 #include "grid.h"      /* Grid */
+#include "assets.h"    /* AssetRegistry, Material, Palette, palette_sample */
 
 /* ---- Editor surface enum ---- */
 
@@ -72,10 +73,6 @@ typedef enum {
 /** Directory where decal asset files are stored. */
 #define AD_DECALS_DIR "assets/decals/"
 
-/** Glyph palette.  Index 0 = space (erase/blank). */
-#define AD_GLYPHS      " .#@XO+-=*"
-#define AD_GLYPH_COUNT 10
-
 /** Hard bounds on canvas dimensions (prevent runaway allocations) */
 #define AD_MAX_CANVAS_COLS 64
 #define AD_MAX_CANVAS_ROWS 32
@@ -89,9 +86,14 @@ typedef enum {
 /** How many frames a status message stays visible (~1.5 s at 120 fps) */
 #define AD_STATUS_FRAMES 180
 
-/** Number of editable rows in the metadata panel (surface..material_id) */
-#define AD_META_EDIT_COUNT  6
-/** Total metadata rows including read-only cols/rows display */
+/** Frames before first auto-repeat cursor move fires */
+#define AD_REPEAT_DELAY  15
+/** Frames between subsequent auto-repeat cursor moves */
+#define AD_REPEAT_RATE    4
+
+/** Number of editable rows in the metadata panel (surface..pattern_rows) */
+#define AD_META_EDIT_COUNT  8
+/** Total metadata rows (all rows are editable) */
 #define AD_META_TOTAL_COUNT 8
 
 /* ---- Sub-mode enum ---- */
@@ -150,11 +152,17 @@ typedef struct {
     int cursor_col;
     int cursor_row;
 
-    /* Current selected glyph index into AD_GLYPHS (0 = space) */
-    int glyph_idx;
+    /* Currently selected glyph for painting.
+     * Set by direct typing; defaults to '#'.
+     * Must be in the selected material's allowed glyph set. */
+    char current_glyph;
 
     /* 1 = unsaved changes; 0 = clean */
     int dirty;
+
+    /* Cursor auto-repeat for held navigation (see AD_REPEAT_DELAY / AD_REPEAT_RATE) */
+    int repeat_timer;   /* frames remaining until next auto-repeat move; 0 = idle */
+    int repeat_dir;     /* held direction: 0=up, 1=down, 2=left, 3=right; -1=none */
 
     /* Active sub-mode */
     AssetDesignerMode mode;
@@ -234,7 +242,8 @@ void asset_designer_destroy(AssetDesignerState *s);
  * the caller (app.c) whether to stay, exit cleanly, or push a confirm dialog.
  */
 AssetDesignerResult asset_designer_update(AssetDesignerState *s,
-                                           const InputState *input);
+                                           const InputState *input,
+                                           const AssetRegistry *assets);
 
 /**
  * asset_designer_render() — Draw the editor to the grid
@@ -244,6 +253,7 @@ AssetDesignerResult asset_designer_update(AssetDesignerState *s,
  * In AD_LOAD_SELECT: draws canvas + file list overlay.
  * In AD_META_EDIT:   draws canvas + metadata edit prompt overlay.
  */
-void asset_designer_render(const AssetDesignerState *s, Grid *grid);
+void asset_designer_render(const AssetDesignerState *s, Grid *grid,
+                                const AssetRegistry *assets);
 
 #endif /* ASSET_DESIGNER_H */

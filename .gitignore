@@ -1,6 +1,7 @@
 build/
 vendor/
 example-code/
+compile_commands.json
 .*/
 .*
 !.git/
