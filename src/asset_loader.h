@@ -45,4 +45,26 @@ void asset_loader_load_registry(AssetRegistry *reg, const char *base_path);
  */
 Map* asset_loader_load_map_data(WorldState *world, const char *base_path, int map_id);
 
+/**
+ * asset_loader_load_materials() — Load all *.txt files from a materials directory
+ *
+ * Two-pass algorithm:
+ *   Pass 1 — Numeric filenames (e.g. "1.txt"): ID = basename integer.
+ *   Pass 2 — Named filenames (e.g. "stone_brick.txt"): ID from optional
+ *             "id=<n>" field, or first free slot in 1..255.
+ *
+ * Named files whose requested ID is already occupied are skipped with a
+ * warning to stderr.  Both passes are sorted alphabetically before loading
+ * so the result is deterministic regardless of directory enumeration order.
+ *
+ * Falls back to the legacy numeric probe loop if opendir() fails.
+ *
+ * Exposed as a public function to allow isolated testing without loading
+ * the full asset registry.
+ *
+ * @param reg           AssetRegistry to populate
+ * @param materials_dir Full path to the materials directory (e.g. "assets/materials")
+ */
+void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir);
+
 #endif /* ASSET_LOADER_H */

@@ -44,12 +44,14 @@
  */
 
 #include "asset_loader.h"    /* Public API: asset_loader_load_registry(),
-                                asset_loader_load_map_data() */
+                                asset_loader_load_map_data(),
+                                asset_loader_load_materials() */
 #include "map_loader.h"      /* map_load_from_string() — parses the digit-grid map format */
 #include "config.h"          /* config_get() values are used indirectly by map loading */
 #include <stdio.h>           /* FILE, fopen(), fgets(), fclose(), fprintf(), snprintf() */
 #include <stdlib.h>          /* atoi(), atof(), malloc(), free(), calloc() */
 #include <string.h>          /* strcmp(), strncmp(), strtok(), strncpy(), memset() */
+#include <dirent.h>          /* opendir(), readdir(), closedir(), struct dirent */
 
 /* ===================================================================
  *  Utility helpers (static — not visible outside this file)
@@ -168,6 +170,136 @@ static bool load_material(AssetRegistry *reg, int id, const char *filepath) {
     fclose(f);
 
     asset_registry_set_material(reg, id, pal_id, glyphs);
+
+    /* Derive the material name from the filepath basename, stripping the
+     * ".txt" extension.  e.g. "assets/materials/1.txt" -> "1".
+     * Stored in the parallel material_names table so the Asset Designer
+     * can display and look up materials by name. */
+    {
+        const char *base = strrchr(filepath, '/');
+        base = base ? base + 1 : filepath;
+        strncpy(reg->material_names[id], base, 63);
+        reg->material_names[id][63] = '\0';
+        char *dot = strrchr(reg->material_names[id], '.');
+        if (dot) *dot = '\0';
+        reg->material_count++;
+    }
+
+    return true;
+}
+
+/* ===================================================================
+ *  Named material helpers (static — not visible outside this file)
+ * =================================================================== */
+
+/**
+ * basename_is_numeric() — Return true if the string contains only digit characters
+ *
+ * Used to distinguish numeric filenames (e.g. "1", "12") from named filenames
+ * (e.g. "stone_brick") when scanning the materials directory.
+ *
+ * @param base  NUL-terminated string to check (typically a filename without extension)
+ * @return      true if every character is a digit, false otherwise
+ */
+static bool basename_is_numeric(const char *base) {
+    if (!base || !*base) return false;
+    for (const char *p = base; *p; p++) {
+        if (*p < '0' || *p > '9') return false;
+    }
+    return true;
+}
+
+/**
+ * first_free_material_id() — Find the lowest unused material ID slot
+ *
+ * Scans material_names[1..255] and returns the first ID whose name slot
+ * is still empty (not yet loaded).  Returns 0 if all 255 slots are full.
+ *
+ * @param reg  AssetRegistry to scan
+ * @return     First free ID (1–255), or 0 if all slots are occupied
+ */
+static int first_free_material_id(const AssetRegistry *reg) {
+    for (int id = 1; id <= 255; id++) {
+        if (reg->material_names[id][0] == '\0') return id;
+    }
+    return 0;
+}
+
+/**
+ * qsort_str_cmp() — Comparator for qsort over a 2D char array
+ *
+ * Each element passed by qsort is a pointer to a fixed-size char row
+ * (e.g. char[256]), which decays to const char *.  strcmp is applied
+ * directly to the two pointers.
+ *
+ * @param a  Pointer to first string element (const char *)
+ * @param b  Pointer to second string element (const char *)
+ * @return   strcmp result for alphabetic ordering
+ */
+static int qsort_str_cmp(const void *a, const void *b) {
+    return strcmp((const char *)a, (const char *)b);
+}
+
+/**
+ * load_named_material() — Load a non-numeric material file into a free ID slot
+ *
+ * Named material files (e.g. "stone_brick.txt") may optionally contain an
+ * "id=<n>" field to request a specific slot.  If no id= is present, the
+ * first free slot is used.  If the requested slot is already occupied, the
+ * file is skipped with a warning to stderr.
+ *
+ * @param reg       AssetRegistry to store the material into
+ * @param filepath  Full path to the material text file
+ * @param basename  Filename without the ".txt" extension (used as material name)
+ * @return          true on success, false if skipped or file could not be opened
+ */
+static bool load_named_material(AssetRegistry *reg, const char *filepath,
+                                const char *basename) {
+    FILE *f = fopen(filepath, "r");
+    if (!f) return false;
+
+    int pal_id = 0;
+    char glyphs[5] = "    ";
+    int explicit_id = 0;
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        char *key = strtok(line, "=");
+        char *val = strtok(NULL, "=");
+        if (key && val) {
+            trim_string(val);
+            if (strcmp(key, "palette") == 0) {
+                pal_id = atoi(val);
+            } else if (strcmp(key, "glyphs") == 0) {
+                strncpy(glyphs, val, 4);
+                glyphs[4] = '\0';
+            } else if (strcmp(key, "id") == 0) {
+                int v = atoi(val);
+                if (v >= 1 && v <= 255) explicit_id = v;
+            }
+        }
+    }
+    fclose(f);
+
+    int id;
+    if (explicit_id > 0) {
+        if (reg->material_names[explicit_id][0] != '\0') {
+            fprintf(stderr, "material: ID %d already loaded, skipping '%s'\n",
+                    explicit_id, filepath);
+            return false;
+        }
+        id = explicit_id;
+    } else {
+        id = first_free_material_id(reg);
+        if (id == 0) {
+            fprintf(stderr, "material: all ID slots full, skipping '%s'\n", filepath);
+            return false;
+        }
+    }
+
+    asset_registry_set_material(reg, id, pal_id, glyphs);
+    strncpy(reg->material_names[id], basename, 63);
+    reg->material_names[id][63] = '\0';
+    reg->material_count++;
     return true;
 }
 
@@ -511,6 +643,126 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
 }
 
 /* ===================================================================
+ *  Public API — materials directory scan
+ * =================================================================== */
+
+/**
+ * asset_loader_load_materials() — Load all *.txt files from a materials directory
+ *
+ * Uses a two-pass algorithm for deterministic ID assignment:
+ *
+ *   Pass 1 — Numeric filenames (e.g. "1.txt", "12.txt"):
+ *     The numeric basename is used directly as the material ID.  These IDs
+ *     are locked in before any named files are processed.
+ *
+ *   Pass 2 — Named filenames (e.g. "stone_brick.txt"):
+ *     If the file contains an "id=<n>" field, that slot is requested.
+ *     If the slot is already occupied, the file is skipped (warning to stderr).
+ *     If no id= field is present, the first free slot (lowest unoccupied ID
+ *     in 1..255) is assigned.
+ *
+ * Both passes sort their file lists alphabetically before loading, so the
+ * result is deterministic regardless of the directory enumeration order.
+ *
+ * Falls back to the legacy numeric probe loop (1..255) if opendir() fails.
+ *
+ * @param reg           AssetRegistry to populate
+ * @param materials_dir Full path to the materials directory (e.g. "assets/materials")
+ */
+void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) {
+    DIR *dir = opendir(materials_dir);
+    if (!dir) {
+        /* Directory missing or unreadable — fall back to numeric probe */
+        char filepath[512];
+        for (int i = 1; i < 256; i++) {
+            snprintf(filepath, sizeof(filepath), "%s/%d.txt", materials_dir, i);
+            if (!load_material(reg, i, filepath)) {
+                if (i > 10) break;
+            }
+        }
+        return;
+    }
+
+    /* Collect filenames that end in ".txt", split into numeric vs named.
+     * Use fixed-size 2D arrays to avoid heap allocation (strdup not in C11). */
+#define MAT_MAX_FILES 256
+#define MAT_NAME_MAX  256
+    char numeric[MAT_MAX_FILES][MAT_NAME_MAX];
+    int  n_num   = 0;
+    char named[MAT_MAX_FILES][MAT_NAME_MAX];
+    int  n_named = 0;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        const char *name = entry->d_name;
+        size_t len = strlen(name);
+        /* Must end in ".txt" (at least 5 chars: "x.txt") */
+        if (len < 5 || strcmp(name + len - 4, ".txt") != 0) continue;
+        if (len >= MAT_NAME_MAX) continue;  /* Skip unreasonably long names */
+
+        /* Extract basename (filename without ".txt") */
+        size_t baselen = len - 4;
+        if (baselen >= 64) continue;
+
+        char base[64];
+        strncpy(base, name, baselen);
+        base[baselen] = '\0';
+
+        if (basename_is_numeric(base)) {
+            if (n_num < MAT_MAX_FILES) {
+                strncpy(numeric[n_num], name, MAT_NAME_MAX - 1);
+                numeric[n_num][MAT_NAME_MAX - 1] = '\0';
+                n_num++;
+            }
+        } else {
+            if (n_named < MAT_MAX_FILES) {
+                strncpy(named[n_named], name, MAT_NAME_MAX - 1);
+                named[n_named][MAT_NAME_MAX - 1] = '\0';
+                n_named++;
+            }
+        }
+    }
+    closedir(dir);
+
+    /* Sort both lists alphabetically for deterministic ordering.
+     * Elements are char[MAT_NAME_MAX], so qsort passes (const char *) directly. */
+    if (n_num   > 1) qsort(numeric, (size_t)n_num,   MAT_NAME_MAX, qsort_str_cmp);
+    if (n_named > 1) qsort(named,   (size_t)n_named, MAT_NAME_MAX, qsort_str_cmp);
+
+    char filepath[512];
+
+    /* --- Pass 1: numeric files — ID comes from the basename integer --- */
+    for (int i = 0; i < n_num; i++) {
+        size_t len     = strlen(numeric[i]);
+        size_t baselen = len - 4;
+        char base[64];
+        strncpy(base, numeric[i], baselen);
+        base[baselen] = '\0';
+
+        int id = atoi(base);
+        if (id >= 1 && id <= 255) {
+            snprintf(filepath, sizeof(filepath), "%s/%s", materials_dir, numeric[i]);
+            load_material(reg, id, filepath);
+        }
+    }
+
+    /* --- Pass 2: named files — ID from id= field or first free slot --- */
+    for (int i = 0; i < n_named; i++) {
+        size_t len     = strlen(named[i]);
+        size_t baselen = len - 4;
+        char base[64];
+        strncpy(base, named[i], baselen);
+        base[baselen] = '\0';
+
+        snprintf(filepath, sizeof(filepath), "%s/%s", materials_dir, named[i]);
+        load_named_material(reg, filepath, base);
+    }
+
+#undef MAT_NAME_MAX
+#undef MAT_MAX_FILES
+}
+
+/* ===================================================================
  *  Public API — bulk asset loading
  * =================================================================== */
 
@@ -539,12 +791,11 @@ void asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
         }
     }
     
-    /* ---- Load materials (IDs 1 to 255) ---- */
-    for (int i = 1; i < 256; i++) {
-        snprintf(filepath, sizeof(filepath), "%s/materials/%d.txt", base_path, i);
-        if (!load_material(reg, i, filepath)) {
-            if (i > 10) break;
-        }
+    /* ---- Load materials via two-pass directory scan ---- */
+    {
+        char mat_dir[512];
+        snprintf(mat_dir, sizeof(mat_dir), "%s/materials", base_path);
+        asset_loader_load_materials(reg, mat_dir);
     }
     
     /* ---- Load sprites (IDs 1 to 255) ---- */

@@ -18,6 +18,7 @@
 
 #include <SDL3/SDL.h>    /* SDL_Color */
 #include <stdint.h>       /* uint8_t */
+#include <stdbool.h>      /* bool */
 
 /**
  * Palette — Three-colour distance-based shading palette
@@ -78,11 +79,19 @@ typedef struct {
  *
  * Holds 256 slots each for palettes, materials, and sprites.
  * Indices 1–255 are used; index 0 is typically left as default/zero.
+ *
+ * material_names[id] — filename-derived name for material id (e.g. "1", "2").
+ *   Non-empty string means the slot is loaded.  Empty string means unloaded.
+ *   Populated by asset_loader.c during load; parallel to materials[].
+ * material_count — the number of material slots that have been successfully loaded.
+ *   IDs are not necessarily contiguous; do NOT assume IDs 1..material_count are loaded.
  */
 typedef struct {
-    Palette      palettes[256];     /* Distance-based colour palettes */
-    Material     materials[256];    /* Surface materials (palette ref + glyphs) */
-    SpriteAsset  sprites[256];      /* 2D sprite pattern definitions */
+    Palette      palettes[256];           /* Distance-based colour palettes */
+    Material     materials[256];          /* Surface materials (palette ref + glyphs) */
+    SpriteAsset  sprites[256];            /* 2D sprite pattern definitions */
+    char         material_names[256][64]; /* Filename-derived name per material ID */
+    int          material_count;          /* Number of successfully loaded material slots */
 } AssetRegistry;
 
 /**
@@ -117,7 +126,7 @@ void asset_registry_set_palette(AssetRegistry *reg, int id, SDL_Color n, SDL_Col
  * @param pal_id     Palette ID for colouring
  * @param glyph_set  String of 1–4 glyphs (e.g. "#@:.")
  */
-void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const char* glyph_set);
+void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const char *glyph_set);
 
 /**
  * palette_sample() — Sample a colour from a palette at a given distance and light level
@@ -132,5 +141,41 @@ void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const c
  * @return             The final shaded SDL_Color
  */
 SDL_Color palette_sample(const Palette *p, double distance, double light_level);
+
+/**
+ * material_find_by_name() — Look up a material ID by its filename-derived name
+ *
+ * Iterates IDs 1..255, compares material_names[id] with name.
+ * Returns the first matching ID, or -1 if no loaded material has that name.
+ *
+ * @param reg   AssetRegistry to search
+ * @param name  Name to look up (e.g. "1", "2")
+ * @return      Material ID (1–255) on success, -1 if not found
+ */
+int material_find_by_name(const AssetRegistry *reg, const char *name);
+
+/**
+ * material_name_by_id() — Return the name string for a loaded material ID
+ *
+ * Returns material_names[id] if id is in 1..255 and the slot is loaded
+ * (non-empty name).  Returns "UNKNOWN" for invalid or unloaded IDs.
+ *
+ * @param reg  AssetRegistry to query
+ * @param id   Material ID (0–255)
+ * @return     Name string (pointer into reg->material_names or literal)
+ */
+const char *material_name_by_id(const AssetRegistry *reg, int id);
+
+/**
+ * material_id_is_loaded() — Check whether a material ID has a loaded name
+ *
+ * A material slot is considered loaded if material_names[id] is non-empty.
+ * This does not require contiguous IDs — gaps are allowed.
+ *
+ * @param reg  AssetRegistry to query
+ * @param id   Material ID (0–255)
+ * @return     true if loaded, false otherwise
+ */
+bool material_id_is_loaded(const AssetRegistry *reg, int id);
 
 #endif /* ASSETS_H */

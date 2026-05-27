@@ -392,12 +392,28 @@ static void ad_adjust_metadata(AssetDesignerState *s, int direction,
             if (s->decal.glyph_step_v < 0.0) s->decal.glyph_step_v = 0.0;
             s->dirty = 1;
             break;
-        case 5: /* current_material_id — editor state only, no dirty change */
-            s->current_material_id += direction;
-            if (s->current_material_id < 1)   s->current_material_id = 1;
-            if (s->current_material_id > 255)  s->current_material_id = 255;
-            ad_normalize_glyph(s, assets);
+        case 5: { /* current_material_id — editor state only, no dirty change.
+                   * Cycle only through loaded IDs; skip unloaded slots. */
+            if (assets) {
+                int id = s->current_material_id;
+                int steps = 0;
+                do {
+                    id += direction;
+                    if (id < 1)   id = 255;
+                    if (id > 255) id = 1;
+                    steps++;
+                } while (!material_id_is_loaded(assets, id) && steps < 256);
+                if (material_id_is_loaded(assets, id)) {
+                    s->current_material_id = id;
+                    ad_normalize_glyph(s, assets);
+                }
+            } else {
+                s->current_material_id += direction;
+                if (s->current_material_id < 1)   s->current_material_id = 1;
+                if (s->current_material_id > 255)  s->current_material_id = 255;
+            }
             break;
+        }
         case 6: { /* pattern_cols: clamp to [1, AD_MAX_CANVAS_COLS] */
             int nc = s->canvas_cols + direction;
             ad_resize_pattern(s, nc, s->canvas_rows);
@@ -500,15 +516,24 @@ static AssetDesignerResult ad_update_meta_edit(AssetDesignerState *s,
                 }
                 break;
             }
-            case 5: { /* material_id: integer 1..255 */
+            case 5: { /* material_id: integer 1..255, or material name */
                 if (buf[0] != '\0') {
                     char *end;
                     long v = strtol(buf, &end, 10);
                     if (end != buf && *end == '\0' && v >= 1 && v <= 255) {
+                        /* Accepted as a numeric ID */
                         s->current_material_id = (int)v;
                         ok = 1;
                         ad_normalize_glyph(s, assets);
                         /* Does NOT set dirty: current_material_id is editor-only state */
+                    } else if (assets) {
+                        /* Fall back to name lookup */
+                        int found = material_find_by_name(assets, buf);
+                        if (found >= 1 && found <= 255) {
+                            s->current_material_id = found;
+                            ok = 1;
+                            ad_normalize_glyph(s, assets);
+                        }
                     }
                 }
                 break;
@@ -1129,7 +1154,17 @@ void asset_designer_render(const AssetDesignerState *s, Grid *grid,
                 case 2:  snprintf(val, sizeof(val), "%.2f", s->decal.height);          break;
                 case 3:  snprintf(val, sizeof(val), "%.4f", s->decal.glyph_step_u);    break;
                 case 4:  snprintf(val, sizeof(val), "%.4f", s->decal.glyph_step_v);    break;
-                case 5:  snprintf(val, sizeof(val), "%d",   s->current_material_id);   break;
+                case 5: {
+                    const char *mname = assets
+                        ? material_name_by_id(assets, s->current_material_id)
+                        : NULL;
+                    if (mname) {
+                        snprintf(val, sizeof(val), "%s", mname);
+                    } else {
+                        snprintf(val, sizeof(val), "%d", s->current_material_id);
+                    }
+                    break;
+                }
                 case 6:  snprintf(val, sizeof(val), "%d",   s->canvas_cols); break;
                 case 7:  snprintf(val, sizeof(val), "%d",   s->canvas_rows); break;
                 default: val[0] = '\0'; break;

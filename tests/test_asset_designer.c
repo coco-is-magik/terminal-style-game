@@ -3009,6 +3009,9 @@ static void test_material_change_normalizes_glyph(void **state) {
     assets.materials[1].palette_id = 0;
     assets.materials[2].glyphs[0] = 'X';
     assets.materials[2].palette_id = 0;
+    /* Mark both IDs as loaded so material_id_is_loaded() returns true */
+    strncpy(assets.material_names[1], "1", 63);
+    strncpy(assets.material_names[2], "2", 63);
 
     /* Start on material 2 with 'X' (which IS allowed by material 2) */
     s.current_material_id = 2;
@@ -3205,6 +3208,133 @@ static void test_save_prompt_esc_closes_modal(void **state) {
 }
 
 /* ===================================================================
+ *  Tests — Material name cycling and direct-edit
+ * =================================================================== */
+
+/**
+ * test_material_cycling_only_loaded — When cycling material_id in metadata
+ * focus, IDs with empty material_names (unloaded) must be skipped.
+ *
+ * Registry has IDs 1, 2, 4 loaded; ID 3 is a gap.
+ * Cycling forward from 2 must land on 4, not 3.
+ */
+static void test_material_cycling_only_loaded(void **state) {
+    (void)state;
+    EngineConfig cfg = make_test_config();
+    AssetDesignerState s;
+    asset_designer_init(&s, &cfg, APP_STATE_MAIN_MENU);
+
+    /* Registry with IDs 1, 2, 4 loaded; 3 is intentionally absent */
+    AssetRegistry assets;
+    memset(&assets, 0, sizeof(assets));
+    strncpy(assets.material_names[1], "1", 63);
+    strncpy(assets.material_names[2], "2", 63);
+    /* ID 3 left empty (unloaded) */
+    strncpy(assets.material_names[4], "4", 63);
+    assets.materials[1].glyphs[0] = '#';
+    assets.materials[2].glyphs[0] = '#';
+    assets.materials[4].glyphs[0] = '#';
+
+    s.metadata_focus      = 1;
+    s.metadata_row        = 5;
+    s.current_material_id = 2;
+
+    /* One right-arrow cycle from 2 must skip 3 and land on 4 */
+    InputState in = no_input();
+    in.arrow_right = true;
+    asset_designer_update(&s, &in, &assets);
+
+    assert_int_equal(s.current_material_id, 4);
+
+    asset_designer_destroy(&s);
+}
+
+/**
+ * test_material_direct_edit_accepts_name — AD_META_EDIT for row 5 accepts a
+ * non-numeric material name and resolves it to the correct ID.
+ *
+ * Registry has material 5 with name "abc".  Typing "abc" must set
+ * current_material_id to 5.
+ */
+static void test_material_direct_edit_accepts_name(void **state) {
+    (void)state;
+    EngineConfig cfg = make_test_config();
+    AssetDesignerState s;
+    asset_designer_init(&s, &cfg, APP_STATE_MAIN_MENU);
+
+    AssetRegistry assets;
+    memset(&assets, 0, sizeof(assets));
+    strncpy(assets.material_names[5], "abc", 63);
+    assets.materials[5].glyphs[0] = '#';
+
+    s.metadata_focus      = 1;
+    s.metadata_row        = 5;
+    s.current_material_id = 1;
+
+    /* Enter meta-edit */
+    InputState in = no_input();
+    in.confirm = true;
+    asset_designer_update(&s, &in, &assets);
+    assert_int_equal(s.mode, (int)AD_META_EDIT);
+
+    /* Set buffer directly to "abc" (testing parse, not typing) */
+    strncpy(s.meta_edit_buffer, "abc", sizeof(s.meta_edit_buffer) - 1);
+    s.meta_edit_len = 3;
+
+    /* Commit */
+    in = no_input();
+    in.confirm = true;
+    asset_designer_update(&s, &in, &assets);
+
+    assert_int_equal(s.mode, (int)AD_DECAL_EDIT);
+    assert_int_equal(s.current_material_id, 5);
+
+    asset_designer_destroy(&s);
+}
+
+/**
+ * test_material_direct_edit_accepts_numeric — AD_META_EDIT for row 5 still
+ * accepts a plain integer string for backward compatibility.
+ *
+ * Registry has material 3 loaded.  Typing "3" must set
+ * current_material_id to 3.
+ */
+static void test_material_direct_edit_accepts_numeric(void **state) {
+    (void)state;
+    EngineConfig cfg = make_test_config();
+    AssetDesignerState s;
+    asset_designer_init(&s, &cfg, APP_STATE_MAIN_MENU);
+
+    AssetRegistry assets;
+    memset(&assets, 0, sizeof(assets));
+    strncpy(assets.material_names[3], "3", 63);
+    assets.materials[3].glyphs[0] = '#';
+
+    s.metadata_focus      = 1;
+    s.metadata_row        = 5;
+    s.current_material_id = 1;
+
+    /* Enter meta-edit */
+    InputState in = no_input();
+    in.confirm = true;
+    asset_designer_update(&s, &in, &assets);
+    assert_int_equal(s.mode, (int)AD_META_EDIT);
+
+    strncpy(s.meta_edit_buffer, "3", sizeof(s.meta_edit_buffer) - 1);
+    s.meta_edit_len = 1;
+
+    /* Commit */
+    in = no_input();
+    in.confirm = true;
+    asset_designer_update(&s, &in, &assets);
+
+    assert_int_equal(s.mode, (int)AD_DECAL_EDIT);
+    assert_int_equal(s.current_material_id, 3);
+
+    asset_designer_destroy(&s);
+}
+
+/* ===================================================================
  *  Entry point
  * =================================================================== */
 
@@ -3337,6 +3467,10 @@ int main(void) {
         cmocka_unit_test(test_canvas_stores_per_cell_material),
         cmocka_unit_test(test_save_prompt_still_accepts_text_after_modal),
         cmocka_unit_test(test_save_prompt_esc_closes_modal),
+        /* --- Material name cycling and direct-edit --- */
+        cmocka_unit_test(test_material_cycling_only_loaded),
+        cmocka_unit_test(test_material_direct_edit_accepts_name),
+        cmocka_unit_test(test_material_direct_edit_accepts_numeric),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

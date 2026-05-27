@@ -2,8 +2,11 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>       /* FILE, fopen(), fputs(), fclose(), remove() */
+#include <math.h>        /* cos(), atan(), tan() */
+#include <sys/stat.h>    /* mkdir() */
+#include <unistd.h>      /* rmdir() */
 #include <cmocka.h>
-#include <math.h>
 
 #include "../src/grid.h"
 #include "../src/scale.h"
@@ -348,6 +351,183 @@ static void test_raycast_render_output(void **state) {
     grid_destroy(g);
 }
 
+/* ===================================================================
+ *  Material name lookup tests
+ * =================================================================== */
+
+static void test_material_name_storage(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    /* Filename-derived names: "assets/materials/1.txt" -> "1", etc. */
+    assert_string_equal(assets.material_names[1], "1");
+    assert_string_equal(assets.material_names[2], "2");
+}
+
+static void test_material_find_by_name(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    assert_int_equal(material_find_by_name(&assets, "1"), 1);
+    assert_int_equal(material_find_by_name(&assets, "nonexistent"), -1);
+}
+
+static void test_material_name_by_id(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    assert_string_equal(material_name_by_id(&assets, 1), "1");
+    assert_string_equal(material_name_by_id(&assets, 0), "UNKNOWN");
+    /* ID 999 is out of range */
+    assert_string_equal(material_name_by_id(&assets, 999), "UNKNOWN");
+}
+
+static void test_material_id_is_loaded(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    assert_true(material_id_is_loaded(&assets, 1));
+    /* ID 255 is not expected to be loaded */
+    assert_false(material_id_is_loaded(&assets, 255));
+}
+
+static void test_material_count(void **state) {
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    /* At least 4 material files exist in assets/materials/ */
+    assert_true(assets.material_count >= 4);
+}
+
+/* ===================================================================
+ *  Named material loading tests
+ *  These tests use isolated temp directories under /tmp to avoid
+ *  touching the real assets and to keep results deterministic.
+ * =================================================================== */
+
+/* Helper: write content string to a file (overwrites if exists) */
+static void write_mat_file(const char *path, const char *content) {
+    FILE *f = fopen(path, "w");
+    if (f) { fputs(content, f); fclose(f); }
+}
+
+static void test_named_material_auto_assign(void **state) {
+    /* 2.txt locks ID 2; stone_brick.txt has no id= field → first free = ID 1 */
+    (void)state;
+    mkdir("/tmp/tst_mat1", 0755);
+    write_mat_file("/tmp/tst_mat1/2.txt",          "palette=1\nglyphs=##\n");
+    write_mat_file("/tmp/tst_mat1/stone_brick.txt", "palette=1\nglyphs=XX\n");
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_materials(&assets, "/tmp/tst_mat1");
+
+    assert_int_equal(material_find_by_name(&assets, "stone_brick"), 1);
+    assert_int_equal(material_find_by_name(&assets, "2"),           2);
+
+    remove("/tmp/tst_mat1/2.txt");
+    remove("/tmp/tst_mat1/stone_brick.txt");
+    rmdir("/tmp/tst_mat1");
+}
+
+static void test_named_material_gap_assign(void **state) {
+    /* 1.txt and 3.txt occupy IDs 1 and 3; extra.txt → first free = ID 2 */
+    (void)state;
+    mkdir("/tmp/tst_mat2", 0755);
+    write_mat_file("/tmp/tst_mat2/1.txt",    "palette=1\nglyphs=##\n");
+    write_mat_file("/tmp/tst_mat2/3.txt",    "palette=1\nglyphs=##\n");
+    write_mat_file("/tmp/tst_mat2/extra.txt","palette=1\nglyphs=EE\n");
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_materials(&assets, "/tmp/tst_mat2");
+
+    assert_int_equal(material_find_by_name(&assets, "extra"), 2);
+
+    remove("/tmp/tst_mat2/1.txt");
+    remove("/tmp/tst_mat2/3.txt");
+    remove("/tmp/tst_mat2/extra.txt");
+    rmdir("/tmp/tst_mat2");
+}
+
+static void test_named_material_explicit_id(void **state) {
+    /* wood.txt requests id=8 explicitly */
+    (void)state;
+    mkdir("/tmp/tst_mat3", 0755);
+    write_mat_file("/tmp/tst_mat3/wood.txt", "palette=1\nglyphs=WW\nid=8\n");
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_materials(&assets, "/tmp/tst_mat3");
+
+    assert_int_equal(material_find_by_name(&assets, "wood"), 8);
+    assert_true(material_id_is_loaded(&assets, 8));
+
+    remove("/tmp/tst_mat3/wood.txt");
+    rmdir("/tmp/tst_mat3");
+}
+
+static void test_named_material_collision_skipped(void **state) {
+    /* 1.txt loads ID 1; conflict.txt requests id=1 → collision, skipped */
+    (void)state;
+    mkdir("/tmp/tst_mat4", 0755);
+    write_mat_file("/tmp/tst_mat4/1.txt",        "palette=1\nglyphs=##\n");
+    write_mat_file("/tmp/tst_mat4/conflict.txt",  "palette=1\nglyphs=CC\nid=1\n");
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_materials(&assets, "/tmp/tst_mat4");
+
+    /* ID 1 still holds the numeric file's name, not "conflict" */
+    assert_string_equal(material_name_by_id(&assets, 1), "1");
+    assert_int_equal(material_find_by_name(&assets, "conflict"), -1);
+
+    remove("/tmp/tst_mat4/1.txt");
+    remove("/tmp/tst_mat4/conflict.txt");
+    rmdir("/tmp/tst_mat4");
+}
+
+static void test_named_material_count_is_count(void **state) {
+    /* material_count == number of loaded slots, not highest ID */
+    (void)state;
+    mkdir("/tmp/tst_mat5", 0755);
+    write_mat_file("/tmp/tst_mat5/1.txt",   "palette=1\nglyphs=##\n");
+    write_mat_file("/tmp/tst_mat5/wood.txt","palette=1\nglyphs=WW\n");
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_materials(&assets, "/tmp/tst_mat5");
+
+    /* Two files loaded → count == 2, not 2 from highest-ID tracking */
+    assert_int_equal(assets.material_count, 2);
+
+    remove("/tmp/tst_mat5/1.txt");
+    remove("/tmp/tst_mat5/wood.txt");
+    rmdir("/tmp/tst_mat5");
+}
+
+static void test_numeric_material_regression(void **state) {
+    /* Numeric loading via asset_loader_load_registry still works correctly */
+    (void)state;
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    asset_loader_load_registry(&assets, "assets");
+
+    assert_string_equal(material_name_by_id(&assets, 1), "1");
+    assert_string_equal(material_name_by_id(&assets, 2), "2");
+    assert_true(assets.material_count >= 4);
+}
+
 int main(void) {
     config_init_defaults();
     
@@ -376,6 +556,19 @@ int main(void) {
         cmocka_unit_test(test_raycast_perpendicular_correction),
         cmocka_unit_test(test_raycast_near_plane_clipping),
         cmocka_unit_test(test_raycast_render_output),
+        /* --- Material name lookup --- */
+        cmocka_unit_test(test_material_name_storage),
+        cmocka_unit_test(test_material_find_by_name),
+        cmocka_unit_test(test_material_name_by_id),
+        cmocka_unit_test(test_material_id_is_loaded),
+        cmocka_unit_test(test_material_count),
+        /* --- Named material loading --- */
+        cmocka_unit_test(test_named_material_auto_assign),
+        cmocka_unit_test(test_named_material_gap_assign),
+        cmocka_unit_test(test_named_material_explicit_id),
+        cmocka_unit_test(test_named_material_collision_skipped),
+        cmocka_unit_test(test_named_material_count_is_count),
+        cmocka_unit_test(test_numeric_material_regression),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
