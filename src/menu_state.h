@@ -34,7 +34,8 @@ typedef enum {
     MENU_PAUSE,            /* Pause menu: Resume, Main Menu, Quit */
     MENU_EDITOR,           /* Editor menu: Back to Editor, Main Menu */
     MENU_CONFIRM_QUIT,            /* Quit confirmation: Yes, No */
-    MENU_DESIGNER_EXIT_CONFIRM,   /* Decal designer discard-edits prompt: Discard, Cancel */
+    MENU_DESIGNER_EXIT_CONFIRM,   /* Decal/material designer discard-edits prompt: Discard, Cancel */
+    MENU_ASSET_SELECT,            /* Asset class selector: Decals, Materials, Lights */
     MENU_ID_COUNT                 /* Sentinel — total number of valid MenuId values */
 } MenuId;
 
