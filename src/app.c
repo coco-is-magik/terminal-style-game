@@ -39,6 +39,7 @@
 #include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
+#include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
 #include <stdlib.h>        /* atof() */
 #include <string.h>        /* strcmp() */
@@ -239,7 +240,7 @@ static const MenuDef MENU_DEFS[] = {
     /* [MENU_EDITOR]       */ {2, {4,5,0,0}, {"BACK TO EDITOR","MAIN MENU",NULL,NULL},  "-- EDITOR --"},
     /* [MENU_CONFIRM_QUIT]           */ {2, {7,8,0,0}, {"YES","NO",NULL,NULL},                      "QUIT? ARE YOU SURE?"},
     /* [MENU_DESIGNER_EXIT_CONFIRM]  */ {2, {7,8,0,0}, {"DISCARD CHANGES","CANCEL",NULL,NULL},      "UNSAVED CHANGES"},
-    /* [MENU_ASSET_SELECT]           */ {3, {0,0,0,0}, {"DECALS","MATERIALS","LIGHTS (COMING SOON)",NULL}, "-- ASSET EDITOR --"},
+    /* [MENU_ASSET_SELECT]           */ {4, {0,0,0,0}, {"LIVE EDIT","DECALS","MATERIALS","LIGHTS (COMING SOON)"}, "-- ASSET EDITOR --"},
 };
 
 /**
@@ -447,6 +448,7 @@ int app_main(int argc, char* argv[]) {
     InputState input = {0};         /* All fields zero-initialised (quit=false, etc.) */
     AssetDesignerState ad_state = {0};   /* Decal canvas editor; init'd on entry, destroy'd on exit */
     MaterialDesignerState md_state = {0}; /* Material editor; init'd on entry, destroy'd on exit */
+    LiveEditorState le_state = {0};       /* Combined decal/material live-preview editor */
 
     /* High-resolution timer: used to enforce frame budget and detect duration expiry */
     uint64_t initial_time = SDL_GetPerformanceCounter();
@@ -574,6 +576,8 @@ int app_main(int argc, char* argv[]) {
                             asset_designer_destroy(&ad_state);
                         } else if (app_state == APP_STATE_MATERIAL_DESIGNER) {
                             material_designer_destroy(&md_state);
+                        } else if (app_state == APP_STATE_LIVE_EDITOR) {
+                            live_editor_destroy(&le_state);
                         }
                         menu_stack_clear(&ms);
                         app_state = APP_STATE_MAIN_MENU;
@@ -582,16 +586,20 @@ int app_main(int argc, char* argv[]) {
                         menu_stack_pop(&ms);
                     }
                 } else if (active_menu == MENU_ASSET_SELECT) {
-                    if (sel == 0) {          /* Decals */
+                    if (sel == 0) {          /* Live Edit */
+                        menu_stack_clear(&ms);
+                        live_editor_init(&le_state, cfg, APP_STATE_MAIN_MENU, &assets);
+                        app_state = APP_STATE_LIVE_EDITOR;
+                    } else if (sel == 1) {   /* Decals */
                         menu_stack_clear(&ms);
                         asset_designer_init(&ad_state, cfg, APP_STATE_MAIN_MENU);
                         app_state = APP_STATE_ASSET_DESIGNER;
-                    } else if (sel == 1) {   /* Materials */
+                    } else if (sel == 2) {   /* Materials */
                         menu_stack_clear(&ms);
                         material_designer_init(&md_state, cfg, APP_STATE_MAIN_MENU, &assets);
                         app_state = APP_STATE_MATERIAL_DESIGNER;
                     }
-                    /* sel == 2: Lights — coming soon, no action */
+                    /* sel == 3: Lights — coming soon, no action */
                 }
                 /* Refresh active_menu after potential state change */
                 active_menu = menu_stack_peek(&ms);
@@ -618,6 +626,17 @@ int app_main(int argc, char* argv[]) {
                 app_state = APP_STATE_MAIN_MENU;
                 menu_stack_push(&ms, MENU_MAIN);
             } else if (md_result == MD_RESULT_CONFIRM_DISCARD) {
+                menu_stack_push(&ms, MENU_DESIGNER_EXIT_CONFIRM);
+            }
+        }
+        if (app_state == APP_STATE_LIVE_EDITOR && menu_stack_peek(&ms) == MENU_NONE) {
+            LiveEditorResult le_result = live_editor_update(&le_state, &input, &assets);
+            if (le_result == LE_RESULT_EXIT) {
+                live_editor_destroy(&le_state);
+                menu_stack_clear(&ms);
+                app_state = APP_STATE_MAIN_MENU;
+                menu_stack_push(&ms, MENU_MAIN);
+            } else if (le_result == LE_RESULT_CONFIRM_DISCARD) {
                 menu_stack_push(&ms, MENU_DESIGNER_EXIT_CONFIRM);
             }
         }
@@ -662,6 +681,9 @@ int app_main(int argc, char* argv[]) {
 
         } else if (app_state == APP_STATE_MATERIAL_DESIGNER) {
             material_designer_render(&md_state, grid, &assets);
+
+        } else if (app_state == APP_STATE_LIVE_EDITOR) {
+            live_editor_render(&le_state, grid);
 
         } else {
             /* APP_STATE_MAIN_MENU with empty stack — should not happen, clear only */
@@ -726,6 +748,7 @@ int app_main(int argc, char* argv[]) {
      * ================================================================ */
     asset_designer_destroy(&ad_state);
     material_designer_destroy(&md_state);
+    live_editor_destroy(&le_state);
     for (int i = 1; i < BTN_COUNT; i++) {
         ui_asset_destroy(btns[i]);
     }
