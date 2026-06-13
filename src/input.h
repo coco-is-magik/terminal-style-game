@@ -45,6 +45,10 @@ typedef struct {
     bool next_glyph;    /* ] — cycle glyph palette forward, edge-triggered */
     bool save_as;       /* F10 — always enter Save-As prompt, edge-triggered */
     bool tab;           /* Tab — toggle canvas/metadata focus, edge-triggered */
+    bool ctrl_left;     /* Ctrl+Left — directional focus move, edge-triggered */
+    bool ctrl_right;    /* Ctrl+Right — directional focus move, edge-triggered */
+    bool ctrl_up;       /* Ctrl+Up — directional focus move, edge-triggered */
+    bool ctrl_down;     /* Ctrl+Down — directional focus move, edge-triggered */
   /* Held state — physically depressed this frame.
    * Filled from SDL_GetKeyboardState() snapshot.
    * Used by asset_designer for auto-repeat and paint-while-moving.

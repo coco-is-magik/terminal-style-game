@@ -28,12 +28,24 @@
 #define LE_STATUS_FRAMES    180
 
 static const char * const LE_FOCUS_NAMES[LE_FOCUS_COUNT] = {
-    "Canvas", "Material", "Metadata"
+    "Material", "Mat Metadata", "Decal", "Dec Metadata"
+};
+
+static const char * const LE_MATERIAL_TOOLTIP_KEYS[LE_MATERIAL_FIELD_COUNT] = {
+    "material_palette", "material_glyph_1", "material_glyph_2",
+    "material_glyph_3", "material_glyph_4", "material_id"
+};
+
+static const char * const LE_DECAL_TOOLTIP_KEYS[LE_METADATA_FIELD_COUNT] = {
+    "decal_surface", "decal_width", "decal_height",
+    "glyph_step_u", "glyph_step_v", "preview_color"
 };
 
 static const char * const LE_PREVIEW_NAMES[LE_PREVIEW_COUNT] = {
     "white", "black", "red", "green", "blue", "rainbow", "transparent"
 };
+
+static int clamp_int(int value, int min_value, int max_value);
 
 static SDL_Color color_rgb(uint8_t r, uint8_t g, uint8_t b) {
     SDL_Color c = {r, g, b, 255};
@@ -45,6 +57,82 @@ static void le_set_status(LiveEditorState *s, const char *msg) {
     strncpy(s->status_msg, msg, sizeof(s->status_msg) - 1);
     s->status_msg[sizeof(s->status_msg) - 1] = '\0';
     s->status_frames = LE_STATUS_FRAMES;
+}
+
+static void trim_line(char *text) {
+    size_t len;
+
+    if (!text) return;
+    len = strlen(text);
+    while (len > 0 && (text[len - 1] == '\n' || text[len - 1] == '\r' ||
+                       text[len - 1] == ' ' || text[len - 1] == '\t')) {
+        text[--len] = '\0';
+    }
+}
+
+static char *skip_space(char *text) {
+    while (text && (*text == ' ' || *text == '\t')) text++;
+    return text;
+}
+
+static void live_editor_load_tooltips(LiveEditorState *s, const char *path) {
+    FILE *f;
+    char line[256];
+
+    if (!s || !path) return;
+    s->tooltip_count = 0;
+
+    f = fopen(path, "r");
+    if (!f) return;
+
+    while (fgets(line, sizeof(line), f) && s->tooltip_count < LE_TOOLTIP_MAX) {
+        char *key;
+        char *value;
+        char *eq;
+
+        trim_line(line);
+        key = skip_space(line);
+        if (!key || key[0] == '\0' || key[0] == '#') continue;
+
+        eq = strchr(key, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        value = skip_space(eq + 1);
+        trim_line(key);
+        trim_line(value);
+        if (key[0] == '\0' || !value || value[0] == '\0') continue;
+
+        strncpy(s->tooltip_keys[s->tooltip_count], key, LE_TOOLTIP_KEY_MAX - 1);
+        s->tooltip_keys[s->tooltip_count][LE_TOOLTIP_KEY_MAX - 1] = '\0';
+        strncpy(s->tooltip_text[s->tooltip_count], value, LE_TOOLTIP_TEXT_MAX - 1);
+        s->tooltip_text[s->tooltip_count][LE_TOOLTIP_TEXT_MAX - 1] = '\0';
+        s->tooltip_count++;
+    }
+
+    fclose(f);
+}
+
+static const char *live_editor_tooltip(const LiveEditorState *s, const char *key) {
+    if (!s || !key) return "";
+    for (int i = 0; i < s->tooltip_count; i++) {
+        if (strcmp(s->tooltip_keys[i], key) == 0) return s->tooltip_text[i];
+    }
+    return "No tooltip available for this field.";
+}
+
+static const char *current_tooltip_key(const LiveEditorState *s) {
+    if (!s) return "";
+    if (s->focus == LE_FOCUS_MATERIAL) return "material_id";
+    if (s->focus == LE_FOCUS_MATERIAL_METADATA) {
+        int field = clamp_int(s->material_field, 0, LE_MATERIAL_FIELD_COUNT - 1);
+        return LE_MATERIAL_TOOLTIP_KEYS[field];
+    }
+    if (s->focus == LE_FOCUS_DECAL) return "decal_canvas";
+    if (s->focus == LE_FOCUS_DECAL_METADATA) {
+        int row = clamp_int(s->decal_metadata_row, 0, LE_METADATA_FIELD_COUNT - 1);
+        return LE_DECAL_TOOLTIP_KEYS[row];
+    }
+    return "";
 }
 
 static int clamp_int(int value, int min_value, int max_value) {
@@ -210,6 +298,31 @@ static void draw_box(Grid *grid, int x, int y, int w, int h, SDL_Color fg, SDL_C
     grid_set(grid, x + w - 1, y + h - 1, '+', fg, bg);
 }
 
+static void draw_focus_box(Grid *grid, int x, int y, int w, int h,
+                           const char *title, bool focused) {
+    SDL_Color fg = focused ? color_rgb(50, 255, 50) : color_rgb(210, 210, 210);
+    SDL_Color bg = color_rgb(0, 0, 0);
+
+    draw_box(grid, x, y, w, h, fg, bg);
+    if (title) {
+        grid_print(grid, x + 2, y + 1, title, fg, bg);
+    }
+}
+
+static void draw_canvas_border(Grid *grid, int x, int y, int cols, int rows) {
+    SDL_Color fg = color_rgb(255, 255, 255);
+    SDL_Color bg = color_rgb(0, 0, 0);
+    int border_w = cols + 6;
+    int border_h = rows + 6;
+
+    for (int yy = 0; yy < border_h; yy++) {
+        for (int xx = 0; xx < border_w; xx++) {
+            bool border = (xx < 2 || yy < 2 || xx >= border_w - 2 || yy >= border_h - 2);
+            grid_set(grid, x + xx, y + yy, border ? '#' : ' ', fg, bg);
+        }
+    }
+}
+
 static PatternCell *current_cell(LiveEditorState *s) {
     if (!s || !s->decal.pattern) return NULL;
     if (s->cursor_col < 0 || s->cursor_col >= s->canvas_cols ||
@@ -309,29 +422,29 @@ static DecalSurface next_surface(DecalSurface surface, int dir) {
     return (DecalSurface)v;
 }
 
-static void update_metadata(LiveEditorState *s, const InputState *input) {
+static void update_decal_metadata(LiveEditorState *s, const InputState *input) {
     int dir = 0;
 
     if (!s || !input) return;
     if (input->up) {
-        s->metadata_row = (s->metadata_row - 1 + LE_METADATA_FIELD_COUNT) % LE_METADATA_FIELD_COUNT;
+        s->decal_metadata_row = (s->decal_metadata_row - 1 + LE_METADATA_FIELD_COUNT) % LE_METADATA_FIELD_COUNT;
     }
     if (input->down) {
-        s->metadata_row = (s->metadata_row + 1) % LE_METADATA_FIELD_COUNT;
+        s->decal_metadata_row = (s->decal_metadata_row + 1) % LE_METADATA_FIELD_COUNT;
     }
     if (input->arrow_left) dir = -1;
     if (input->arrow_right) dir = 1;
     if (dir == 0) return;
 
-    if (s->metadata_row == 0) {
+    if (s->decal_metadata_row == 0) {
         s->decal.surface = next_surface(s->decal.surface, dir);
-    } else if (s->metadata_row == 1) {
+    } else if (s->decal_metadata_row == 1) {
         s->decal.width = clamp_min_double(s->decal.width + 0.05 * dir, 0.05);
-    } else if (s->metadata_row == 2) {
+    } else if (s->decal_metadata_row == 2) {
         s->decal.height = clamp_min_double(s->decal.height + 0.05 * dir, 0.05);
-    } else if (s->metadata_row == 3) {
+    } else if (s->decal_metadata_row == 3) {
         s->decal.glyph_step_u = clamp_min_double(s->decal.glyph_step_u + 0.01 * dir, 0.0);
-    } else if (s->metadata_row == 4) {
+    } else if (s->decal_metadata_row == 4) {
         s->decal.glyph_step_v = clamp_min_double(s->decal.glyph_step_v + 0.01 * dir, 0.0);
     } else {
         int v = (int)s->preview_color + dir;
@@ -341,6 +454,24 @@ static void update_metadata(LiveEditorState *s, const InputState *input) {
         apply_preview_color(s);
     }
     mark_dirty(s);
+}
+
+static void move_focus(LiveEditorState *s, const InputState *input) {
+    if (!s || !input) return;
+
+    if (input->ctrl_left) {
+        if (s->focus == LE_FOCUS_MATERIAL_METADATA) s->focus = LE_FOCUS_MATERIAL;
+        else if (s->focus == LE_FOCUS_DECAL_METADATA) s->focus = LE_FOCUS_DECAL;
+    } else if (input->ctrl_right) {
+        if (s->focus == LE_FOCUS_MATERIAL) s->focus = LE_FOCUS_MATERIAL_METADATA;
+        else if (s->focus == LE_FOCUS_DECAL) s->focus = LE_FOCUS_DECAL_METADATA;
+    } else if (input->ctrl_up) {
+        if (s->focus == LE_FOCUS_DECAL) s->focus = LE_FOCUS_MATERIAL;
+        else if (s->focus == LE_FOCUS_DECAL_METADATA) s->focus = LE_FOCUS_MATERIAL_METADATA;
+    } else if (input->ctrl_down) {
+        if (s->focus == LE_FOCUS_MATERIAL) s->focus = LE_FOCUS_DECAL;
+        else if (s->focus == LE_FOCUS_MATERIAL_METADATA) s->focus = LE_FOCUS_DECAL_METADATA;
+    }
 }
 
 static const char *surface_name(DecalSurface surface) {
@@ -353,20 +484,25 @@ static const char *surface_name(DecalSurface surface) {
 }
 
 static void draw_canvas_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
-    SDL_Color fg = color_rgb(210, 210, 210);
     SDL_Color hi = color_rgb(50, 255, 50);
     SDL_Color bg = color_rgb(0, 0, 0);
     int max_cols;
     int max_rows;
+    int canvas_x;
+    int canvas_y;
 
     if (!s || !grid) return;
-    draw_box(grid, x, y, w, h, fg, bg);
-    grid_print(grid, x + 2, y + 1, "Decal Canvas", hi, bg);
+    draw_focus_box(grid, x, y, w, h, "Decal", s->focus == LE_FOCUS_DECAL);
 
     max_cols = s->canvas_cols;
     max_rows = s->canvas_rows;
-    if (max_cols > w - 4) max_cols = w - 4;
-    if (max_rows > h - 8) max_rows = h - 8;
+    if (max_cols > w - 8) max_cols = w - 8;
+    if (max_rows > h - 10) max_rows = h - 10;
+    if (max_cols < 1 || max_rows < 1) return;
+
+    canvas_x = x + 3;
+    canvas_y = y + 4;
+    draw_canvas_border(grid, canvas_x, canvas_y, max_cols, max_rows);
 
     for (int row = 0; row < max_rows; row++) {
         for (int col = 0; col < max_cols; col++) {
@@ -379,7 +515,7 @@ static void draw_canvas_pane(const LiveEditorState *s, Grid *grid, int x, int y,
                 cell_bg = hi;
                 if (glyph == ' ') glyph = '_';
             }
-            grid_set(grid, x + 2 + col, y + 3 + row, glyph, cell_fg, cell_bg);
+            grid_set(grid, canvas_x + 3 + col, canvas_y + 3 + row, glyph, cell_fg, cell_bg);
         }
     }
 }
@@ -393,8 +529,7 @@ static void draw_material_pane(const LiveEditorState *s, Grid *grid, int x, int 
 
     if (!s || !grid) return;
     mat = &s->preview_assets.materials[s->current_material_id];
-    draw_box(grid, x, y, w, h, fg, bg);
-    grid_print(grid, x + 2, y + 1, "Material", hi, bg);
+    draw_focus_box(grid, x, y, w, h, "Material", s->focus == LE_FOCUS_MATERIAL);
 
     snprintf(line, sizeof(line), "%c palette: %d",
              s->material_field == 0 ? '>' : ' ', mat->palette_id);
@@ -413,43 +548,62 @@ static void draw_material_pane(const LiveEditorState *s, Grid *grid, int x, int 
                s->material_field == 5 ? hi : fg, bg);
 }
 
-static void draw_right_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
+static void draw_material_metadata_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
+    SDL_Color fg = color_rgb(210, 210, 210);
+    SDL_Color hi = color_rgb(50, 255, 50);
+    SDL_Color bg = color_rgb(0, 0, 0);
+    char line[160];
+    const char *tip;
+
+    if (!s || !grid) return;
+    draw_focus_box(grid, x, y, w, h, "Mat Metadata", s->focus == LE_FOCUS_MATERIAL_METADATA);
+
+    snprintf(line, sizeof(line), "Focused material field: %d", s->material_field + 1);
+    grid_print(grid, x + 2, y + 3, line, fg, bg);
+    tip = live_editor_tooltip(s, LE_MATERIAL_TOOLTIP_KEYS[clamp_int(s->material_field, 0, LE_MATERIAL_FIELD_COUNT - 1)]);
+    grid_print(grid, x + 2, y + 5, tip, hi, bg);
+    grid_print(grid, x + 2, y + 8, "Ctrl+Left: Material", fg, bg);
+    grid_print(grid, x + 2, y + 9, "Ctrl+Down: Dec Metadata", fg, bg);
+}
+
+static void draw_decal_metadata_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
     SDL_Color fg = color_rgb(210, 210, 210);
     SDL_Color hi = color_rgb(50, 255, 50);
     SDL_Color muted = color_rgb(140, 140, 140);
     SDL_Color bg = color_rgb(0, 0, 0);
     char line[160];
+    const char *tip;
 
     if (!s || !grid) return;
-    draw_box(grid, x, y, w, h, fg, bg);
-    grid_print(grid, x + 2, y + 1, "Metadata", hi, bg);
+    draw_focus_box(grid, x, y, w, h, "Dec Metadata", s->focus == LE_FOCUS_DECAL_METADATA);
 
     snprintf(line, sizeof(line), "%c surface: %s",
-             s->metadata_row == 0 ? '>' : ' ', surface_name(s->decal.surface));
-    grid_print(grid, x + 2, y + 3, line, s->metadata_row == 0 ? hi : fg, bg);
+             s->decal_metadata_row == 0 ? '>' : ' ', surface_name(s->decal.surface));
+    grid_print(grid, x + 2, y + 3, line, s->decal_metadata_row == 0 ? hi : fg, bg);
     snprintf(line, sizeof(line), "%c width: %.2f",
-             s->metadata_row == 1 ? '>' : ' ', s->decal.width);
-    grid_print(grid, x + 2, y + 4, line, s->metadata_row == 1 ? hi : fg, bg);
+             s->decal_metadata_row == 1 ? '>' : ' ', s->decal.width);
+    grid_print(grid, x + 2, y + 4, line, s->decal_metadata_row == 1 ? hi : fg, bg);
     snprintf(line, sizeof(line), "%c height: %.2f",
-             s->metadata_row == 2 ? '>' : ' ', s->decal.height);
-    grid_print(grid, x + 2, y + 5, line, s->metadata_row == 2 ? hi : fg, bg);
+             s->decal_metadata_row == 2 ? '>' : ' ', s->decal.height);
+    grid_print(grid, x + 2, y + 5, line, s->decal_metadata_row == 2 ? hi : fg, bg);
     snprintf(line, sizeof(line), "%c step_u: %.2f",
-             s->metadata_row == 3 ? '>' : ' ', s->decal.glyph_step_u);
-    grid_print(grid, x + 2, y + 6, line, s->metadata_row == 3 ? hi : fg, bg);
+             s->decal_metadata_row == 3 ? '>' : ' ', s->decal.glyph_step_u);
+    grid_print(grid, x + 2, y + 6, line, s->decal_metadata_row == 3 ? hi : fg, bg);
     snprintf(line, sizeof(line), "%c step_v: %.2f",
-             s->metadata_row == 4 ? '>' : ' ', s->decal.glyph_step_v);
-    grid_print(grid, x + 2, y + 7, line, s->metadata_row == 4 ? hi : fg, bg);
+             s->decal_metadata_row == 4 ? '>' : ' ', s->decal.glyph_step_v);
+    grid_print(grid, x + 2, y + 7, line, s->decal_metadata_row == 4 ? hi : fg, bg);
     snprintf(line, sizeof(line), "%c preview: %s",
-             s->metadata_row == 5 ? '>' : ' ', LE_PREVIEW_NAMES[s->preview_color]);
-    grid_print(grid, x + 2, y + 8, line, s->metadata_row == 5 ? hi : fg, bg);
+             s->decal_metadata_row == 5 ? '>' : ' ', LE_PREVIEW_NAMES[s->preview_color]);
+    grid_print(grid, x + 2, y + 8, line, s->decal_metadata_row == 5 ? hi : fg, bg);
 
-    grid_print(grid, x + 2, y + 11, "Shortcuts", hi, bg);
-    grid_print(grid, x + 2, y + 13, "Tab: next pane", muted, bg);
+    tip = live_editor_tooltip(s, LE_DECAL_TOOLTIP_KEYS[clamp_int(s->decal_metadata_row, 0, LE_METADATA_FIELD_COUNT - 1)]);
+    grid_print(grid, x + 2, y + 10, tip, hi, bg);
+
+    grid_print(grid, x + 2, y + 13, "Ctrl+Arrows: focus", muted, bg);
     grid_print(grid, x + 2, y + 14, "Arrows: move/adjust", muted, bg);
     grid_print(grid, x + 2, y + 15, "Space: paint glyph", muted, bg);
     grid_print(grid, x + 2, y + 16, "Backspace: erase", muted, bg);
     grid_print(grid, x + 2, y + 17, "[/]: cycle glyph", muted, bg);
-    grid_print(grid, x + 2, y + 18, "Esc: leave editor", muted, bg);
 }
 
 void live_editor_init(LiveEditorState *s,
@@ -468,9 +622,10 @@ void live_editor_init(LiveEditorState *s,
     s->canvas_rows = clamp_int(s->canvas_rows, 1, LE_MAX_CANVAS_ROWS);
     s->current_glyph = '#';
     s->current_material_id = 1;
-    s->focus = LE_FOCUS_CANVAS;
+    s->focus = LE_FOCUS_DECAL;
     s->preview_color = LE_PREVIEW_WHITE;
     s->dirty = 1;
+    live_editor_load_tooltips(s, "assets/editor_tooltips.txt");
 
     if (assets) {
         s->preview_assets = *assets;
@@ -529,17 +684,21 @@ LiveEditorResult live_editor_update(LiveEditorState *s,
         return s->dirty ? LE_RESULT_CONFIRM_DISCARD : LE_RESULT_EXIT;
     }
     if (input->tab) {
-        s->focus = (LiveEditorFocus)(((int)s->focus + 1) % LE_FOCUS_COUNT);
+        le_set_status(s, "Only the Decal+Material group exists for now.");
+        return LE_RESULT_NONE;
+    }
+    if (input->ctrl_left || input->ctrl_right || input->ctrl_up || input->ctrl_down) {
+        move_focus(s, input);
         le_set_status(s, LE_FOCUS_NAMES[s->focus]);
         return LE_RESULT_NONE;
     }
 
-    if (s->focus == LE_FOCUS_CANVAS) {
+    if (s->focus == LE_FOCUS_DECAL) {
         update_canvas(s, input);
-    } else if (s->focus == LE_FOCUS_MATERIAL) {
+    } else if (s->focus == LE_FOCUS_MATERIAL || s->focus == LE_FOCUS_MATERIAL_METADATA) {
         update_material(s, input);
     } else {
-        update_metadata(s, input);
+        update_decal_metadata(s, input);
     }
 
     configure_showroom_pose(s);
@@ -552,8 +711,15 @@ void live_editor_render(LiveEditorState *s, Grid *grid) {
     SDL_Color panel_bg = color_rgb(0, 0, 0);
     SDL_Color title_fg = color_rgb(50, 255, 50);
     char title[160];
-    int left_w;
-    int right_w;
+    char tooltip_line[220];
+    int side_w;
+    int left_x;
+    int right_x;
+    int pane_w;
+    int top_y;
+    int top_h;
+    int bottom_y;
+    int bottom_h;
 
     if (!s || !grid) return;
 
@@ -568,33 +734,40 @@ void live_editor_render(LiveEditorState *s, Grid *grid) {
         raycast_render(grid, s->preview_map, &s->preview_cam, &s->preview_assets, &world);
     }
 
-    left_w = grid->width < 120 ? grid->width / 3 : 44;
-    right_w = grid->width < 120 ? grid->width / 3 : 56;
-    if (left_w < 28) left_w = 28;
-    if (right_w < 32) right_w = 32;
-    if (left_w + right_w > grid->width - 8) {
-        left_w = grid->width / 3;
-        right_w = grid->width / 3;
-    }
+    side_w = grid->width >= 160 ? 48 : grid->width / 4;
+    if (side_w < 34) side_w = 34;
+    if (side_w > 56) side_w = 56;
+    if (side_w * 2 > grid->width - 20) side_w = (grid->width - 20) / 2;
+    if (side_w < 1) return;
 
-    fill_rect(grid, 0, 0, left_w, grid->height, panel_bg);
-    fill_rect(grid, grid->width - right_w, 0, right_w, grid->height, panel_bg);
+    left_x = 1;
+    right_x = grid->width - side_w + 1;
+    pane_w = side_w - 2;
+    top_y = 2;
+    top_h = 20;
+    bottom_y = top_y + top_h;
+    bottom_h = grid->height - bottom_y - 4;
+    if (bottom_h < 36) bottom_h = 36;
+
+    fill_rect(grid, 0, 0, side_w, grid->height, panel_bg);
+    fill_rect(grid, grid->width - side_w, 0, side_w, grid->height, panel_bg);
 
     snprintf(title, sizeof(title), "[ Live Edit ] focus=%s  material=%d  glyph=%c%s",
              LE_FOCUS_NAMES[s->focus], s->current_material_id, s->current_glyph,
              s->dirty ? "  *dirty" : "");
     grid_print(grid, 2, 0, title, title_fg, panel_bg);
 
-    if (s->focus == LE_FOCUS_MATERIAL) {
-        draw_material_pane(s, grid, 1, 2, left_w - 2, grid->height - 4);
-    } else {
-        draw_canvas_pane(s, grid, 1, 2, left_w - 2, grid->height - 4);
-    }
-    draw_right_pane(s, grid, grid->width - right_w + 1, 2,
-                    right_w - 2, grid->height - 4);
+    draw_material_pane(s, grid, left_x, top_y, pane_w, top_h);
+    draw_canvas_pane(s, grid, left_x, bottom_y, pane_w, bottom_h);
+    draw_material_metadata_pane(s, grid, right_x, top_y, pane_w, top_h);
+    draw_decal_metadata_pane(s, grid, right_x, bottom_y, pane_w, bottom_h);
+
+    snprintf(tooltip_line, sizeof(tooltip_line), "Tip: %s",
+             live_editor_tooltip(s, current_tooltip_key(s)));
+    grid_print(grid, 2, grid->height - 3, tooltip_line, title_fg, panel_bg);
 
     if (s->status_frames > 0 && s->status_msg[0] != '\0') {
-        grid_print(grid, left_w + 2, grid->height - 2,
+        grid_print(grid, 2, grid->height - 2,
                    s->status_msg, title_fg, panel_bg);
     }
 }

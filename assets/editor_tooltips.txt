@@ -1,0 +1,13 @@
+material_palette=Palette ID used to color this material's glyphs.
+material_glyph_1=Near-distance glyph used when the surface is close to the camera.
+material_glyph_2=Mid-distance glyph used at medium range.
+material_glyph_3=Far-distance glyph used when the surface is far away.
+material_glyph_4=Very-far-distance glyph used at the longest visible range.
+material_id=Preview material slot used for newly painted decal glyphs.
+decal_canvas=Paint non-space glyph anchors here. Each painted glyph projects once in the world.
+decal_surface=Which surface the decal attaches to: wall, floor, or ceiling.
+decal_width=World-space width in grid cells. 1.0 is one wall face wide.
+decal_height=World-space height in grid cells. 1.0 is one wall face tall.
+glyph_step_u=Horizontal distance between adjacent glyph anchors in world units.
+glyph_step_v=Vertical distance between adjacent glyph anchors in world units.
+preview_color=Preview wall/background color used to judge contrast.

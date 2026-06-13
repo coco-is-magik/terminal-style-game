@@ -19,14 +19,19 @@
 #include "map.h"
 
 /** Maximum editable decal canvas size for the live editor. */
-#define LE_MAX_CANVAS_COLS 64
-#define LE_MAX_CANVAS_ROWS 32
+#define LE_MAX_CANVAS_COLS 24
+#define LE_MAX_CANVAS_ROWS 24
 
 /** Number of material fields shown in the left pane. */
 #define LE_MATERIAL_FIELD_COUNT 6
 
 /** Number of metadata rows shown in the right pane. */
 #define LE_METADATA_FIELD_COUNT 6
+
+/** Authoritative tooltip store bounds. */
+#define LE_TOOLTIP_MAX       32
+#define LE_TOOLTIP_KEY_MAX   40
+#define LE_TOOLTIP_TEXT_MAX 160
 
 /** Result returned from live_editor_update(). */
 typedef enum {
@@ -35,11 +40,12 @@ typedef enum {
     LE_RESULT_CONFIRM_DISCARD
 } LiveEditorResult;
 
-/** Active editing pane.  Tab cycles through these values. */
+/** Active editing pane in the decal/material editing group. */
 typedef enum {
-    LE_FOCUS_CANVAS = 0,
-    LE_FOCUS_MATERIAL,
-    LE_FOCUS_METADATA,
+    LE_FOCUS_MATERIAL = 0,
+    LE_FOCUS_MATERIAL_METADATA,
+    LE_FOCUS_DECAL,
+    LE_FOCUS_DECAL_METADATA,
     LE_FOCUS_COUNT
 } LiveEditorFocus;
 
@@ -70,8 +76,12 @@ typedef struct {
 
     LiveEditorFocus focus;
     int material_field;
-    int metadata_row;
+    int decal_metadata_row;
     LiveEditorPreviewColor preview_color;
+
+    char tooltip_keys[LE_TOOLTIP_MAX][LE_TOOLTIP_KEY_MAX];
+    char tooltip_text[LE_TOOLTIP_MAX][LE_TOOLTIP_TEXT_MAX];
+    int tooltip_count;
 
     AssetRegistry preview_assets;   /* Local preview-only copy; no owned sprite data */
     Map *preview_map;               /* Owned synthetic showroom map */

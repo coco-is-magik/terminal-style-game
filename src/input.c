@@ -74,6 +74,10 @@ void input_process(InputState *input, bool headless_mode) {
     input->next_glyph = false;
     input->save_as    = false;
     input->tab        = false;
+    input->ctrl_left   = false;
+    input->ctrl_right  = false;
+    input->ctrl_up     = false;
+    input->ctrl_down   = false;
     input->text_input[0]  = '\0';
     input->text_input_len = 0;
 
@@ -91,25 +95,38 @@ void input_process(InputState *input, bool headless_mode) {
         if (!headless_mode) {
             /* Key press events (non-repeat for navigation keys) */
             if (e.type == SDL_EVENT_KEY_DOWN) {
+                bool ctrl_down = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
                 switch (e.key.key) {
                     case SDLK_ESCAPE:
                         if (!e.key.repeat) input->esc = true;
                         break;
                     /* Edge-triggered navigation: only on initial press, not repeat */
                     case SDLK_UP:
-                        if (!e.key.repeat) input->up = true;
+                        if (!e.key.repeat) {
+                            if (ctrl_down) input->ctrl_up = true;
+                            else input->up = true;
+                        }
                         break;
                     case SDLK_DOWN:
-                        if (!e.key.repeat) input->down = true;
+                        if (!e.key.repeat) {
+                            if (ctrl_down) input->ctrl_down = true;
+                            else input->down = true;
+                        }
                         break;
                     case SDLK_RETURN:
                         if (!e.key.repeat) input->confirm = true;
                         break;
                     case SDLK_LEFT:
-                        if (!e.key.repeat) input->arrow_left = true;
+                        if (!e.key.repeat) {
+                            if (ctrl_down) input->ctrl_left = true;
+                            else input->arrow_left = true;
+                        }
                         break;
                     case SDLK_RIGHT:
-                        if (!e.key.repeat) input->arrow_right = true;
+                        if (!e.key.repeat) {
+                            if (ctrl_down) input->ctrl_right = true;
+                            else input->arrow_right = true;
+                        }
                         break;
                     case SDLK_SPACE:
                         if (!e.key.repeat) input->place = true;
