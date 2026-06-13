@@ -1,0 +1,10 @@
+name=le_dec_meta_backspace
+type=text
+parent=le_dec_meta_pane
+x=2
+y=16
+coords=relative
+width=42
+height=1
+fg=140,140,140,255
+content=Backspace: erase

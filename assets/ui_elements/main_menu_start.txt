@@ -1,0 +1,11 @@
+name=main_menu_start
+type=button
+parent=main_menu_container
+x=2
+y=4
+coords=relative
+width=20
+height=1
+align=center
+action=start_game
+content=START GAME

@@ -1,0 +1,7 @@
+name=main_menu_container
+type=container
+x=120
+y=68
+coords=absolute
+width=24
+height=16

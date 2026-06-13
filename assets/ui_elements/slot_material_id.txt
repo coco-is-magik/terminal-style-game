@@ -1,0 +1,9 @@
+name=slot_material_id
+type=text
+parent=le_material_pane
+x=2
+y=8
+coords=relative
+width=42
+height=1
+content=

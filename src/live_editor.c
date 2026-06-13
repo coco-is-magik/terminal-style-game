@@ -46,6 +46,7 @@ static const char * const LE_PREVIEW_NAMES[LE_PREVIEW_COUNT] = {
 };
 
 static int clamp_int(int value, int min_value, int max_value);
+static const char *surface_name(DecalSurface surface);
 
 static SDL_Color color_rgb(uint8_t r, uint8_t g, uint8_t b) {
     SDL_Color c = {r, g, b, 255};
@@ -118,21 +119,6 @@ static const char *live_editor_tooltip(const LiveEditorState *s, const char *key
         if (strcmp(s->tooltip_keys[i], key) == 0) return s->tooltip_text[i];
     }
     return "No tooltip available for this field.";
-}
-
-static const char *current_tooltip_key(const LiveEditorState *s) {
-    if (!s) return "";
-    if (s->focus == LE_FOCUS_MATERIAL) return "material_id";
-    if (s->focus == LE_FOCUS_MATERIAL_METADATA) {
-        int field = clamp_int(s->material_field, 0, LE_MATERIAL_FIELD_COUNT - 1);
-        return LE_MATERIAL_TOOLTIP_KEYS[field];
-    }
-    if (s->focus == LE_FOCUS_DECAL) return "decal_canvas";
-    if (s->focus == LE_FOCUS_DECAL_METADATA) {
-        int row = clamp_int(s->decal_metadata_row, 0, LE_METADATA_FIELD_COUNT - 1);
-        return LE_DECAL_TOOLTIP_KEYS[row];
-    }
-    return "";
 }
 
 static int clamp_int(int value, int min_value, int max_value) {
@@ -309,6 +295,111 @@ static void draw_focus_box(Grid *grid, int x, int y, int w, int h,
     }
 }
 
+static void set_slot_text(LiveEditorState *s, const char *slot_name,
+                          const char *text, bool highlighted) {
+    UiElement *element;
+
+    if (!s || !slot_name || !text) return;
+    element = ui_cache_get(&s->ui_cache, slot_name);
+    if (!element) return;
+    ui_ele_set_content(element, text);
+    element->has_fg = true;
+    element->fg = highlighted ? color_rgb(50, 255, 50) : color_rgb(210, 210, 210);
+    if (s->ui_layout) {
+        ui_layout_substitute(s->ui_layout, slot_name, element);
+    }
+}
+
+static void configure_live_editor_layout(LiveEditorState *s,
+                                         int left_x, int right_x,
+                                         int pane_w, int top_y, int top_h,
+                                         int bottom_y, int bottom_h) {
+    UiElement *element;
+
+    if (!s) return;
+
+    element = ui_cache_get(&s->ui_cache, "le_material_pane");
+    if (element) {
+        element->layout.x = left_x;
+        element->layout.y = top_y;
+        element->layout.width = pane_w;
+        element->layout.height = top_h;
+    }
+    element = ui_cache_get(&s->ui_cache, "le_decal_pane");
+    if (element) {
+        element->layout.x = left_x;
+        element->layout.y = bottom_y;
+        element->layout.width = pane_w;
+        element->layout.height = bottom_h;
+    }
+    element = ui_cache_get(&s->ui_cache, "le_mat_meta_pane");
+    if (element) {
+        element->layout.x = right_x;
+        element->layout.y = top_y;
+        element->layout.width = pane_w;
+        element->layout.height = top_h;
+    }
+    element = ui_cache_get(&s->ui_cache, "le_dec_meta_pane");
+    if (element) {
+        element->layout.x = right_x;
+        element->layout.y = bottom_y;
+        element->layout.width = pane_w;
+        element->layout.height = bottom_h;
+    }
+
+    (void)top_h;
+}
+
+static void update_live_editor_slots(LiveEditorState *s) {
+    const Material *mat;
+    char line[160];
+    const char *tip;
+
+    if (!s) return;
+    mat = &s->preview_assets.materials[s->current_material_id];
+
+    snprintf(line, sizeof(line), "%c palette: %d",
+             s->material_field == 0 ? '>' : ' ', mat->palette_id);
+    set_slot_text(s, "slot_material_palette", line, s->material_field == 0);
+    for (int i = 0; i < 4; i++) {
+        char slot_name[UI_ELE_NAME_MAX];
+        snprintf(slot_name, sizeof(slot_name), "slot_material_glyph%d", i + 1);
+        snprintf(line, sizeof(line), "%c glyph_%d: %c",
+                 s->material_field == i + 1 ? '>' : ' ', i + 1,
+                 mat->glyphs[i] ? (char)mat->glyphs[i] : ' ');
+        set_slot_text(s, slot_name, line, s->material_field == i + 1);
+    }
+    snprintf(line, sizeof(line), "%c material_id: %d",
+             s->material_field == 5 ? '>' : ' ', s->current_material_id);
+    set_slot_text(s, "slot_material_id", line, s->material_field == 5);
+
+    snprintf(line, sizeof(line), "Focused material field: %d", s->material_field + 1);
+    set_slot_text(s, "slot_mat_meta_focused", line, false);
+    tip = live_editor_tooltip(s, LE_MATERIAL_TOOLTIP_KEYS[clamp_int(s->material_field, 0, LE_MATERIAL_FIELD_COUNT - 1)]);
+    set_slot_text(s, "slot_mat_tooltip", tip, true);
+
+    snprintf(line, sizeof(line), "%c surface: %s",
+             s->decal_metadata_row == 0 ? '>' : ' ', surface_name(s->decal.surface));
+    set_slot_text(s, "slot_decal_surface", line, s->decal_metadata_row == 0);
+    snprintf(line, sizeof(line), "%c width: %.2f",
+             s->decal_metadata_row == 1 ? '>' : ' ', s->decal.width);
+    set_slot_text(s, "slot_decal_width", line, s->decal_metadata_row == 1);
+    snprintf(line, sizeof(line), "%c height: %.2f",
+             s->decal_metadata_row == 2 ? '>' : ' ', s->decal.height);
+    set_slot_text(s, "slot_decal_height", line, s->decal_metadata_row == 2);
+    snprintf(line, sizeof(line), "%c step_u: %.2f",
+             s->decal_metadata_row == 3 ? '>' : ' ', s->decal.glyph_step_u);
+    set_slot_text(s, "slot_decal_step_u", line, s->decal_metadata_row == 3);
+    snprintf(line, sizeof(line), "%c step_v: %.2f",
+             s->decal_metadata_row == 4 ? '>' : ' ', s->decal.glyph_step_v);
+    set_slot_text(s, "slot_decal_step_v", line, s->decal_metadata_row == 4);
+    snprintf(line, sizeof(line), "%c preview: %s",
+             s->decal_metadata_row == 5 ? '>' : ' ', LE_PREVIEW_NAMES[s->preview_color]);
+    set_slot_text(s, "slot_decal_preview", line, s->decal_metadata_row == 5);
+    tip = live_editor_tooltip(s, LE_DECAL_TOOLTIP_KEYS[clamp_int(s->decal_metadata_row, 0, LE_METADATA_FIELD_COUNT - 1)]);
+    set_slot_text(s, "slot_dec_tooltip", tip, true);
+}
+
 static void draw_canvas_border(Grid *grid, int x, int y, int cols, int rows) {
     SDL_Color fg = color_rgb(255, 255, 255);
     SDL_Color bg = color_rgb(0, 0, 0);
@@ -456,6 +547,15 @@ static void update_decal_metadata(LiveEditorState *s, const InputState *input) {
     mark_dirty(s);
 }
 
+static const char *surface_name(DecalSurface surface) {
+    switch (surface) {
+        case DECAL_SURFACE_FLOOR: return "floor";
+        case DECAL_SURFACE_CEILING: return "ceiling";
+        case DECAL_SURFACE_WALL:
+        default: return "wall";
+    }
+}
+
 static void move_focus(LiveEditorState *s, const InputState *input) {
     if (!s || !input) return;
 
@@ -474,15 +574,6 @@ static void move_focus(LiveEditorState *s, const InputState *input) {
     }
 }
 
-static const char *surface_name(DecalSurface surface) {
-    switch (surface) {
-        case DECAL_SURFACE_FLOOR: return "floor";
-        case DECAL_SURFACE_CEILING: return "ceiling";
-        case DECAL_SURFACE_WALL:
-        default: return "wall";
-    }
-}
-
 static void draw_canvas_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
     SDL_Color hi = color_rgb(50, 255, 50);
     SDL_Color bg = color_rgb(0, 0, 0);
@@ -492,7 +583,7 @@ static void draw_canvas_pane(const LiveEditorState *s, Grid *grid, int x, int y,
     int canvas_y;
 
     if (!s || !grid) return;
-    draw_focus_box(grid, x, y, w, h, "Decal", s->focus == LE_FOCUS_DECAL);
+    draw_focus_box(grid, x, y, w, h, NULL, s->focus == LE_FOCUS_DECAL);
 
     max_cols = s->canvas_cols;
     max_rows = s->canvas_rows;
@@ -521,89 +612,18 @@ static void draw_canvas_pane(const LiveEditorState *s, Grid *grid, int x, int y,
 }
 
 static void draw_material_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
-    SDL_Color fg = color_rgb(210, 210, 210);
-    SDL_Color hi = color_rgb(50, 255, 50);
-    SDL_Color bg = color_rgb(0, 0, 0);
-    char line[128];
-    const Material *mat;
-
     if (!s || !grid) return;
-    mat = &s->preview_assets.materials[s->current_material_id];
-    draw_focus_box(grid, x, y, w, h, "Material", s->focus == LE_FOCUS_MATERIAL);
-
-    snprintf(line, sizeof(line), "%c palette: %d",
-             s->material_field == 0 ? '>' : ' ', mat->palette_id);
-    grid_print(grid, x + 2, y + 3, line,
-               s->material_field == 0 ? hi : fg, bg);
-    for (int i = 0; i < 4; i++) {
-        snprintf(line, sizeof(line), "%c glyph_%d: %c",
-                 s->material_field == i + 1 ? '>' : ' ', i + 1,
-                 mat->glyphs[i] ? (char)mat->glyphs[i] : ' ');
-        grid_print(grid, x + 2, y + 4 + i, line,
-                   s->material_field == i + 1 ? hi : fg, bg);
-    }
-    snprintf(line, sizeof(line), "%c material_id: %d",
-             s->material_field == 5 ? '>' : ' ', s->current_material_id);
-    grid_print(grid, x + 2, y + 8, line,
-               s->material_field == 5 ? hi : fg, bg);
+    draw_focus_box(grid, x, y, w, h, NULL, s->focus == LE_FOCUS_MATERIAL);
 }
 
 static void draw_material_metadata_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
-    SDL_Color fg = color_rgb(210, 210, 210);
-    SDL_Color hi = color_rgb(50, 255, 50);
-    SDL_Color bg = color_rgb(0, 0, 0);
-    char line[160];
-    const char *tip;
-
     if (!s || !grid) return;
-    draw_focus_box(grid, x, y, w, h, "Mat Metadata", s->focus == LE_FOCUS_MATERIAL_METADATA);
-
-    snprintf(line, sizeof(line), "Focused material field: %d", s->material_field + 1);
-    grid_print(grid, x + 2, y + 3, line, fg, bg);
-    tip = live_editor_tooltip(s, LE_MATERIAL_TOOLTIP_KEYS[clamp_int(s->material_field, 0, LE_MATERIAL_FIELD_COUNT - 1)]);
-    grid_print(grid, x + 2, y + 5, tip, hi, bg);
-    grid_print(grid, x + 2, y + 8, "Ctrl+Left: Material", fg, bg);
-    grid_print(grid, x + 2, y + 9, "Ctrl+Down: Dec Metadata", fg, bg);
+    draw_focus_box(grid, x, y, w, h, NULL, s->focus == LE_FOCUS_MATERIAL_METADATA);
 }
 
 static void draw_decal_metadata_pane(const LiveEditorState *s, Grid *grid, int x, int y, int w, int h) {
-    SDL_Color fg = color_rgb(210, 210, 210);
-    SDL_Color hi = color_rgb(50, 255, 50);
-    SDL_Color muted = color_rgb(140, 140, 140);
-    SDL_Color bg = color_rgb(0, 0, 0);
-    char line[160];
-    const char *tip;
-
     if (!s || !grid) return;
-    draw_focus_box(grid, x, y, w, h, "Dec Metadata", s->focus == LE_FOCUS_DECAL_METADATA);
-
-    snprintf(line, sizeof(line), "%c surface: %s",
-             s->decal_metadata_row == 0 ? '>' : ' ', surface_name(s->decal.surface));
-    grid_print(grid, x + 2, y + 3, line, s->decal_metadata_row == 0 ? hi : fg, bg);
-    snprintf(line, sizeof(line), "%c width: %.2f",
-             s->decal_metadata_row == 1 ? '>' : ' ', s->decal.width);
-    grid_print(grid, x + 2, y + 4, line, s->decal_metadata_row == 1 ? hi : fg, bg);
-    snprintf(line, sizeof(line), "%c height: %.2f",
-             s->decal_metadata_row == 2 ? '>' : ' ', s->decal.height);
-    grid_print(grid, x + 2, y + 5, line, s->decal_metadata_row == 2 ? hi : fg, bg);
-    snprintf(line, sizeof(line), "%c step_u: %.2f",
-             s->decal_metadata_row == 3 ? '>' : ' ', s->decal.glyph_step_u);
-    grid_print(grid, x + 2, y + 6, line, s->decal_metadata_row == 3 ? hi : fg, bg);
-    snprintf(line, sizeof(line), "%c step_v: %.2f",
-             s->decal_metadata_row == 4 ? '>' : ' ', s->decal.glyph_step_v);
-    grid_print(grid, x + 2, y + 7, line, s->decal_metadata_row == 4 ? hi : fg, bg);
-    snprintf(line, sizeof(line), "%c preview: %s",
-             s->decal_metadata_row == 5 ? '>' : ' ', LE_PREVIEW_NAMES[s->preview_color]);
-    grid_print(grid, x + 2, y + 8, line, s->decal_metadata_row == 5 ? hi : fg, bg);
-
-    tip = live_editor_tooltip(s, LE_DECAL_TOOLTIP_KEYS[clamp_int(s->decal_metadata_row, 0, LE_METADATA_FIELD_COUNT - 1)]);
-    grid_print(grid, x + 2, y + 10, tip, hi, bg);
-
-    grid_print(grid, x + 2, y + 13, "Ctrl+Arrows: focus", muted, bg);
-    grid_print(grid, x + 2, y + 14, "Arrows: move/adjust", muted, bg);
-    grid_print(grid, x + 2, y + 15, "Space: paint glyph", muted, bg);
-    grid_print(grid, x + 2, y + 16, "Backspace: erase", muted, bg);
-    grid_print(grid, x + 2, y + 17, "[/]: cycle glyph", muted, bg);
+    draw_focus_box(grid, x, y, w, h, NULL, s->focus == LE_FOCUS_DECAL_METADATA);
 }
 
 void live_editor_init(LiveEditorState *s,
@@ -626,6 +646,9 @@ void live_editor_init(LiveEditorState *s,
     s->preview_color = LE_PREVIEW_WHITE;
     s->dirty = 1;
     live_editor_load_tooltips(s, "assets/editor_tooltips.txt");
+    ui_cache_init(&s->ui_cache, "assets/ui_layouts/master_map.txt");
+    ui_cache_tick(&s->ui_cache, "live_edit_side", "assets/ui_elements");
+    s->ui_layout = ui_layout_load("assets/ui_layouts/live_edit_side.txt", &s->ui_cache);
 
     if (assets) {
         s->preview_assets = *assets;
@@ -666,6 +689,9 @@ void live_editor_init(LiveEditorState *s,
 
 void live_editor_destroy(LiveEditorState *s) {
     if (!s) return;
+    ui_layout_destroy(s->ui_layout);
+    s->ui_layout = NULL;
+    ui_cache_destroy(&s->ui_cache);
     decal_release_contents(&s->decal);
     map_destroy(s->preview_map);
     s->preview_map = NULL;
@@ -711,7 +737,6 @@ void live_editor_render(LiveEditorState *s, Grid *grid) {
     SDL_Color panel_bg = color_rgb(0, 0, 0);
     SDL_Color title_fg = color_rgb(50, 255, 50);
     char title[160];
-    char tooltip_line[220];
     int side_w;
     int left_x;
     int right_x;
@@ -752,6 +777,10 @@ void live_editor_render(LiveEditorState *s, Grid *grid) {
     fill_rect(grid, 0, 0, side_w, grid->height, panel_bg);
     fill_rect(grid, grid->width - side_w, 0, side_w, grid->height, panel_bg);
 
+    configure_live_editor_layout(s, left_x, right_x, pane_w,
+                                 top_y, top_h, bottom_y, bottom_h);
+    update_live_editor_slots(s);
+
     snprintf(title, sizeof(title), "[ Live Edit ] focus=%s  material=%d  glyph=%c%s",
              LE_FOCUS_NAMES[s->focus], s->current_material_id, s->current_glyph,
              s->dirty ? "  *dirty" : "");
@@ -761,10 +790,9 @@ void live_editor_render(LiveEditorState *s, Grid *grid) {
     draw_canvas_pane(s, grid, left_x, bottom_y, pane_w, bottom_h);
     draw_material_metadata_pane(s, grid, right_x, top_y, pane_w, top_h);
     draw_decal_metadata_pane(s, grid, right_x, bottom_y, pane_w, bottom_h);
-
-    snprintf(tooltip_line, sizeof(tooltip_line), "Tip: %s",
-             live_editor_tooltip(s, current_tooltip_key(s)));
-    grid_print(grid, 2, grid->height - 3, tooltip_line, title_fg, panel_bg);
+    if (s->ui_layout) {
+        ui_layout_render(s->ui_layout, grid, title_fg, panel_bg);
+    }
 
     if (s->status_frames > 0 && s->status_msg[0] != '\0') {
         grid_print(grid, 2, grid->height - 2,

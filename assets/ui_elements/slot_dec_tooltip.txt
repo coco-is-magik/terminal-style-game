@@ -1,0 +1,9 @@
+name=slot_dec_tooltip
+type=text
+parent=le_dec_meta_pane
+x=2
+y=10
+coords=relative
+width=42
+height=3
+content=

@@ -1,9 +1,0 @@
-id=6
-width=20
-height=3
-normal_0=+------------------+
-normal_1=|       QUIT       |
-normal_2=+------------------+
-selected_0=*==================*
-selected_1=|     > QUIT <     |
-selected_2=*==================*

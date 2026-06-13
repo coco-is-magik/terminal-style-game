@@ -1,0 +1,11 @@
+name=asset_select_title
+type=text
+parent=asset_select_container
+x=1
+y=0
+coords=relative
+width=30
+height=1
+align=center
+fg=255,255,255,255
+content=-- ASSET EDITOR --

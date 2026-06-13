@@ -1,0 +1,11 @@
+name=confirm_no
+type=button
+parent=confirm_menu_container
+x=20
+y=4
+coords=relative
+width=12
+height=1
+align=center
+action=cancel
+content=NO

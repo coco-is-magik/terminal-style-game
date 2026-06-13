@@ -1,0 +1,9 @@
+name=tooltip_slot
+type=text
+x=0
+y=0
+coords=relative
+parent=right_side_container
+width=42
+height=4
+content=

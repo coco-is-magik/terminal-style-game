@@ -1,0 +1,7 @@
+name=editor_menu_container
+type=container
+x=118
+y=68
+coords=absolute
+width=28
+height=14

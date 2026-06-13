@@ -15,11 +15,11 @@ APP := $(BUILD_DIR)/ascii-fps
 TEST_DEPS_RUNNER := $(BUILD_DIR)/test-deps
 TEST_CORE_RUNNER := $(BUILD_DIR)/test-core
 TEST_DECALS_RUNNER := $(BUILD_DIR)/test-decals
-TEST_UI_RUNNER := $(BUILD_DIR)/test-ui
 TEST_MENU_STATE_RUNNER := $(BUILD_DIR)/test-menu-state
 TEST_DECAL_IO_RUNNER         := $(BUILD_DIR)/test-decal-io
 TEST_ASSET_DESIGNER_RUNNER   := $(BUILD_DIR)/test-asset-designer
 TEST_LIVE_EDITOR_RUNNER      := $(BUILD_DIR)/test-live-editor
+TEST_UI_ELE_RUNNER           := $(BUILD_DIR)/test-ui-ele
 
 .PHONY: all run test clean dirs
 
@@ -43,9 +43,6 @@ $(TEST_CORE_RUNNER): tests/test_core.c $(TEST_SRC) | dirs
 $(TEST_DECALS_RUNNER): tests/test_decals.c $(TEST_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decals.c $(TEST_SRC) -o $(TEST_DECALS_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_RUNNER): tests/test_ui_assets.c $(TEST_SRC) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_assets.c $(TEST_SRC) -o $(TEST_UI_RUNNER) $(TEST_LIBS) $(RPATH)
-
 $(TEST_MENU_STATE_RUNNER): tests/test_menu_state.c $(TEST_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_menu_state.c $(TEST_SRC) -o $(TEST_MENU_STATE_RUNNER) $(TEST_LIBS) $(RPATH)
 
@@ -58,6 +55,9 @@ $(TEST_ASSET_DESIGNER_RUNNER): tests/test_asset_designer.c $(TEST_SRC) | dirs
 $(TEST_LIVE_EDITOR_RUNNER): tests/test_live_editor.c $(TEST_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_live_editor.c $(TEST_SRC) -o $(TEST_LIVE_EDITOR_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_UI_ELE_RUNNER): tests/test_ui_ele.c $(TEST_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_ele.c $(TEST_SRC) -o $(TEST_UI_ELE_RUNNER) $(TEST_LIBS) $(RPATH)
+
 run: $(APP)
 	./$(APP) --mode raycast
 
@@ -67,15 +67,15 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_UI_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_ASSET_DESIGNER_RUNNER) $(TEST_LIVE_EDITOR_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_ASSET_DESIGNER_RUNNER) $(TEST_LIVE_EDITOR_RUNNER) $(TEST_UI_ELE_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
 	./$(TEST_DECALS_RUNNER)
-	./$(TEST_UI_RUNNER)
 	./$(TEST_MENU_STATE_RUNNER)
 	./$(TEST_DECAL_IO_RUNNER)
 	./$(TEST_ASSET_DESIGNER_RUNNER)
 	./$(TEST_LIVE_EDITOR_RUNNER)
+	./$(TEST_UI_ELE_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
 benchmark: $(APP)

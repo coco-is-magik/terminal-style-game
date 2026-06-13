@@ -1,0 +1,7 @@
+name=le_material_pane
+type=container
+x=0
+y=0
+coords=absolute
+width=48
+height=20

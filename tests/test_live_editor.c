@@ -10,6 +10,35 @@
 #include "../src/config.h"
 #include "../src/map.h"
 
+static int grid_region_contains_text(Grid *grid, int min_x, int min_y,
+                                     int max_x, int max_y,
+                                     const char *text) {
+    int len = (int)strlen(text);
+
+    if (!grid || !text || len <= 0) return 0;
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x > grid->width) max_x = grid->width;
+    if (max_y > grid->height) max_y = grid->height;
+
+    for (int y = min_y; y < max_y; y++) {
+        for (int x = min_x; x <= max_x - len; x++) {
+            int matched = 1;
+            for (int i = 0; i < len; i++) {
+                Cell c;
+                assert_true(grid_get(grid, x + i, y, &c));
+                if (c.glyph != (uint8_t)text[i]) {
+                    matched = 0;
+                    break;
+                }
+            }
+            if (matched) return 1;
+        }
+    }
+
+    return 0;
+}
+
 static void test_live_editor_init_defaults(void **state) {
     (void)state;
     config_init_defaults();
@@ -167,6 +196,71 @@ static void test_live_editor_dirty_escape_requires_confirm(void **state) {
     live_editor_destroy(&editor);
 }
 
+static void test_live_editor_metadata_rendering_current_layout(void **state) {
+    (void)state;
+    config_init_defaults();
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    LiveEditorState editor;
+    live_editor_init(&editor, config_get(), APP_STATE_MAIN_MENU, &assets);
+
+    Grid *grid = grid_create(260, 160);
+    assert_non_null(grid);
+
+    live_editor_render(&editor, grid);
+
+    /* Current intended visual layout:
+     * - action panes (Material, Decal canvas) on the left
+     * - metadata panes and tooltip prefixes on the right
+     * - live preview remains in the center, unobstructed by panels
+     *
+     * These assertions preserve the working layout before migrating tooltip
+     * rendering to a data-driven UI element system. They intentionally check
+     * only tooltip prefixes, not the current broken single-line/no-wrap shape.
+     */
+    assert_true(grid_region_contains_text(grid, 0, 0, 80, 160, "Material"));
+    assert_true(grid_region_contains_text(grid, 0, 0, 80, 160, "Decal"));
+    assert_false(grid_region_contains_text(grid, 0, 0, 120, 160, "Mat Metadata"));
+    assert_false(grid_region_contains_text(grid, 0, 0, 120, 160, "Dec Metadata"));
+
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "Mat Metadata"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "Dec Metadata"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "Focused material field"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "surface: wall"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "Palette ID used"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "Which surface"));
+
+    grid_destroy(grid);
+    live_editor_destroy(&editor);
+}
+
+static void test_live_editor_data_driven_slots_update_after_state_change(void **state) {
+    (void)state;
+    config_init_defaults();
+
+    AssetRegistry assets;
+    asset_registry_init(&assets);
+    LiveEditorState editor;
+    live_editor_init(&editor, config_get(), APP_STATE_MAIN_MENU, &assets);
+
+    Grid *grid = grid_create(260, 160);
+    assert_non_null(grid);
+
+    editor.material_field = 2;
+    editor.preview_assets.materials[1].glyphs[1] = '@';
+    editor.decal_metadata_row = 1;
+    editor.decal.width = 1.25;
+
+    live_editor_render(&editor, grid);
+
+    assert_true(grid_region_contains_text(grid, 0, 0, 80, 40, "> glyph_2: @"));
+    assert_true(grid_region_contains_text(grid, 180, 0, 260, 160, "> width: 1.25"));
+
+    grid_destroy(grid);
+    live_editor_destroy(&editor);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_live_editor_init_defaults),
@@ -175,6 +269,8 @@ int main(void) {
         cmocka_unit_test(test_live_editor_canvas_paint_and_erase),
         cmocka_unit_test(test_live_editor_metadata_surface_updates_showroom),
         cmocka_unit_test(test_live_editor_dirty_escape_requires_confirm),
+        cmocka_unit_test(test_live_editor_metadata_rendering_current_layout),
+        cmocka_unit_test(test_live_editor_data_driven_slots_update_after_state_change),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

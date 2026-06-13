@@ -1,0 +1,7 @@
+name=hud_container
+type=container
+x=2
+y=2
+coords=absolute
+width=40
+height=14

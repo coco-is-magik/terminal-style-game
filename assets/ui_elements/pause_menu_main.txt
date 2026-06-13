@@ -1,0 +1,11 @@
+name=pause_menu_main
+type=button
+parent=pause_menu_container
+x=2
+y=7
+coords=relative
+width=20
+height=1
+align=center
+action=return_to_main_menu
+content=MAIN MENU

@@ -1,0 +1,9 @@
+name=hud_prompt
+type=text
+parent=hud_container
+x=0
+y=3
+coords=relative
+width=38
+height=1
+content=Press ESC for menu

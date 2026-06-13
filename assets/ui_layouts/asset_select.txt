@@ -1,0 +1,3 @@
+name=asset_select
+type=layout
+elements=asset_select_title,asset_select_live,asset_select_decals,asset_select_materials,asset_select_lights

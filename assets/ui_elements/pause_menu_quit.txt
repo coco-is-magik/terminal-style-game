@@ -1,0 +1,11 @@
+name=pause_menu_quit
+type=button
+parent=pause_menu_container
+x=2
+y=10
+coords=relative
+width=20
+height=1
+align=center
+action=quit
+content=QUIT

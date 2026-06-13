@@ -1,0 +1,9 @@
+name=hud_stats_title
+type=text
+parent=hud_container
+x=0
+y=5
+coords=relative
+width=38
+height=1
+content=[1-Second Rolling Stats]

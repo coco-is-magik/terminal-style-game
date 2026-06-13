@@ -1,0 +1,11 @@
+name=discard_yes
+type=button
+parent=confirm_menu_container
+x=2
+y=4
+coords=relative
+width=16
+height=1
+align=center
+action=discard_changes
+content=DISCARD

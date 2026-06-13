@@ -1,0 +1,3 @@
+name=hud_overlay
+type=layout
+elements=hud_grid,hud_frame,hud_mode,hud_prompt,hud_sep,hud_stats_title,hud_target_fps,hud_actual_fps,hud_avg_frame,hud_worst_frame,hud_min_spare,hud_status

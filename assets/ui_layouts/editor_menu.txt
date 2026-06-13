@@ -1,0 +1,3 @@
+name=editor_menu
+type=layout
+elements=editor_menu_title,editor_menu_back,editor_menu_main

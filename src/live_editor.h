@@ -17,6 +17,7 @@
 #include "grid.h"
 #include "input.h"
 #include "map.h"
+#include "ui_ele.h"
 
 /** Maximum editable decal canvas size for the live editor. */
 #define LE_MAX_CANVAS_COLS 24
@@ -86,6 +87,8 @@ typedef struct {
     AssetRegistry preview_assets;   /* Local preview-only copy; no owned sprite data */
     Map *preview_map;               /* Owned synthetic showroom map */
     Camera preview_cam;
+    UiCache ui_cache;
+    UiLayout *ui_layout;
 
     char status_msg[128];
     int status_frames;

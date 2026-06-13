@@ -1,0 +1,7 @@
+name=confirm_menu_container
+type=container
+x=114
+y=68
+coords=absolute
+width=36
+height=14

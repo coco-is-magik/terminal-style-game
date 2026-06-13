@@ -1,0 +1,11 @@
+name=pause_menu_title
+type=text
+parent=pause_menu_container
+x=1
+y=0
+coords=relative
+width=22
+height=1
+align=center
+fg=255,255,255,255
+content=-- PAUSED --

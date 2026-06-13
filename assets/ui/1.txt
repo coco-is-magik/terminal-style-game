@@ -1,9 +1,0 @@
-id=1
-width=20
-height=3
-normal_0=+------------------+
-normal_1=|    START GAME    |
-normal_2=+------------------+
-selected_0=*==================*
-selected_1=|  > START GAME <  |
-selected_2=*==================*

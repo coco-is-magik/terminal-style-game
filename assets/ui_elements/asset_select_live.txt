@@ -1,0 +1,11 @@
+name=asset_select_live
+type=button
+parent=asset_select_container
+x=2
+y=4
+coords=relative
+width=28
+height=1
+align=center
+action=open_live_edit
+content=LIVE EDIT

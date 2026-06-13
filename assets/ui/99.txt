@@ -1,9 +1,0 @@
-id=99
-width=20
-height=3
-normal_0=TOOSHORT
-normal_1=TOOSHORT
-normal_2=TOOSHORT
-selected_0=TOOSHORT
-selected_1=TOOSHORT
-selected_2=TOOSHORT

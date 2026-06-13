@@ -1,0 +1,7 @@
+name=asset_select_container
+type=container
+x=116
+y=64
+coords=absolute
+width=32
+height=22

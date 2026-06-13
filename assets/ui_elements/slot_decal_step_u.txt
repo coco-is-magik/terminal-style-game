@@ -1,0 +1,9 @@
+name=slot_decal_step_u
+type=text
+parent=le_dec_meta_pane
+x=2
+y=6
+coords=relative
+width=42
+height=1
+content=

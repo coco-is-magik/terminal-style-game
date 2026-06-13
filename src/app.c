@@ -35,7 +35,7 @@
 #include "assets.h"        /* AssetRegistry struct (palettes, materials, sprites) */
 #include "asset_loader.h"  /* asset_loader_load_registry(), asset_loader_load_map_data() */
 #include "lighting.h"      /* lighting_update() — per-frame light propagation on the map */
-#include "ui_asset.h"      /* UIButtonAsset, ui_asset_load/destroy, ui_button_render */
+#include "ui_ele.h"        /* Data-driven UI elements/layouts */
 #include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
@@ -147,167 +147,171 @@ static void draw_stress_pattern(Grid *grid, uint64_t frame_count) {
     }
 }
 
-/**
- * draw_ui_overlay() — Heads-up display (HUD) overlay
- *
- * Renders performance statistics and status text in the top-left corner
- * of the grid (starting at column 2, row 2).  Shows grid dimensions,
- * current frame count, visual mode, FPS, frame times, and whether the
- * frame budget is being exceeded.
- *
- * Background of the overlay turns red when the frame is over budget
- * (spare_time < 0), giving an instant visual cue.
- *
- * @param grid       Grid to draw onto
- * @param frame_count  Current frame number
- * @param stats      Pointer to PerfStats containing rolling 1-second averages
- * @param mode       Current VisualMode (affects label shown)
- * @param target_fps The desired frame rate (set in config.ini)
- */
-static void draw_ui_overlay(Grid *grid, uint64_t frame_count, PerfStats *stats, VisualMode mode, int target_fps) {
-    char ui_text[1024];
-    
-    /* Human-readable label for the current visual mode */
-    const char* mode_str = "NORMAL PATTERN";
+static void set_ui_text(UiCache *cache, const char *name, const char *text) {
+    UiElement *element;
+
+    if (!cache || !name || !text) return;
+    element = ui_cache_get(cache, name);
+    if (element) ui_ele_set_content(element, text);
+}
+
+static void draw_data_ui_overlay(Grid *grid, UiCache *cache, UiLayout *layout,
+                                 uint64_t frame_count, PerfStats *stats,
+                                 VisualMode mode, int target_fps) {
+    char line[128];
+    const char *mode_str = "NORMAL PATTERN";
+    SDL_Color fg = {255, 255, 255, 255};
+    SDL_Color bg;
+
+    if (!grid || !cache || !layout || !stats) return;
     if (mode == VISUAL_STRESS) mode_str = "STRESS PATTERN";
     else if (mode == VISUAL_RAYCAST) mode_str = "RAYCAST WORLD";
 
-    /* Build the multi-line overlay string */
-    snprintf(ui_text, sizeof(ui_text), 
-             "Grid: %dx%d\n"
-             "Frame: %llu\n"
-             "Mode: %s\n"
-             "Press ESC for menu\n"
-             "---\n"
-             "[1-Second Rolling Stats]\n"
-             "Target FPS: %d\n"
-             "Actual FPS: %.1f\n"
-             "Avg Frame Time: %.2f ms\n"
-             "Worst Frame Time: %.2f ms\n"
-             "Min Spare Time: %.2f ms\n"
-             "Status: %s", 
-             grid->width, grid->height, 
-             (unsigned long long)frame_count,
-             mode_str,
-             target_fps,
-             stats->pub_avg_fps,
-             stats->pub_avg_frame_time_ms,
-             stats->pub_worst_frame_time_ms,
-             stats->pub_min_spare_time_ms,
-             stats->pub_min_spare_time_ms < 0 ? "OVER BUDGET" : "OK");
+    snprintf(line, sizeof(line), "Grid: %dx%d", grid->width, grid->height);
+    set_ui_text(cache, "hud_grid", line);
+    snprintf(line, sizeof(line), "Frame: %llu", (unsigned long long)frame_count);
+    set_ui_text(cache, "hud_frame", line);
+    snprintf(line, sizeof(line), "Mode: %s", mode_str);
+    set_ui_text(cache, "hud_mode", line);
+    snprintf(line, sizeof(line), "Target FPS: %d", target_fps);
+    set_ui_text(cache, "hud_target_fps", line);
+    snprintf(line, sizeof(line), "Actual FPS: %.1f", stats->pub_avg_fps);
+    set_ui_text(cache, "hud_actual_fps", line);
+    snprintf(line, sizeof(line), "Avg Frame Time: %.2f ms", stats->pub_avg_frame_time_ms);
+    set_ui_text(cache, "hud_avg_frame", line);
+    snprintf(line, sizeof(line), "Worst Frame Time: %.2f ms", stats->pub_worst_frame_time_ms);
+    set_ui_text(cache, "hud_worst_frame", line);
+    snprintf(line, sizeof(line), "Min Spare Time: %.2f ms", stats->pub_min_spare_time_ms);
+    set_ui_text(cache, "hud_min_spare", line);
+    snprintf(line, sizeof(line), "Status: %s", stats->pub_min_spare_time_ms < 0 ? "OVER BUDGET" : "OK");
+    set_ui_text(cache, "hud_status", line);
 
-    /* White text on a black background; red background when over budget */
-    SDL_Color ui_fg = {255, 255, 255, 255};
-    SDL_Color ui_bg = stats->pub_min_spare_time_ms < 0 ? (SDL_Color){150, 0, 0, 255} : (SDL_Color){0, 0, 0, 255};
-
-    grid_print(grid, 2, 2, ui_text, ui_fg, ui_bg);
+    bg = stats->pub_min_spare_time_ms < 0 ? (SDL_Color){150, 0, 0, 255}
+                                          : (SDL_Color){0, 0, 0, 255};
+    ui_layout_render(layout, grid, fg, bg);
 }
 
-/* ===================================================================
- *  Menu rendering helpers
- * =================================================================== */
-
-/* Layout constants for button slots (must match asset width=20, height=3) */
-#define MENU_BUTTON_W   20
-#define MENU_BUTTON_H    3
-#define MENU_BUTTON_GAP  1
-
-/* Total number of button assets (btns[0] unused, btns[1..8] loaded) */
-#define BTN_COUNT        9
-
-/**
- * MenuDef — Describes the contents and layout of one menu screen
- */
-typedef struct {
-    int         count;          /* Number of buttons */
-    int         asset_ids[4];   /* Button asset IDs (indices into btns[]) */
-    const char *labels[4];      /* Fallback text labels */
-    const char *title;          /* Optional title line above buttons (NULL = none) */
-} MenuDef;
-
-/**
- * MENU_DEFS — Per-menu static definitions, indexed by MenuId
- *
- * Asset mapping:
- *   1=Start Game  2=Asset Editor  3=Quit (main)
- *   4=Resume      5=Main Menu     6=Quit (secondary)
- *   7=Yes         8=No
- */
-static const MenuDef MENU_DEFS[] = {
-    /* [MENU_NONE]         */ {0, {0,0,0,0}, {NULL,NULL,NULL,NULL},            NULL},
-    /* [MENU_MAIN]         */ {3, {1,2,3,0}, {"START GAME","ASSET EDITOR","QUIT",NULL}, NULL},
-    /* [MENU_PAUSE]        */ {3, {4,5,6,0}, {"RESUME","MAIN MENU","QUIT",NULL},        "-- PAUSED --"},
-    /* [MENU_EDITOR]       */ {2, {4,5,0,0}, {"BACK TO EDITOR","MAIN MENU",NULL,NULL},  "-- EDITOR --"},
-    /* [MENU_CONFIRM_QUIT]           */ {2, {7,8,0,0}, {"YES","NO",NULL,NULL},                      "QUIT? ARE YOU SURE?"},
-    /* [MENU_DESIGNER_EXIT_CONFIRM]  */ {2, {7,8,0,0}, {"DISCARD CHANGES","CANCEL",NULL,NULL},      "UNSAVED CHANGES"},
-    /* [MENU_ASSET_SELECT]           */ {4, {0,0,0,0}, {"LIVE EDIT","DECALS","MATERIALS","LIGHTS (COMING SOON)"}, "-- ASSET EDITOR --"},
-};
-
-/**
- * draw_fallback_button() — Render a plain text button when the asset is missing
- */
-static void draw_fallback_button(Grid *grid, int x, int y,
-                                 const char *label, bool selected) {
-    char buf[64];
-    if (selected) {
-        snprintf(buf, sizeof(buf), "[ > %s < ]", label);
-    } else {
-        snprintf(buf, sizeof(buf), "[   %s   ]", label);
+static const char *menu_layout_name(MenuId menu) {
+    switch (menu) {
+        case MENU_MAIN: return "main_menu";
+        case MENU_PAUSE: return "pause_menu";
+        case MENU_EDITOR: return "editor_menu";
+        case MENU_CONFIRM_QUIT: return "confirm_quit";
+        case MENU_DESIGNER_EXIT_CONFIRM: return "designer_exit_confirm";
+        case MENU_ASSET_SELECT: return "asset_select";
+        case MENU_NONE:
+        case MENU_ID_COUNT:
+        default: return NULL;
     }
-    SDL_Color fg = selected ? (SDL_Color){ 50, 255,  50, 255}
-                            : (SDL_Color){200, 200, 200, 255};
-    SDL_Color bg = selected ? (SDL_Color){  0,  40,   0, 255}
-                            : (SDL_Color){  0,   0,   0, 255};
-    grid_print(grid, x, y, buf, fg, bg);
 }
 
-/**
- * draw_active_menu() — Render the currently active menu to the grid
- *
- * Looks up the MenuDef for `active`, optionally draws a title line, then
- * centres the button stack vertically and horizontally.
- *
- * @param grid    Target grid
- * @param active  Which menu to render (MENU_NONE is a no-op)
- * @param sel     Selected button index for this menu
- * @param btns    Button asset array, btns[0] unused, btns[1..BTN_COUNT-1] loaded
- */
-static void draw_active_menu(Grid *grid, MenuId active, int sel,
-                              UIButtonAsset **btns) {
-    if (active == MENU_NONE || (int)active >= (int)(sizeof(MENU_DEFS)/sizeof(MENU_DEFS[0])))
-        return;
-    const MenuDef *def = &MENU_DEFS[(int)active];
-    if (def->count == 0) return;
-
-    /* Title row: 1 line of text + 1 blank gap */
-    int title_rows = (def->title != NULL) ? 2 : 0;
-    int total_h = title_rows
-                  + def->count * MENU_BUTTON_H
-                  + (def->count - 1) * MENU_BUTTON_GAP;
-    int start_x = (grid->width  - MENU_BUTTON_W) / 2;
-    int start_y = (grid->height - total_h)        / 2;
-
-    if (def->title != NULL) {
-        SDL_Color tfg = {255, 255, 255, 255};
-        SDL_Color tbg = {  0,   0,   0, 255};
-        int tlen = (int)strlen(def->title);
-        int tx   = start_x + (MENU_BUTTON_W - tlen) / 2;
-        if (tx < 0) tx = 0;
-        grid_print(grid, tx, start_y, def->title, tfg, tbg);
-    }
-
-    int btn_y0 = start_y + title_rows;
-    for (int i = 0; i < def->count; i++) {
-        int btn_y    = btn_y0 + i * (MENU_BUTTON_H + MENU_BUTTON_GAP);
-        bool selected = (i == sel);
-        UIButtonState state = selected ? UI_BUTTON_SELECTED : UI_BUTTON_NORMAL;
-        int aid = def->asset_ids[i];
-        if (aid > 0 && aid < BTN_COUNT && btns[aid]) {
-            ui_button_render(grid, start_x, btn_y, btns[aid], state);
+static void menu_sync_button_colors(UiLayout *layout, int selected) {
+    if (!layout) return;
+    int count = ui_layout_focusable_count(layout);
+    for (int i = 0; i < count; i++) {
+        UiElement *button = ui_layout_get_focused(layout, i);
+        if (!button) continue;
+        button->has_fg = true;
+        button->has_bg = true;
+        if (i == selected) {
+            button->fg = (SDL_Color){50, 255, 50, 255};
+            button->bg = (SDL_Color){0, 40, 0, 255};
         } else {
-            draw_fallback_button(grid, start_x, btn_y, def->labels[i], selected);
+            button->fg = (SDL_Color){200, 200, 200, 255};
+            button->bg = (SDL_Color){0, 0, 0, 255};
         }
     }
+}
+
+static void draw_data_menu(Grid *grid, UiLayout *layout, int selected) {
+    SDL_Color fg = {255, 255, 255, 255};
+    SDL_Color bg = {0, 0, 0, 255};
+
+    if (!grid || !layout) return;
+    menu_sync_button_colors(layout, selected);
+    ui_layout_render(layout, grid, fg, bg);
+}
+
+static bool dispatch_menu_action(const char *action,
+                                 MenuStack *ms,
+                                 AppState *app_state,
+                                 InputState *input,
+                                 AssetDesignerState *ad_state,
+                                 MaterialDesignerState *md_state,
+                                 LiveEditorState *le_state,
+                                 const EngineConfig *cfg,
+                                 AssetRegistry *assets) {
+    if (!action || !ms || !app_state) return false;
+    if (strcmp(action, "start_game") == 0) {
+        menu_stack_clear(ms);
+        *app_state = APP_STATE_PLAYING;
+        return true;
+    }
+    if (strcmp(action, "open_asset_editor") == 0) {
+        menu_stack_push(ms, MENU_ASSET_SELECT);
+        return true;
+    }
+    if (strcmp(action, "quit") == 0) {
+        menu_stack_push(ms, MENU_CONFIRM_QUIT);
+        return true;
+    }
+    if (strcmp(action, "resume") == 0) {
+        menu_stack_pop(ms);
+        return true;
+    }
+    if (strcmp(action, "return_to_main_menu") == 0) {
+        menu_stack_clear(ms);
+        *app_state = APP_STATE_MAIN_MENU;
+        menu_stack_push(ms, MENU_MAIN);
+        return true;
+    }
+    if (strcmp(action, "back_to_editor") == 0) {
+        menu_stack_pop(ms);
+        return true;
+    }
+    if (strcmp(action, "confirm_quit") == 0) {
+        if (input) input->quit = true;
+        return true;
+    }
+    if (strcmp(action, "cancel") == 0) {
+        menu_stack_pop(ms);
+        return true;
+    }
+    if (strcmp(action, "discard_changes") == 0) {
+        if (*app_state == APP_STATE_ASSET_DESIGNER && ad_state) {
+            asset_designer_destroy(ad_state);
+        } else if (*app_state == APP_STATE_MATERIAL_DESIGNER && md_state) {
+            material_designer_destroy(md_state);
+        } else if (*app_state == APP_STATE_LIVE_EDITOR && le_state) {
+            live_editor_destroy(le_state);
+        }
+        menu_stack_clear(ms);
+        *app_state = APP_STATE_MAIN_MENU;
+        menu_stack_push(ms, MENU_MAIN);
+        return true;
+    }
+    if (strcmp(action, "open_live_edit") == 0) {
+        menu_stack_clear(ms);
+        if (le_state && cfg && assets) live_editor_init(le_state, cfg, APP_STATE_MAIN_MENU, assets);
+        *app_state = APP_STATE_LIVE_EDITOR;
+        return true;
+    }
+    if (strcmp(action, "open_decals") == 0) {
+        menu_stack_clear(ms);
+        if (ad_state && cfg) asset_designer_init(ad_state, cfg, APP_STATE_MAIN_MENU);
+        *app_state = APP_STATE_ASSET_DESIGNER;
+        return true;
+    }
+    if (strcmp(action, "open_materials") == 0) {
+        menu_stack_clear(ms);
+        if (md_state && cfg && assets) material_designer_init(md_state, cfg, APP_STATE_MAIN_MENU, assets);
+        *app_state = APP_STATE_MATERIAL_DESIGNER;
+        return true;
+    }
+    if (strcmp(action, "coming_soon") == 0) {
+        return true;
+    }
+    return false;
 }
 
 /* ===================================================================
@@ -427,15 +431,6 @@ int app_main(int argc, char* argv[]) {
     int menu_selected[MENU_ID_COUNT];
     for (int i = 0; i < MENU_ID_COUNT; i++) menu_selected[i] = 0;
 
-    /* Load all button assets 1..8 (non-fatal; draw_active_menu falls back to text) */
-    UIButtonAsset *btns[BTN_COUNT];
-    for (int i = 0; i < BTN_COUNT; i++) btns[i] = NULL;
-    if (mode == RUN_MODE_NORMAL) {
-        for (int i = 1; i < BTN_COUNT; i++) {
-            btns[i] = ui_asset_load(i, "assets");
-        }
-    }
-
     /* Mouse lock state — recomputed each frame based on app state */
     bool mouse_locked = false;
 
@@ -449,6 +444,21 @@ int app_main(int argc, char* argv[]) {
     AssetDesignerState ad_state = {0};   /* Decal canvas editor; init'd on entry, destroy'd on exit */
     MaterialDesignerState md_state = {0}; /* Material editor; init'd on entry, destroy'd on exit */
     LiveEditorState le_state = {0};       /* Combined decal/material live-preview editor */
+    UiCache menu_cache;
+    UiLayout *menu_layouts[MENU_ID_COUNT];
+    ui_cache_init(&menu_cache, "assets/ui_layouts/master_map.txt");
+    for (int i = 0; i < MENU_ID_COUNT; i++) {
+        const char *layout_name = menu_layout_name((MenuId)i);
+        menu_layouts[i] = NULL;
+        if (layout_name) {
+            char path[256];
+            ui_cache_tick(&menu_cache, layout_name, "assets/ui_elements");
+            snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", layout_name);
+            menu_layouts[i] = ui_layout_load(path, &menu_cache);
+        }
+    }
+    ui_cache_tick(&menu_cache, "hud_overlay", "assets/ui_elements");
+    UiLayout *hud_layout = ui_layout_load("assets/ui_layouts/hud_overlay.txt", &menu_cache);
 
     /* High-resolution timer: used to enforce frame budget and detect duration expiry */
     uint64_t initial_time = SDL_GetPerformanceCounter();
@@ -523,8 +533,8 @@ int app_main(int argc, char* argv[]) {
         MenuId active_menu = menu_stack_peek(&ms);
         if (active_menu != MENU_NONE) {
             int mid = (int)active_menu;
-            int count = (mid < (int)(sizeof(MENU_DEFS)/sizeof(MENU_DEFS[0])))
-                        ? MENU_DEFS[mid].count : 0;
+            UiLayout *active_layout = (mid >= 0 && mid < MENU_ID_COUNT) ? menu_layouts[mid] : NULL;
+            int count = active_layout ? ui_layout_focusable_count(active_layout) : 0;
 
             /* Up/down navigation — wrap-around */
             if (count > 0) {
@@ -537,69 +547,12 @@ int app_main(int argc, char* argv[]) {
             /* Confirm: dispatch based on menu type and current selection */
             if (input.confirm && count > 0) {
                 int sel = menu_selected[mid];
-                if (active_menu == MENU_MAIN) {
-                    if (sel == 0) {          /* Start Game */
-                        menu_stack_clear(&ms);
-                        app_state = APP_STATE_PLAYING;
-                    } else if (sel == 1) {   /* Asset Editor → asset class selector */
-                        menu_stack_push(&ms, MENU_ASSET_SELECT);
-                    } else {                 /* Quit → confirm dialog */
-                        menu_stack_push(&ms, MENU_CONFIRM_QUIT);
+                if (active_layout) {
+                    UiElement *focused = ui_layout_get_focused(active_layout, sel);
+                    if (focused && focused->action[0] != '\0') {
+                        dispatch_menu_action(focused->action, &ms, &app_state, &input,
+                                             &ad_state, &md_state, &le_state, cfg, &assets);
                     }
-                } else if (active_menu == MENU_PAUSE) {
-                    if (sel == 0) {          /* Resume → pop pause menu */
-                        menu_stack_pop(&ms);
-                    } else if (sel == 1) {   /* Main Menu */
-                        menu_stack_clear(&ms);
-                        app_state = APP_STATE_MAIN_MENU;
-                        menu_stack_push(&ms, MENU_MAIN);
-                    } else {                 /* Quit → confirm dialog */
-                        menu_stack_push(&ms, MENU_CONFIRM_QUIT);
-                    }
-                } else if (active_menu == MENU_EDITOR) {
-                    if (sel == 0) {          /* Back to Editor → pop */
-                        menu_stack_pop(&ms);
-                    } else {                 /* Main Menu */
-                        menu_stack_clear(&ms);
-                        app_state = APP_STATE_MAIN_MENU;
-                        menu_stack_push(&ms, MENU_MAIN);
-                    }
-                } else if (active_menu == MENU_CONFIRM_QUIT) {
-                    if (sel == 0) {          /* Yes → quit */
-                        input.quit = true;
-                    } else {                 /* No → pop confirm */
-                        menu_stack_pop(&ms);
-                    }
-                } else if (active_menu == MENU_DESIGNER_EXIT_CONFIRM) {
-                    if (sel == 0) {          /* Discard → destroy and exit designer */
-                        if (app_state == APP_STATE_ASSET_DESIGNER) {
-                            asset_designer_destroy(&ad_state);
-                        } else if (app_state == APP_STATE_MATERIAL_DESIGNER) {
-                            material_designer_destroy(&md_state);
-                        } else if (app_state == APP_STATE_LIVE_EDITOR) {
-                            live_editor_destroy(&le_state);
-                        }
-                        menu_stack_clear(&ms);
-                        app_state = APP_STATE_MAIN_MENU;
-                        menu_stack_push(&ms, MENU_MAIN);
-                    } else {                 /* Cancel → back to designer */
-                        menu_stack_pop(&ms);
-                    }
-                } else if (active_menu == MENU_ASSET_SELECT) {
-                    if (sel == 0) {          /* Live Edit */
-                        menu_stack_clear(&ms);
-                        live_editor_init(&le_state, cfg, APP_STATE_MAIN_MENU, &assets);
-                        app_state = APP_STATE_LIVE_EDITOR;
-                    } else if (sel == 1) {   /* Decals */
-                        menu_stack_clear(&ms);
-                        asset_designer_init(&ad_state, cfg, APP_STATE_MAIN_MENU);
-                        app_state = APP_STATE_ASSET_DESIGNER;
-                    } else if (sel == 2) {   /* Materials */
-                        menu_stack_clear(&ms);
-                        material_designer_init(&md_state, cfg, APP_STATE_MAIN_MENU, &assets);
-                        app_state = APP_STATE_MATERIAL_DESIGNER;
-                    }
-                    /* sel == 3: Lights — coming soon, no action */
                 }
                 /* Refresh active_menu after potential state change */
                 active_menu = menu_stack_peek(&ms);
@@ -648,9 +601,10 @@ int app_main(int argc, char* argv[]) {
         if (active_menu != MENU_NONE) {
             /* A menu is open — clear the screen and render the menu */
             SDL_Color mbg = {0, 0, 0, 255};
+            UiLayout *active_layout = ((int)active_menu >= 0 && (int)active_menu < MENU_ID_COUNT)
+                                      ? menu_layouts[(int)active_menu] : NULL;
             grid_clear(grid, mbg);
-            draw_active_menu(grid, active_menu,
-                             menu_selected[(int)active_menu], btns);
+            draw_data_menu(grid, active_layout, menu_selected[(int)active_menu]);
 
         } else if (app_state == APP_STATE_PLAYING) {
             /* Game world */
@@ -664,8 +618,8 @@ int app_main(int argc, char* argv[]) {
                 draw_world_pattern(grid, frame_count);
             }
             if (cfg->debug_display_enabled) {
-                draw_ui_overlay(grid, frame_count, &perf_stats, visual_mode,
-                                cfg->target_fps);
+                draw_data_ui_overlay(grid, &menu_cache, hud_layout, frame_count,
+                                     &perf_stats, visual_mode, cfg->target_fps);
             }
 
         } else if (app_state == APP_STATE_EDITOR) {
@@ -749,9 +703,11 @@ int app_main(int argc, char* argv[]) {
     asset_designer_destroy(&ad_state);
     material_designer_destroy(&md_state);
     live_editor_destroy(&le_state);
-    for (int i = 1; i < BTN_COUNT; i++) {
-        ui_asset_destroy(btns[i]);
+    for (int i = 0; i < MENU_ID_COUNT; i++) {
+        ui_layout_destroy(menu_layouts[i]);
     }
+    ui_layout_destroy(hud_layout);
+    ui_cache_destroy(&menu_cache);
     world_clear(&world);
     if (map) map_destroy(map);
     grid_destroy(grid);

@@ -1,0 +1,9 @@
+name=hud_grid
+type=text
+parent=hud_container
+x=0
+y=0
+coords=relative
+width=38
+height=1
+content=

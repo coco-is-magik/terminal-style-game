@@ -1,0 +1,11 @@
+name=editor_menu_title
+type=text
+parent=editor_menu_container
+x=1
+y=0
+coords=relative
+width=26
+height=1
+align=center
+fg=255,255,255,255
+content=-- EDITOR --
