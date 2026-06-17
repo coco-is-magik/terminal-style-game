@@ -23,7 +23,9 @@
  * distance — Distance along the ray from camera to the wall hit
  * map_x    — X coordinate of the wall tile that was hit
  * map_y    — Y coordinate of the wall tile that was hit
- * side     — Which axis was crossed: 0 = NS (X-aligned), 1 = EW (Y-aligned)
+ * side     — Which axis was crossed first:
+ *            0 = X-axis step, hit a Y-aligned wall (north-south wall face)
+ *            1 = Y-axis step, hit an X-aligned wall (east-west wall face)
  */
 typedef struct {
     bool hit;                /* Did the ray hit a wall? */
@@ -56,7 +58,8 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  *   2. Draws the wall slice (glyph, lighting, decals)
  *   3. Draws ceiling and floor with distance-based shading
  *
- * Post-passes render floor/ceiling decals and light markers.
+ * Post-passes render all world decals (wall, floor, and ceiling) and
+ * then the light-source '*' billboards.
  *
  * @param grid    The character grid to render into
  * @param map     The tile map (walls + light_map)

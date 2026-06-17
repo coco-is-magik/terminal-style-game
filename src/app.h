@@ -18,7 +18,8 @@
  * subsystems, then runs the main frame loop until quit is requested.
  *
  * Supports three run modes (configurable via CLI arguments):
- *   - Normal interactive mode (default)
+ *   - Normal interactive mode (default, or --mode normal)
+ *   - Raycast world mode     (--mode raycast, the default for `make run`)
  *   - Stress benchmark mode  (--benchmark-stress <sec>)
  *   - Stability test mode    (--stability-test <sec>)
  *

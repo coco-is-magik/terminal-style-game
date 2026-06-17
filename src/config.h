@@ -3,8 +3,8 @@
  *
  * Defines the EngineConfig struct holding all tunable engine parameters
  * (window size, grid dimensions, lighting, raycasting, etc.), the
- * RunMode and VisualMode enums, and the functions for loading and
- * accessing configuration.
+ * RunMode, VisualMode, and AppState enums, and the functions for loading
+ * and accessing configuration.
  *
  * See config.c for the implementation.
  */
@@ -57,9 +57,41 @@ typedef struct {
 
 /* ---- Configuration API ---- */
 
+/**
+ * config_init_defaults() — Populate the global config with hard-coded defaults
+ *
+ * Sets g_config to the values documented in config.c.  Safe to call multiple
+ * times; this is the first step before config_load_from_file() or config_set().
+ */
 void config_init_defaults(void);
+
+/**
+ * config_load_from_file() — Load INI-style overrides from a file
+ *
+ * Opens filepath and parses key=value lines into the global config.
+ * Unknown keys are ignored.  If the file cannot be opened, the function
+ * returns false and the existing config values remain unchanged.
+ *
+ * @param filepath  Path to the configuration file (e.g. "config.ini")
+ * @return          true if the file was read, false if it could not be opened
+ */
 bool config_load_from_file(const char *filepath);
+
+/**
+ * config_get() — Return a read-only pointer to the global EngineConfig
+ *
+ * @return  const pointer to the active global config
+ */
 const EngineConfig* config_get(void);
+
+/**
+ * config_set() — Overwrite the entire global config with a copy
+ *
+ * Used by tests and headless modes to force settings that differ from
+ * defaults and config.ini.  NULL is a no-op.
+ *
+ * @param new_config  Pointer to the EngineConfig to copy (may be NULL)
+ */
 void config_set(const EngineConfig *new_config);
 
 /* ---- Run mode enum ---- */

@@ -38,10 +38,10 @@ typedef struct {
  * Material — A surface material combining a palette and distance-based glyphs
  *
  * The glyphs array provides four characters, one per distance band:
- *   glyphs[0] — near  (0–4 cells): most detailed glyph
- *   glyphs[1] — mid   (4–7 cells)
- *   glyphs[2] — far   (7–10 cells)
- *   glyphs[3] — very far (10+ cells): simplest glyph
+ *   glyphs[0] — near   (distance ≤ 4 cells): most detailed glyph
+ *   glyphs[1] — mid    (4 < distance ≤ 7 cells)
+ *   glyphs[2] — far    (7 < distance ≤ 10 cells)
+ *   glyphs[3] — very far (distance > 10 cells): simplest glyph
  */
 typedef struct {
     int id;                  /* Material ID (1–255) */

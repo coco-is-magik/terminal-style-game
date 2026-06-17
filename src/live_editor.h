@@ -94,14 +94,61 @@ typedef struct {
     int status_frames;
 } LiveEditorState;
 
+/* ---- Public API ---- */
+
+/**
+ * live_editor_init() — Initialise the live editor with a default decal
+ *
+ * Sets up a blank decal canvas, a preview-only copy of the asset registry,
+ * and a synthetic showroom map for the raycast preview.  The preview_assets
+ * and preview_map are owned by the LiveEditorState and freed by
+ * live_editor_destroy().
+ *
+ * @param s             State to initialise (must not be NULL)
+ * @param cfg           Engine configuration for canvas dimensions
+ * @param return_state  AppState to return to on LE_RESULT_EXIT
+ * @param assets        AssetRegistry to clone for preview (may be NULL)
+ */
 void live_editor_init(LiveEditorState *s,
                       const EngineConfig *cfg,
                       AppState return_state,
                       const AssetRegistry *assets);
+
+/**
+ * live_editor_destroy() — Release all live editor resources
+ *
+ * Frees the decal pattern, the preview map, and any other heap allocations
+ * owned by the state.  Safe to call with NULL.
+ *
+ * @param s  State to destroy (may be NULL)
+ */
 void live_editor_destroy(LiveEditorState *s);
+
+/**
+ * live_editor_update() — Process one frame of input
+ *
+ * Handles canvas editing, material editing, focus movement, and preview
+ * rendering setup.  Returns a result telling the caller whether to stay,
+ * exit cleanly, or push a confirm dialog.
+ *
+ * @param s      State to update (must not be NULL)
+ * @param input  Current frame input
+ * @param assets  Runtime asset registry for validation
+ * @return       LE_RESULT_NONE, LE_RESULT_EXIT, or LE_RESULT_CONFIRM_DISCARD
+ */
 LiveEditorResult live_editor_update(LiveEditorState *s,
                                     const InputState *input,
                                     const AssetRegistry *assets);
+
+/**
+ * live_editor_render() — Draw the editor and live preview to the grid
+ *
+ * Renders the material pane, decal canvas, metadata panes, and the live
+ * raycast preview.
+ *
+ * @param s     State to render (must not be NULL)
+ * @param grid  Destination grid
+ */
 void live_editor_render(LiveEditorState *s, Grid *grid);
 
 #endif /* LIVE_EDITOR_H */

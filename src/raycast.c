@@ -19,7 +19,8 @@
  *     a. Fires a ray to find the nearest wall
  *     b. Draws the wall slice with correct height, glyph, and lighting
  *     c. Draws the ceiling and floor with distance-based shading
- *     d. Projects decal cells from surface-local space into screen cells
+ *     d. Renders all world decals (wall, floor, and ceiling) projected
+ *        onto the grid
  *     e. Renders light sources as '*' billboards
  *
  * The coordinate system assumes:
@@ -286,7 +287,7 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
 
     /* ---- DDA loop ---- */
     bool hit = false;
-    int side = 0;          /* 0 = NS wall hit (X-aligned), 1 = EW wall hit (Y-aligned) */
+    int side = 0;          /* 0 = X-axis step, Y-aligned NS wall; 1 = Y-axis step, X-aligned EW wall */
     double perp_wall_dist = 0;
 
     while (!hit && perp_wall_dist < max_dist) {
@@ -295,12 +296,12 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
         if (side_dist_x < side_dist_y) {
             side_dist_x += delta_dist_x;
             map_x += step_x;
-            side = 0;  /* Hit a wall that runs North-South (X-aligned) */
+            side = 0;  /* X-axis step: hit a Y-aligned North-South wall */
             perp_wall_dist = side_dist_x - delta_dist_x;
         } else {
             side_dist_y += delta_dist_y;
             map_y += step_y;
-            side = 1;  /* Hit a wall that runs East-West (Y-aligned) */
+            side = 1;  /* Y-axis step: hit an X-aligned East-West wall */
             perp_wall_dist = side_dist_y - delta_dist_y;
         }
 
@@ -345,10 +346,10 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  *   2. Fires a ray via raycast_fire()
  *   3. If a wall is hit, computes the wall slice height and draws it,
  *      applying distance-based glyph selection and lighting
- *   4. Checks wall decals at each pixel of the wall slice
- *   5. Draws ceiling and floor with distance-based shading from the light map
+ *   4. Draws ceiling and floor with distance-based shading from the light map
  *
  * After all columns are processed, a second pass renders:
+ *   5. All world decals (wall, floor, and ceiling) projected onto the grid
  *   6. Light source '*' markers
  *
  * @param grid    The character grid to render into

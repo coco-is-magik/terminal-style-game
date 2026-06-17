@@ -32,6 +32,11 @@ make
 ## Run
 
 make run
+make run-normal
+make run-stress
+
+The `run` target starts the raycast world.  `run-normal` and `run-stress`
+start the software-renderer test patterns used for benchmarking.
 
 ## Test
 
@@ -42,3 +47,37 @@ make stability
 ## Clean
 
 make clean
+
+## Dependencies
+
+Run `vendor.sh` once to clone and build the vendored libraries (SDL3,
+SDL3_mixer, enet, cmocka) into `vendor/dist/`.  Requires `cmake`, `git`,
+and a C compiler.
+
+## Configuration
+
+`config.ini` overrides hard-coded defaults for window size, grid size,
+lighting, raycasting, and the debug HUD.  See the comments in that file
+for the available keys.
+
+## Asset system
+
+Game data is loaded from `assets/`:
+
+  - `assets/maps/` — numeric digit grids
+  - `assets/palettes/` — near/mid/far colour stops
+  - `assets/materials/` — palette reference + four distance glyphs
+  - `assets/decals/` — surface decals (wall, floor, ceiling)
+  - `assets/lights/` — point lights
+  - `assets/ui_elements/` — data-driven UI widgets
+  - `assets/ui_layouts/` — UI screen composition
+
+See `assets/README.md` for the file format details.
+
+## Editors
+
+The main menu exposes two asset editors:
+
+  - **Asset Designer** (`APP_STATE_ASSET_DESIGNER`) — decal canvas editor
+  - **Live Editor** (`APP_STATE_LIVE_EDITOR`) — combined decal/material
+    editor with a live raycast preview
