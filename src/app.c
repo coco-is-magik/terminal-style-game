@@ -40,6 +40,7 @@
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
 #include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
+#include "smc_render_opt.h"     /* SMC runtime init/shutdown/stats for benchmark modes */
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
 #include <stdlib.h>        /* atof() */
 #include <string.h>        /* strcmp() */
@@ -343,6 +344,11 @@ int app_main(int argc, char* argv[]) {
             mode = RUN_MODE_BENCHMARK_STRESS;
             visual_mode = VISUAL_STRESS;
             run_duration_seconds = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--benchmark-raycast") == 0 && i + 1 < argc) {
+            /* Runs raycast-mode benchmarking for a fixed duration, then prints JSON stats */
+            mode = RUN_MODE_BENCHMARK_RAYCAST;
+            visual_mode = VISUAL_RAYCAST;
+            run_duration_seconds = atof(argv[++i]);
         } else if (strcmp(argv[i], "--stability-test") == 0 && i + 1 < argc) {
             /* Like benchmark, but intended to detect memory leaks / crashes over time */
             mode = RUN_MODE_STABILITY;
@@ -416,11 +422,34 @@ int app_main(int argc, char* argv[]) {
     camera_init(&cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
 
     /* -----------------------------------------------------------------
+     *  6a. Initialise the SMC renderer optimization layer (if enabled).
+     *     This is a no-op when USE_SMC is not defined.  We do this after
+     *     the renderer is created but before the benchmark loop starts.
+     * ----------------------------------------------------------------- */
+    if (smc_render_opt_init() != 0) {
+        fprintf(stderr, "Failed to initialize SMC renderer optimization layer.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
+    smc_render_opt_reset_stats();
+
+    /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
      * ----------------------------------------------------------------- */
     /* Interactive runs start at the main menu; benchmarks skip it */
     AppState app_state = (mode == RUN_MODE_NORMAL) ? APP_STATE_MAIN_MENU
                                                    : APP_STATE_PLAYING;
+
+    /* For deterministic raycast benchmarking, fix the camera so every frame
+     * renders the same view. This removes input/mouse noise from measurements. */
+        if (mode == RUN_MODE_BENCHMARK_RAYCAST) {
+            cam.transform.pos.x = 1.5;
+            cam.transform.pos.y = 1.5;
+            cam.transform.angle = PI / 4.0;
+            cam.pitch = 0.0;
+        }
+
     MenuStack ms;
     menu_stack_init(&ms);
     if (mode == RUN_MODE_NORMAL) {
@@ -718,7 +747,7 @@ int app_main(int argc, char* argv[]) {
      *      Print JSON-formatted performance summary and return
      *      an exit code the test harness can interpret.
      * ================================================================ */
-    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_STABILITY) {
+    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
         double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
         
         /* Outlier trimming: if the absolute worst render time is more than
@@ -768,7 +797,18 @@ int app_main(int argc, char* argv[]) {
         printf("  \"frames\": %llu,\n", (unsigned long long)frame_count);
         printf("  \"result\": \"%s\"\n", result_str);
         printf("}\n");
-        
+
+        /* Report SMC instrumentation when the optimization layer is active. */
+        uint64_t smc_total = 0, smc_fallback = 0, smc_arity = 0, smc_invalid = 0;
+        smc_render_opt_get_stats(&smc_total, &smc_fallback, &smc_arity, &smc_invalid);
+        if (smc_total > 0) {
+            fprintf(stderr, "SMC stats: total_calls=%llu fallback=%llu arity_errors=%llu invalid_ids=%llu\n",
+                    (unsigned long long)smc_total,
+                    (unsigned long long)smc_fallback,
+                    (unsigned long long)smc_arity,
+                    (unsigned long long)smc_invalid);
+        }
+
         return exit_code;
     }
 

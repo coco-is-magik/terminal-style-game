@@ -2,7 +2,10 @@ CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
 
-#VENDOR_DIR := $(pwd)/vendor/dist
+# SMC integration toggle.  Set USE_SMC=1 to build with generated dispatch code.
+USE_SMC ?= 0
+
+#VENDOR_DIR := $(pwd)/vendor
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
 
@@ -10,6 +13,15 @@ INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include"
 LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet -lm
 TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
+
+ifeq ($(USE_SMC),1)
+  SMC_DIR := vendor/src/smc
+  SMC_SRC := $(BUILD_DIR)/smc_generated.c
+  SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c" -I"$(BUILD_DIR)"
+  SMC_DEFS := -DUSE_SMC=1
+  SMC_LIBS := -lm
+  SMC_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_generated_runtime.c
+endif
 
 APP := $(BUILD_DIR)/ascii-fps
 TEST_DEPS_RUNNER := $(BUILD_DIR)/test-deps
@@ -21,9 +33,12 @@ TEST_ASSET_DESIGNER_RUNNER   := $(BUILD_DIR)/test-asset-designer
 TEST_LIVE_EDITOR_RUNNER      := $(BUILD_DIR)/test-live-editor
 TEST_UI_ELE_RUNNER           := $(BUILD_DIR)/test-ui-ele
 
-.PHONY: all run test clean dirs
+.PHONY: all run test clean dirs benchmark-raycast
 
 all: $(APP)
+
+benchmark-raycast: $(APP)
+	./$(APP) --benchmark-raycast 5
 
 dirs:
 	mkdir -p $(BUILD_DIR)
@@ -31,8 +46,13 @@ dirs:
 SRC_FILES := $(wildcard src/*.c)
 TEST_SRC := $(filter-out src/main.c src/app.c, $(SRC_FILES))
 
-$(APP): $(SRC_FILES) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) $(SRC_FILES) -o $(APP) $(LIBS) $(RPATH)
+ifeq ($(USE_SMC),1)
+$(SMC_SRC): scripts/generate-smc-renderer.lisp | dirs
+	sbcl --script scripts/generate-smc-renderer.lisp $(SMC_SRC)
+endif
+
+$(APP): $(SRC_FILES) $(SMC_FILES) $(SMC_SRC) | dirs
+	$(CC) $(CFLAGS) $(SMC_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

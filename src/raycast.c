@@ -31,9 +31,10 @@
 
 #include "raycast.h"        /* RayResult, raycast_fire(), raycast_render() */
 #include "config.h"          /* config_get() — raycast_max_distance,
-                                side_shadow_attenuation */
+                                 side_shadow_attenuation */
+#include "smc_render_opt.h"  /* SMC-generated hot-path wrappers */
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
-                                sqrt(), floor() */
+                                 sqrt(), floor() */
 #include "math.h"             /* PI, normalize_angle() */
 #include <stdlib.h>           /* (included for future use) */
 #include <string.h>           /* (included for future use) */
@@ -379,8 +380,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
 
         /* Compute the actual world angle for this column based on the
          * camera's forward direction and FOV.  The atan(tan(fov/2) * cx)
-         * gives the angle offset from centre. */
-        double ray_angle = cam->transform.angle + atan(camera_x * tan(cam->fov / 2.0));
+         * gives the angle offset from centre.
+         *
+         * SMC hot path: this expression is evaluated once per screen column
+         * per frame.  The generated dispatch table replaces the inline
+         * atan/tan call sequence. */
+        double ray_angle = cam->transform.angle + smc_ray_angle_offset(camera_x, cam->fov);
 
         /* ---- Direction vector for this ray column ---- */
         double dir_x = cos(ray_angle);
@@ -406,8 +411,10 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             /* Correct the along-ray distance to avoid fisheye distortion.
              * raycast_fire() returns distance along the ray; multiplying by
              * cos(ray_angle - camera_angle) converts it to camera-forward
-             * perpendicular distance so walls remain visually straight. */
-            perp_dist = ray.distance * cos(ray_angle - cam->transform.angle);
+             * perpendicular distance so walls remain visually straight.
+             *
+             * SMC hot path: one call per column per frame. */
+            perp_dist = smc_fisheye_correct(ray.distance, ray_angle, cam->transform.angle);
             if (perp_dist < 0.001) perp_dist = 0.001;  /* Prevent division by zero */
 
             /* Wall slice height in cells: taller = closer */
@@ -474,7 +481,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             double denom = grid->height - 2.0 * (y - cam->pitch);
             if (fabs(denom) < 0.001) denom = 0.001;
             double currentDist = grid->height / denom;
-            double trueDist = currentDist / cos(ray_angle - cam->transform.angle);
+            /* SMC hot path: ceiling true-distance expression, once per
+             * ceiling pixel per column. */
+            double trueDist = smc_true_distance(currentDist, ray_angle, cam->transform.angle);
 
             /* World coordinates of this ceiling point */
             double curX = cam->transform.pos.x + trueDist * dir_x;
@@ -511,7 +520,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             double denom = 2.0 * (y - cam->pitch) - grid->height;
             if (fabs(denom) < 0.001) denom = 0.001;
             double currentDist = grid->height / denom;
-            double trueDist = currentDist / cos(ray_angle - cam->transform.angle);
+            /* SMC hot path: floor true-distance expression, once per
+             * floor pixel per column. */
+            double trueDist = smc_true_distance(currentDist, ray_angle, cam->transform.angle);
 
             double curX = cam->transform.pos.x + trueDist * dir_x;
             double curY = cam->transform.pos.y + trueDist * dir_y;
@@ -567,7 +578,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
 
         /* Distance and screen X projection */
         double dist = sqrt(sprite_x * sprite_x + sprite_y * sprite_y);
-        double camera_x = tan(angle_diff) / tan(cam->fov / 2.0);
+        /* SMC hot path: light billboard screen-X expression, once per
+         * visible light per frame. */
+        double camera_x = smc_light_screen_x(angle_diff, cam->fov);
         int screen_x = (int)((grid->width / 2.0) * (1.0 + camera_x));
 
         if (screen_x < 0 || screen_x >= grid->width) continue;
