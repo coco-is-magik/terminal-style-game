@@ -8,6 +8,12 @@ USE_SMC ?= 0
 # Lighting cache toggle.  Set USE_LIGHTING_CACHE=1 to enable lighting shadow ray cache.
 USE_LIGHTING_CACHE ?= 0
 
+# Glyph cache toggle.  Set USE_GLYPH_CACHE=1 to enable glyph block caching.
+USE_GLYPH_CACHE ?= 0
+
+# Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 to skip unchanged cells.
+USE_DIRTY_CELLS ?= 0
+
 #VENDOR_DIR := $(pwd)/vendor
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
@@ -60,8 +66,20 @@ ifeq ($(USE_LIGHTING_CACHE),1)
     LIGHTING_DEFS := -DUSE_LIGHTING_CACHE=1
 endif
 
+# Glyph block cache definitions
+GLYPH_DEFS :=
+ifeq ($(USE_GLYPH_CACHE),1)
+    GLYPH_DEFS := -DUSE_GLYPH_CACHE=1
+endif
+
+# Dirty cell tracking definitions
+DIRTY_DEFS :=
+ifeq ($(USE_DIRTY_CELLS),1)
+    DIRTY_DEFS := -DUSE_DIRTY_CELLS=1
+endif
+
 $(APP): $(SRC_FILES) $(SMC_FILES) $(SMC_SRC) | dirs
-	$(CC) $(CFLAGS) $(SMC_DEFS) $(LIGHTING_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
+	$(CC) $(CFLAGS) $(SMC_DEFS) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

@@ -38,6 +38,9 @@
 #ifdef USE_LIGHTING_CACHE
 #include "lighting_cache.h" /* Lighting shadow ray cache */
 #endif
+#ifdef USE_GLYPH_CACHE
+#include "glyph_block_cache.h" /* Glyph block cache */
+#endif
 #include "ui_ele.h"        /* Data-driven UI elements/layouts */
 #include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
@@ -447,6 +450,11 @@ int app_main(int argc, char* argv[]) {
     lighting_cache_init();
 #endif
 
+#ifdef USE_GLYPH_CACHE
+    /* Initialise the glyph block cache */
+    glyph_block_cache_init();
+#endif
+
     /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
      * ----------------------------------------------------------------- */
@@ -810,6 +818,21 @@ int app_main(int argc, char* argv[]) {
         printf("  \"frames\": %llu,\n", (unsigned long long)frame_count);
         printf("  \"result\": \"%s\"\n", result_str);
         printf("}\n");
+
+        /* Report glyph cache instrumentation when the optimization layer is active. */
+#ifdef USE_GLYPH_CACHE
+        uint64_t glyphs_total = renderer_cache_hits + renderer_cache_misses;
+        double glyph_hit_rate = glyphs_total > 0 ? (100.0 * renderer_cache_hits / glyphs_total) : 0.0;
+        if (glyphs_total > 0) {
+            fprintf(stderr, "Glyph cache stats: hits=%llu misses=%llu hit_rate=%.1f%% raster_ms=%.2f upload_ms=%.2f cells=%llu\n",
+                    (unsigned long long)renderer_cache_hits,
+                    (unsigned long long)renderer_cache_misses,
+                    glyph_hit_rate,
+                    renderer_time_raster_ms,
+                    renderer_time_upload_ms,
+                    (unsigned long long)renderer_cells_processed);
+        }
+#endif
 
         /* Report SMC instrumentation when the optimization layer is active. */
         uint64_t smc_total = 0, smc_fallback = 0, smc_arity = 0, smc_invalid = 0;

@@ -53,10 +53,13 @@ Grid* grid_create(int width, int height) {
     grid->width  = width;
     grid->height = height;
 
-    /* Allocate the cell array.  calloc zeros every byte, which means
-     * every Cell starts with glyph=0, fg={0,0,0,0}, bg={0,0,0,0}. */
-    grid->cells = calloc(width * height, sizeof(Cell));
-    if (!grid->cells) {
+    /* Allocate the cell array and previous-frame storage for dirty tracking. */
+    size_t cell_count = (size_t)width * (size_t)height;
+    grid->cells = calloc(cell_count, sizeof(Cell));
+    grid->prev_cells = calloc(cell_count, sizeof(Cell));
+    if (!grid->cells || !grid->prev_cells) {
+        free(grid->cells);
+        free(grid->prev_cells);
         free(grid);
         return NULL;
     }
@@ -76,7 +79,25 @@ void grid_destroy(Grid *grid) {
     if (grid->cells) {
         free(grid->cells);       /* Free the cell buffer */
     }
+    if (grid->prev_cells) {
+        free(grid->prev_cells);  /* Free the previous frame buffer */
+    }
     free(grid);                  /* Free the Grid struct */
+}
+
+/**
+ * grid_swap_prev() — Swap cells/prev_cells for dirty tracking
+ *
+ * Called after frame rendering to prepare for next frame's dirty comparison.
+ * On next frame, renderer can skip cells that match their prev_cells values.
+ *
+ * @param grid  The Grid to swap (NULL-safe)
+ */
+void grid_swap_prev(Grid *grid) {
+    if (!grid) return;
+    Cell *tmp = grid->cells;
+    grid->cells = grid->prev_cells;
+    grid->prev_cells = tmp;
 }
 
 /* ===================================================================

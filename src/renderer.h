@@ -20,6 +20,14 @@ extern int renderer_alloc_count;           /* Total malloc() calls */
 extern int renderer_free_count;            /* Total free() calls */
 extern int renderer_texture_create_count;  /* Total SDL texture creations */
 
+/* ---- Profiling counters (for glyph cache benchmarking) ---- */
+extern double renderer_time_raster_ms;       /* Time spent compositing cells */
+extern double renderer_time_upload_ms;       /* Time spent in SDL_UpdateTexture */
+extern double renderer_time_present_ms;      /* Time spent in render/present */
+extern uint64_t renderer_cells_processed;    /* Total cells rasterized */
+extern uint64_t renderer_cache_hits;         /* Glyph cache hits (if enabled) */
+extern uint64_t renderer_cache_misses;       /* Glyph cache misses (if enabled) */
+
 /* Include the GlyphAtlas definition used by Renderer. */
 #include "glyph_atlas.h"    /* GlyphAtlas struct */
 

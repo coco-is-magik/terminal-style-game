@@ -47,6 +47,14 @@ int renderer_alloc_count          = 0;   /* Number of heap allocations */
 int renderer_free_count           = 0;   /* Number of heap frees */
 int renderer_texture_create_count = 0;   /* Number of SDL textures created */
 
+/* Profiling counters */
+double renderer_time_raster_ms    = 0.0; /* Time spent compositing cells */
+double renderer_time_upload_ms    = 0.0; /* Time spent in SDL_UpdateTexture */
+double renderer_time_present_ms   = 0.0; /* Time spent in render/present */
+uint64_t renderer_cells_processed = 0;  /* Total cells rasterized */
+uint64_t renderer_cache_hits      = 0;  /* Glyph cache hits */
+uint64_t renderer_cache_misses    = 0;  /* Glyph cache misses */
+
 /* ===================================================================
  *  Allocation wrappers (for tracking)
  * =================================================================== */
@@ -306,13 +314,35 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     uint32_t *pixels = ren->pixel_buffer;
     int pitch_pixels = ren->logical_w;   /* Number of uint32_t per row */
 
+    /* ---- Phase 1 Timing ---- */
+    uint64_t phase1_start = SDL_GetPerformanceCounter();
+
+#ifdef USE_GLYPH_CACHE
+    renderer_cache_hits = 0;
+    renderer_cache_misses = 0;
+#endif
+
     /* ---- Phase 1: Software rasterization ---- */
     /* Iterate over every cell in the grid.  This is a tight CPU loop
      * that performs NO SDL API calls — all work is direct memory writes
      * to the pixel buffer. */
+    renderer_cells_processed = 0;
     for (int cy = 0; cy < grid->height; cy++) {
         for (int cx = 0; cx < grid->width; cx++) {
             Cell c = grid->cells[cy * grid->width + cx];
+
+#ifdef USE_DIRTY_CELLS
+            /* Compare with previous frame - skip if unchanged */
+            int idx = cy * grid->width + cx;
+            Cell prev = grid->prev_cells[idx];
+            
+            if (c.glyph == prev.glyph &&
+                c.fg.r == prev.fg.r && c.fg.g == prev.fg.g && c.fg.b == prev.fg.b &&
+                c.bg.r == prev.bg.r && c.bg.g == prev.bg.g && c.bg.b == prev.bg.b) {
+                continue;  /* Cell unchanged, skip rasterization */
+            }
+#endif
+            renderer_cells_processed++;
 
             /* Pack foreground and background colours into uint32_t once */
             uint32_t fg = COLOR_TO_UINT32(c.fg);
@@ -350,6 +380,11 @@ void renderer_draw(Renderer *ren, Grid *grid) {
         }
     }
 
+    /* ---- Phase 2 Timing ---- */
+    uint64_t phase2_start = SDL_GetPerformanceCounter();
+    double raster_time = (double)((phase2_start - phase1_start) * 1000) / SDL_GetPerformanceFrequency();
+    renderer_time_raster_ms = raster_time;
+
     /* ---- Phase 2: GPU upload and presentation ---- */
     /* Upload the entire pixel buffer to the streaming texture.
      * pitch_pixels * sizeof(uint32_t) = bytes per row. */
@@ -360,6 +395,16 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     SDL_RenderClear(ren->sdl_ren);
     SDL_RenderTexture(ren->sdl_ren, ren->screen_texture, NULL, NULL);
     SDL_RenderPresent(ren->sdl_ren);
+
+    /* ---- Phase 3 Timing ---- */
+    uint64_t phase3_end = SDL_GetPerformanceCounter();
+    double upload_time = (double)((phase3_end - phase2_start) * 1000) / SDL_GetPerformanceFrequency();
+    renderer_time_upload_ms = upload_time;
+
+#ifdef USE_DIRTY_CELLS
+    /* After rendering, swap prev_cells for next frame's comparison */
+    grid_swap_prev(grid);
+#endif
 }
 
 /* ===================================================================
