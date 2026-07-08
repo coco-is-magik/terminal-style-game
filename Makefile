@@ -5,6 +5,9 @@ BUILD_DIR := build
 # SMC integration toggle.  Set USE_SMC=1 to build with generated dispatch code.
 USE_SMC ?= 0
 
+# Lighting cache toggle.  Set USE_LIGHTING_CACHE=1 to enable lighting shadow ray cache.
+USE_LIGHTING_CACHE ?= 0
+
 #VENDOR_DIR := $(pwd)/vendor
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
@@ -51,8 +54,14 @@ $(SMC_SRC): scripts/generate-smc-renderer.lisp | dirs
 	sbcl --script scripts/generate-smc-renderer.lisp $(SMC_SRC)
 endif
 
+# Lighting cache definitions
+LIGHTING_DEFS :=
+ifeq ($(USE_LIGHTING_CACHE),1)
+    LIGHTING_DEFS := -DUSE_LIGHTING_CACHE=1
+endif
+
 $(APP): $(SRC_FILES) $(SMC_FILES) $(SMC_SRC) | dirs
-	$(CC) $(CFLAGS) $(SMC_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
+	$(CC) $(CFLAGS) $(SMC_DEFS) $(LIGHTING_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

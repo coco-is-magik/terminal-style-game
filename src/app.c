@@ -35,6 +35,9 @@
 #include "assets.h"        /* AssetRegistry struct (palettes, materials, sprites) */
 #include "asset_loader.h"  /* asset_loader_load_registry(), asset_loader_load_map_data() */
 #include "lighting.h"      /* lighting_update() — per-frame light propagation on the map */
+#ifdef USE_LIGHTING_CACHE
+#include "lighting_cache.h" /* Lighting shadow ray cache */
+#endif
 #include "ui_ele.h"        /* Data-driven UI elements/layouts */
 #include "menu_state.h"    /* MenuId, MenuStack, MENU_STACK_MAX, menu_stack_* functions */
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
@@ -354,6 +357,11 @@ int app_main(int argc, char* argv[]) {
             mode = RUN_MODE_STABILITY;
             visual_mode = VISUAL_STRESS;
             run_duration_seconds = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--benchmark-lighting") == 0 && i + 1 < argc) {
+            /* Runs lighting-only benchmarking for a fixed duration, then prints JSON stats */
+            mode = RUN_MODE_BENCHMARK_LIGHTING;
+            visual_mode = VISUAL_RAYCAST;
+            run_duration_seconds = atof(argv[++i]);
         } else if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             /* Manual override for the visual mode */
             const char* mode_str = argv[++i];
@@ -433,6 +441,11 @@ int app_main(int argc, char* argv[]) {
         return 1;
     }
     smc_render_opt_reset_stats();
+
+#ifdef USE_LIGHTING_CACHE
+    /* Initialise the lighting shadow ray cache */
+    lighting_cache_init();
+#endif
 
     /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
@@ -810,6 +823,39 @@ int app_main(int argc, char* argv[]) {
         }
 
         return exit_code;
+    }
+
+    /* -----------------------------------------------------------------
+     *  11. Lighting benchmark results (separate from other benchmarks)
+     * ----------------------------------------------------------------- */
+    if (mode == RUN_MODE_BENCHMARK_LIGHTING) {
+        double avg_lighting_ms = frame_count > 0 ? (lighting_total_time_ms / frame_count) : 0.0;
+        double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
+        uint64_t total_shadow_rays = lighting_shadow_ray_count;
+        
+#ifdef USE_LIGHTING_CACHE
+        uint64_t cache_hits = 0, cache_misses = 0, cache_evictions = 0;
+        lighting_cache_get_stats(&cache_hits, &cache_misses, &cache_evictions);
+        double hit_rate = (cache_hits + cache_misses) > 0 ? 
+                          (100.0 * cache_hits / (cache_hits + cache_misses)) : 0.0;
+#else
+        uint64_t cache_hits = 0, cache_misses = 0, cache_evictions = 0;
+        double hit_rate = 0.0;
+#endif
+
+        printf("{\n");
+        printf("  \"avg_lighting_ms\": %.2f,\n", avg_lighting_ms);
+        printf("  \"avg_render_ms\": %.2f,\n", avg_render_ms);
+        printf("  \"total_shadow_rays\": %llu,\n", (unsigned long long)total_shadow_rays);
+        printf("  \"cache_hits\": %llu,\n", (unsigned long long)cache_hits);
+        printf("  \"cache_misses\": %llu,\n", (unsigned long long)cache_misses);
+        printf("  \"cache_evictions\": %llu,\n", (unsigned long long)cache_evictions);
+        printf("  \"cache_hit_rate\": %.1f,\n", hit_rate);
+        printf("  \"frames\": %llu,\n", (unsigned long long)frame_count);
+        printf("  \"result\": \"done\"\n");
+        printf("}\n");
+
+        return 0;
     }
 
     /* Normal interactive mode — success */

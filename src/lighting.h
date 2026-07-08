@@ -13,6 +13,11 @@
 
 #include "map.h"       /* Map — provides the light_map array to write into */
 #include "world.h"     /* WorldState — provides the list of active lights */
+#include <stdint.h>    /* uint64_t */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * lighting_update() — Per-frame light propagation across the map
@@ -27,5 +32,16 @@
  * @param world  The WorldState containing all active point lights
  */
 void lighting_update(Map *map, WorldState *world);
+
+/**
+ * Profiling variables - exported for benchmark modes.
+ * These are incremented/reset during lighting_update().
+ */
+extern uint64_t lighting_shadow_ray_count;
+extern double lighting_total_time_ms;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* LIGHTING_H */

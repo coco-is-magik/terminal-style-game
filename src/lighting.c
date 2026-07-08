@@ -25,6 +25,10 @@
  * IMPORTANT: This is called once per frame in VISUAL_RAYCAST mode.  It uses
  * raycast_fire() for shadow testing, which makes it O(num_lights × area × raymarch),
  * potentially expensive for large maps with many lights.
+ *
+ * Build flags:
+ *   USE_LIGHTING_CACHE=1    - Enable lighting shadow ray cache
+ *   LIGHTING_CACHE_VALIDATE=1 - Validate cache hits against original computation
  */
 
 #include "lighting.h"    /* lighting_update() declaration, Map, WorldState types */
@@ -34,10 +38,28 @@
 #include "config.h"      /* config_get() — provides ambient_light and
                             light_bounce_attenuation settings */
 #include <math.h>         /* sqrt(), atan2() */
+#include <SDL3/SDL.h>     /* SDL_GetPerformanceCounter/Frequency */
 
-/* ===================================================================
- *  MIN / MAX helpers (guard against double-definition)
- * =================================================================== */
+#ifdef USE_LIGHTING_CACHE
+#include "lighting_cache.h" /* Lighting shadow ray cache */
+#endif
+
+/* =================================================================== */
+/* Timing instrumentation                                             */
+/* =================================================================== */
+
+/* Static counters for profiling - exported for benchmark modes */
+uint64_t lighting_shadow_ray_count = 0;
+double lighting_total_time_ms = 0.0;
+
+/* Timing helper macros */
+#define LIGHTING_TIME_START() uint64_t _start = SDL_GetPerformanceCounter()
+#define LIGHTING_TIME_END() uint64_t _end = SDL_GetPerformanceCounter(); \
+    lighting_total_time_ms += (double)((_end - _start) * 1000) / SDL_GetPerformanceFrequency()
+
+/* =================================================================== */
+/* MIN / MAX helpers (guard against double-definition)                 */
+/* =================================================================== */
 
 #ifndef MAX
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
@@ -46,14 +68,14 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #endif
 
-/* ===================================================================
- *  Lighting update
- * =================================================================== */
+/* =================================================================== */
+/* Lighting update                                                     */
+/* =================================================================== */
 
 /**
  * lighting_update() — Per-frame light propagation
  *
- * Called once per frame from app.c's main loop (only in VISUAL_RAYCAST mode).
+ * Called once per frame from app.c (only in VISUAL_RAYCAST mode).
  * Resets the map's light_map to the ambient light level, then iterates over
  * every light in the world and "paints" light onto the grid.
  *
@@ -72,6 +94,12 @@
  */
 void lighting_update(Map *map, WorldState *world) {
     if (!map || !map->light_map || !world) return;
+
+    LIGHTING_TIME_START();
+
+#ifdef USE_LIGHTING_CACHE
+    lighting_cache_reset_stats();
+#endif
 
     /* ---- Step 1: Reset light map to ambient level ---- */
     /* Every tile starts at the ambient light level (e.g. 0.2 = 20% brightness).
@@ -107,6 +135,25 @@ void lighting_update(Map *map, WorldState *world) {
 
                 /* Only process tiles within the light's radius */
                 if (dist <= l->radius) {
+#ifdef USE_LIGHTING_CACHE
+                    /* Check cache first */
+                    LightShadowKey key;
+                    key.map_revision = 1;  /* TODO: Get from map */
+                    key.lighting_revision = 1;  /* TODO: Get from world */
+                    key.light_id = i;
+                    key.target_tile_x = x;
+                    key.target_tile_y = y;
+                    
+                    LightSampleResult cached;
+                    if (lighting_cache_lookup(key, &cached)) {
+                        /* Cache hit - use cached values */
+                        map->light_map[y * map->width + x] += cached.intensity;
+                        continue;
+                    }
+#endif
+
+                    lighting_shadow_ray_count++;
+
                     /* Linear distance-based falloff:
                      *   At distance 0:   intensity = 1.0 (full brightness)
                      *   At distance R:   intensity = 0.0 (darkness) */
@@ -143,6 +190,16 @@ void lighting_update(Map *map, WorldState *world) {
                         contribution *= config_get()->light_bounce_attenuation;
                     }
 
+#ifdef USE_LIGHTING_CACHE
+                    /* Store result in cache */
+                    LightSampleResult result;
+                    result.blocked = blocked;
+                    result.distance = dist;
+                    result.attenuation = intensity;
+                    result.intensity = contribution;
+                    lighting_cache_store(key, result);
+#endif
+
                     /* Accumulate into the map's light map.
                      * Multiple lights add their contributions together, so a tile
                      * lit by two lights will be brighter than one lit by a single light. */
@@ -151,4 +208,6 @@ void lighting_update(Map *map, WorldState *world) {
             }
         }
     }
+
+    LIGHTING_TIME_END();
 }

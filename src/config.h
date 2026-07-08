@@ -99,7 +99,8 @@ void config_set(const EngineConfig *new_config);
 typedef enum {
     RUN_MODE_NORMAL,              /* Interactive play mode */
     RUN_MODE_BENCHMARK_STRESS,    /* Timed stress-test, prints JSON results */
-    RUN_MODE_BENCHMARK_RAYCAST,    /* Timed raycast benchmark, prints JSON results */
+    RUN_MODE_BENCHMARK_RAYCAST,   /* Timed raycast benchmark, prints JSON results */
+    RUN_MODE_BENCHMARK_LIGHTING,  /* Timed lighting benchmark, prints JSON results */
     RUN_MODE_STABILITY            /* Stability test (detects leaks/crashes) */
 } RunMode;
 
