@@ -34,6 +34,9 @@
 ;; We explicitly evaluate each expression first so that any parse/eval
 ;; errors are printed, then call warm-cache to populate the global cache
 ;; for the generator.
+;; Warm the cache with renderer-specific expressions.
+;; These expressions match the smc_render_opt.c wrappers.
+;; Variables are named to match the C argument order.
 (defun warm-cache-renderer ()
   "Evaluate and cache renderer-specific expressions."
   (dolist (entry '("2+3*4"
@@ -55,24 +58,13 @@
 
                    ;; Light billboard screen X: tan(angle_diff) / tan(fov / 2.0)
                    ;; args: angle_diff, fov
-                   ("tan(x) / tan(y / 2.0)" . ((:x . 0.1) (:y . 1.5707963267948966)))))
+                   ("tan(x) / tan(y / 2.0)" . ((:x . 0.1) (:y . 1.5707963267948966))))
     (let ((expr (if (consp entry) (car entry) entry))
           (vars (if (consp entry) (cdr entry) nil)))
       (format t "Warming cache for: ~A~%" expr)
       (if vars
           (smc:evaluate (smc:parse expr) :variables vars)
-          (smc:run-calculator expr))))
-  ;; Also call warm-cache so the generator sees the entries in its expected
-  ;; format (this is a no-op duplicate evaluation, but it keeps the script
-  ;; aligned with the upstream generator helper).
-  (warm-cache '("2+3*4"
-                "(2+3)*4"
-                "10-4/2"
-                "1.5*2"
-                ("atan(x * tan(y / 2.0))" . ((:x . 0.5) (:y . 1.5707963267948966)))
-                ("x * cos(y - z)" . ((:x . 5.0) (:y . 0.7853981633974483) (:z . 0.7853981633974483)))
-                ("x / cos(y - z)" . ((:x . 10.0) (:y . 0.7853981633974483) (:z . 0.7853981633974483)))
-                ("tan(x) / tan(y / 2.0)" . ((:x . 0.1) (:y . 1.5707963267948966))))))
+          (smc:run-calculator expr)))))
 
 ;; Generate the C dispatch table.  The output path is taken from the first
 ;; command-line argument when invoked as a script; otherwise default to

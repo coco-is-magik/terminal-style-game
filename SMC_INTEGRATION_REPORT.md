@@ -1,10 +1,22 @@
 # SMC Renderer Integration Report
 
-## Summary
+## Summary 
 
 The Self-Modifying Calculator (SMC) project was integrated into the terminal-style game as a generated-code optimization path for repeated renderer math. The integration builds cleanly, the generated-code path is exercised on every frame, and correctness is preserved (no fallback calls, no output changes beyond normal floating-point tolerance).
 
 **Key Finding**: SMC scalar dispatch replacement was NOT beneficial because the renderer hot path is memory-bound, not compute-bound. However, **dirty-cell tracking** (implemented separately from SMC) achieved a **~40% speedup** in the raycast benchmark by eliminating redundant glyph rasterization.
+
+## Vendor Update (2026-07-09)
+
+The SMC vendor folder was updated to include 8 new commits from upstream, adding:
+
+- **ABI v2 additions**: Feature flags (`SMC_FEATURE_ARTIFACT_CACHE`, `SMC_FEATURE_STATE_TRACKING`) and new error codes (`SMC_ERR_SIZE`, `SMC_ERR_CAPACITY`)
+- **Artifact cache API**: Generic binary key-value cache (`smc_artifact_*` functions) with memory budgeting support
+- **Dirty-state tracking API**: Frame-to-frame state comparison (`smc_state_*` functions) for skipping unchanged work
+- **Preallocated storage**: Fixed-slot storage option for artifact cache (v2.1)
+- **New source files**: `smc_artifact.c/h`, `smc_state.c/h`
+
+The game's own dirty-cell tracking (in `src/grid.c` and `src/renderer.c`) predates and supersedes SMC's new dirty-state APIs, so no migration was necessary. The adapter layer (`smc_render_opt.c`) was simplified to always use native C math fallback since SMC scalar dispatch showed no performance benefit.
 
 ## What was optimized
 

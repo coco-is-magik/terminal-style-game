@@ -29,7 +29,7 @@ ifeq ($(USE_SMC),1)
   SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c" -I"$(BUILD_DIR)"
   SMC_DEFS := -DUSE_SMC=1
   SMC_LIBS := -lm
-  SMC_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_generated_runtime.c
+  SMC_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_artifact.c $(SMC_DIR)/src/c/smc_state.c $(SMC_DIR)/src/c/smc_generated_runtime.c
 endif
 
 APP := $(BUILD_DIR)/ascii-fps
