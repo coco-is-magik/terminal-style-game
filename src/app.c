@@ -47,6 +47,10 @@
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
 #include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
 #include "smc_render_opt.h"     /* SMC runtime init/shutdown/stats for benchmark modes */
+#ifdef USE_SMC_STATE_TRACKER
+#include "smc_state_tracker.h"  /* SMC v2 dirty-state tracking */
+#include "smc.h"                /* SMC_OK, smc_state_stats_t, etc. */
+#endif
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
 #include <stdlib.h>        /* atof() */
 #include <string.h>        /* strcmp() */
@@ -455,6 +459,18 @@ int app_main(int argc, char* argv[]) {
     glyph_block_cache_init();
 #endif
 
+#ifdef USE_SMC_STATE_TRACKER
+    /* Initialise the SMC state tracker */
+    size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
+    if (smc_state_tracker_init(max_cells) != SMC_OK) {
+        fprintf(stderr, "Failed to initialize SMC state tracker.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
+    smc_state_tracker_reset();
+#endif
+
     /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
      * ----------------------------------------------------------------- */
@@ -695,13 +711,13 @@ int app_main(int argc, char* argv[]) {
             grid_clear(grid, bg);
         }
 
-        /* --- 8f. Transfer the Grid to the screen (SDL rendering) --- */
-        uint64_t render_start = SDL_GetPerformanceCounter();
-        renderer_draw(ren, grid);
-        uint64_t render_end = SDL_GetPerformanceCounter();
-        
-        double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
-        global_total_render_ms += current_render_ms;
+    /* --- 8f. Transfer the Grid to the screen (SDL rendering) --- */
+    uint64_t render_start = SDL_GetPerformanceCounter();
+    renderer_draw(ren, grid);
+    uint64_t render_end = SDL_GetPerformanceCounter();
+    
+    double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
+    global_total_render_ms += current_render_ms;
         
         /* Keep track of the two longest render durations.
          * We skip the first 64 frames to let the system "warm up"
@@ -748,8 +764,26 @@ int app_main(int argc, char* argv[]) {
     }
 
     /* ================================================================
-     *  9. Cleanup — release all resources
+     *  9. Capture benchmark data before cleanup
      * ================================================================ */
+#ifdef USE_SMC_STATE_TRACKER
+    smc_state_stats_t smc_state_s = {0};
+#endif
+    uint32_t framebuffer_checksum = 0;   /* Checksum captured before cleanup */
+
+    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
+        framebuffer_checksum = renderer_framebuffer_checksum(ren);
+#ifdef USE_SMC_STATE_TRACKER
+        smc_state_tracker_get_stats(&smc_state_s);
+#endif
+    }
+
+    /* ================================================================
+     *  10. Cleanup — release all resources
+     * ================================================================ */
+#ifdef USE_SMC_STATE_TRACKER
+    smc_state_tracker_shutdown();
+#endif
     asset_designer_destroy(&ad_state);
     material_designer_destroy(&md_state);
     live_editor_destroy(&le_state);
@@ -764,7 +798,7 @@ int app_main(int argc, char* argv[]) {
     renderer_destroy(ren);
 
     /* ================================================================
-     *  10. Benchmark & Stability- test results
+     *  11. Benchmark & Stability- test results
      *      Print JSON-formatted performance summary and return
      *      an exit code the test harness can interpret.
      * ================================================================ */
@@ -844,6 +878,26 @@ int app_main(int argc, char* argv[]) {
                     (unsigned long long)smc_arity,
                     (unsigned long long)smc_invalid);
         }
+
+#ifdef USE_SMC_STATE_TRACKER
+        /* Report SMC state tracker instrumentation. */
+        fprintf(stderr, "SMC state stats: checks=%llu changed=%llu unchanged=%llu evictions=%llu bytes_compared=%llu\n",
+                (unsigned long long)smc_state_s.checks,
+                (unsigned long long)smc_state_s.changed,
+                (unsigned long long)smc_state_s.unchanged,
+                (unsigned long long)smc_state_s.evictions,
+                (unsigned long long)smc_state_s.bytes_compared);
+#endif
+
+        /* Report renderer dirty tracking stats and framebuffer checksum. */
+        uint64_t cells_total = (uint64_t)cfg->grid_width * (uint64_t)cfg->grid_height;
+        
+        fprintf(stderr, "Renderer stats: cells_total=%llu cells_rasterized=%llu cells_skipped=%llu skip_rate=%.1f%% framebuffer_checksum=%u\n",
+                (unsigned long long)cells_total,
+                (unsigned long long)renderer_cells_processed,
+                (unsigned long long)renderer_cells_skipped,
+                cells_total > 0 ? (100.0 * renderer_cells_skipped / cells_total) : 0.0,
+                framebuffer_checksum);
 
         return exit_code;
     }

@@ -25,6 +25,7 @@ extern double renderer_time_raster_ms;       /* Time spent compositing cells */
 extern double renderer_time_upload_ms;       /* Time spent in SDL_UpdateTexture */
 extern double renderer_time_present_ms;      /* Time spent in render/present */
 extern uint64_t renderer_cells_processed;    /* Total cells rasterized */
+extern uint64_t renderer_cells_skipped;     /* Cells skipped via dirty tracking */
 extern uint64_t renderer_cache_hits;         /* Glyph cache hits (if enabled) */
 extern uint64_t renderer_cache_misses;       /* Glyph cache misses (if enabled) */
 
@@ -62,5 +63,6 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
 void      renderer_destroy(Renderer *ren);
 void      renderer_draw(Renderer *ren, Grid *grid);
 bool      renderer_process_events(void);
+uint32_t  renderer_framebuffer_checksum(Renderer *ren); /* For benchmark validation */
 
 #endif /* RENDERER_H */

@@ -14,6 +14,16 @@ USE_GLYPH_CACHE ?= 0
 # Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 to skip unchanged cells.
 USE_DIRTY_CELLS ?= 0
 
+# SMC state tracker toggle.  Set USE_SMC_STATE_TRACKER=1 to use SMC's dirty-state API.
+USE_SMC_STATE_TRACKER ?= 0
+
+# Mutual exclusivity check
+ifeq ($(USE_DIRTY_CELLS),1)
+  ifeq ($(USE_SMC_STATE_TRACKER),1)
+    $(error USE_DIRTY_CELLS and USE_SMC_STATE_TRACKER are mutually exclusive)
+  endif
+endif
+
 #VENDOR_DIR := $(pwd)/vendor
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
@@ -22,6 +32,14 @@ INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include"
 LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet -lm
 TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
+
+ifeq ($(USE_SMC_STATE_TRACKER),1)
+  SMC_DIR := vendor/src/smc
+  SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c"
+  SMC_STATE_DEFS := -DUSE_SMC_STATE_TRACKER=1
+  SMC_STATE_LIBS := -lm
+  SMC_STATE_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_artifact.c $(SMC_DIR)/src/c/smc_state.c
+endif
 
 ifeq ($(USE_SMC),1)
   SMC_DIR := vendor/src/smc
@@ -78,8 +96,11 @@ ifeq ($(USE_DIRTY_CELLS),1)
     DIRTY_DEFS := -DUSE_DIRTY_CELLS=1
 endif
 
-$(APP): $(SRC_FILES) $(SMC_FILES) $(SMC_SRC) | dirs
-	$(CC) $(CFLAGS) $(SMC_DEFS) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_FILES) -o $(APP) $(LIBS) $(SMC_LIBS) $(RPATH)
+# SMC state tracker files
+SMC_STATE_ONLY_FILES := $(SMC_STATE_FILES)
+
+$(APP): $(SRC_FILES) $(SMC_STATE_ONLY_FILES) $(SMC_SRC) | dirs
+	$(CC) $(CFLAGS) $(SMC_STATE_DEFS) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_STATE_ONLY_FILES) -o $(APP) $(LIBS) $(SMC_STATE_LIBS) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

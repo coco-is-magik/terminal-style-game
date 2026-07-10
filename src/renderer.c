@@ -35,6 +35,10 @@
  */
 
 #include "renderer.h"        /* Renderer struct, function declarations */
+#include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
+#ifdef USE_SMC_STATE_TRACKER
+#include "smc.h"           /* SMC types (SMC_OK, etc.) */
+#endif
 #include <stdio.h>            /* fprintf(), stderr */
 #include <stdlib.h>           /* malloc(), free(), size_t */
 
@@ -52,6 +56,7 @@ double renderer_time_raster_ms    = 0.0; /* Time spent compositing cells */
 double renderer_time_upload_ms    = 0.0; /* Time spent in SDL_UpdateTexture */
 double renderer_time_present_ms   = 0.0; /* Time spent in render/present */
 uint64_t renderer_cells_processed = 0;  /* Total cells rasterized */
+uint64_t renderer_cells_skipped   = 0;  /* Cells skipped via dirty tracking */
 uint64_t renderer_cache_hits      = 0;  /* Glyph cache hits */
 uint64_t renderer_cache_misses    = 0;  /* Glyph cache misses */
 
@@ -327,6 +332,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
      * that performs NO SDL API calls — all work is direct memory writes
      * to the pixel buffer. */
     renderer_cells_processed = 0;
+    renderer_cells_skipped = 0;
     for (int cy = 0; cy < grid->height; cy++) {
         for (int cx = 0; cx < grid->width; cx++) {
             Cell c = grid->cells[cy * grid->width + cx];
@@ -339,6 +345,23 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             if (c.glyph == prev.glyph &&
                 c.fg.r == prev.fg.r && c.fg.g == prev.fg.g && c.fg.b == prev.fg.b &&
                 c.bg.r == prev.bg.r && c.bg.g == prev.bg.g && c.bg.b == prev.bg.b) {
+                renderer_cells_skipped++;
+                continue;  /* Cell unchanged, skip rasterization */
+            }
+#endif
+
+#ifdef USE_SMC_STATE_TRACKER
+            /* Check state change via SMC v2 dirty-state tracker */
+            uint32_t cell_index = (uint32_t)(cy * grid->width + cx);
+            CellState state = {
+                .glyph = c.glyph,
+                .fg_r = c.fg.r, .fg_g = c.fg.g, .fg_b = c.fg.b,
+                .bg_r = c.bg.r, .bg_g = c.bg.g, .bg_b = c.bg.b
+            };
+            int changed = 1;
+            int rc = smc_state_tracker_cell_changed(cell_index, &state, &changed);
+            if (rc == SMC_OK && !changed) {
+                renderer_cells_skipped++;
                 continue;  /* Cell unchanged, skip rasterization */
             }
 #endif
@@ -405,6 +428,34 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     /* After rendering, swap prev_cells for next frame's comparison */
     grid_swap_prev(grid);
 #endif
+}
+
+/* ===================================================================
+ *  Framebuffer checksum (for correctness validation)
+ * =================================================================== */
+
+/**
+ * framebuffer_checksum() — FNV-1a 32-bit hash of the pixel buffer
+ *
+ * Computes a simple checksum over the entire framebuffer for comparing
+ * output across different dirty-tracking modes.
+ */
+static uint32_t framebuffer_checksum(Renderer *ren) {
+    if (!ren || !ren->pixel_buffer) return 0;
+    
+    uint32_t hash = 2166136261u;
+    uint32_t *pixels = ren->pixel_buffer;
+    size_t pixel_count = (size_t)ren->logical_w * (size_t)ren->logical_h;
+    
+    for (size_t i = 0; i < pixel_count; i++) {
+        hash ^= pixels[i] & 0xFF;
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+uint32_t renderer_framebuffer_checksum(Renderer *ren) {
+    return framebuffer_checksum(ren);
 }
 
 /* ===================================================================
