@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#ifdef USE_SMC_STATE_TRACKER
+#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
 #include "smc.h"        /* SMC types and stats (must come before forward decl check) */
 #endif
 
@@ -23,9 +23,9 @@
 extern "C" {
 #endif
 
-/* smc_state_stats_t is provided by smc.h when USE_SMC_STATE_TRACKER is defined,
+/* smc_state_stats_t is provided by smc.h when any SMC state mode is defined,
  * otherwise we declare it locally for the no-op path. */
-#ifndef USE_SMC_STATE_TRACKER
+#if !defined(USE_SMC_STATE_TRACKER) && !defined(USE_SMC_INDEXED_STATE_TRACKER) && !defined(USE_SMC_BATCH_STATE_TRACKER)
 typedef struct {
     uint64_t checks;
     uint64_t changed;

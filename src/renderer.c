@@ -36,7 +36,8 @@
 
 #include "renderer.h"        /* Renderer struct, function declarations */
 #include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
-#ifdef USE_SMC_STATE_TRACKER
+#include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
+#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
 #include "smc.h"           /* SMC types (SMC_OK, etc.) */
 #endif
 #include <stdio.h>            /* fprintf(), stderr */
@@ -250,6 +251,41 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         return NULL;
     }
 
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    /* Allocate batch mode buffers after successful atlas creation */
+    size_t cell_count = (size_t)grid_w * (size_t)grid_h;
+    size_t state_buffer_bytes, dirty_indices_bytes;
+    smc_indexed_state_tracker_get_buffer_sizes(cell_count,
+                                                &state_buffer_bytes,
+                                                &dirty_indices_bytes);
+    ren->batch_state_buffer = ren_malloc(state_buffer_bytes);
+    if (!ren->batch_state_buffer) {
+        fprintf(stderr, "renderer_create: failed to allocate batch state buffer\n");
+        glyph_atlas_destroy(ren->atlas);
+        SDL_DestroyTexture(ren->screen_texture);
+        SDL_DestroyRenderer(ren->sdl_ren);
+        SDL_DestroyWindow(ren->window);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        ren_free(ren->pixel_buffer);
+        ren_free(ren);
+        return NULL;
+    }
+    ren->batch_dirty_indices = ren_malloc(dirty_indices_bytes);
+    if (!ren->batch_dirty_indices) {
+        fprintf(stderr, "renderer_create: failed to allocate dirty indices buffer\n");
+        ren_free(ren->batch_state_buffer);
+        glyph_atlas_destroy(ren->atlas);
+        SDL_DestroyTexture(ren->screen_texture);
+        SDL_DestroyRenderer(ren->sdl_ren);
+        SDL_DestroyWindow(ren->window);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        ren_free(ren->pixel_buffer);
+        ren_free(ren);
+        return NULL;
+    }
+    ren->batch_buffer_size = cell_count;
+#endif
+
     /* Enable SDL text input so SDL_EVENT_TEXT_INPUT fires for all windows.
      * This is required for the Asset Designer save-prompt to receive typed
      * characters.  We leave it enabled globally — consuming code (asset_designer.c)
@@ -279,6 +315,10 @@ void renderer_destroy(Renderer *ren) {
     if (ren->sdl_ren)        SDL_DestroyRenderer(ren->sdl_ren);
     if (ren->window)         SDL_DestroyWindow(ren->window);
     if (ren->pixel_buffer)   ren_free(ren->pixel_buffer);
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    if (ren->batch_state_buffer)  ren_free(ren->batch_state_buffer);
+    if (ren->batch_dirty_indices) ren_free(ren->batch_dirty_indices);
+#endif
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
     ren_free(ren);
 }
@@ -328,9 +368,69 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 #endif
 
     /* ---- Phase 1: Software rasterization ---- */
-    /* Iterate over every cell in the grid.  This is a tight CPU loop
-     * that performs NO SDL API calls — all work is direct memory writes
-     * to the pixel buffer. */
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    /* Batch mode: collect all states, call SMC once, render only dirty cells */
+    size_t cell_count = (size_t)grid->width * (size_t)grid->height;
+    size_t dirty_count = 0;
+    
+    /* Populate state buffer */
+    CellState *states = (CellState *)ren->batch_state_buffer;
+    for (size_t i = 0; i < cell_count; i++) {
+        Cell c = grid->cells[i];
+        states[i].glyph = c.glyph;
+        states[i].fg_r = c.fg.r; states[i].fg_g = c.fg.g; states[i].fg_b = c.fg.b;
+        states[i].bg_r = c.bg.r; states[i].bg_g = c.bg.g; states[i].bg_b = c.bg.b;
+    }
+    
+    /* Get dirty indices from SMC */
+    uint32_t *dirty_indices = ren->batch_dirty_indices;
+    int rc = smc_indexed_state_tracker_diff_batch(states, cell_count,
+                                                   dirty_indices, cell_count,
+                                                   &dirty_count);
+    
+    /* If batch call failed, render all cells (fallback) */
+    if (rc != SMC_OK) {
+        dirty_count = cell_count;
+    }
+    
+    /* Count skipped cells */
+    renderer_cells_skipped = cell_count - dirty_count;
+    
+    /* Render only dirty cells */
+    for (size_t d = 0; d < dirty_count; d++) {
+        uint32_t idx = dirty_indices[d];
+        int cy = (int)(idx / grid->width);
+        int cx = (int)(idx % grid->width);
+        Cell c = grid->cells[idx];
+        renderer_cells_processed++;
+        
+        /* Pack foreground and background colours into uint32_t once */
+        uint32_t fg = COLOR_TO_UINT32(c.fg);
+        uint32_t bg = COLOR_TO_UINT32(c.bg);
+        
+        /* Look up the 8×8 font bitmap for this glyph. */
+        const uint8_t *glyph_data = font8x8_basic[c.glyph < 128 ? c.glyph : 32];
+        
+        /* Top-left pixel of this cell's 8×8 block in the pixel buffer */
+        int base_x = cx * 8;
+        int base_y = cy * 8;
+        
+        /* Rasterize the 8 rows of this glyph */
+        for (int y = 0; y < 8; y++) {
+            uint8_t row = glyph_data[y];
+            uint32_t *row_pixels = &pixels[(base_y + y) * pitch_pixels + base_x];
+            row_pixels[0] = (row & 1)   ? fg : bg;
+            row_pixels[1] = (row & 2)   ? fg : bg;
+            row_pixels[2] = (row & 4)   ? fg : bg;
+            row_pixels[3] = (row & 8)   ? fg : bg;
+            row_pixels[4] = (row & 16)  ? fg : bg;
+            row_pixels[5] = (row & 32)  ? fg : bg;
+            row_pixels[6] = (row & 64)  ? fg : bg;
+            row_pixels[7] = (row & 128) ? fg : bg;
+        }
+    }
+#else
+    /* Per-cell or no dirty tracking modes */
     renderer_cells_processed = 0;
     renderer_cells_skipped = 0;
     for (int cy = 0; cy < grid->height; cy++) {
@@ -345,6 +445,22 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             if (c.glyph == prev.glyph &&
                 c.fg.r == prev.fg.r && c.fg.g == prev.fg.g && c.fg.b == prev.fg.b &&
                 c.bg.r == prev.bg.r && c.bg.g == prev.bg.g && c.bg.b == prev.bg.b) {
+                renderer_cells_skipped++;
+                continue;  /* Cell unchanged, skip rasterization */
+            }
+#endif
+
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+            /* Check state change via SMC indexed state tracker (no hash overhead) */
+            uint32_t cell_index = (uint32_t)(cy * grid->width + cx);
+            CellState state = {
+                .glyph = c.glyph,
+                .fg_r = c.fg.r, .fg_g = c.fg.g, .fg_b = c.fg.b,
+                .bg_r = c.bg.r, .bg_g = c.bg.g, .bg_b = c.bg.b
+            };
+            int changed = 1;
+            int rc = smc_indexed_state_tracker_cell_changed(cell_index, &state, &changed);
+            if (rc == SMC_OK && !changed) {
                 renderer_cells_skipped++;
                 continue;  /* Cell unchanged, skip rasterization */
             }
@@ -402,6 +518,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             }
         }
     }
+#endif
 
     /* ---- Phase 2 Timing ---- */
     uint64_t phase2_start = SDL_GetPerformanceCounter();

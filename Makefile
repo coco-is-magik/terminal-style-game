@@ -14,13 +14,19 @@ USE_GLYPH_CACHE ?= 0
 # Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 to skip unchanged cells.
 USE_DIRTY_CELLS ?= 0
 
-# SMC state tracker toggle.  Set USE_SMC_STATE_TRACKER=1 to use SMC's dirty-state API.
+# SMC state tracker toggle.  Set USE_SMC_STATE_TRACKER=1 to use SMC's generic dirty-state API.
 USE_SMC_STATE_TRACKER ?= 0
 
-# Mutual exclusivity check
-ifeq ($(USE_DIRTY_CELLS),1)
-  ifeq ($(USE_SMC_STATE_TRACKER),1)
-    $(error USE_DIRTY_CELLS and USE_SMC_STATE_TRACKER are mutually exclusive)
+# SMC indexed state tracker toggle.  Set USE_SMC_INDEXED_STATE_TRACKER=1 for per-cell indexed state tracking.
+USE_SMC_INDEXED_STATE_TRACKER ?= 0
+
+# SMC batch state tracker toggle.  Set USE_SMC_BATCH_STATE_TRACKER=1 for batch indexed state tracking.
+USE_SMC_BATCH_STATE_TRACKER ?= 0
+
+# Mutual exclusivity check - only one dirty/state tracking mode allowed
+ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER)),0)
+  ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER)),1)
+    $(error Only one of USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER may be set)
   endif
 endif
 
@@ -39,6 +45,22 @@ ifeq ($(USE_SMC_STATE_TRACKER),1)
   SMC_STATE_DEFS := -DUSE_SMC_STATE_TRACKER=1
   SMC_STATE_LIBS := -lm
   SMC_STATE_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_artifact.c $(SMC_DIR)/src/c/smc_state.c
+endif
+
+ifeq ($(USE_SMC_INDEXED_STATE_TRACKER),1)
+  SMC_DIR := vendor/src/smc
+  SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c"
+  SMC_INDEXED_DEFS := -DUSE_SMC_INDEXED_STATE_TRACKER=1
+  SMC_INDEXED_LIBS := -lm
+  SMC_INDEXED_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_artifact.c $(SMC_DIR)/src/c/smc_state.c
+endif
+
+ifeq ($(USE_SMC_BATCH_STATE_TRACKER),1)
+  SMC_DIR := vendor/src/smc
+  SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c"
+  SMC_BATCH_DEFS := -DUSE_SMC_BATCH_STATE_TRACKER=1
+  SMC_BATCH_LIBS := -lm
+  SMC_BATCH_FILES := $(SMC_DIR)/src/c/smc_runtime_stub.c $(SMC_DIR)/src/c/smc_artifact.c $(SMC_DIR)/src/c/smc_state.c
 endif
 
 ifeq ($(USE_SMC),1)
@@ -96,11 +118,36 @@ ifeq ($(USE_DIRTY_CELLS),1)
     DIRTY_DEFS := -DUSE_DIRTY_CELLS=1
 endif
 
-# SMC state tracker files
-SMC_STATE_ONLY_FILES := $(SMC_STATE_FILES)
+# SMC state tracker files - combine all possible modes
+SMC_ALL_STATE_FILES := $(SMC_STATE_FILES) $(SMC_INDEXED_FILES) $(SMC_BATCH_FILES)
+SMC_ALL_STATE_FILES := $(SMC_ALL_STATE_FILES)  # Remove duplicates
+SMC_STATE_FILES_ACTIVE :=
+SMC_INCLUDES_ACTIVE :=
+SMC_DEFS_ACTIVE :=
 
-$(APP): $(SRC_FILES) $(SMC_STATE_ONLY_FILES) $(SMC_SRC) | dirs
-	$(CC) $(CFLAGS) $(SMC_STATE_DEFS) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES) $(SRC_FILES) $(SMC_STATE_ONLY_FILES) -o $(APP) $(LIBS) $(SMC_STATE_LIBS) $(RPATH)
+ifeq ($(USE_SMC_STATE_TRACKER),1)
+    SMC_STATE_FILES_ACTIVE := $(SMC_STATE_FILES)
+    SMC_INCLUDES_ACTIVE := $(SMC_INCLUDES)
+    SMC_DEFS_ACTIVE := $(SMC_STATE_DEFS)
+    SMC_LIBS_ACTIVE := $(SMC_STATE_LIBS)
+endif
+
+ifeq ($(USE_SMC_INDEXED_STATE_TRACKER),1)
+    SMC_STATE_FILES_ACTIVE := $(SMC_INDEXED_FILES)
+    SMC_INCLUDES_ACTIVE := $(SMC_INCLUDES)
+    SMC_DEFS_ACTIVE := $(SMC_INDEXED_DEFS)
+    SMC_LIBS_ACTIVE := $(SMC_INDEXED_LIBS)
+endif
+
+ifeq ($(USE_SMC_BATCH_STATE_TRACKER),1)
+    SMC_STATE_FILES_ACTIVE := $(SMC_BATCH_FILES)
+    SMC_INCLUDES_ACTIVE := $(SMC_INCLUDES)
+    SMC_DEFS_ACTIVE := $(SMC_BATCH_DEFS)
+    SMC_LIBS_ACTIVE := $(SMC_BATCH_LIBS)
+endif
+
+$(APP): $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(SMC_SRC) | dirs
+	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

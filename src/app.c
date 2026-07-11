@@ -47,8 +47,9 @@
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
 #include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
 #include "smc_render_opt.h"     /* SMC runtime init/shutdown/stats for benchmark modes */
-#ifdef USE_SMC_STATE_TRACKER
+#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
 #include "smc_state_tracker.h"  /* SMC v2 dirty-state tracking */
+#include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
 #include "smc.h"                /* SMC_OK, smc_state_stats_t, etc. */
 #endif
 #include <stdio.h>         /* printf(), fprintf(), snprintf() */
@@ -471,6 +472,30 @@ int app_main(int argc, char* argv[]) {
     smc_state_tracker_reset();
 #endif
 
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+    /* Initialise the SMC indexed state tracker */
+    size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
+    if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
+        fprintf(stderr, "Failed to initialize SMC indexed state tracker.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
+    smc_indexed_state_tracker_reset();
+#endif
+
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    /* Initialise the SMC indexed state tracker (batch mode uses same backend) */
+    size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
+    if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
+        fprintf(stderr, "Failed to initialize SMC batch state tracker.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
+    smc_indexed_state_tracker_reset();
+#endif
+
     /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
      * ----------------------------------------------------------------- */
@@ -769,12 +794,24 @@ int app_main(int argc, char* argv[]) {
 #ifdef USE_SMC_STATE_TRACKER
     smc_state_stats_t smc_state_s = {0};
 #endif
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+    IndexedStateStats smc_indexed_s = {0};
+#endif
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    IndexedStateStats smc_batch_s = {0};
+#endif
     uint32_t framebuffer_checksum = 0;   /* Checksum captured before cleanup */
 
     if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
         framebuffer_checksum = renderer_framebuffer_checksum(ren);
 #ifdef USE_SMC_STATE_TRACKER
         smc_state_tracker_get_stats(&smc_state_s);
+#endif
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+        smc_indexed_state_tracker_get_stats(&smc_indexed_s);
+#endif
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+        smc_indexed_state_tracker_get_stats(&smc_batch_s);
 #endif
     }
 
@@ -783,6 +820,9 @@ int app_main(int argc, char* argv[]) {
      * ================================================================ */
 #ifdef USE_SMC_STATE_TRACKER
     smc_state_tracker_shutdown();
+#endif
+#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
+    smc_indexed_state_tracker_shutdown();
 #endif
     asset_designer_destroy(&ad_state);
     material_designer_destroy(&md_state);
@@ -887,6 +927,26 @@ int app_main(int argc, char* argv[]) {
                 (unsigned long long)smc_state_s.unchanged,
                 (unsigned long long)smc_state_s.evictions,
                 (unsigned long long)smc_state_s.bytes_compared);
+#endif
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+        fprintf(stderr, "SMC indexed stats: checks=%llu changed=%llu unchanged=%llu stores=%llu bytes_compared=%llu out_of_range=%llu clears=%llu\n",
+                (unsigned long long)smc_indexed_s.checks,
+                (unsigned long long)smc_indexed_s.changed,
+                (unsigned long long)smc_indexed_s.unchanged,
+                (unsigned long long)smc_indexed_s.stores,
+                (unsigned long long)smc_indexed_s.bytes_compared,
+                (unsigned long long)smc_indexed_s.out_of_range,
+                (unsigned long long)smc_indexed_s.clears);
+#endif
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+        fprintf(stderr, "SMC batch stats: checks=%llu changed=%llu unchanged=%llu stores=%llu bytes_compared=%llu out_of_range=%llu clears=%llu\n",
+                (unsigned long long)smc_batch_s.checks,
+                (unsigned long long)smc_batch_s.changed,
+                (unsigned long long)smc_batch_s.unchanged,
+                (unsigned long long)smc_batch_s.stores,
+                (unsigned long long)smc_batch_s.bytes_compared,
+                (unsigned long long)smc_batch_s.out_of_range,
+                (unsigned long long)smc_batch_s.clears);
 #endif
 
         /* Report renderer dirty tracking stats and framebuffer checksum. */

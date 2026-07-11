@@ -55,6 +55,11 @@ typedef struct {
     int logical_h;                     /* Logical pixel height */
     int cell_w;                        /* Glyph width (pixels) */
     int cell_h;                        /* Glyph height (pixels) */
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    void           *batch_state_buffer;  /* CellState[cell_count] for batch mode */
+    uint32_t       *batch_dirty_indices; /* dirty_indices[cell_count] for batch mode */
+    size_t         batch_buffer_size;   /* Number of cells in buffers */
+#endif
 } Renderer;
 
 /* ---- Renderer API ---- */

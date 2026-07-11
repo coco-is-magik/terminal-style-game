@@ -83,6 +83,43 @@ Cache hit path IS faster (5x speedup potential).
 
 ---
 
-## Conclusion
+## Session 5 — Generic SMC State Tracker (FAILED - TOO SLOW)
 
-The SMC scalar dispatch replacement showed no measurable speedup because the renderer hot path is memory-bound. However, dirty-cell tracking (similar architectural pattern) achieved **~40% speedup** by eliminating redundant work rather than caching it.
+### Benchmark Results
+| Mode | avg_render_ms | skip_rate |
+|------|-------------|-----------|
+| baseline | 8.32 | 0% |
+| custom dirty | 4.75 | 99.97% |
+| generic SMC | 14.98 | 99.97% |
+
+**Result**: SMC generic state tracker was 80% **slower** than baseline, despite correctly skipping cells.
+
+### Why it failed
+- Function call overhead (smc_state_changed per cell)
+- Hash computation per cell (smc_byte_hash)
+- Key comparison via memcmp
+- Stats bookkeeping overhead
+
+### Conclusion
+SMC generic state tracking is too slow for renderer hot path. Per-cell overhead exceeds savings.
+
+---
+
+## Session 6 — SMC Indexed State Tracker (IN PROGRESS)
+
+Testing SMC v2.1 indexed APIs:
+- `smc_state_changed_index()` - avoids hashing, uses direct index
+- `smc_state_diff_indexed_batch()` - single call for all cells, returns dirty indices
+
+### Target APIs
+- `SMC_FEATURE_INDEXED_STATE_TRACKING`
+- `smc_state_indexed_config_t`, `smc_state_indexed_stats_t`
+- `smc_state_indexed_configure()`, `smc_state_changed_index()`, `smc_state_diff_indexed_batch()`
+
+### Status
+- SMC vendor updated to commit `6fa6fd7` (contains indexed APIs)
+- Creating `src/smc_indexed_state_tracker.h/.c` adapter
+- Adding `USE_SMC_INDEXED_STATE_TRACKER=1` and `USE_SMC_BATCH_STATE_TRACKER=1` build flags
+
+### Goal
+Preserve 70-85% of custom dirty-cell speedup (target: ~3.5-4.0 ms avg render)
