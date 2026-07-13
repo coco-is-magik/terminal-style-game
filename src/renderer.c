@@ -40,8 +40,14 @@
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
 #include "smc.h"           /* SMC types (SMC_OK, etc.) */
 #endif
+
+/* Mutually exclusive dirty/state tracking modes */
+#if (defined(USE_DIRTY_CELLS) + defined(USE_SMC_STATE_TRACKER) + defined(USE_SMC_INDEXED_STATE_TRACKER) + defined(USE_SMC_BATCH_STATE_TRACKER)) > 1
+#error "Only one of USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER may be defined"
+#endif
 #include <stdio.h>            /* fprintf(), stderr */
 #include <stdlib.h>           /* malloc(), free(), size_t */
+#include <string.h>           /* memset() */
 
 /* ===================================================================
  *  Global allocation-tracking counters
@@ -373,8 +379,9 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     size_t cell_count = (size_t)grid->width * (size_t)grid->height;
     size_t dirty_count = 0;
     
-    /* Populate state buffer */
+    /* Populate state buffer (zero first to avoid uninitialized padding bytes) */
     CellState *states = (CellState *)ren->batch_state_buffer;
+    memset(states, 0, cell_count * sizeof(CellState));
     for (size_t i = 0; i < cell_count; i++) {
         Cell c = grid->cells[i];
         states[i].glyph = c.glyph;
