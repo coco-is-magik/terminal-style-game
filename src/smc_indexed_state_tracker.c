@@ -14,7 +14,7 @@ int smc_indexed_state_tracker_init(size_t cell_count) {
     if (rc != SMC_OK) return rc;
     g_smc_indexed_ctx = smc_context_create(1);
     if (!g_smc_indexed_ctx) { smc_shutdown(); return SMC_ERR_INIT; }
-    smc_state_indexed_config_t cfg = { .count = cell_count, .state_size = sizeof(CellState), .memory_budget_bytes = 0 };
+    smc_state_indexed_config_t cfg = { .count = cell_count, .state_size = sizeof(CellState), .memory_budget_bytes = 0 }; /* 8-byte packed state */
     rc = smc_state_indexed_configure(g_smc_indexed_ctx, &cfg);
     if (rc != SMC_OK) { smc_context_destroy(g_smc_indexed_ctx); g_smc_indexed_ctx = NULL; smc_shutdown(); return rc; }
     return SMC_OK;

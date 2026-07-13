@@ -378,22 +378,21 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     /* Batch mode: collect all states, call SMC once, render only dirty cells */
     size_t cell_count = (size_t)grid->width * (size_t)grid->height;
     size_t dirty_count = 0;
-    
-    /* Populate state buffer (zero first to avoid uninitialized padding bytes) */
+
+    _Static_assert(sizeof(CellState) == 8, "CellState must be exactly 8 bytes for SMC fixed-size batch kernel");
+
+    /* Populate state buffer with packed deterministic 8-byte states */
     CellState *states = (CellState *)ren->batch_state_buffer;
-    memset(states, 0, cell_count * sizeof(CellState));
     for (size_t i = 0; i < cell_count; i++) {
-        Cell c = grid->cells[i];
-        states[i].glyph = c.glyph;
-        states[i].fg_r = c.fg.r; states[i].fg_g = c.fg.g; states[i].fg_b = c.fg.b;
-        states[i].bg_r = c.bg.r; states[i].bg_g = c.bg.g; states[i].bg_b = c.bg.b;
+        states[i] = pack_cell_state(&grid->cells[i]);
     }
-    
+
     /* Get dirty indices from SMC */
     uint32_t *dirty_indices = ren->batch_dirty_indices;
     int rc = smc_indexed_state_tracker_diff_batch(states, cell_count,
                                                    dirty_indices, cell_count,
                                                    &dirty_count);
+    (void)rc;
     
     /* If batch call failed, render all cells (fallback) */
     if (rc != SMC_OK) {
@@ -460,11 +459,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 #ifdef USE_SMC_INDEXED_STATE_TRACKER
             /* Check state change via SMC indexed state tracker (no hash overhead) */
             uint32_t cell_index = (uint32_t)(cy * grid->width + cx);
-            CellState state = {
-                .glyph = c.glyph,
-                .fg_r = c.fg.r, .fg_g = c.fg.g, .fg_b = c.fg.b,
-                .bg_r = c.bg.r, .bg_g = c.bg.g, .bg_b = c.bg.b
-            };
+            CellState state = pack_cell_state(&c);
             int changed = 1;
             int rc = smc_indexed_state_tracker_cell_changed(cell_index, &state, &changed);
             if (rc == SMC_OK && !changed) {
@@ -476,11 +471,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 #ifdef USE_SMC_STATE_TRACKER
             /* Check state change via SMC v2 dirty-state tracker */
             uint32_t cell_index = (uint32_t)(cy * grid->width + cx);
-            CellState state = {
-                .glyph = c.glyph,
-                .fg_r = c.fg.r, .fg_g = c.fg.g, .fg_b = c.fg.b,
-                .bg_r = c.bg.r, .bg_g = c.bg.g, .bg_b = c.bg.b
-            };
+            CellState state = pack_cell_state(&c);
             int changed = 1;
             int rc = smc_state_tracker_cell_changed(cell_index, &state, &changed);
             if (rc == SMC_OK && !changed) {

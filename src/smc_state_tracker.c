@@ -52,7 +52,7 @@ int smc_state_tracker_init(size_t max_cells) {
     smc_state_config_t cfg = {
         .max_entries = entries,
         .max_key_size = sizeof(uint32_t),
-        .max_state_size = sizeof(CellState),
+        .max_state_size = sizeof(CellState), /* 8-byte packed state */
         .memory_budget_bytes = 0
     };
     

@@ -37,12 +37,23 @@ typedef struct {
 #endif
 
 /* Cell state used for change detection. Includes only fields that affect
- * raster output (no alpha - COLOR_TO_UINT32 ignores it for opaque pixels). */
-typedef struct {
-    uint8_t glyph;
-    uint8_t fg_r, fg_g, fg_b;
-    uint8_t bg_r, bg_g, bg_b;
-} CellState;
+ * raster output (no alpha - COLOR_TO_UINT32 ignores it for opaque pixels).
+ *
+ * Packed into a uint64_t so the SMC batch path can use the 8-byte fixed-size
+ * kernel.  The bit layout is stable and explicit; no padding is exposed. */
+typedef uint64_t CellState;
+
+static inline CellState pack_cell_state(const Cell *cell) {
+    CellState state = 0;
+    state |= ((CellState)cell->glyph)      << 0;
+    state |= ((CellState)cell->fg.r)       << 8;
+    state |= ((CellState)cell->fg.g)       << 16;
+    state |= ((CellState)cell->fg.b)       << 24;
+    state |= ((CellState)cell->bg.r)       << 32;
+    state |= ((CellState)cell->bg.g)       << 40;
+    state |= ((CellState)cell->bg.b)       << 48;
+    return state;
+}
 
 /* Initialize the SMC state tracker. Must be called before any other functions.
  * max_cells is used to size the hash table (we use 65536 as minimum).
