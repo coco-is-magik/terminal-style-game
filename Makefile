@@ -23,6 +23,9 @@ USE_SMC_INDEXED_STATE_TRACKER ?= 0
 # SMC batch state tracker toggle.  Set USE_SMC_BATCH_STATE_TRACKER=1 for batch indexed state tracking.
 USE_SMC_BATCH_STATE_TRACKER ?= 0
 
+# Frame profiling toggle.  Set PROFILE_FRAME=1 to compile in per-frame phase timing.
+PROFILE_FRAME ?= 0
+
 # Mutual exclusivity check - only one dirty/state tracking mode allowed
 ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER)),0)
   ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER)),1)
@@ -118,6 +121,12 @@ ifeq ($(USE_DIRTY_CELLS),1)
     DIRTY_DEFS := -DUSE_DIRTY_CELLS=1
 endif
 
+# Frame profiling definitions
+PROFILE_DEFS :=
+ifeq ($(PROFILE_FRAME),1)
+    PROFILE_DEFS := -DPROFILE_FRAME=1
+endif
+
 # SMC state tracker files - combine all possible modes
 SMC_ALL_STATE_FILES := $(SMC_STATE_FILES) $(SMC_INDEXED_FILES) $(SMC_BATCH_FILES)
 SMC_ALL_STATE_FILES := $(SMC_ALL_STATE_FILES)  # Remove duplicates
@@ -147,7 +156,7 @@ ifeq ($(USE_SMC_BATCH_STATE_TRACKER),1)
 endif
 
 $(APP): $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(SMC_SRC) | dirs
-	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
+	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_deps.c -o $(TEST_DEPS_RUNNER) $(TEST_LIBS) $(RPATH)

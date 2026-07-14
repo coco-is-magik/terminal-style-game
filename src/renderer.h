@@ -29,6 +29,11 @@ extern uint64_t renderer_cells_skipped;     /* Cells skipped via dirty tracking 
 extern uint64_t renderer_cache_hits;         /* Glyph cache hits (if enabled) */
 extern uint64_t renderer_cache_misses;       /* Glyph cache misses (if enabled) */
 
+#if PROFILE_FRAME
+#include "timing.h"        /* FrameProfileStats */
+extern FrameProfileStats g_frame_profile;    /* Accumulated frame phase timings */
+#endif
+
 /* Include the GlyphAtlas definition used by Renderer. */
 #include "glyph_atlas.h"    /* GlyphAtlas struct */
 

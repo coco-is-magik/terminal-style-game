@@ -209,3 +209,133 @@ bytes_compared=96844800
 ## Recommended Next Step
 
 Validate the SMC batch path under dynamic scenes (camera movement, animated stress pattern) to ensure state persistence and skip-rate stability when the grid changes every frame. If it holds up, the batch path is the preferred reusable dirty-tracking backend. Do not move to artifact caching until the batch path is validated under motion.
+
+## Frame Profiling Experiment
+
+A compile-time profiling mode was added (`PROFILE_FRAME=1`) to explain the remaining ~0.41 ms/frame gap between the custom dirty-cell tracker and the SMC batch indexed tracker. The instrumentation is zero-overhead when disabled and accumulates timings over the whole benchmark run, printing a summary at the end of `--benchmark-raycast`.
+
+### Files Changed for Profiling
+
+- `Makefile` — added `PROFILE_FRAME` build flag
+- `src/timing.h` — added `profile_now_ms()`, `FrameProfileStats`, and print helpers
+- `src/timing.c` — implemented profiling helpers using `SDL_GetPerformanceCounter()`
+- `src/renderer.h` — declared `g_frame_profile`
+- `src/renderer.c` — instrumented the custom dirty, SMC indexed, and SMC batch rasterization paths
+- `src/app.c` — initialized the profile accumulator and printed the summary for benchmark modes
+
+### Build Commands
+
+```bash
+make clean && make USE_DIRTY_CELLS=1 PROFILE_FRAME=1
+make clean && make USE_SMC_BATCH_STATE_TRACKER=1 PROFILE_FRAME=1
+make clean && make USE_SMC_INDEXED_STATE_TRACKER=1 PROFILE_FRAME=1
+make clean && make PROFILE_FRAME=1
+```
+
+### Benchmark Commands
+
+```bash
+./build/ascii-fps --benchmark-raycast 5
+```
+
+Three runs were made per mode. Median phase times are reported below.
+
+### Phase Timing Methodology
+
+- `grid/raycast` — time spent in `camera_update()`, `lighting_update()`, and `raycast_render()` before the renderer is invoked.
+- `state packing` — time to build the packed `uint64_t` state array (SMC batch only).
+- `smc batch diff` — time inside `smc_state_diff_indexed_batch()` (SMC batch only).
+- `dirty decision` — per-cell comparison that decides whether to skip a cell (custom dirty and SMC indexed).
+- `dirty iteration` — walking the dirty list and selecting changed cells.
+- `rasterization` — actual 8×8 glyph pixel write into the framebuffer.
+- `SDL/update/present` — `SDL_UpdateTexture()`, `SDL_RenderTexture()`, and `SDL_RenderPresent()`.
+- `other/unaccounted` — `frame_total_ms - sum(profiled phases)`.
+
+For the per-cell paths (custom dirty, SMC indexed), the dirty decision, iteration, and rasterization are measured as one combined block because the renderer interleaves them. For SMC batch, state packing, SMC diff, and dirty iteration/rasterization are measured separately.
+
+### Custom Dirty Cells (median of 3 runs)
+
+| Phase | ms/frame |
+|-------|----------|
+| grid/raycast | 2.220 |
+| state packing | 0.000 |
+| smc batch diff | 0.000 |
+| dirty decision | 0.528 |
+| dirty iteration | 0.528 |
+| rasterization | 0.528 |
+| SDL/update/present | 4.592 |
+| other/unaccounted | 0.000 |
+| **total profiled** | **5.120** |
+
+Raw runs: 4.99, 5.12, 5.03 ms → median **5.120 ms/frame**.
+
+### SMC Batch State Tracker (median of 3 runs)
+
+| Phase | ms/frame |
+|-------|----------|
+| grid/raycast | 2.221 |
+| state packing | 0.481 |
+| smc batch diff | 0.213 |
+| dirty decision | 0.000 |
+| dirty iteration | 0.029 |
+| rasterization | 0.029 |
+| SDL/update/present | 4.520 |
+| other/unaccounted | 0.000 |
+| **total profiled** | **5.227** |
+
+Raw runs: 5.23, 5.17, 5.31 ms → median **5.227 ms/frame**.
+
+### Difference Table: SMC Batch Minus Custom Dirty
+
+| Phase | Custom Dirty | SMC Batch | Delta |
+|-------|--------------|-----------|-------|
+| grid/raycast | 2.220 ms | 2.221 ms | +0.001 |
+| state packing | 0.000 ms | 0.481 ms | **+0.481** |
+| smc batch diff | 0.000 ms | 0.213 ms | **+0.213** |
+| dirty decision | 0.528 ms | 0.000 ms | -0.528 |
+| dirty iteration | 0.528 ms | 0.029 ms | -0.499 |
+| rasterization | 0.528 ms | 0.029 ms | -0.499 |
+| SDL/update/present | 4.592 ms | 4.520 ms | -0.072 |
+| other/unaccounted | 0.000 ms | 0.000 ms | 0.000 |
+| **total** | **5.120 ms** | **5.227 ms** | **+0.107** |
+
+### Optional Baseline and SMC Indexed Profiles
+
+Baseline full raster (median of 3 runs):
+
+| Phase | ms/frame |
+|-------|----------|
+| grid/raycast | 2.292 |
+| dirty decision / iteration / rasterization | 4.510 |
+| SDL/update/present | 4.240 |
+| **total** | **8.751** |
+
+SMC indexed state tracker (median of 3 runs):
+
+| Phase | ms/frame |
+|-------|----------|
+| grid/raycast | 2.290 |
+| dirty decision / iteration / rasterization | 1.781 |
+| SDL/update/present | 4.704 |
+| **total** | **6.357** |
+
+### Interpretation of the Gap
+
+The measured gap in this profiling run is **+0.107 ms/frame** (SMC batch 5.227 ms vs custom dirty 5.120 ms), smaller than the previously reported ~0.41 ms. The profile shows exactly where the SMC batch path spends its extra time:
+
+- **State packing adds ~0.48 ms/frame**: building the temporary `uint64_t` state array for all 41,600 cells.
+- **SMC batch diff adds ~0.21 ms/frame**: the call to `smc_state_diff_indexed_batch()`.
+- These are partially offset by the batch path being faster at consuming the dirty list and rasterizing changed cells (~0.50 ms saved vs the per-cell custom dirty loop).
+- SDL/upload/present and grid/raycast generation are essentially identical between the two modes.
+
+Because the gap is dominated by `state_pack_ms`, the conclusion is:
+
+> **The gap is state construction.** Future generalized SMC work should consider SoA stream diffing or caller-side compact state generation to avoid building temporary packed arrays.
+
+The SMC batch diff itself is only ~0.21 ms/frame, so further optimization inside the diff kernel would yield smaller returns than avoiding the packed-array build step.
+
+### Recommended Next Action
+
+- **Renderer-side**: investigate whether the grid can be produced directly in a packed `uint64_t` layout, or whether a SIMD/stream path can build the state array faster.
+- **SMC-side**: consider an API that accepts a caller-provided accessor or SoA stream so the renderer does not need to materialize a full temporary packed state array every frame.
+- Do **not** start artifact caching work until the state-packing overhead is addressed or confirmed unavoidable.

@@ -67,6 +67,10 @@ uint64_t renderer_cells_skipped   = 0;  /* Cells skipped via dirty tracking */
 uint64_t renderer_cache_hits      = 0;  /* Glyph cache hits */
 uint64_t renderer_cache_misses    = 0;  /* Glyph cache misses */
 
+#if PROFILE_FRAME
+FrameProfileStats g_frame_profile = {0}; /* Accumulated frame phase timings */
+#endif
+
 /* ===================================================================
  *  Allocation wrappers (for tracking)
  * =================================================================== */
@@ -365,6 +369,12 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     uint32_t *pixels = ren->pixel_buffer;
     int pitch_pixels = ren->logical_w;   /* Number of uint32_t per row */
 
+#if PROFILE_FRAME
+    double profile_frame_start = profile_now_ms();
+    double profile_phase_start = profile_frame_start;
+    double profile_phase_end;
+#endif
+
     /* ---- Phase 1 Timing ---- */
     uint64_t phase1_start = SDL_GetPerformanceCounter();
 
@@ -381,11 +391,19 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 
     _Static_assert(sizeof(CellState) == 8, "CellState must be exactly 8 bytes for SMC fixed-size batch kernel");
 
+#if PROFILE_FRAME
+    profile_phase_start = profile_now_ms();
+#endif
     /* Populate state buffer with packed deterministic 8-byte states */
     CellState *states = (CellState *)ren->batch_state_buffer;
     for (size_t i = 0; i < cell_count; i++) {
         states[i] = pack_cell_state(&grid->cells[i]);
     }
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.state_pack_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
 
     /* Get dirty indices from SMC */
     uint32_t *dirty_indices = ren->batch_dirty_indices;
@@ -393,6 +411,11 @@ void renderer_draw(Renderer *ren, Grid *grid) {
                                                    dirty_indices, cell_count,
                                                    &dirty_count);
     (void)rc;
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.smc_diff_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
     
     /* If batch call failed, render all cells (fallback) */
     if (rc != SMC_OK) {
@@ -435,10 +458,20 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             row_pixels[7] = (row & 128) ? fg : bg;
         }
     }
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.dirty_iter_ms += (profile_phase_end - profile_phase_start);
+    g_frame_profile.raster_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
 #else
     /* Per-cell or no dirty tracking modes */
     renderer_cells_processed = 0;
     renderer_cells_skipped = 0;
+
+#if PROFILE_FRAME
+    profile_phase_start = profile_now_ms();
+#endif
     for (int cy = 0; cy < grid->height; cy++) {
         for (int cx = 0; cx < grid->width; cx++) {
             Cell c = grid->cells[cy * grid->width + cx];
@@ -516,6 +549,13 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             }
         }
     }
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.dirty_check_ms += (profile_phase_end - profile_phase_start);
+    g_frame_profile.dirty_iter_ms += (profile_phase_end - profile_phase_start);
+    g_frame_profile.raster_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
 #endif
 
     /* ---- Phase 2 Timing ---- */
@@ -538,6 +578,13 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     uint64_t phase3_end = SDL_GetPerformanceCounter();
     double upload_time = (double)((phase3_end - phase2_start) * 1000) / SDL_GetPerformanceFrequency();
     renderer_time_upload_ms = upload_time;
+
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.sdl_update_ms += (profile_phase_end - profile_phase_start);
+    g_frame_profile.frame_total_ms += (profile_phase_end - profile_frame_start);
+    g_frame_profile.frames++;
+#endif
 
 #ifdef USE_DIRTY_CELLS
     /* After rendering, swap prev_cells for next frame's comparison */

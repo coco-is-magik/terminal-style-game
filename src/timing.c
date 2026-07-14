@@ -19,6 +19,8 @@
  */
 
 #include "timing.h"        /* PerfStats, function declarations */
+#include <SDL3/SDL.h>      /* SDL_GetPerformanceCounter, SDL_GetPerformanceFrequency */
+#include <stdio.h>         /* fprintf(), stderr */
 
 /* ===================================================================
  *  Frame-budget calculation functions
@@ -172,3 +174,81 @@ void perf_stats_update(PerfStats *stats, double delta_time_ms, double frame_time
         stats->total_frame_time_ms = 0.0;
     }
 }
+
+/* ===================================================================
+ *  Optional per-frame phase profiling (PROFILE_FRAME=1)
+ * =================================================================== */
+
+#if PROFILE_FRAME
+
+/**
+ * profile_now_ms() — Current monotonic time in milliseconds
+ *
+ * Uses SDL's high-resolution performance counter.
+ */
+double profile_now_ms(void) {
+    static uint64_t freq = 0;
+    if (freq == 0) {
+        freq = SDL_GetPerformanceFrequency();
+    }
+    uint64_t counter = SDL_GetPerformanceCounter();
+    return (double)(counter * 1000) / (double)freq;
+}
+
+/**
+ * frame_profile_init() — Zero all accumulators.
+ */
+void frame_profile_init(FrameProfileStats *stats) {
+    if (!stats) return;
+    stats->raycast_grid_ms = 0.0;
+    stats->state_pack_ms   = 0.0;
+    stats->smc_diff_ms     = 0.0;
+    stats->dirty_check_ms  = 0.0;
+    stats->dirty_iter_ms   = 0.0;
+    stats->raster_ms       = 0.0;
+    stats->sdl_update_ms   = 0.0;
+    stats->frame_total_ms  = 0.0;
+    stats->frames          = 0;
+}
+
+/**
+ * frame_profile_print() — Print per-frame average phase timings.
+ *
+ * Computes averages from accumulated sums and prints a formatted summary.
+ * The "other/unaccounted" line is total frame time minus the sum of the
+ * explicitly profiled phases.
+ */
+void frame_profile_print(const FrameProfileStats *stats, const char *mode) {
+    if (!stats || stats->frames == 0) {
+        fprintf(stderr, "Frame profile: no frames accumulated\n");
+        return;
+    }
+
+    double inv = 1.0 / (double)stats->frames;
+    double grid_ms   = stats->raycast_grid_ms * inv;
+    double pack_ms   = stats->state_pack_ms * inv;
+    double diff_ms   = stats->smc_diff_ms * inv;
+    double check_ms  = stats->dirty_check_ms * inv;
+    double iter_ms   = stats->dirty_iter_ms * inv;
+    double raster_ms = stats->raster_ms * inv;
+    double sdl_ms    = stats->sdl_update_ms * inv;
+    double total_ms  = stats->frame_total_ms * inv;
+
+    double accounted = grid_ms + pack_ms + diff_ms + check_ms + iter_ms + raster_ms + sdl_ms;
+    double other_ms  = total_ms - accounted;
+    if (other_ms < 0.0) other_ms = 0.0;  /* Guard against timing noise */
+
+    fprintf(stderr, "\nFrame profile (%s):\n", mode ? mode : "unknown");
+    fprintf(stderr, "  frames:              %llu\n", (unsigned long long)stats->frames);
+    fprintf(stderr, "  grid/raycast:        %.3f ms/frame\n", grid_ms);
+    fprintf(stderr, "  state packing:       %.3f ms/frame\n", pack_ms);
+    fprintf(stderr, "  smc batch diff:      %.3f ms/frame\n", diff_ms);
+    fprintf(stderr, "  dirty decision:      %.3f ms/frame\n", check_ms);
+    fprintf(stderr, "  dirty iteration:     %.3f ms/frame\n", iter_ms);
+    fprintf(stderr, "  rasterization:       %.3f ms/frame\n", raster_ms);
+    fprintf(stderr, "  SDL/update/present:  %.3f ms/frame\n", sdl_ms);
+    fprintf(stderr, "  other/unaccounted:   %.3f ms/frame\n", other_ms);
+    fprintf(stderr, "  total profiled:      %.3f ms/frame\n", total_ms);
+}
+
+#endif /* PROFILE_FRAME */

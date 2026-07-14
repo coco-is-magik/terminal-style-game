@@ -556,6 +556,11 @@ int app_main(int argc, char* argv[]) {
     uint64_t last_time = initial_time;
     double target_time_ms = timing_target_ms(cfg->target_fps);  /* e.g. 16.67 ms for 60 FPS */
 
+#if PROFILE_FRAME
+    /* Per-frame phase profiling accumulators */
+    frame_profile_init(&g_frame_profile);
+#endif
+
     /* Accumulators for benchmark-report statistics */
     double global_total_render_ms = 0.0;          /* Sum of all renderer_draw() durations */
     double absolute_worst_render_ms = 0.0;        /* Single longest render call */
@@ -685,11 +690,15 @@ int app_main(int argc, char* argv[]) {
             }
         }
 
-        /* --- 8f. Draw frame contents --- */
-        double delta_time_sec = delta_time_ms / 1000.0;
-        active_menu = menu_stack_peek(&ms);
+    /* --- 8f. Draw frame contents --- */
+    double delta_time_sec = delta_time_ms / 1000.0;
+    active_menu = menu_stack_peek(&ms);
 
-        if (active_menu != MENU_NONE) {
+#if PROFILE_FRAME
+    double profile_grid_start = profile_now_ms();
+#endif
+
+    if (active_menu != MENU_NONE) {
             /* A menu is open — clear the screen and render the menu */
             SDL_Color mbg = {0, 0, 0, 255};
             UiLayout *active_layout = ((int)active_menu >= 0 && (int)active_menu < MENU_ID_COUNT)
@@ -712,6 +721,10 @@ int app_main(int argc, char* argv[]) {
                 draw_data_ui_overlay(grid, &menu_cache, hud_layout, frame_count,
                                      &perf_stats, visual_mode, cfg->target_fps);
             }
+
+#if PROFILE_FRAME
+    g_frame_profile.raycast_grid_ms += (profile_now_ms() - profile_grid_start);
+#endif
 
         } else if (app_state == APP_STATE_EDITOR) {
             SDL_Color ae_bg = {0, 0, 0, 255};
@@ -958,6 +971,24 @@ int app_main(int argc, char* argv[]) {
                 (unsigned long long)renderer_cells_skipped,
                 cells_total > 0 ? (100.0 * renderer_cells_skipped / cells_total) : 0.0,
                 framebuffer_checksum);
+
+#if PROFILE_FRAME
+        /* Print per-frame phase profile summary for benchmark modes. */
+        const char *profile_mode_name = "baseline";
+#ifdef USE_DIRTY_CELLS
+        profile_mode_name = "custom dirty cells";
+#endif
+#ifdef USE_SMC_INDEXED_STATE_TRACKER
+        profile_mode_name = "SMC indexed";
+#endif
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+        profile_mode_name = "SMC batch";
+#endif
+#ifdef USE_SMC_STATE_TRACKER
+        profile_mode_name = "SMC generic";
+#endif
+        frame_profile_print(&g_frame_profile, profile_mode_name);
+#endif
 
         return exit_code;
     }

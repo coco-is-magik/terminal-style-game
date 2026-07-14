@@ -135,4 +135,52 @@ void perf_stats_init(PerfStats *stats);
  */
 void perf_stats_update(PerfStats *stats, double delta_time_ms, double frame_time_ms, double spare_time_ms);
 
+/* ===================================================================
+ *  Optional per-frame phase profiling (PROFILE_FRAME=1)
+ * =================================================================== */
+
+#if PROFILE_FRAME
+
+/**
+ * profile_now_ms() — Return the current monotonic time in milliseconds
+ *
+ * Uses SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency().
+ * Only available when PROFILE_FRAME is defined at build time.
+ */
+double profile_now_ms(void);
+
+/**
+ * FrameProfileStats — Accumulated timings for renderer phases
+ *
+ * All fields are sums over the whole benchmark run.  Divide by frames
+ * at report time to get per-frame averages.  Fields are zero when a
+ * phase does not exist in the active renderer mode.
+ */
+typedef struct {
+    double raycast_grid_ms;   /* grid/raycast generation (world content) */
+    double state_pack_ms;     /* building the packed uint64_t state array */
+    double smc_diff_ms;       /* SMC batch diff call */
+    double dirty_check_ms;    /* custom dirty-cell comparison / decision */
+    double dirty_iter_ms;     /* walking dirty indices and selecting cells */
+    double raster_ms;         /* actual 8x8 glyph rasterization */
+    double sdl_update_ms;     /* SDL_UpdateTexture + RenderTexture + Present */
+    double frame_total_ms;    /* total renderer_draw() wall time */
+    uint64_t frames;          /* number of frames accumulated */
+} FrameProfileStats;
+
+/**
+ * frame_profile_init() — Zero a FrameProfileStats struct.
+ */
+void frame_profile_init(FrameProfileStats *stats);
+
+/**
+ * frame_profile_print() — Print the final per-frame average summary.
+ *
+ * @param stats   Accumulated stats (will be divided by frames internally)
+ * @param mode    Human-readable mode name for the header
+ */
+void frame_profile_print(const FrameProfileStats *stats, const char *mode);
+
+#endif /* PROFILE_FRAME */
+
 #endif /* TIMING_H */
