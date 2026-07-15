@@ -1,0 +1,26 @@
+SMC stream stats: checks=25209600 changed=42513 unchanged=25167087 stores=42513 bytes_compared=176467200 out_of_range=0 clears=0 fallback_count=0
+Renderer stats: cells_total=41600 cells_rasterized=42513 cells_skipped=41599 skip_rate=100.0% framebuffer_checksum=712096435
+
+Frame profile (SMC stream):
+  frames:              606
+  grid/raycast:        2.247 ms/frame
+  state packing:       0.000 ms/frame
+  smc diff:            0.000 ms/frame
+  dirty decision:      0.000 ms/frame
+  dirty iteration:     0.019 ms/frame
+  rasterization:       0.019 ms/frame
+  SDL/update/present:  4.585 ms/frame
+  other/unaccounted:   0.000 ms/frame
+  total profiled:      5.173 ms/frame
+{
+  "grid_width": 260,
+  "grid_height": 160,
+  "target_fps": 120,
+  "avg_render_ms": 5.17,
+  "worst_render_ms": 12.08,
+  "effective_worst_ms": 12.08,
+  "outlier_trimmed": false,
+  "min_spare_ms": -5.76,
+  "frames": 606,
+  "result": "fail_performance"
+}
