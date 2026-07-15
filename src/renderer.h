@@ -28,6 +28,7 @@ extern uint64_t renderer_cells_processed;    /* Total cells rasterized */
 extern uint64_t renderer_cells_skipped;     /* Cells skipped via dirty tracking */
 extern uint64_t renderer_cache_hits;         /* Glyph cache hits (if enabled) */
 extern uint64_t renderer_cache_misses;       /* Glyph cache misses (if enabled) */
+extern uint64_t renderer_smc_fallback_count; /* SMC stream fallback count */
 
 #if PROFILE_FRAME
 #include "timing.h"        /* FrameProfileStats */
@@ -61,9 +62,11 @@ typedef struct {
     int cell_w;                        /* Glyph width (pixels) */
     int cell_h;                        /* Glyph height (pixels) */
 #ifdef USE_SMC_BATCH_STATE_TRACKER
-    void           *batch_state_buffer;  /* CellState[cell_count] for batch mode */
-    uint32_t       *batch_dirty_indices; /* dirty_indices[cell_count] for batch mode */
-    size_t         batch_buffer_size;   /* Number of cells in buffers */
+     void           *batch_state_buffer;  /* CellState[cell_count] for batch mode */
+#endif
+#if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
+     uint32_t       *batch_dirty_indices; /* dirty_indices[cell_count] for batch/stream mode */
+     size_t         batch_buffer_size;   /* Number of cells in buffers */
 #endif
 } Renderer;
 

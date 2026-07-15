@@ -47,7 +47,7 @@
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
 #include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
 #include "smc_render_opt.h"     /* SMC runtime init/shutdown/stats for benchmark modes */
-#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
+#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc_state_tracker.h"  /* SMC v2 dirty-state tracking */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
 #include "smc.h"                /* SMC_OK, smc_state_stats_t, etc. */
@@ -496,6 +496,18 @@ int app_main(int argc, char* argv[]) {
     smc_indexed_state_tracker_reset();
 #endif
 
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+    /* Initialise the SMC indexed state tracker (stream mode uses same backend with state_size=7) */
+    size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
+    if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
+        fprintf(stderr, "Failed to initialize SMC stream state tracker.\n");
+        grid_destroy(grid);
+        renderer_destroy(ren);
+        return 1;
+    }
+    smc_indexed_state_tracker_reset();
+#endif
+
     /* -----------------------------------------------------------------
      *  7. App state, menu stack, and UI button assets
      * ----------------------------------------------------------------- */
@@ -813,6 +825,9 @@ int app_main(int argc, char* argv[]) {
 #ifdef USE_SMC_BATCH_STATE_TRACKER
     IndexedStateStats smc_batch_s = {0};
 #endif
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+    IndexedStateStats smc_stream_s = {0};
+#endif
     uint32_t framebuffer_checksum = 0;   /* Checksum captured before cleanup */
 
     if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
@@ -826,6 +841,9 @@ int app_main(int argc, char* argv[]) {
 #ifdef USE_SMC_BATCH_STATE_TRACKER
         smc_indexed_state_tracker_get_stats(&smc_batch_s);
 #endif
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+        smc_indexed_state_tracker_get_stats(&smc_stream_s);
+#endif
     }
 
     /* ================================================================
@@ -834,7 +852,7 @@ int app_main(int argc, char* argv[]) {
 #ifdef USE_SMC_STATE_TRACKER
     smc_state_tracker_shutdown();
 #endif
-#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
+#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
     smc_indexed_state_tracker_shutdown();
 #endif
     asset_designer_destroy(&ad_state);
@@ -961,6 +979,17 @@ int app_main(int argc, char* argv[]) {
                 (unsigned long long)smc_batch_s.out_of_range,
                 (unsigned long long)smc_batch_s.clears);
 #endif
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+        fprintf(stderr, "SMC stream stats: checks=%llu changed=%llu unchanged=%llu stores=%llu bytes_compared=%llu out_of_range=%llu clears=%llu fallback_count=%llu\n",
+                (unsigned long long)smc_stream_s.checks,
+                (unsigned long long)smc_stream_s.changed,
+                (unsigned long long)smc_stream_s.unchanged,
+                (unsigned long long)smc_stream_s.stores,
+                (unsigned long long)smc_stream_s.bytes_compared,
+                (unsigned long long)smc_stream_s.out_of_range,
+                (unsigned long long)smc_stream_s.clears,
+                (unsigned long long)renderer_smc_fallback_count);
+#endif
 
         /* Report renderer dirty tracking stats and framebuffer checksum. */
         uint64_t cells_total = (uint64_t)cfg->grid_width * (uint64_t)cfg->grid_height;
@@ -983,6 +1012,9 @@ int app_main(int argc, char* argv[]) {
 #endif
 #ifdef USE_SMC_BATCH_STATE_TRACKER
         profile_mode_name = "SMC batch";
+#endif
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+        profile_mode_name = "SMC stream";
 #endif
 #ifdef USE_SMC_STATE_TRACKER
         profile_mode_name = "SMC generic";

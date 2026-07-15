@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
+#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc.h"
 static smc_context_t *g_smc_indexed_ctx = NULL;
 
@@ -14,7 +14,14 @@ int smc_indexed_state_tracker_init(size_t cell_count) {
     if (rc != SMC_OK) return rc;
     g_smc_indexed_ctx = smc_context_create(1);
     if (!g_smc_indexed_ctx) { smc_shutdown(); return SMC_ERR_INIT; }
-    smc_state_indexed_config_t cfg = { .count = cell_count, .state_size = sizeof(CellState), .memory_budget_bytes = 0 }; /* 8-byte packed state */
+    smc_state_indexed_config_t cfg;
+    cfg.count = cell_count;
+    cfg.memory_budget_bytes = 0;
+#if defined(USE_SMC_STREAM_STATE_TRACKER)
+    cfg.state_size = 7; /* 1 + 3 + 3 for glyph, fg RGB, bg RGB */
+#else
+    cfg.state_size = sizeof(CellState); /* 8-byte packed state */
+#endif
     rc = smc_state_indexed_configure(g_smc_indexed_ctx, &cfg);
     if (rc != SMC_OK) { smc_context_destroy(g_smc_indexed_ctx); g_smc_indexed_ctx = NULL; smc_shutdown(); return rc; }
     return SMC_OK;
@@ -41,6 +48,13 @@ int smc_indexed_state_tracker_diff_batch(const CellState *states, size_t count, 
     return smc_state_diff_indexed_batch(g_smc_indexed_ctx, states, count, sizeof(CellState), dirty_indices, dirty_capacity, out_dirty_count);
 }
 
+#ifdef USE_SMC_STREAM_STATE_TRACKER
+int smc_indexed_state_tracker_diff_streams(const smc_state_stream_t *streams, size_t stream_count, size_t record_count, uint32_t *dirty_indices, size_t dirty_capacity, size_t *out_dirty_count) {
+    if (!g_smc_indexed_ctx || !out_dirty_count) return SMC_ERR_INVALID;
+    return smc_state_diff_indexed_streams(g_smc_indexed_ctx, streams, stream_count, record_count, dirty_indices, dirty_capacity, out_dirty_count);
+}
+#endif
+
 int smc_indexed_state_tracker_get_stats(IndexedStateStats *out) {
     if (!g_smc_indexed_ctx || !out) return SMC_ERR_INVALID;
     smc_state_indexed_stats_t smc_stats;
@@ -61,6 +75,10 @@ int smc_indexed_state_tracker_cell_changed(uint32_t cell_index, const CellState 
     (void)cell_index; (void)state; if (out_changed) *out_changed = 1; return 0; }
 int smc_indexed_state_tracker_diff_batch(const CellState *states, size_t count, uint32_t *dirty_indices, size_t dirty_capacity, size_t *out_dirty_count) {
     (void)states; (void)dirty_capacity; (void)dirty_indices; if (out_dirty_count) *out_dirty_count = count; return 0; }
+#if defined(USE_SMC_STREAM_STATE_TRACKER)
+int smc_indexed_state_tracker_diff_streams(const smc_state_stream_t *streams, size_t stream_count, size_t record_count, uint32_t *dirty_indices, size_t dirty_capacity, size_t *out_dirty_count) {
+    (void)streams; (void)stream_count; (void)record_count; (void)dirty_capacity; (void)dirty_indices; if (out_dirty_count) *out_dirty_count = record_count; return 0; }
+#endif
 int smc_indexed_state_tracker_get_stats(IndexedStateStats *out) {
     if (out) { out->checks=0; out->changed=0; out->unchanged=0; out->stores=0; out->bytes_compared=0; out->out_of_range=0; out->clears=0; }
     return 0;

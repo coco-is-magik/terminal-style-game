@@ -37,17 +37,28 @@
 #include "renderer.h"        /* Renderer struct, function declarations */
 #include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
-#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER)
+#if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc.h"           /* SMC types (SMC_OK, etc.) */
 #endif
 
 /* Mutually exclusive dirty/state tracking modes */
-#if (defined(USE_DIRTY_CELLS) + defined(USE_SMC_STATE_TRACKER) + defined(USE_SMC_INDEXED_STATE_TRACKER) + defined(USE_SMC_BATCH_STATE_TRACKER)) > 1
-#error "Only one of USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER may be defined"
+#if (defined(USE_DIRTY_CELLS) + defined(USE_SMC_STATE_TRACKER) + defined(USE_SMC_INDEXED_STATE_TRACKER) + defined(USE_SMC_BATCH_STATE_TRACKER) + defined(USE_SMC_STREAM_STATE_TRACKER)) > 1
+#error "Only one of USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER, USE_SMC_STREAM_STATE_TRACKER may be defined"
 #endif
 #include <stdio.h>            /* fprintf(), stderr */
 #include <stdlib.h>           /* malloc(), free(), size_t */
 #include <string.h>           /* memset() */
+#include <stddef.h>           /* offsetof */
+
+/* C99 compile-time assertions for Cell layout used by stream mode */
+#define CASSERT(name, expr) typedef char name[(expr) ? 1 : -1]
+CASSERT(cell_glyph_offset_0, offsetof(Cell, glyph) == 0);
+CASSERT(cell_fg_offset_1, offsetof(Cell, fg) == 1);
+CASSERT(cell_bg_offset_5, offsetof(Cell, bg) == 5);
+CASSERT(cell_size_9, sizeof(Cell) == 9);
+CASSERT(color_r_offset_0, offsetof(SDL_Color, r) == 0);
+CASSERT(color_g_offset_1, offsetof(SDL_Color, g) == 1);
+CASSERT(color_b_offset_2, offsetof(SDL_Color, b) == 2);
 
 /* ===================================================================
  *  Global allocation-tracking counters
@@ -66,6 +77,7 @@ uint64_t renderer_cells_processed = 0;  /* Total cells rasterized */
 uint64_t renderer_cells_skipped   = 0;  /* Cells skipped via dirty tracking */
 uint64_t renderer_cache_hits      = 0;  /* Glyph cache hits */
 uint64_t renderer_cache_misses    = 0;  /* Glyph cache misses */
+uint64_t renderer_smc_fallback_count = 0; /* SMC stream fallback count */
 
 #if PROFILE_FRAME
 FrameProfileStats g_frame_profile = {0}; /* Accumulated frame phase timings */
@@ -261,13 +273,14 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         return NULL;
     }
 
-#ifdef USE_SMC_BATCH_STATE_TRACKER
-    /* Allocate batch mode buffers after successful atlas creation */
+#if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
+    /* Allocate batch/stream mode buffers after successful atlas creation */
     size_t cell_count = (size_t)grid_w * (size_t)grid_h;
     size_t state_buffer_bytes, dirty_indices_bytes;
     smc_indexed_state_tracker_get_buffer_sizes(cell_count,
                                                 &state_buffer_bytes,
                                                 &dirty_indices_bytes);
+#ifdef USE_SMC_BATCH_STATE_TRACKER
     ren->batch_state_buffer = ren_malloc(state_buffer_bytes);
     if (!ren->batch_state_buffer) {
         fprintf(stderr, "renderer_create: failed to allocate batch state buffer\n");
@@ -280,10 +293,13 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         ren_free(ren);
         return NULL;
     }
+#endif
     ren->batch_dirty_indices = ren_malloc(dirty_indices_bytes);
     if (!ren->batch_dirty_indices) {
         fprintf(stderr, "renderer_create: failed to allocate dirty indices buffer\n");
+#ifdef USE_SMC_BATCH_STATE_TRACKER
         ren_free(ren->batch_state_buffer);
+#endif
         glyph_atlas_destroy(ren->atlas);
         SDL_DestroyTexture(ren->screen_texture);
         SDL_DestroyRenderer(ren->sdl_ren);
@@ -327,6 +343,8 @@ void renderer_destroy(Renderer *ren) {
     if (ren->pixel_buffer)   ren_free(ren->pixel_buffer);
 #ifdef USE_SMC_BATCH_STATE_TRACKER
     if (ren->batch_state_buffer)  ren_free(ren->batch_state_buffer);
+#endif
+#if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
     if (ren->batch_dirty_indices) ren_free(ren->batch_dirty_indices);
 #endif
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -384,16 +402,19 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 #endif
 
     /* ---- Phase 1: Software rasterization ---- */
-#ifdef USE_SMC_BATCH_STATE_TRACKER
-    /* Batch mode: collect all states, call SMC once, render only dirty cells */
+#if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
+    /* Batch/stream mode: call SMC once, render only dirty cells */
     size_t cell_count = (size_t)grid->width * (size_t)grid->height;
     size_t dirty_count = 0;
-
-    _Static_assert(sizeof(CellState) == 8, "CellState must be exactly 8 bytes for SMC fixed-size batch kernel");
+    uint32_t *dirty_indices = ren->batch_dirty_indices;
+    int rc = SMC_OK;
 
 #if PROFILE_FRAME
     profile_phase_start = profile_now_ms();
 #endif
+
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+    _Static_assert(sizeof(CellState) == 8, "CellState must be exactly 8 bytes for SMC fixed-size batch kernel");
     /* Populate state buffer with packed deterministic 8-byte states */
     CellState *states = (CellState *)ren->batch_state_buffer;
     for (size_t i = 0; i < cell_count; i++) {
@@ -404,22 +425,41 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     g_frame_profile.state_pack_ms += (profile_phase_end - profile_phase_start);
     profile_phase_start = profile_phase_end;
 #endif
+    rc = smc_indexed_state_tracker_diff_batch(states, cell_count,
+                                               dirty_indices, cell_count,
+                                               &dirty_count);
+#else
+    /* Stream mode: feed grid fields directly to SMC without packing */
+    if (cell_count > 0) {
+        smc_state_stream_t streams[3] = {
+            { &grid->cells[0].glyph, sizeof(Cell), 1 },
+            { &grid->cells[0].fg.r,  sizeof(Cell), 3 },
+            { &grid->cells[0].bg.r,  sizeof(Cell), 3 },
+        };
+        rc = smc_indexed_state_tracker_diff_streams(streams, 3, cell_count,
+                                                     dirty_indices, cell_count,
+                                                     &dirty_count);
+    }
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.state_pack_ms += 0.0; /* No packing in stream mode */
+    profile_phase_start = profile_phase_end;
+#endif
+#endif
 
-    /* Get dirty indices from SMC */
-    uint32_t *dirty_indices = ren->batch_dirty_indices;
-    int rc = smc_indexed_state_tracker_diff_batch(states, cell_count,
-                                                   dirty_indices, cell_count,
-                                                   &dirty_count);
-    (void)rc;
 #if PROFILE_FRAME
     profile_phase_end = profile_now_ms();
     g_frame_profile.smc_diff_ms += (profile_phase_end - profile_phase_start);
     profile_phase_start = profile_phase_end;
 #endif
     
-    /* If batch call failed, render all cells (fallback) */
+    /* If SMC call failed, render all cells (fallback) */
     if (rc != SMC_OK) {
+        for (size_t i = 0; i < cell_count; i++) {
+            dirty_indices[i] = (uint32_t)i;
+        }
         dirty_count = cell_count;
+        renderer_smc_fallback_count++;
     }
     
     /* Count skipped cells */

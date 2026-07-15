@@ -242,7 +242,7 @@ void frame_profile_print(const FrameProfileStats *stats, const char *mode) {
     fprintf(stderr, "  frames:              %llu\n", (unsigned long long)stats->frames);
     fprintf(stderr, "  grid/raycast:        %.3f ms/frame\n", grid_ms);
     fprintf(stderr, "  state packing:       %.3f ms/frame\n", pack_ms);
-    fprintf(stderr, "  smc batch diff:      %.3f ms/frame\n", diff_ms);
+    fprintf(stderr, "  smc diff:            %.3f ms/frame\n", diff_ms);
     fprintf(stderr, "  dirty decision:      %.3f ms/frame\n", check_ms);
     fprintf(stderr, "  dirty iteration:     %.3f ms/frame\n", iter_ms);
     fprintf(stderr, "  rasterization:       %.3f ms/frame\n", raster_ms);

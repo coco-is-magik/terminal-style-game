@@ -159,7 +159,7 @@ double profile_now_ms(void);
 typedef struct {
     double raycast_grid_ms;   /* grid/raycast generation (world content) */
     double state_pack_ms;     /* building the packed uint64_t state array */
-    double smc_diff_ms;       /* SMC batch diff call */
+    double smc_diff_ms;       /* SMC batch/stream diff call */
     double dirty_check_ms;    /* custom dirty-cell comparison / decision */
     double dirty_iter_ms;     /* walking dirty indices and selecting cells */
     double raster_ms;         /* actual 8x8 glyph rasterization */
