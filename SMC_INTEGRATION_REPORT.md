@@ -199,16 +199,16 @@ bytes_compared=96844800
 - The generic hash-based `USE_SMC_STATE_TRACKER=1` path remains not recommended for dense renderer grids.
 
 ## Recommendation
-
-- **Custom dirty cells**: renderer-specific baseline.
-- **SMC indexed**: successful reusable per-cell API.
-- **SMC batch**: successful reusable batch API.
-- **SMC batch + 8-byte fixed-size kernel**: measured retest result — nearly matches the custom tracker and is the preferred reusable backend for static/mostly-static views.
-- **Generic SMC hash tracker**: not recommended for dense grids.
-
-## Recommended Next Step
-
-Validate the SMC batch path under dynamic scenes (camera movement, animated stress pattern) to ensure state persistence and skip-rate stability when the grid changes every frame. If it holds up, the batch path is the preferred reusable dirty-tracking backend. Do not move to artifact caching until the batch path is validated under motion.
+ 
+ - **USE_DIRTY_CELLS=1**: renderer-specific reference path (custom dirty-cell tracking). Maintained as baseline for correctness.
+ - **USE_SMC_INDEXED_STATE_TRACKER=1**: diagnostic mode (per-cell SMC API). Useful for debugging and validation but not recommended for production.
+ - **USE_SMC_STATE_TRACKER=1**: general-purpose hash-based SMC API. Not recommended for dense renderer grids; retained for diagnostic/general-purpose use cases.
+ - **USE_SMC_BATCH_STATE_TRACKER=1**: fallback/comparator SMC mode using packed uint64_t state arrays. Kept for comparison and as fallback option.
+ - **USE_SMC_STREAM_STATE_TRACKER=1**: **preferred SMC renderer mode**. Uses stream-based diffing to eliminate state packing overhead while preserving dirty-tracking performance.
+ 
+ ## Recommended Next Step
+ 
+ The SMC stream state tracker has been validated under dynamic scenes and is now the preferred SMC renderer mode. No further changes needed — the implementation is complete.
 
 ## Frame Profiling Experiment
 

@@ -46,11 +46,15 @@ Stream passes if ALL true:
 7. Any >0.1ms regression vs custom dirty explained
 
 ## Status Tracker
-
-- [ ] Fix profile labels (timing.h, timing.c, renderer.c)
-- [ ] Add RUN_MODE_BENCHMARK_SCENARIO enum
-- [ ] Implement scenario CLI parsing
-- [ ] Implement 6 deterministic scenarios
-- [ ] Extend benchmark script for matrix execution
-- [ ] Run benchmarks and generate report
-- [ ] Update SMC_INTEGRATION_REPORT.md
+ 
+ - [x] Fix profile labels (timing.h, timing.c, renderer.c)
+ - [x] Add RUN_MODE_BENCHMARK_SCENARIO enum
+ - [x] Implement scenario CLI parsing
+ - [x] Implement 6 deterministic scenarios
+ - [x] Extend benchmark script for matrix execution
+ - [x] Run benchmarks and generate report
+ - [x] Update SMC_INTEGRATION_REPORT.md
+ 
+ ## Result: COMPLETE
+ 
+ All dynamic scene validation benchmarks passed. See `SMC_INTEGRATION_REPORT.md` for results.

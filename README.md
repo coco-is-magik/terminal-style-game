@@ -29,6 +29,23 @@ This approach features:
 
 make
 
+### Dirty-Tracking Modes
+
+The renderer supports several state-tracking modes for optimizing cell rasterization. Only one mode may be enabled at a time:
+
+| Mode | Description |
+|------|-------------|
+| `USE_DIRTY_CELLS=1` | Renderer-specific custom dirty-cell tracking (reference path). Baseline for correctness. |
+| `USE_SMC_INDEXED_STATE_TRACKER=1` | SMC per-cell indexed API. Diagnostic mode for debugging. |
+| `USE_SMC_STATE_TRACKER=1` | SMC hash-based API. General-purpose/diagnostic use. Not recommended for dense grids. |
+| `USE_SMC_BATCH_STATE_TRACKER=1` | SMC batch indexed mode. Fallback/comparator. |
+| `USE_SMC_STREAM_STATE_TRACKER=1` | **Preferred SMC renderer mode**. Uses stream-based diffing to eliminate state packing overhead. |
+
+Example:
+```bash
+make clean && make USE_SMC_STREAM_STATE_TRACKER=1 PROFILE_FRAME=1
+```
+
 ## Run
 
 make run

@@ -11,19 +11,19 @@ USE_LIGHTING_CACHE ?= 0
 # Glyph cache toggle.  Set USE_GLYPH_CACHE=1 to enable glyph block caching.
 USE_GLYPH_CACHE ?= 0
 
-# Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 to skip unchanged cells.
+# Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 for renderer-specific custom dirty-cell tracking (reference path).
 USE_DIRTY_CELLS ?= 0
 
-# SMC state tracker toggle.  Set USE_SMC_STATE_TRACKER=1 to use SMC's generic dirty-state API.
+# SMC state tracker toggle.  Set USE_SMC_STATE_TRACKER=1 for SMC's general-purpose hash-based API (diagnostic/general-purpose use).
 USE_SMC_STATE_TRACKER ?= 0
 
-# SMC indexed state tracker toggle.  Set USE_SMC_INDEXED_STATE_TRACKER=1 for per-cell indexed state tracking.
+# SMC indexed state tracker toggle.  Set USE_SMC_INDEXED_STATE_TRACKER=1 for SMC per-cell indexed API (diagnostic mode).
 USE_SMC_INDEXED_STATE_TRACKER ?= 0
 
-# SMC batch state tracker toggle.  Set USE_SMC_BATCH_STATE_TRACKER=1 for batch indexed state tracking.
+# SMC batch state tracker toggle.  Set USE_SMC_BATCH_STATE_TRACKER=1 for SMC batch indexed mode (fallback/comparator).
 USE_SMC_BATCH_STATE_TRACKER ?= 0
 
-# SMC stream state tracker toggle.  Set USE_SMC_STREAM_STATE_TRACKER=1 for stream indexed state tracking.
+# SMC stream state tracker toggle.  Set USE_SMC_STREAM_STATE_TRACKER=1 for preferred SMC renderer stream mode.
 USE_SMC_STREAM_STATE_TRACKER ?= 0
 
 # Frame profiling toggle.  Set PROFILE_FRAME=1 to compile in per-frame phase timing.
