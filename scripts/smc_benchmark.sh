@@ -53,7 +53,7 @@ extract_profile() {
   case "$2" in
     raycast_grid_ms) grep -oP "grid/raycast:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
     state_pack_ms) grep -oP "state packing:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
-    smc_diff_ms) grep -oP "smc diff:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
+    smc_batch_diff_ms) grep -oP "smc batch diff:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
     smc_stream_diff_ms) grep -oP "smc stream diff:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
     dirty_check_ms) grep -oP "dirty decision:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
     dirty_iter_ms) grep -oP "dirty iteration:\\s*\\K[0-9.]+" "$1" 2>/dev/null | head -1 || echo "missing" ;;
@@ -174,7 +174,7 @@ run_mode_benchmarks() {
     
     PARSED_VALUES["${mode_name}|${run}|avg_render_ms"]=$(extract_json "$run_log" "avg_render_ms")
     PARSED_VALUES["${mode_name}|${run}|state_pack_ms"]=$(extract_profile "$run_log" "state_pack_ms")
-    PARSED_VALUES["${mode_name}|${run}|smc_diff_ms"]=$(extract_profile "$run_log" "smc_diff_ms")
+    PARSED_VALUES["${mode_name}|${run}|smc_batch_diff_ms"]=$(extract_profile "$run_log" "smc_batch_diff_ms")
     PARSED_VALUES["${mode_name}|${run}|smc_stream_diff_ms"]=$(extract_profile "$run_log" "smc_stream_diff_ms")
     PARSED_VALUES["${mode_name}|${run}|dirty_check_ms"]=$(extract_profile "$run_log" "dirty_check_ms")
     PARSED_VALUES["${mode_name}|${run}|dirty_iter_ms"]=$(extract_profile "$run_log" "dirty_iter_ms")
@@ -231,13 +231,13 @@ done
 
 echo "## Summary (Median Values)" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
-echo "| mode | avg_render_ms | raycast_grid_ms | state_pack_ms | smc_diff_ms | smc_stream_diff_ms | dirty_check_ms | dirty_iter_ms | raster_ms | sdl_update_ms | checks | changed | unchanged | stores | bytes_compared | out_of_range | fallback_count | cells_processed | cells_skipped | parse_status | build_status | run_status |" >> "$OUTPUT_FILE"
+echo "| mode | avg_render_ms | raycast_grid_ms | state_pack_ms | smc_batch_diff_ms | smc_stream_diff_ms | dirty_check_ms | dirty_iter_ms | raster_ms | sdl_update_ms | checks | changed | unchanged | stores | bytes_compared | out_of_range | fallback_count | cells_processed | cells_skipped | parse_status | build_status | run_status |" >> "$OUTPUT_FILE"
 echo "|------|-------------|-----------------|---------------|-------------|-------------------|----------------|-------------|---------|--------------|--------|---------|-----------|--------|---------------|-------------|---------------|----------------|---------------|----------------|--------------|------------|" >> "$OUTPUT_FILE"
 
 for mode in "${MODE_NAMES[@]}"; do
   median_avg=$(median_field "$mode" "avg_render_ms")
   
-  echo "| $mode | $median_avg | $(median_field "$mode" "raycast_grid_ms") | $(median_field "$mode" "state_pack_ms") | $(median_field "$mode" "smc_diff_ms") | $(median_field "$mode" "smc_stream_diff_ms") | $(median_field "$mode" "dirty_check_ms") | $(median_field "$mode" "dirty_iter_ms") | $(median_field "$mode" "raster_ms") | $(median_field "$mode" "sdl_update_ms") | $(median_field "$mode" "checks") | $(median_field "$mode" "changed") | $(median_field "$mode" "unchanged") | $(median_field "$mode" "stores") | $(median_field "$mode" "bytes_compared") | $(median_field "$mode" "out_of_range") | $(median_field "$mode" "fallback_count") | $(median_field "$mode" "cells_processed") | $(median_field "$mode" "cells_skipped") | ${PARSE_STATUS[$mode]:-PARSE_FAIL} | ${BUILD_STATUS[$mode]:-BUILD_FAIL} | ${RUN_STATUS[$mode]:-RUN_FAIL} |" >> "$OUTPUT_FILE"
+  echo "| $mode | $median_avg | $(median_field "$mode" "raycast_grid_ms") | $(median_field "$mode" "state_pack_ms") | $(median_field "$mode" "smc_batch_diff_ms") | $(median_field "$mode" "smc_stream_diff_ms") | $(median_field "$mode" "dirty_check_ms") | $(median_field "$mode" "dirty_iter_ms") | $(median_field "$mode" "raster_ms") | $(median_field "$mode" "sdl_update_ms") | $(median_field "$mode" "checks") | $(median_field "$mode" "changed") | $(median_field "$mode" "unchanged") | $(median_field "$mode" "stores") | $(median_field "$mode" "bytes_compared") | $(median_field "$mode" "out_of_range") | $(median_field "$mode" "fallback_count") | $(median_field "$mode" "cells_processed") | $(median_field "$mode" "cells_skipped") | ${PARSE_STATUS[$mode]:-PARSE_FAIL} | ${BUILD_STATUS[$mode]:-BUILD_FAIL} | ${RUN_STATUS[$mode]:-RUN_FAIL} |" >> "$OUTPUT_FILE"
 done
 
 # ============================================
@@ -312,5 +312,44 @@ echo "- Packed batch median: $batch_median ms" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 echo "**Final Verdict: ${DECISION_STATUS[stream]}**" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
+
+# ============================================
+# Dynamic Scene Benchmark Matrix (3 modes × 6 scenarios × 3 runs)
+# ============================================
+
+SCENARIO_NAMES=("idle" "camera" "rotate" "flicker" "ui" "fullchange")
+SCENARIO_MODES=("dirty_cells" "smc_batch" "smc_stream_opt")
+SCENARIO_BUILD_FLAGS=("USE_DIRTY_CELLS=1" "USE_SMC_BATCH_STATE_TRACKER=1" "USE_SMC_STREAM_STATE_TRACKER=1")
+
+echo "## Dynamic Scene Benchmark Matrix" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+for scenario in "${SCENARIO_NAMES[@]}"; do
+    echo "### Scenario: ${scenario}" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+    
+    for mode_idx in "${!SCENARIO_MODES[@]}"; do
+        mode="${SCENARIO_MODES[$mode_idx]}"
+        build_flags="${SCENARIO_BUILD_FLAGS[$mode_idx]}"
+        log_dir="${LOG_BASE}/scenario_${scenario}_${mode}"
+        
+        mkdir -p "$log_dir"
+        
+        make clean > /dev/null 2>&1 || true
+        if ! make PROFILE_FRAME=1 $build_flags > "${log_dir}/build.log" 2>&1; then
+            echo "**BUILD_FAIL: ${mode}**" >> "$OUTPUT_FILE"
+            continue
+        fi
+        
+        if ! ./build/ascii-fps --benchmark-scenario "${scenario}" --frames 600 > "${log_dir}/run.log" 2>&1; then
+            echo "**RUN_FAIL: ${mode}**" >> "$OUTPUT_FILE"
+            continue
+        fi
+        
+        cat "${log_dir}/run.log" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+    done
+done
+
 echo "---" >> "$OUTPUT_FILE"
-echo "*Raw logs in ${LOG_BASE}/*" >> "$OUTPUT_FILE"
+echo "*Raw logs in ${LOG_BASE}/*"

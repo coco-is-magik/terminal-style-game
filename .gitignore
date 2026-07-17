@@ -2,6 +2,7 @@ build/
 vendor/
 example-code/
 compile_commands.json
+docs/smc_benchmark_logs/
 .*/
 .*
 !.git/

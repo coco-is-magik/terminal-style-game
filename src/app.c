@@ -348,8 +348,19 @@ int app_main(int argc, char* argv[]) {
     RunMode mode = RUN_MODE_NORMAL;
     VisualMode visual_mode = VISUAL_RAYCAST;   /* Default visual mode = actual 3D game */
     double run_duration_seconds = 0.0;
+    const char *benchmark_scenario = NULL;     /* For --benchmark-scenario */
+    int benchmark_frames = 600;              /* Default for scenario mode */
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--benchmark-scenario") == 0 && i + 1 < argc) {
+            /* Deterministic scene-change benchmark scenarios */
+            mode = RUN_MODE_BENCHMARK_SCENARIO;
+            visual_mode = VISUAL_RAYCAST;
+            benchmark_scenario = argv[++i];
+        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            /* Override frame count for scenarios */
+            benchmark_frames = atoi(argv[++i]);
+        } else
         if (strcmp(argv[i], "--benchmark-stress") == 0 && i + 1 < argc) {
             /* Runs stress-mode benchmarking for a fixed duration, then prints JSON stats */
             mode = RUN_MODE_BENCHMARK_STRESS;
@@ -595,8 +606,14 @@ int app_main(int argc, char* argv[]) {
         uint64_t start_time = SDL_GetPerformanceCounter();
         double elapsed_total_sec = (double)(start_time - initial_time) / SDL_GetPerformanceFrequency();
         
+        /* Scenario mode: quit once the fixed frame count is reached */
+        if (mode == RUN_MODE_BENCHMARK_SCENARIO && frame_count >= (uint64_t)benchmark_frames) {
+            input.quit = true;
+            break;
+        }
+
         /* Non-interactive modes: quit once the requested duration has elapsed */
-        if (mode != RUN_MODE_NORMAL && elapsed_total_sec >= run_duration_seconds) {
+        if (mode != RUN_MODE_NORMAL && mode != RUN_MODE_BENCHMARK_SCENARIO && elapsed_total_sec >= run_duration_seconds) {
             input.quit = true;
             break;
         }
@@ -721,6 +738,55 @@ int app_main(int argc, char* argv[]) {
         } else if (app_state == APP_STATE_PLAYING) {
             /* Game world */
             if (visual_mode == VISUAL_RAYCAST) {
+                /* Scenario-specific mutations (after warm-up frames) */
+                if (benchmark_scenario && frame_count >= 64) {
+                    if (strcmp(benchmark_scenario, "idle") == 0) {
+                        /* No mutations - static scene */
+                    } else if (strcmp(benchmark_scenario, "camera") == 0) {
+                        /* Yaw rotation at 36 deg/sec: 36/60 = 0.6 deg/frame = 0.01047 rad/frame */
+                        float yaw_speed = 0.01047f;
+                        cam.transform.angle += yaw_speed;
+                    } else if (strcmp(benchmark_scenario, "rotate") == 0) {
+                        /* Yaw rotation at 144 deg/sec: 144/60 = 2.4 deg/frame = 0.04189 rad/frame */
+                        float yaw_speed = 0.04189f;
+                        cam.transform.angle += yaw_speed;
+                    } else if (strcmp(benchmark_scenario, "flicker") == 0) {
+                        /* Deterministic flicker on ~3% of cells per frame */
+                        for (int idx = 0; idx < (int)grid->width * grid->height; idx++) {
+                            if (((idx * 1103515245u + (unsigned)frame_count * 12345u) % 100u) < 3u) {
+                                int x = idx % grid->width;
+                                int y = idx / grid->width;
+                                Cell c;
+                                grid_get(grid, x, y, &c);
+                                c.bg.r = (frame_count & 1) ? 0xFF : 0x80;
+                                grid_set(grid, x, y, c.glyph, c.fg, c.bg);
+                            }
+                        }
+                    } else if (strcmp(benchmark_scenario, "ui") == 0) {
+                        /* Bottom 2-row HUD animation */
+                        int row_start = grid->height >= 2 ? grid->height - 2 : 0;
+                        for (int y = row_start; y < grid->height; y++) {
+                            for (int x = 0; x < grid->width; x++) {
+                                Cell c;
+                                grid_get(grid, x, y, &c);
+                                c.bg.r = (frame_count & 1) ? 0x40 : 0x20;
+                                c.bg.g = (frame_count & 2) ? 0x40 : 0x20;
+                                c.bg.b = (frame_count & 4) ? 0x40 : 0x20;
+                                grid_set(grid, x, y, c.glyph, c.fg, c.bg);
+                            }
+                        }
+                    } else if (strcmp(benchmark_scenario, "fullchange") == 0) {
+                        /* Every cell changes visibly */
+                        for (int idx = 0; idx < (int)grid->width * grid->height; idx++) {
+                            int x = idx % grid->width;
+                            int y = idx / grid->width;
+                            Cell c;
+                            grid_get(grid, x, y, &c);
+                            c.bg.r = (frame_count & 1) ? 0xFF : 0x00;
+                            grid_set(grid, x, y, c.glyph, c.fg, c.bg);
+                        }
+                    }
+                }
                 camera_update(&cam, map, &input, delta_time_sec);
                 lighting_update(map, &world);
                 raycast_render(grid, map, &cam, &assets, &world);
@@ -830,7 +896,7 @@ int app_main(int argc, char* argv[]) {
 #endif
     uint32_t framebuffer_checksum = 0;   /* Checksum captured before cleanup */
 
-    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
+    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY || mode == RUN_MODE_BENCHMARK_SCENARIO) {
         framebuffer_checksum = renderer_framebuffer_checksum(ren);
 #ifdef USE_SMC_STATE_TRACKER
         smc_state_tracker_get_stats(&smc_state_s);
@@ -873,7 +939,7 @@ int app_main(int argc, char* argv[]) {
      *      Print JSON-formatted performance summary and return
      *      an exit code the test harness can interpret.
      * ================================================================ */
-    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY) {
+    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY || mode == RUN_MODE_BENCHMARK_SCENARIO) {
         double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
         
         /* Outlier trimming: if the absolute worst render time is more than

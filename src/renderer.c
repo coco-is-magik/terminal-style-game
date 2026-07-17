@@ -449,8 +449,16 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 
 #if PROFILE_FRAME
     profile_phase_end = profile_now_ms();
-    g_frame_profile.smc_diff_ms += (profile_phase_end - profile_phase_start);
-    profile_phase_start = profile_phase_end;
+#endif
+
+#ifdef USE_SMC_BATCH_STATE_TRACKER
+#if PROFILE_FRAME
+    g_frame_profile.smc_batch_diff_ms += (profile_phase_end - profile_phase_start);
+#endif
+#else
+#if PROFILE_FRAME
+    g_frame_profile.smc_stream_diff_ms += (profile_phase_end - profile_phase_start);
+#endif
 #endif
     
     /* If SMC call failed, render all cells (fallback) */

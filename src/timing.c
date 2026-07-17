@@ -202,7 +202,8 @@ void frame_profile_init(FrameProfileStats *stats) {
     if (!stats) return;
     stats->raycast_grid_ms = 0.0;
     stats->state_pack_ms   = 0.0;
-    stats->smc_diff_ms     = 0.0;
+    stats->smc_batch_diff_ms = 0.0;
+    stats->smc_stream_diff_ms = 0.0;
     stats->dirty_check_ms  = 0.0;
     stats->dirty_iter_ms   = 0.0;
     stats->raster_ms       = 0.0;
@@ -227,22 +228,26 @@ void frame_profile_print(const FrameProfileStats *stats, const char *mode) {
     double inv = 1.0 / (double)stats->frames;
     double grid_ms   = stats->raycast_grid_ms * inv;
     double pack_ms   = stats->state_pack_ms * inv;
-    double diff_ms   = stats->smc_diff_ms * inv;
+    double batch_diff_ms = stats->smc_batch_diff_ms * inv;
+    double stream_diff_ms = stats->smc_stream_diff_ms * inv;
     double check_ms  = stats->dirty_check_ms * inv;
     double iter_ms   = stats->dirty_iter_ms * inv;
     double raster_ms = stats->raster_ms * inv;
     double sdl_ms    = stats->sdl_update_ms * inv;
     double total_ms  = stats->frame_total_ms * inv;
 
-    double accounted = grid_ms + pack_ms + diff_ms + check_ms + iter_ms + raster_ms + sdl_ms;
+    double accounted = grid_ms + pack_ms + check_ms + iter_ms + raster_ms + sdl_ms;
+    if (batch_diff_ms > 0) accounted += batch_diff_ms;
+    if (stream_diff_ms > 0) accounted += stream_diff_ms;
     double other_ms  = total_ms - accounted;
-    if (other_ms < 0.0) other_ms = 0.0;  /* Guard against timing noise */
+    if (other_ms < 0.0) other_ms = 0.0;
 
     fprintf(stderr, "\nFrame profile (%s):\n", mode ? mode : "unknown");
     fprintf(stderr, "  frames:              %llu\n", (unsigned long long)stats->frames);
     fprintf(stderr, "  grid/raycast:        %.3f ms/frame\n", grid_ms);
     fprintf(stderr, "  state packing:       %.3f ms/frame\n", pack_ms);
-    fprintf(stderr, "  smc diff:            %.3f ms/frame\n", diff_ms);
+    fprintf(stderr, "  smc batch diff:      %.3f ms/frame\n", batch_diff_ms);
+    fprintf(stderr, "  smc stream diff:     %.3f ms/frame\n", stream_diff_ms);
     fprintf(stderr, "  dirty decision:      %.3f ms/frame\n", check_ms);
     fprintf(stderr, "  dirty iteration:     %.3f ms/frame\n", iter_ms);
     fprintf(stderr, "  rasterization:       %.3f ms/frame\n", raster_ms);
