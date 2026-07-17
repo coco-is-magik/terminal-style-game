@@ -29,9 +29,27 @@ This approach features:
 
 make
 
+### Build Flags
+
+The following build flags control renderer and engine behavior:
+
+| Flag | Description |
+|------|-------------|
+| `PROFILE_FRAME=1` | Enable per-frame phase timing instrumentation. Prints timing breakdown at benchmark end. |
+| `USE_SMC=1` | Build with generated SMC dispatch code. |
+| `USE_LIGHTING_CACHE=1` | Enable lighting shadow ray cache. |
+| `USE_GLYPH_CACHE=1` | Enable glyph block caching. |
+| `USE_DIRTY_CELLS=1` | Renderer-specific custom dirty-cell tracking (reference path). Baseline for correctness. |
+| `USE_SMC_STATE_TRACKER=1` | SMC hash-based API. General-purpose/diagnostic use. Not recommended for dense grids. |
+| `USE_SMC_INDEXED_STATE_TRACKER=1` | SMC per-cell indexed API. Diagnostic mode for debugging. |
+| `USE_SMC_BATCH_STATE_TRACKER=1` | SMC batch indexed mode. Fallback/comparator. |
+| `USE_SMC_STREAM_STATE_TRACKER=1` | **Preferred SMC renderer mode**. Uses stream-based diffing to eliminate state packing overhead. |
+
+Note: Only one dirty-tracking mode may be enabled at a time.
+
 ### Dirty-Tracking Modes
 
-The renderer supports several state-tracking modes for optimizing cell rasterization. Only one mode may be enabled at a time:
+For optimizing cell rasterization, these modes control how the renderer detects changed cells. The preferred mode is:
 
 | Mode | Description |
 |------|-------------|
