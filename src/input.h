@@ -49,7 +49,21 @@ typedef struct {
     bool ctrl_right;    /* Ctrl+Right — directional focus move, edge-triggered */
     bool ctrl_up;       /* Ctrl+Up — directional focus move, edge-triggered */
     bool ctrl_down;     /* Ctrl+Down — directional focus move, edge-triggered */
+
+    /* ---- Unified editor input (ignored outside APP_STATE_EDITOR) ---- */
+    bool editor_toggle_mode_pressed; /* Tab — walk/edit toggle */
+    bool editor_select_pressed;      /* E — select hovered wall */
+    bool editor_confirm_pressed;     /* Enter — confirm inspector / modal */
+    bool editor_cancel_pressed;      /* Escape — cancel / close hierarchy */
+    bool editor_undo_pressed;        /* Ctrl+Z */
+    bool editor_redo_pressed;        /* Ctrl+Y */
+    bool editor_save_pressed;        /* Ctrl+S */
+    bool editor_reload_pressed;      /* F5 — reload scene */
+    bool editor_previous_pressed;    /* Up — picker previous */
+    bool editor_next_pressed;        /* Down — picker next */
+
   /* Held state — physically depressed this frame.
+
    * Filled from SDL_GetKeyboardState() snapshot.
    * Used by asset_designer for auto-repeat and paint-while-moving.
    * All other consumers should ignore these fields. */

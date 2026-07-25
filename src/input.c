@@ -78,8 +78,19 @@ void input_process(InputState *input, bool headless_mode) {
     input->ctrl_right  = false;
     input->ctrl_up     = false;
     input->ctrl_down   = false;
+    input->editor_toggle_mode_pressed = false;
+    input->editor_select_pressed      = false;
+    input->editor_confirm_pressed     = false;
+    input->editor_cancel_pressed      = false;
+    input->editor_undo_pressed        = false;
+    input->editor_redo_pressed        = false;
+    input->editor_save_pressed        = false;
+    input->editor_reload_pressed      = false;
+    input->editor_previous_pressed    = false;
+    input->editor_next_pressed        = false;
     input->text_input[0]  = '\0';
     input->text_input_len = 0;
+
 
     /* ---- Poll the SDL event queue ---- */
     SDL_Event e;
@@ -98,24 +109,37 @@ void input_process(InputState *input, bool headless_mode) {
                 bool ctrl_down = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
                 switch (e.key.key) {
                     case SDLK_ESCAPE:
-                        if (!e.key.repeat) input->esc = true;
+                        if (!e.key.repeat) {
+                            input->esc = true;
+                            input->editor_cancel_pressed = true;
+                        }
                         break;
                     /* Edge-triggered navigation: only on initial press, not repeat */
                     case SDLK_UP:
                         if (!e.key.repeat) {
                             if (ctrl_down) input->ctrl_up = true;
-                            else input->up = true;
+                            else {
+                                input->up = true;
+                                input->editor_previous_pressed = true;
+                            }
                         }
                         break;
                     case SDLK_DOWN:
                         if (!e.key.repeat) {
                             if (ctrl_down) input->ctrl_down = true;
-                            else input->down = true;
+                            else {
+                                input->down = true;
+                                input->editor_next_pressed = true;
+                            }
                         }
                         break;
                     case SDLK_RETURN:
-                        if (!e.key.repeat) input->confirm = true;
+                        if (!e.key.repeat) {
+                            input->confirm = true;
+                            input->editor_confirm_pressed = true;
+                        }
                         break;
+
                     case SDLK_LEFT:
                         if (!e.key.repeat) {
                             if (ctrl_down) input->ctrl_left = true;
@@ -135,7 +159,10 @@ void input_process(InputState *input, bool headless_mode) {
                         if (!e.key.repeat) input->erase = true;
                         break;
                     case SDLK_F5:
-                        if (!e.key.repeat) input->save = true;
+                        if (!e.key.repeat) {
+                            input->save = true;
+                            input->editor_reload_pressed = true;
+                        }
                         break;
                     case SDLK_F9:
                         if (!e.key.repeat) input->load = true;
@@ -150,10 +177,26 @@ void input_process(InputState *input, bool headless_mode) {
                         if (!e.key.repeat) input->save_as = true;
                         break;
                     case SDLK_TAB:
-                        if (!e.key.repeat) input->tab = true;
+                        if (!e.key.repeat) {
+                            input->tab = true;
+                            input->editor_toggle_mode_pressed = true;
+                        }
+                        break;
+                    case SDLK_E:
+                        if (!e.key.repeat) input->editor_select_pressed = true;
+                        break;
+                    case SDLK_Z:
+                        if (!e.key.repeat && ctrl_down) input->editor_undo_pressed = true;
+                        break;
+                    case SDLK_Y:
+                        if (!e.key.repeat && ctrl_down) input->editor_redo_pressed = true;
+                        break;
+                    case SDLK_S:
+                        if (!e.key.repeat && ctrl_down) input->editor_save_pressed = true;
                         break;
                     default:
                         break;
+
                 }
             }
             /* Text typed this frame — used for filename entry in designer */

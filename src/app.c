@@ -46,7 +46,9 @@
 #include "asset_designer.h"     /* AssetDesignerState, asset_designer_*, AD_RESULT_* */
 #include "material_designer.h"  /* MaterialDesignerState, material_designer_*, MD_RESULT_* */
 #include "live_editor.h"        /* LiveEditorState, live_editor_*, LE_RESULT_* */
+#include "unified_editor.h"     /* UnifiedEditorState — in-world level editor */
 #include "smc_render_opt.h"     /* SMC runtime init/shutdown/stats for benchmark modes */
+
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc_state_tracker.h"  /* SMC v2 dirty-state tracking */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
@@ -244,6 +246,29 @@ static void draw_data_menu(Grid *grid, UiLayout *layout, int selected) {
     ui_layout_render(layout, grid, fg, bg);
 }
 
+static bool enter_unified_editor(UnifiedEditorState *ued,
+                                 AppState *app_state,
+                                 MenuStack *ms,
+                                 AssetRegistry *assets,
+                                 Camera *cam) {
+    if (!ued || !app_state || !ms || !assets || !cam) return false;
+    if (!unified_editor_init(ued, assets)) {
+        fprintf(stderr, "unified_editor_init failed\n");
+        return false;
+    }
+    /* MVP: load the same default level path used by gameplay map id 1. */
+    if (unified_editor_load_scene(ued, "assets/maps/1.txt") != SCENE_LOAD_OK) {
+        fprintf(stderr, "unified_editor_load_scene failed for assets/maps/1.txt\n");
+        unified_editor_destroy(ued);
+        return false;
+    }
+    /* Place camera in open space near the usual spawn. */
+    camera_init(cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
+    menu_stack_clear(ms);
+    *app_state = APP_STATE_EDITOR;
+    return true;
+}
+
 static bool dispatch_menu_action(const char *action,
                                  MenuStack *ms,
                                  AppState *app_state,
@@ -251,6 +276,8 @@ static bool dispatch_menu_action(const char *action,
                                  AssetDesignerState *ad_state,
                                  MaterialDesignerState *md_state,
                                  LiveEditorState *le_state,
+                                 UnifiedEditorState *ued,
+                                 Camera *cam,
                                  const EngineConfig *cfg,
                                  AssetRegistry *assets) {
     if (!action || !ms || !app_state) return false;
@@ -259,10 +286,14 @@ static bool dispatch_menu_action(const char *action,
         *app_state = APP_STATE_PLAYING;
         return true;
     }
+    if (strcmp(action, "open_level_editor") == 0) {
+        return enter_unified_editor(ued, app_state, ms, assets, cam);
+    }
     if (strcmp(action, "open_asset_editor") == 0) {
         menu_stack_push(ms, MENU_ASSET_SELECT);
         return true;
     }
+
     if (strcmp(action, "quit") == 0) {
         menu_stack_push(ms, MENU_CONFIRM_QUIT);
         return true;
@@ -296,12 +327,15 @@ static bool dispatch_menu_action(const char *action,
             material_designer_destroy(md_state);
         } else if (*app_state == APP_STATE_LIVE_EDITOR && le_state) {
             live_editor_destroy(le_state);
+        } else if (*app_state == APP_STATE_EDITOR && ued) {
+            unified_editor_destroy(ued);
         }
         menu_stack_clear(ms);
         *app_state = APP_STATE_MAIN_MENU;
         menu_stack_push(ms, MENU_MAIN);
         return true;
     }
+
     if (strcmp(action, "open_live_edit") == 0) {
         menu_stack_clear(ms);
         if (le_state && cfg && assets) live_editor_init(le_state, cfg, APP_STATE_MAIN_MENU, assets);
@@ -558,6 +592,8 @@ int app_main(int argc, char* argv[]) {
     AssetDesignerState ad_state = {0};   /* Decal canvas editor; init'd on entry, destroy'd on exit */
     MaterialDesignerState md_state = {0}; /* Material editor; init'd on entry, destroy'd on exit */
     LiveEditorState le_state = {0};       /* Combined decal/material live-preview editor */
+    UnifiedEditorState ued = {0};         /* In-world unified level editor */
+
     UiCache menu_cache;
     UiLayout *menu_layouts[MENU_ID_COUNT];
     ui_cache_init(&menu_cache, "assets/ui_layouts/master_map.txt");
@@ -630,15 +666,21 @@ int app_main(int argc, char* argv[]) {
         /* --- 8c. Mouse lock — derived from app state each frame --- */
         {
             bool want_lock = (mode == RUN_MODE_NORMAL)
-                             && (app_state == APP_STATE_PLAYING)
-                             && (ms.depth == 0);
+                             && (ms.depth == 0)
+                             && ((app_state == APP_STATE_PLAYING)
+                                 || (app_state == APP_STATE_EDITOR
+                                     && ued.active
+                                     && ued.mode == EDITOR_MODE_WALK
+                                     && ued.modal == EDITOR_MODAL_NONE));
             if (want_lock != mouse_locked) {
                 SDL_SetWindowRelativeMouseMode(ren->window, want_lock);
                 mouse_locked = want_lock;
             }
         }
 
-        /* --- 8d. ESC routing (context-aware) --- */
+        /* --- 8d. ESC routing (context-aware) ---
+         * APP_STATE_EDITOR owns Escape via editor_cancel_pressed / unified_editor_update.
+         * Do not push MENU_EDITOR from here while the unified editor is active. */
         if (input.esc) {
             if (app_state == APP_STATE_MAIN_MENU) {
                 /* Main menu is the root: ESC is ignored */
@@ -648,11 +690,9 @@ int app_main(int argc, char* argv[]) {
             } else if (app_state == APP_STATE_PLAYING) {
                 /* Enter pause menu */
                 menu_stack_push(&ms, MENU_PAUSE);
-            } else if (app_state == APP_STATE_EDITOR) {
-                /* Enter editor menu */
-                menu_stack_push(&ms, MENU_EDITOR);
             }
         }
+
 
         /* --- 8e. Menu navigation and confirm --- */
         MenuId active_menu = menu_stack_peek(&ms);
@@ -676,7 +716,9 @@ int app_main(int argc, char* argv[]) {
                     UiElement *focused = ui_layout_get_focused(active_layout, sel);
                     if (focused && focused->action[0] != '\0') {
                         dispatch_menu_action(focused->action, &ms, &app_state, &input,
-                                             &ad_state, &md_state, &le_state, cfg, &assets);
+                                             &ad_state, &md_state, &le_state, &ued, &cam,
+                                             cfg, &assets);
+
                     }
                 }
                 /* Refresh active_menu after potential state change */
@@ -719,9 +761,22 @@ int app_main(int argc, char* argv[]) {
             }
         }
 
+        /* --- 8e.6 Unified editor update (owns Escape / mode / selection) --- */
+        EditorInputConsumption ued_consume = {false, false};
+        if (app_state == APP_STATE_EDITOR && menu_stack_peek(&ms) == MENU_NONE && ued.active) {
+            ued_consume = unified_editor_update(&ued, &input, &cam, delta_time_ms / 1000.0);
+            if (ued.request_exit_to_main_menu) {
+                unified_editor_destroy(&ued);
+                menu_stack_clear(&ms);
+                app_state = APP_STATE_MAIN_MENU;
+                menu_stack_push(&ms, MENU_MAIN);
+            }
+        }
+
     /* --- 8f. Draw frame contents --- */
     double delta_time_sec = delta_time_ms / 1000.0;
     active_menu = menu_stack_peek(&ms);
+
 
 #if PROFILE_FRAME
     double profile_grid_start = profile_now_ms();
@@ -805,14 +860,25 @@ int app_main(int argc, char* argv[]) {
 #endif
 
         } else if (app_state == APP_STATE_EDITOR) {
-            SDL_Color ae_bg = {0, 0, 0, 255};
-            SDL_Color ae_fg = {255, 255, 255, 255};
-            grid_clear(grid, ae_bg);
-            grid_print(grid, 2, 2,
-                       "ASSET EDITOR (placeholder)\nPress ESC for editor menu",
-                       ae_fg, ae_bg);
+            /* Unified in-world editor: render authoritative SceneDocument map. */
+            (void)ued_consume;
+            if (ued.active) {
+                Map *ed_map = scene_document_get_map_for_runtime(&ued.document);
+                if (ed_map) {
+                    lighting_update(ed_map, &world);
+                    raycast_render(grid, ed_map, &cam, &assets, &world);
+                } else {
+                    SDL_Color ae_bg = {0, 0, 0, 255};
+                    grid_clear(grid, ae_bg);
+                }
+                unified_editor_render_overlay(&ued, grid);
+            } else {
+                SDL_Color ae_bg = {0, 0, 0, 255};
+                grid_clear(grid, ae_bg);
+            }
 
         } else if (app_state == APP_STATE_ASSET_DESIGNER) {
+
             asset_designer_render(&ad_state, grid, &assets);
 
         } else if (app_state == APP_STATE_MATERIAL_DESIGNER) {
@@ -924,9 +990,11 @@ int app_main(int argc, char* argv[]) {
     asset_designer_destroy(&ad_state);
     material_designer_destroy(&md_state);
     live_editor_destroy(&le_state);
+    unified_editor_destroy(&ued);
     for (int i = 0; i < MENU_ID_COUNT; i++) {
         ui_layout_destroy(menu_layouts[i]);
     }
+
     ui_layout_destroy(hud_layout);
     ui_cache_destroy(&menu_cache);
     world_clear(&world);

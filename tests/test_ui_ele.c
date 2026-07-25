@@ -137,7 +137,8 @@ static void test_ui_cache_master_map(void **state) {
     assert_string_equal(cache.master_entries[0].layout, "live_edit_side");
     assert_int_equal(cache.master_entries[0].cache_next_count, 30);
     assert_string_equal(cache.master_entries[1].layout, "main_menu");
-    assert_int_equal(cache.master_entries[1].cache_next_count, 5);
+    assert_int_equal(cache.master_entries[1].cache_next_count, 6);
+
     assert_string_equal(cache.master_entries[2].layout, "pause_menu");
     assert_string_equal(cache.master_entries[3].layout, "editor_menu");
     assert_string_equal(cache.master_entries[4].layout, "confirm_quit");
@@ -194,7 +195,7 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     UiLayout *layout = ui_layout_load("assets/ui_layouts/main_menu.txt", &cache);
     assert_non_null(layout);
-    assert_int_equal(ui_layout_focusable_count(layout), 3);
+    assert_int_equal(ui_layout_focusable_count(layout), 4);
 
     UiElement *focused = ui_layout_get_focused(layout, 0);
     assert_non_null(focused);
@@ -203,15 +204,21 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     focused = ui_layout_get_focused(layout, 1);
     assert_non_null(focused);
+    assert_string_equal(focused->name, "main_menu_level_editor");
+    assert_string_equal(focused->action, "open_level_editor");
+
+    focused = ui_layout_get_focused(layout, 2);
+    assert_non_null(focused);
     assert_string_equal(focused->name, "main_menu_asset_editor");
     assert_string_equal(focused->action, "open_asset_editor");
 
-    focused = ui_layout_get_focused(layout, 2);
+    focused = ui_layout_get_focused(layout, 3);
     assert_non_null(focused);
     assert_string_equal(focused->name, "main_menu_quit");
     assert_string_equal(focused->action, "quit");
 
-    assert_null(ui_layout_get_focused(layout, 3));
+    assert_null(ui_layout_get_focused(layout, 4));
+
 
     ui_layout_destroy(layout);
     ui_cache_destroy(&cache);

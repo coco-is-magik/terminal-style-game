@@ -1,11 +1,11 @@
-name=main_menu_asset_editor
+name=main_menu_level_editor
 type=button
 parent=main_menu_container
 x=2
-y=8
+y=6
 coords=relative
 width=20
 height=1
 align=center
-action=open_asset_editor
-content=ASSET EDITOR
+action=open_level_editor
+content=LEVEL EDITOR
