@@ -1,10 +1,10 @@
 name=confirm_yes
 type=button
 parent=confirm_menu_container
-x=4
-y=4
+x=2
+y=3
 coords=relative
-width=12
+width=7
 height=1
 align=center
 action=confirm_quit

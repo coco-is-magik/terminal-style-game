@@ -118,10 +118,7 @@ typedef enum {
 typedef enum {
     APP_STATE_MAIN_MENU,         /* Main menu: button selection */
     APP_STATE_PLAYING,           /* In-game: raycast world rendering */
-    APP_STATE_EDITOR,            /* Map editor (placeholder) */
-    APP_STATE_LIVE_EDITOR,       /* Combined decal/material editor with live preview */
-    APP_STATE_ASSET_DESIGNER,    /* Decal canvas editor */
-    APP_STATE_MATERIAL_DESIGNER  /* Material field editor */
+    APP_STATE_EDITOR             /* In-world unified editor */
 } AppState;
 
 #endif /* CONFIG_H */

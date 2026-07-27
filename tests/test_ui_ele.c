@@ -46,15 +46,17 @@ static void test_ui_ele_load_text(void **state) {
 
     UiCache cache;
     ui_cache_init(&cache, NULL);
-    UiElement *element = ui_ele_load("assets/ui_elements/tooltip_slot.txt", &cache);
+    assert_non_null(ui_cache_load(&cache, "main_menu_container", "assets/ui_elements"));
+    UiElement *element = ui_ele_load("assets/ui_elements/main_menu_level_editor.txt", &cache);
 
     assert_non_null(element);
-    assert_string_equal(element->name, "tooltip_slot");
-    assert_int_equal(element->type, UI_ELE_TEXT);
+    assert_string_equal(element->name, "main_menu_level_editor");
+    assert_int_equal(element->type, UI_ELE_BUTTON);
     assert_int_equal(element->layout.coords_mode, UI_COORD_RELATIVE);
-    assert_int_equal(element->layout.width, 42);
-    assert_int_equal(element->layout.height, 4);
-    assert_string_equal(element->parent_name, "right_side_container");
+    assert_int_equal(element->layout.width, 20);
+    assert_int_equal(element->layout.height, 1);
+    assert_string_equal(element->parent_name, "main_menu_container");
+    assert_string_equal(element->action, "open_level_editor");
 
     ui_ele_destroy(element);
     ui_cache_destroy(&cache);
@@ -65,12 +67,12 @@ static void test_ui_ele_parent_resolution_from_cache(void **state) {
 
     UiCache cache;
     ui_cache_init(&cache, NULL);
-    assert_non_null(ui_cache_load(&cache, "right_side_container", "assets/ui_elements"));
-    UiElement *child = ui_cache_load(&cache, "tooltip_slot", "assets/ui_elements");
+    assert_non_null(ui_cache_load(&cache, "main_menu_container", "assets/ui_elements"));
+    UiElement *child = ui_cache_load(&cache, "main_menu_level_editor", "assets/ui_elements");
 
     assert_non_null(child);
     assert_non_null(child->parent);
-    assert_string_equal(child->parent->name, "right_side_container");
+    assert_string_equal(child->parent->name, "main_menu_container");
 
     ui_cache_destroy(&cache);
 }
@@ -78,54 +80,43 @@ static void test_ui_ele_parent_resolution_from_cache(void **state) {
 static void test_ui_ele_render_wrap(void **state) {
     (void)state;
 
-    UiCache cache;
-    ui_cache_init(&cache, NULL);
-    UiElement *element = ui_ele_load("assets/ui_elements/tooltip_slot.txt", &cache);
-    assert_non_null(element);
-    element->layout.x = 0;
-    element->layout.y = 0;
-    element->layout.coords_mode = UI_COORD_ABSOLUTE;
-    element->layout.width = 5;
-    element->layout.height = 4;
-    ui_ele_set_content(element, "hello world wrap");
+    UiElement element = make_text_element("wrap", "hello world wrap", 0, 0, 5, 0);
+    element.layout.height = 4;
 
     Grid *grid = grid_create(20, 8);
     assert_non_null(grid);
     SDL_Color fg = {255, 255, 255, 255};
     SDL_Color bg = {0, 0, 0, 255};
     grid_clear(grid, bg);
-    ui_ele_render(element, grid, 0, 0, fg, bg);
+    ui_ele_render(&element, grid, 0, 0, fg, bg);
 
     assert_true(grid_has_text_at(grid, 0, 0, "hello"));
     assert_true(grid_has_text_at(grid, 0, 1, "world"));
     assert_true(grid_has_text_at(grid, 0, 2, "wrap"));
 
     grid_destroy(grid);
-    ui_ele_destroy(element);
-    ui_cache_destroy(&cache);
+    release_stack_element(&element);
 }
 
 static void test_ui_layout_load_and_substitute(void **state) {
     (void)state;
 
-    UiCache cache;
-    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
-    ui_cache_tick(&cache, "live_edit_side", "assets/ui_elements");
-    UiElement *tooltip = ui_cache_get(&cache, "slot_material_palette");
-    assert_non_null(tooltip);
+    UiLayout layout;
+    UiElement first = make_text_element("first", "one", 0, 0, 8, 0);
+    UiElement replacement = make_text_element("replacement", "two", 0, 0, 8, 0);
+    memset(&layout, 0, sizeof(layout));
 
-    UiLayout *layout = ui_layout_load("assets/ui_layouts/live_edit_side.txt", &cache);
-    assert_non_null(layout);
-    assert_string_equal(layout->name, "live_edit_side");
-    assert_int_equal(layout->element_count, 11);
-    assert_int_equal(layout->slot_count, 15);
-    assert_non_null(layout->slot_elements[0]);
+    ui_layout_substitute(&layout, "status", &first);
+    assert_int_equal(layout.slot_count, 1);
+    assert_string_equal(layout.slot_names[0], "status");
+    assert_ptr_equal(layout.slot_elements[0], &first);
 
-    ui_layout_substitute(layout, "material_palette", tooltip);
-    assert_ptr_equal(layout->slot_elements[0], tooltip);
+    ui_layout_substitute(&layout, "status", &replacement);
+    assert_int_equal(layout.slot_count, 1);
+    assert_ptr_equal(layout.slot_elements[0], &replacement);
 
-    ui_layout_destroy(layout);
-    ui_cache_destroy(&cache);
+    release_stack_element(&first);
+    release_stack_element(&replacement);
 }
 
 static void test_ui_cache_master_map(void **state) {
@@ -133,23 +124,16 @@ static void test_ui_cache_master_map(void **state) {
 
     UiCache cache;
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
-    assert_int_equal(cache.master_count, 8);
-    assert_string_equal(cache.master_entries[0].layout, "live_edit_side");
-    assert_int_equal(cache.master_entries[0].cache_next_count, 30);
-    assert_string_equal(cache.master_entries[1].layout, "main_menu");
-    assert_int_equal(cache.master_entries[1].cache_next_count, 6);
+    assert_int_equal(cache.master_count, 4);
+    assert_string_equal(cache.master_entries[0].layout, "main_menu");
+    assert_int_equal(cache.master_entries[0].cache_next_count, 5);
+    assert_string_equal(cache.master_entries[1].layout, "pause_menu");
+    assert_string_equal(cache.master_entries[2].layout, "confirm_quit");
+    assert_string_equal(cache.master_entries[3].layout, "hud_overlay");
 
-    assert_string_equal(cache.master_entries[2].layout, "pause_menu");
-    assert_string_equal(cache.master_entries[3].layout, "editor_menu");
-    assert_string_equal(cache.master_entries[4].layout, "confirm_quit");
-    assert_string_equal(cache.master_entries[5].layout, "designer_exit_confirm");
-    assert_string_equal(cache.master_entries[6].layout, "asset_select");
-    assert_string_equal(cache.master_entries[7].layout, "hud_overlay");
-
-    ui_cache_tick(&cache, "live_edit_side", "assets/ui_elements");
-    assert_non_null(ui_cache_get(&cache, "le_material_pane"));
-    assert_non_null(ui_cache_get(&cache, "le_dec_meta_pane"));
-    assert_non_null(ui_cache_get(&cache, "slot_dec_tooltip"));
+    ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
+    assert_non_null(ui_cache_get(&cache, "main_menu_container"));
+    assert_non_null(ui_cache_get(&cache, "main_menu_level_editor"));
 
     ui_cache_destroy(&cache);
 }
@@ -195,7 +179,7 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     UiLayout *layout = ui_layout_load("assets/ui_layouts/main_menu.txt", &cache);
     assert_non_null(layout);
-    assert_int_equal(ui_layout_focusable_count(layout), 4);
+    assert_int_equal(ui_layout_focusable_count(layout), 3);
 
     UiElement *focused = ui_layout_get_focused(layout, 0);
     assert_non_null(focused);
@@ -209,15 +193,10 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     focused = ui_layout_get_focused(layout, 2);
     assert_non_null(focused);
-    assert_string_equal(focused->name, "main_menu_asset_editor");
-    assert_string_equal(focused->action, "open_asset_editor");
-
-    focused = ui_layout_get_focused(layout, 3);
-    assert_non_null(focused);
     assert_string_equal(focused->name, "main_menu_quit");
     assert_string_equal(focused->action, "quit");
 
-    assert_null(ui_layout_get_focused(layout, 4));
+    assert_null(ui_layout_get_focused(layout, 3));
 
 
     ui_layout_destroy(layout);
@@ -251,21 +230,12 @@ static void test_ui_layout_remaining_menu_focus_actions(void **state) {
     UiCache cache;
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
     ui_cache_tick(&cache, "pause_menu", "assets/ui_elements");
-    ui_cache_tick(&cache, "editor_menu", "assets/ui_elements");
     ui_cache_tick(&cache, "confirm_quit", "assets/ui_elements");
-    ui_cache_tick(&cache, "designer_exit_confirm", "assets/ui_elements");
-    ui_cache_tick(&cache, "asset_select", "assets/ui_elements");
 
     assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 3,
                           "resume", "return_to_main_menu", "quit", NULL);
-    assert_layout_actions(&cache, "assets/ui_layouts/editor_menu.txt", 2,
-                          "back_to_editor", "return_to_main_menu", NULL, NULL);
     assert_layout_actions(&cache, "assets/ui_layouts/confirm_quit.txt", 2,
                           "confirm_quit", "cancel", NULL, NULL);
-    assert_layout_actions(&cache, "assets/ui_layouts/designer_exit_confirm.txt", 2,
-                          "discard_changes", "cancel", NULL, NULL);
-    assert_layout_actions(&cache, "assets/ui_layouts/asset_select.txt", 4,
-                          "open_live_edit", "open_decals", "open_materials", "coming_soon");
 
     ui_cache_destroy(&cache);
 }

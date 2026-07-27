@@ -1,9 +1,9 @@
 # Editor Unification Handoff
 
-**Date and time:** 2026-07-24 ~16:26 America/New_York  
+**Date and time:** 2026-07-27 ~08:33 America/New_York  
 **Task objective:** Implement the unified in-world editor vertical slice per  
 `docs/EDITOR_UNIFICATION_PLAN.md` (architectural foundation + wall-material MVP).  
-**Current status:** Phases P–4 complete and verified. Phase 5 is next.  
+**Current status:** Phases P–5 complete and verified. Phase 6 (manual vertical-slice acceptance) is next.  
 **Responsible scope:** Editor unification modules only; legacy designers remain  
 until Phase 7. SMC/renderer work is out of scope for this track.
 
@@ -14,7 +14,7 @@ until Phase 7. SMC/renderer work is out of scope for this track.
 ### Problem
 
 Three separate editor application states (`LIVE_EDITOR`, `ASSET_DESIGNER`,
-`MATERIAL_DESIGNER`) plus an unused `APP_STATE_EDITOR` placeholder. The product
+`MATERIAL_DESIGNER`) plus formerly unused `APP_STATE_EDITOR`. The product
 direction is one in-world editor: walk → select → adjust → preview on a real
 loaded level, with undo/redo/save and one authoritative map.
 
@@ -51,7 +51,7 @@ loaded level, with undo/redo/save and one authoritative map.
 | `SceneDocument` | Owns authored `Map` + path + state IDs |
 | `CommandHistory` | Lazy undo/redo; sole caller of internal doc mutators |
 | `editor_selection` | Center-ray hit → `EditorHit` / `WallFaceRef` |
-| `UnifiedEditorState` | Phase 4+ controller; owns doc+history+UI mode |
+| `UnifiedEditorState` | Controller; owns doc+history+UI mode + picker |
 | App camera / assets | Borrowed; not copied into editor |
 
 ### Authoritative docs
@@ -77,6 +77,7 @@ loaded level, with undo/redo/save and one authoritative map.
 | 2 | Complete 2026-07-24 | Command history set/undo/redo + 16 tests |
 | 3 | Complete 2026-07-24 | Wall selection / face calc + 12 tests |
 | 4 | Complete 2026-07-24 | Unified editor shell, input, app entry + 11 tests |
+| 5 | Complete 2026-07-27 | Material picker + set/undo/redo/save wrappers; 20 unified-editor tests |
 
 ### Files added
 
@@ -125,6 +126,11 @@ docs/EDITOR_UNIFICATION_IMPLEMENTATION_NOTES.md
    side0 +x→WEST, −x→EAST; side1 +y→NORTH, −y→SOUTH.
 6. Const public selection API casts away const only at historical non-const
    map/camera call sites that do not mutate.
+7. Phase 5 apply path: selection + `material_id_is_loaded` →
+   `command_history_set_wall_material` only; no world rebuild.
+8. Picker enumerates loaded IDs ascending (1..255 scan); Up/Down/Enter in inspector.
+9. IDs > 9 live-allowed with immediate `EDITOR_STATUS_UNSAVABLE_MATERIAL_ID`.
+10. Dirty F5 opens reload prompt; confirm calls `unified_editor_load_scene`.
 
 ### Baseline commit
 
@@ -134,26 +140,26 @@ docs/EDITOR_UNIFICATION_IMPLEMENTATION_NOTES.md
 
 ## Work In Progress
 
-None. Phase 4 is closed. Phase 5 not started.
+None. Phase 5 is closed. Phase 6 (manual acceptance) not started.
 
-Do not treat material-apply, inspector apply, undo/redo/save wrappers, or
-picker UI as done — those are Phase 5–6. `APP_STATE_EDITOR` shell + entry
-are done.
+Automated controller coverage for apply/undo/redo/save/picker/reload is done.
+Manual in-game workflow acceptance remains.
 
 ---
 
 ## Investigation And Evidence
 
-### Confirmed
+### Confirmed (post Phase 5)
 
-- `APP_STATE_EDITOR` is still a placeholder `grid_print` branch in `app.c`.
-- No production transition into `APP_STATE_EDITOR` yet (menu opens asset select).
-- Map save did not exist before Phase 1; SceneDocument owns serialization now.
-- `InputState` has designer edge flags but no unified-editor actions yet.
-- Main app still builds via `$(wildcard src/*.c)` so new modules link automatically.
-- Tests use narrow `TEST_*_SRC` groups (Phase 0).
+- `APP_STATE_EDITOR` loads a real level via `unified_editor_*` and renders world + overlay.
+- Main menu temporary entry: `LEVEL EDITOR` / `open_level_editor`.
+- Edge-triggered `editor_*_pressed` actions exist on `InputState`.
+- Public wrappers: `unified_editor_set_wall_material`, `_undo`, `_redo`, `_save`.
+- Material picker + status mapping + dirty reload prompt implemented.
+- Map save owned by SceneDocument; command history sole mutator path.
+- Main app builds via `$(wildcard src/*.c)`; tests use narrow `TEST_*_SRC` groups.
 
-### Verification evidence (Phases 0–3)
+### Verification evidence (Phases 0–5)
 
 | Check | Result |
 |---|---|
@@ -162,18 +168,17 @@ are done.
 | `./build/test-scene-document` | 14/14 |
 | `./build/test-command-system` | 16/16 |
 | `./build/test-editor-selection` | 12/12 |
+| `./build/test-unified-editor` | 20/20 (Phase 5) |
 | Checked-in `assets/maps/` writes | None (tests use `/tmp/tsg_*`) |
 
-### Remaining knowledge gaps for Phase 4
+### Remaining knowledge gaps for Phase 6
 
-1. Exact entry path into `APP_STATE_EDITOR` (temporary menu hook vs debug key)
-   — plan allows Phase 4 to wire placeholder; Phase 7 cleans menu.
-2. Whether editor entry should reset camera to spawn or preserve current camera
-   — plan: preserve unless existing entry contract initializes spawn.
-3. How `WorldState` lights/decals are supplied during editor world render
-   (app-owned; pass through existing `raycast_render`).
-4. Exact `AssetRegistry` / `InputState` / `Grid` include set for `unified_editor.h`
-   (confirm against headers at Phase 4 start).
+1. Manual visual confirmation that material change appears on next frame without
+   world rebuild (unit tests cover mutation path; eyes-on still required).
+2. Interactive Escape exit-prompt choices (Resume / Save+Exit / Discard+Exit)
+   beyond unit-level hierarchy tests.
+3. Whether any material-ID-keyed cache needs narrow invalidation after apply
+   (plan: only if an existing public API requires it; no world rebuild).
 
 ---
 
@@ -194,7 +199,7 @@ SMC-related failures live in `docs/handoff.md` / SMC reports — not this track.
 
 ## Verification (latest full suite)
 
-Last full run after Phase 3:
+Last full run after Phase 5 (2026-07-27):
 
 ```text
 make -B all          → success
@@ -202,6 +207,8 @@ make test            → all runners OK including:
   test-scene-document (14)
   test-command-system (16)
   test-editor-selection (12)
+  test-unified-editor (20)
+  test-ui-ele (updated main-menu counts)
 ```
 
 Not yet run for this track (deferred to Phase 8 matrix):
@@ -218,66 +225,49 @@ make benchmark / make stability
 ## Risks And Unknowns
 
 1. **Entry UX:** Temporary `LEVEL EDITOR` menu entry exists; Phase 7 collapses legacy entries.
-2. **Camera on load:** Spawn vs preserve must match existing app contracts.
-3. **Material IDs > 9:** Live-allowed, unsaveable; inspector must surface this
-   (Phase 5+); save path already rejects.
-4. **Legacy coexistence:** Three designer states remain; avoid breaking their
-   tests while adding unified editor.
-5. **Input consumption:** One key must not fire multiple layers; needs explicit
-   consumed flags (Phase 4 tests).
+2. **Camera on load:** Spawn `(1.5, 1.5)` on editor entry; walk/edit share one camera.
+3. **Material IDs > 9:** Live-allowed, unsaveable; inspector surfaces status; save rejects.
+4. **Legacy coexistence:** Three designer states remain; avoid breaking their tests.
+5. **Input consumption:** Covered by Phase 4–5 tests; keep modal/inspector priority.
 6. **Git:** Project skill forbids git operations; baseline hash recorded from
    workspace metadata only.
+7. **Manual acceptance:** Phase 6 is primarily interactive; automate only where cheap.
 
 ---
 
 ## Next Actions (safe order)
 
-### 1. Start Phase 5 — material assignment wrappers
+### 1. Start Phase 6 — manual vertical-slice acceptance
 
-**Action:** Implement `unified_editor_set_wall_material`, `unified_editor_undo`,
-`unified_editor_redo`, `unified_editor_save` in `src/unified_editor.c`. Validate
-loaded materials via `material_id_is_loaded`; route mutations only through
-`command_history_*`. Map command/save results to `EditorStatus`.
-**Files:** `src/unified_editor.h`, `src/unified_editor.c`
-**Expected:** Apply changes authoritative map immediately; no world rebuild.
-**Verification:** New controller tests + existing suite green.
-**Stop:** Any path that mutates map cells outside command history.
+**Action:** Run the plan Phase 6 checklist end-to-end from main menu:
 
-### 2. Inspector picker UI
+1. Open `LEVEL EDITOR`.
+2. Load real level (already automatic: `assets/maps/1.txt`).
+3. Walk with existing movement / mouse-look.
+4. Aim at a wall; `Tab` → edit (camera must not jump).
+5. `E` select hovered face; Up/Down materials; `Enter` apply.
+6. Confirm immediate visual material change (no world rebuild).
+7. `Ctrl+Z` / `Ctrl+Y` restore old/new material.
+8. `Ctrl+S` save serializable document; reload and confirm persistence.
+9. Assign loaded ID > 9 → unsaveable warning; Save must leave destination unchanged.
+10. Undo/replace unrepresentable ID; save successfully.
+11. Confirm dirty across undo/redo/save/reload.
+12. Exit via dirty prompt without silent data loss.
 
-**Action:** Enumerate loaded materials; Up/Down highlight; Enter applies;
-show dirty + unsaveable (ID > 9) warnings; cell-wide material limitation text.
-**Files:** `src/unified_editor.c` (`unified_editor_render_overlay` + update)
-**Expected:** Keyboard-driven picker; empty-state when no materials.
-**Verification:** Controller tests for validation/status mapping.
-**Stop:** Synthetic integer ranges instead of loaded materials.
+**Files:** none required unless a defect is found.  
+**Expected:** All 18 plan steps pass.  
+**Verification:** `make test` still green after any fix.  
+**Stop:** Any world rebuild, silent data loss, or multi-layer input consumption.
 
-### 3. Wire shortcuts already in InputState
+### 2. Record Phase 6 evidence
 
-**Action:** Consume `editor_undo_pressed` / `redo` / `save` / `reload` /
-`previous` / `next` / `confirm` in update path with correct priority.
-**Files:** `src/unified_editor.c`
-**Expected:** Edge-triggered; modal/inspector priority preserved.
-**Verification:** Unit tests + no multi-layer consumption regressions.
-**Stop:** Held-key repeat on one-shot actions.
+**Action:** Update implementation notes + plan status + this handoff with
+pass/fail per checklist item and any defects fixed.  
+**Expected:** Phase 6 complete or a short defect list with repro.
 
-### 4. Tests
+### Phase 7+ (do not start until Phase 6 exit gate)
 
-**Action:** Extend `tests/test_unified_editor.c` for Phase 5 plan items
-(material validation, status mapping, undo/redo, selection revalidation,
-unsaveable reporting).
-**Files:** `tests/test_unified_editor.c`
-**Expected:** Full `make test` green.
-**Stop:** Any legacy runner failure.
-
-### 5. Documentation after Phase 5 verify
-
-**Action:** Update implementation notes + plan status + this handoff.
-**Expected:** Phase 5 complete with evidence; Phase 6 acceptance next.
-
-### Phase 6+ (do not start until Phase 5 exit gate)
-
-Manual vertical-slice acceptance, then legacy migration (Phase 7).
+Legacy symbol disposition table, then remove separate editor states/menu entries.
 
 ---
 
@@ -298,14 +288,12 @@ make test
 ./build/test-scene-document
 ```
 
-6. **Phase 4 incomplete signals:** missing `src/unified_editor.c`, or
-   `APP_STATE_EDITOR` still only `grid_print`, or no `editor_*_pressed` in
-   `input.h`.  
-7. **Do not repeat:** broad test linkage; stub material-apply APIs in Phase 4;
-   writing tests into `assets/maps/`; git operations if misc-forbid-git applies.  
-8. **Success for Phase 4:** plan exit gate — default build + all tests green;
-   `APP_STATE_EDITOR` loads/renders real level; walk/edit preserves camera;
-   legacy editors still functional.
+6. **Phase 5 incomplete signals (should be gone):** missing
+   `unified_editor_set_wall_material`, stubs, or apply bypassing command history.
+7. **Do not repeat:** broad test linkage; world rebuild on material change;
+   writing tests into `assets/maps/`; git operations if misc-forbid-git applies.
+8. **Success for Phase 6:** plan exit gate — all automated tests + all manual
+   workflow steps; no renderer/camera/light/decal/asset reset on material edits.
 
 ---
 
@@ -317,10 +305,10 @@ make test
 | `src/scene_document.*` | 1 |
 | `src/command_system.*` | 2 |
 | `src/editor_selection.*` | 3 |
-| `src/unified_editor.*` | 4–6 (not created yet) |
-| `src/input.*` | 4 (actions) |
-| `src/app.c` | 4, 6, 7 |
+| `src/unified_editor.*` | 4–5 (shell + apply/inspector done); 6 acceptance |
+| `src/input.*` | 4 (edge actions present) |
+| `src/app.c` | 4 (entry + render); 6–7 later |
 | `tests/test_scene_document.c` | 1 |
 | `tests/test_command_system.c` | 2 |
 | `tests/test_editor_selection.c` | 3 |
-| `tests/test_unified_editor.c` | 4–6 (not created yet) |
+| `tests/test_unified_editor.c` | 4–5 (20 tests) |

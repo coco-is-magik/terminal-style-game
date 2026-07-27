@@ -93,13 +93,12 @@ static void test_stack_push_full(void **state) {
  *   APP_STATE_MAIN_MENU → ignore
  *   depth > 0           → pop
  *   APP_STATE_PLAYING   → push MENU_PAUSE
- *   APP_STATE_EDITOR    → push MENU_EDITOR
+ *   APP_STATE_EDITOR    → no menu action; UnifiedEditorState owns Escape
  */
 static void simulate_esc(AppState *app_state, MenuStack *ms) {
     if (*app_state == APP_STATE_MAIN_MENU) return;
     if (ms->depth > 0)                     { menu_stack_pop(ms);  return; }
     if (*app_state == APP_STATE_PLAYING)   { menu_stack_push(ms, MENU_PAUSE);  return; }
-    if (*app_state == APP_STATE_EDITOR)    { menu_stack_push(ms, MENU_EDITOR); return; }
 }
 
 /** simulate_quit_action() — Mirrors the "Quit" button confirm handler */
@@ -153,6 +152,20 @@ static void test_esc_pause_returns_to_playing(void **state) {
     assert_int_equal(menu_stack_peek(&ms), MENU_NONE);
     /* AppState unchanged */
     assert_int_equal(app, APP_STATE_PLAYING);
+}
+
+/* Unified editor handles Escape internally; the generic menu stack is unchanged. */
+static void test_esc_editor_leaves_menu_stack_empty(void **state) {
+    (void)state;
+    MenuStack ms;
+    menu_stack_init(&ms);
+
+    AppState app = APP_STATE_EDITOR;
+    simulate_esc(&app, &ms);
+
+    assert_int_equal(ms.depth, 0);
+    assert_int_equal(menu_stack_peek(&ms), MENU_NONE);
+    assert_int_equal(app, APP_STATE_EDITOR);
 }
 
 /* Quit button action pushes confirm dialog */
@@ -213,6 +226,7 @@ int main(void) {
         cmocka_unit_test(test_esc_main_menu_ignored),
         cmocka_unit_test(test_esc_playing_pushes_pause),
         cmocka_unit_test(test_esc_pause_returns_to_playing),
+        cmocka_unit_test(test_esc_editor_leaves_menu_stack_empty),
         cmocka_unit_test(test_quit_action_pushes_confirm),
         cmocka_unit_test(test_confirm_yes_sets_quit),
         cmocka_unit_test(test_confirm_no_pops),

@@ -1,7 +1,0 @@
-name=le_mat_meta_pane
-type=container
-x=212
-y=0
-coords=absolute
-width=48
-height=20

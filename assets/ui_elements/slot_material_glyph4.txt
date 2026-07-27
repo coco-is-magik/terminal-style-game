@@ -1,9 +1,0 @@
-name=slot_material_glyph4
-type=text
-parent=le_material_pane
-x=2
-y=7
-coords=relative
-width=42
-height=1
-content=

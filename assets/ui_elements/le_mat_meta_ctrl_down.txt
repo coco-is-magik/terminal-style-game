@@ -1,9 +1,0 @@
-name=le_mat_meta_ctrl_down
-type=text
-parent=le_mat_meta_pane
-x=2
-y=9
-coords=relative
-width=42
-height=1
-content=Ctrl+Down: Dec Metadata

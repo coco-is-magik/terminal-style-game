@@ -1,9 +1,9 @@
 /**
- * unified_editor.h — Unified in-world editor controller (Phase 4 shell)
+ * unified_editor.h — Unified in-world editor controller
  *
  * Owns SceneDocument + CommandHistory while APP_STATE_EDITOR is active.
  * Borrows AssetRegistry and Camera (via parameters). Material assignment
- * wrappers are intentionally deferred to Phase 5 — no stub apply APIs.
+ * goes through command_history_* only.
  */
 
 #ifndef UNIFIED_EDITOR_H
@@ -31,6 +31,16 @@ typedef enum {
     EDITOR_MODAL_EXIT_PROMPT,
     EDITOR_MODAL_RELOAD_PROMPT
 } EditorModal;
+
+/* Exit-prompt choices (plan §9). Resume and Cancel both dismiss without exit. */
+typedef enum {
+    EDITOR_EXIT_RESUME = 0,
+    EDITOR_EXIT_SAVE_AND_EXIT,
+    EDITOR_EXIT_DISCARD_AND_EXIT,
+    EDITOR_EXIT_CANCEL,
+    EDITOR_EXIT_CHOICE_COUNT
+} EditorExitChoice;
+
 
 typedef enum {
     EDITOR_STATUS_NONE = 0,
@@ -72,7 +82,11 @@ typedef struct {
 
     bool request_exit_to_main_menu;
     bool active;
+
+    /* Valid while modal == EDITOR_MODAL_EXIT_PROMPT. */
+    EditorExitChoice exit_choice;
 } UnifiedEditorState;
+
 
 bool unified_editor_init(
     UnifiedEditorState *editor,
@@ -97,5 +111,14 @@ void unified_editor_render_overlay(
     const UnifiedEditorState *editor,
     Grid *grid
 );
+
+CommandResult unified_editor_set_wall_material(
+    UnifiedEditorState *editor,
+    MaterialId material
+);
+
+CommandResult unified_editor_undo(UnifiedEditorState *editor);
+CommandResult unified_editor_redo(UnifiedEditorState *editor);
+SceneSaveResult unified_editor_save(UnifiedEditorState *editor);
 
 #endif /* UNIFIED_EDITOR_H */

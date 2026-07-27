@@ -1,9 +1,9 @@
 /**
- * test_unified_editor.c — Unified editor controller shell (Phase 4)
+ * test_unified_editor.c — Unified editor controller (Phases 4–5)
  *
- * Covers init/destroy, load success/fail, mode toggle without camera move,
- * hover invalidation, select, invalid select, input consumption, Escape
- * hierarchy. Material apply is Phase 5 and is not exercised here.
+ * Phase 4: init/destroy, load, mode toggle, hover, select, Escape hierarchy.
+ * Phase 5: material validation, apply via command history, undo/redo/save,
+ *          picker navigation, unsaveable ID reporting.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -55,13 +55,24 @@ static int write_text_file(const char *path, const char *text) {
     return 0;
 }
 
+static int read_text_file(const char *path, char *out, size_t out_sz) {
+    FILE *fp = fopen(path, "rb");
+    size_t n;
+    if (!fp) return -1;
+    n = fread(out, 1, out_sz - 1, fp);
+    out[n] = '\0';
+    fclose(fp);
+    return 0;
+}
+
 static void rm_rf_tmpdir(void) {
     if (!g_tmpdir_ready) return;
-    /* Only a few known files; keep simple. */
     char path[512];
     path_in_tmpdir(path, sizeof(path), "map.txt");
     remove(path);
     path_in_tmpdir(path, sizeof(path), "bad.txt");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "map_saved.txt");
     remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
@@ -77,16 +88,23 @@ static const char *VALID_MAP =
 
 static AssetRegistry g_assets;
 
+static void mark_material_loaded(int id, const char *name) {
+    g_assets.materials[id].id = id;
+    snprintf(g_assets.material_names[id],
+             sizeof(g_assets.material_names[id]),
+             "%s", name);
+}
+
 static int group_setup(void **state) {
     (void)state;
     config_init_defaults();
     if (make_tmpdir() != 0) return -1;
     asset_registry_init(&g_assets);
-    /* Mark material 1 as loaded so later phases can use it; Phase 4 does not apply. */
-    g_assets.materials[1].id = 1;
-    g_assets.material_names[1][0] = '1';
-    g_assets.material_names[1][1] = '\0';
-    g_assets.material_count = 1;
+    /* Loaded materials: 1, 2, and 12 (unsavable live ID). */
+    mark_material_loaded(1, "mat1");
+    mark_material_loaded(2, "mat2");
+    mark_material_loaded(12, "mat12");
+    g_assets.material_count = 3;
     return 0;
 }
 
@@ -100,8 +118,36 @@ static void zero_input(InputState *in) {
     memset(in, 0, sizeof(*in));
 }
 
+static void select_east_wall(UnifiedEditorState *ed) {
+    ed->selection.type = SELECTION_WALL_FACE;
+    ed->selection.value.wall_face.map_x = 4;
+    ed->selection.value.wall_face.map_y = 2;
+    ed->selection.value.wall_face.face = WALL_FACE_WEST;
+    ed->inspector_open = true;
+}
+
+static MaterialId wall_mat(const UnifiedEditorState *ed) {
+    MaterialId mat = 0;
+    WallMaterialRef ref =
+        editor_wall_face_to_material_ref(ed->selection.value.wall_face);
+    scene_document_get_wall_material(&ed->document, ref, &mat);
+    return mat;
+}
+
+static int load_editor(UnifiedEditorState *ed, const char *name) {
+    char path[512];
+    path_in_tmpdir(path, sizeof(path), name);
+    if (write_text_file(path, VALID_MAP) != 0) return -1;
+    if (!unified_editor_init(ed, &g_assets)) return -1;
+    if (unified_editor_load_scene(ed, path) != SCENE_LOAD_OK) {
+        unified_editor_destroy(ed);
+        return -1;
+    }
+    return 0;
+}
+
 /* ===================================================================
- *  Tests
+ *  Phase 4 tests
  * =================================================================== */
 
 static void test_init_destroy(void **state) {
@@ -134,7 +180,6 @@ static void test_load_success_resets_history_and_selection(void **state) {
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
 
-    /* Seed selection/history-ish UI state then reload. */
     ed.selection.type = SELECTION_WALL_FACE;
     ed.selection.value.wall_face.map_x = 4;
     ed.selection.value.wall_face.map_y = 2;
@@ -142,7 +187,7 @@ static void test_load_success_resets_history_and_selection(void **state) {
     ed.inspector_open = true;
     ed.hover.valid = true;
     ed.mode = EDITOR_MODE_EDIT;
-    ed.history.count = 3; /* will be wiped by reload path */
+    ed.history.count = 3;
     ed.history.cursor = 2;
 
     assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
@@ -198,13 +243,8 @@ static void test_load_failure_preserves_state(void **state) {
 
 static void test_tab_toggles_mode_without_moving_camera(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
@@ -216,7 +256,7 @@ static void test_tab_toggles_mode_without_moving_camera(void **state) {
     InputState in;
     zero_input(&in);
     in.editor_toggle_mode_pressed = true;
-    in.forward = true; /* must not move while toggling into edit */
+    in.forward = true;
     in.mouse_dx = 40.0f;
 
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
@@ -227,8 +267,6 @@ static void test_tab_toggles_mode_without_moving_camera(void **state) {
     assert_float_equal(cam.transform.angle, a0, 0.0001);
     assert_float_equal(cam.pitch, p0, 0.0001);
 
-
-    /* Toggle back to walk */
     zero_input(&in);
     in.editor_toggle_mode_pressed = true;
     c = unified_editor_update(&ed, &in, &cam, 0.016);
@@ -240,19 +278,12 @@ static void test_tab_toggles_mode_without_moving_camera(void **state) {
 
 static void test_hover_invalidated_each_frame(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
-    /* Face open space (west) — no wall hit expected. */
     camera_init(&cam, 2.5, 2.5, PI, PI / 2.0);
 
-    /* Plant a stale hover that must be cleared. */
     ed.hover.valid = true;
     ed.hover.target.type = SELECTION_WALL_FACE;
     ed.hover.target.value.wall_face.map_x = 99;
@@ -262,7 +293,6 @@ static void test_hover_invalidated_each_frame(void **state) {
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_false(ed.hover.valid);
 
-    /* Face east wall — hover becomes valid. */
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
     zero_input(&in);
     unified_editor_update(&ed, &in, &cam, 0.016);
@@ -275,20 +305,14 @@ static void test_hover_invalidated_each_frame(void **state) {
 
 static void test_select_copies_valid_hover(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
 
     InputState in;
     zero_input(&in);
-    /* Establish hover */
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(ed.hover.valid);
 
@@ -302,29 +326,20 @@ static void test_select_copies_valid_hover(void **state) {
     assert_int_equal(ed.selection.value.wall_face.face, WALL_FACE_WEST);
     assert_true(ed.inspector_open);
     assert_int_equal(ed.status, EDITOR_STATUS_NONE);
+    /* Picker should land on current wall material (1). */
+    assert_int_equal(ed.highlighted_material, 1);
 
     unified_editor_destroy(&ed);
 }
 
 static void test_invalid_select_preserves_prior(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
-    /* Prior selection */
-    ed.selection.type = SELECTION_WALL_FACE;
-    ed.selection.value.wall_face.map_x = 4;
-    ed.selection.value.wall_face.map_y = 2;
-    ed.selection.value.wall_face.face = WALL_FACE_WEST;
-    ed.inspector_open = true;
+    select_east_wall(&ed);
 
     Camera cam;
-    /* Aim into empty space so hover is invalid. */
     camera_init(&cam, 2.5, 2.5, PI, PI / 2.0);
 
     InputState in;
@@ -343,18 +358,12 @@ static void test_invalid_select_preserves_prior(void **state) {
 
 static void test_input_consumption_blocks_multi_layer(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
 
-    /* Modal open: select must not change selection. */
     ed.modal = EDITOR_MODAL_EXIT_PROMPT;
     ed.selection.type = SELECTION_NONE;
 
@@ -365,10 +374,9 @@ static void test_input_consumption_blocks_multi_layer(void **state) {
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.selection.type, SELECTION_NONE);
-    assert_int_equal(ed.mode, EDITOR_MODE_WALK); /* toggle swallowed */
+    assert_int_equal(ed.mode, EDITOR_MODE_WALK);
     assert_int_equal(ed.modal, EDITOR_MODAL_EXIT_PROMPT);
 
-    /* Cancel closes modal and consumes. */
     zero_input(&in);
     in.editor_cancel_pressed = true;
     c = unified_editor_update(&ed, &in, &cam, 0.016);
@@ -380,22 +388,13 @@ static void test_input_consumption_blocks_multi_layer(void **state) {
 
 static void test_escape_hierarchy_inspector_before_exit(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
 
-    ed.inspector_open = true;
-    ed.selection.type = SELECTION_WALL_FACE;
-    ed.selection.value.wall_face.map_x = 4;
-    ed.selection.value.wall_face.map_y = 2;
-    ed.selection.value.wall_face.face = WALL_FACE_WEST;
+    select_east_wall(&ed);
 
     InputState in;
     zero_input(&in);
@@ -404,17 +403,14 @@ static void test_escape_hierarchy_inspector_before_exit(void **state) {
     assert_true(c.keyboard_consumed);
     assert_false(ed.inspector_open);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    /* Selection remains; only inspector closes. */
     assert_int_equal(ed.selection.type, SELECTION_WALL_FACE);
 
-    /* Second Escape opens exit prompt. */
     zero_input(&in);
     in.editor_cancel_pressed = true;
     c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.modal, EDITOR_MODAL_EXIT_PROMPT);
 
-    /* Third Escape cancels exit prompt. */
     zero_input(&in);
     in.editor_cancel_pressed = true;
     c = unified_editor_update(&ed, &in, &cam, 0.016);
@@ -427,13 +423,8 @@ static void test_escape_hierarchy_inspector_before_exit(void **state) {
 
 static void test_edit_mode_consumes_pointer(void **state) {
     (void)state;
-    char path[512];
-    path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, VALID_MAP), 0);
-
     UnifiedEditorState ed;
-    assert_true(unified_editor_init(&ed, &g_assets));
-    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
     ed.mode = EDITOR_MODE_EDIT;
 
     Camera cam;
@@ -447,8 +438,542 @@ static void test_edit_mode_consumes_pointer(void **state) {
     unified_editor_destroy(&ed);
 }
 
+/* ===================================================================
+ *  Phase 5 tests
+ * =================================================================== */
+
+static void test_set_material_requires_selection(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+
+    CommandResult r = unified_editor_set_wall_material(&ed, 2);
+    assert_int_equal(r, CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(ed.status, EDITOR_STATUS_INVALID_SELECTION);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_set_material_rejects_unloaded(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+
+    CommandResult r = unified_editor_set_wall_material(&ed, 99);
+    assert_int_equal(r, CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(ed.status, EDITOR_STATUS_INVALID_MATERIAL);
+    assert_int_equal(wall_mat(&ed), 1);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.history.count, 0);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_set_material_applies_and_dirties(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+
+    assert_int_equal(wall_mat(&ed), 1);
+    CommandResult r = unified_editor_set_wall_material(&ed, 2);
+    assert_int_equal(r, CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 2);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.history.count, 1);
+    assert_int_equal(ed.history.cursor, 1);
+    assert_int_equal(ed.status, EDITOR_STATUS_NONE);
+
+    /* No-change assignment: no new history entry. */
+    r = unified_editor_set_wall_material(&ed, 2);
+    assert_int_equal(r, CMD_RESULT_NO_CHANGE);
+    assert_int_equal(ed.history.count, 1);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_undo_redo_via_wrappers(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 2);
+
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 1);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 2);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_NOTHING_TO_UNDO);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_unsaveable_material_id_status(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+
+    CommandResult r = unified_editor_set_wall_material(&ed, 12);
+    assert_int_equal(r, CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 12);
+    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    SceneSaveResult sr = unified_editor_save(&ed);
+    assert_int_equal(sr, SCENE_SAVE_UNREPRESENTABLE_MATERIAL);
+    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    /* History and edit preserved after failed save. */
+    assert_int_equal(ed.history.count, 1);
+    assert_int_equal(wall_mat(&ed), 12);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    /* Undo restores savable state and clears unsaveable status. */
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(wall_mat(&ed), 1);
+    assert_int_not_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_save_success_clears_dirty(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    char path[512];
+    char buf[256];
+
+    path_in_tmpdir(path, sizeof(path), "map_saved.txt");
+    assert_int_equal(write_text_file(path, VALID_MAP), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "2"));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_picker_next_prev_and_confirm(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+
+    /* Select wall so inspector opens with material 1 highlighted. */
+    InputState in;
+    zero_input(&in);
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.inspector_open);
+    assert_int_equal(ed.highlighted_material, 1);
+
+    /* Next → material 2 */
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.highlighted_material, 2);
+
+    /* Next → material 12 */
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.highlighted_material, 12);
+
+    /* Prev → material 2 */
+    zero_input(&in);
+    in.editor_previous_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.highlighted_material, 2);
+
+    /* Confirm applies highlighted material. */
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(wall_mat(&ed), 2);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_input_undo_redo_save_shortcuts(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    zero_input(&in);
+    in.editor_undo_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(wall_mat(&ed), 1);
+
+    zero_input(&in);
+    in.editor_redo_pressed = true;
+    c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(wall_mat(&ed), 2);
+
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_reload_prompt_when_dirty(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    zero_input(&in);
+    in.editor_reload_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_RELOAD_PROMPT);
+    /* Edit still present until confirmed. */
+    assert_int_equal(wall_mat(&ed), 2);
+
+    /* Confirm reload discards dirty edit. */
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.selection.type, SELECTION_NONE);
+
+    unified_editor_destroy(&ed);
+}
+
+/* ===================================================================
+ *  Phase 6 — exit prompt + vertical-slice acceptance
+ * =================================================================== */
+
+static void test_exit_resume_default_does_not_discard(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    /* Close inspector, then open exit prompt. */
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.modal, EDITOR_MODAL_EXIT_PROMPT);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_RESUME);
+
+    /* Enter on Resume: stay in editor, keep dirty edit. */
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_false(ed.request_exit_to_main_menu);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(wall_mat(&ed), 2);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_exit_save_and_exit_persists(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    char path[512];
+    char buf[256];
+
+    path_in_tmpdir(path, sizeof(path), "map_saved.txt");
+    assert_int_equal(write_text_file(path, VALID_MAP), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.modal, EDITOR_MODAL_EXIT_PROMPT);
+
+    /* Navigate Resume -> Save and Exit */
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_SAVE_AND_EXIT);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_true(ed.request_exit_to_main_menu);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+
+    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "2"));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_exit_discard_and_exit_does_not_write(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    char path[512];
+    char buf[256];
+
+    path_in_tmpdir(path, sizeof(path), "map_saved.txt");
+    assert_int_equal(write_text_file(path, VALID_MAP), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+
+    /* Resume -> Save and Exit -> Discard and Exit */
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_DISCARD_AND_EXIT);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_true(ed.request_exit_to_main_menu);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+
+    /* File on disk unchanged (still material 1). */
+    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
+    assert_null(strstr(buf, "2"));
+    assert_non_null(strstr(buf, "1"));
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_exit_save_failure_blocks_exit(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 12), CMD_RESULT_OK);
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_SAVE_AND_EXIT);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_false(ed.request_exit_to_main_menu);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(wall_mat(&ed), 12);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_phase6_vertical_slice_acceptance(void **state) {
+    (void)state;
+    /*
+     * Headless acceptance of plan §9 / Phase 6 checklist items that are
+     * engine-boundary testable without SDL interactive play:
+     *   open scene → hover → select → apply material → undo/redo →
+     *   save → reload → dirty exit choices → failed-save blocks exit.
+     */
+    UnifiedEditorState ed;
+    char path[512];
+    char buf[256];
+    MaterialId mat = 0;
+    WallMaterialRef ref;
+
+    path_in_tmpdir(path, sizeof(path), "map_saved.txt");
+    assert_int_equal(write_text_file(path, VALID_MAP), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    Camera cam;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    InputState in;
+
+    /* Hover + select wall under crosshair. */
+    zero_input(&in);
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.hover.valid);
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.selection.type, SELECTION_WALL_FACE);
+    assert_true(ed.inspector_open);
+    assert_int_equal(ed.highlighted_material, 1);
+
+    /* Apply material 2 via picker. */
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.highlighted_material, 2);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(wall_mat(&ed), 2);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    /* Undo / redo. */
+    zero_input(&in);
+    in.editor_undo_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(wall_mat(&ed), 1);
+    assert_false(scene_document_is_dirty(&ed.document));
+    zero_input(&in);
+    in.editor_redo_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(wall_mat(&ed), 2);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    /* Save clears dirty and persists. */
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "2"));
+
+    /* Dirty again, then reload prompt discards. */
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
+    assert_true(scene_document_is_dirty(&ed.document));
+    zero_input(&in);
+    in.editor_reload_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.modal, EDITOR_MODAL_RELOAD_PROMPT);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_false(scene_document_is_dirty(&ed.document));
+    /* Reloaded file still has material 2 from prior save. */
+    ref.map_x = 4;
+    ref.map_y = 2;
+    assert_true(scene_document_get_wall_material(&ed.document, ref, &mat));
+    assert_int_equal(mat, 2);
+
+    /* Dirty exit: Resume keeps edit; Discard exits without write. */
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_RESUME);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_false(ed.request_exit_to_main_menu);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.exit_choice, EDITOR_EXIT_DISCARD_AND_EXIT);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.request_exit_to_main_menu);
+    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "2")); /* disk still saved value */
+
+    unified_editor_destroy(&ed);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
+        /* Phase 4 */
         cmocka_unit_test(test_init_destroy),
         cmocka_unit_test(test_init_null_rejects),
         cmocka_unit_test(test_load_success_resets_history_and_selection),
@@ -460,6 +985,23 @@ int main(void) {
         cmocka_unit_test(test_input_consumption_blocks_multi_layer),
         cmocka_unit_test(test_escape_hierarchy_inspector_before_exit),
         cmocka_unit_test(test_edit_mode_consumes_pointer),
+        /* Phase 5 */
+        cmocka_unit_test(test_set_material_requires_selection),
+        cmocka_unit_test(test_set_material_rejects_unloaded),
+        cmocka_unit_test(test_set_material_applies_and_dirties),
+        cmocka_unit_test(test_undo_redo_via_wrappers),
+        cmocka_unit_test(test_unsaveable_material_id_status),
+        cmocka_unit_test(test_save_success_clears_dirty),
+        cmocka_unit_test(test_picker_next_prev_and_confirm),
+        cmocka_unit_test(test_input_undo_redo_save_shortcuts),
+        cmocka_unit_test(test_reload_prompt_when_dirty),
+        /* Phase 6 */
+        cmocka_unit_test(test_exit_resume_default_does_not_discard),
+        cmocka_unit_test(test_exit_save_and_exit_persists),
+        cmocka_unit_test(test_exit_discard_and_exit_does_not_write),
+        cmocka_unit_test(test_exit_save_failure_blocks_exit),
+        cmocka_unit_test(test_phase6_vertical_slice_acceptance),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }
+

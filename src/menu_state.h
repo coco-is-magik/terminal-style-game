@@ -30,13 +30,10 @@
  */
 typedef enum {
     MENU_NONE = 0,         /* No menu active (returned by peek on empty stack) */
-    MENU_MAIN,             /* Main menu: Start Game, Asset Editor, Quit */
+    MENU_MAIN,             /* Main menu: Start Game, Editor, Quit */
     MENU_PAUSE,            /* Pause menu: Resume, Main Menu, Quit */
-    MENU_EDITOR,           /* Editor menu: Back to Editor, Main Menu */
-    MENU_CONFIRM_QUIT,            /* Quit confirmation: Yes, No */
-    MENU_DESIGNER_EXIT_CONFIRM,   /* Decal/material designer discard-edits prompt: Discard, Cancel */
-    MENU_ASSET_SELECT,            /* Asset class selector: Decals, Materials, Lights */
-    MENU_ID_COUNT                 /* Sentinel — total number of valid MenuId values */
+    MENU_CONFIRM_QUIT,     /* Quit confirmation: Yes, No */
+    MENU_ID_COUNT          /* Sentinel — total number of valid MenuId values */
 } MenuId;
 
 /** Maximum menus that may be simultaneously stacked (nested dialogs) */

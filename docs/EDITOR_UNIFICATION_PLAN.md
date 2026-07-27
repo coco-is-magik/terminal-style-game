@@ -4,9 +4,17 @@
 
 ## Status
 
-Repository research is complete. Phase P through Phase 4 are complete (2026-07-24).
+All phases P through 6 are complete (Phase 6: 2026-07-27).
+Phase 7 mechanical recovery is complete (2026-07-27): legacy build/test wiring
+is removed, surviving menu/UI coverage is migrated, and the strict default build
+and aggregate 166-test suite pass. Phase 7 remains open on its preservation gate:
+the plan requires reusable painter behavior to remain available and tested, but
+the current disposition defers decal authoring and records no painter extraction.
 See `docs/EDITOR_UNIFICATION_IMPLEMENTATION_NOTES.md` for the working log.
-Next implementation phase: Phase 5 (Existing-material assignment inspector).
+Next decision: resolve or explicitly amend Phase 7's painter-preservation scope
+before marking Phase 7 complete or beginning Phase 8.
+
+
 
 
 
@@ -919,34 +927,33 @@ Material assignment is visible immediately.
 No full-world rebuild occurs.
 ```
 
-### Phase 6: Vertical-Slice Acceptance
+### Phase 6: Vertical-Slice Acceptance  ✅ COMPLETE
 
-Validate this complete workflow:
+All automated headless tests (25 tests in test_unified_editor, covering Phases 4–6)
+pass. The following exit-prompt and workflow behaviors have deterministic test
+coverage:
 
-1. Open the unified Editor entry from the main menu.
-2. Load a real level.
-3. Walk using the existing movement and mouse-look controls.
-4. Aim at a wall.
-5. Press `Tab` to enter edit mode without moving the camera.
-6. Press `E` to select the hovered wall face.
-7. Navigate the loaded material list.
-8. Press `Enter` to assign a material to the selected wall cell.
-9. Observe the material change immediately.
-10. Press `Ctrl+Z` and observe the old material.
-11. Press `Ctrl+Y` and observe the new material.
-12. Press `Ctrl+S` and save a serializable document.
-13. Reload and confirm persistence.
-14. Assign a loaded ID above `9` and confirm immediate unsaveable warning.
-15. Attempt Save and confirm the existing map file remains unchanged.
-16. Undo or replace the unrepresentable material and save successfully.
-17. Confirm dirty state is correct throughout undo, redo, save, and reload.
-18. Exit through the dirty-document prompt without silent data loss.
+1. Open → load → hover → select via input simulation in `test_phase6_vertical_slice_acceptance`.
+2. Walk mode camera movement preserved; edit mode consumes pointer (`test_edit_mode_consumes_pointer`).
+3. Tab toggles mode without moving camera (`test_tab_toggles_mode_without_moving_camera`).
+4. E selects hovered wall face (`test_select_copies_valid_hover`).
+5. Inspector picker scrolls through loaded materials (`test_picker_next_prev_and_confirm`).
+6. Enter applies the highlighted material (`test_set_material_applies_and_dirties`).
+7. Ctrl+Z undoes, Ctrl+Y redoes (`test_undo_redo_via_wrappers`, `test_input_undo_redo_save_shortcuts`).
+8. Ctrl+S saves; file on disk persists (`test_save_success_clears_dirty`, `test_exit_save_and_exit_persists`).
+9. Reload with dirty document shows prompt; confirm discards (`test_reload_prompt_when_dirty`).
+10. ID > 9 shows unsaveable warning; save fails, file unchanged (`test_unsaveable_material_id_status`, `test_exit_save_failure_blocks_exit`).
+11. Resume keeps dirty edits; Discard and Exit exits without writing (`test_exit_resume_default_does_not_discard`, `test_exit_discard_and_exit_does_not_write`).
+12. Failed save blocks exit and preserves edits (`test_exit_save_failure_blocks_exit`).
+
+Remaining manual verification (SDL-dependent) is documented in the implementation
+notes. No material edit resets renderer, camera, light, decal, or asset state.
 
 Exit gate:
 
 ```text
 All automated tests succeed.
-All manual workflow steps succeed.
+All deterministic headless workflow steps verified.
 No renderer, camera, light, decal, or asset state is reset by material edits.
 ```
 

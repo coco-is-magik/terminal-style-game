@@ -1,7 +1,0 @@
-name=le_decal_pane
-type=container
-x=0
-y=20
-coords=absolute
-width=48
-height=120

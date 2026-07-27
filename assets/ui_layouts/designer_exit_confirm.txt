@@ -1,3 +1,0 @@
-name=designer_exit_confirm
-type=layout
-elements=discard_title,discard_yes,discard_no

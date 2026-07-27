@@ -1,11 +1,10 @@
 name=confirm_quit_title
 type=text
 parent=confirm_menu_container
-x=1
-y=0
+x=2
+y=1
 coords=relative
-width=34
+width=16
 height=1
 align=center
-fg=255,255,255,255
-content=QUIT? ARE YOU SURE?
+content=QUIT GAME?

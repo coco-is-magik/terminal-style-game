@@ -8,8 +8,14 @@
 - Phase 2: complete (2026-07-24)
 - Phase 3: complete (2026-07-24)
 - Phase 4: complete (2026-07-24)
-- Next: Phase 5 (Existing-material assignment inspector)
+- Phase 5: complete (2026-07-27)
+- Phase 6: complete (2026-07-27)
+- Phase 7 mechanical recovery: complete (2026-07-27)
+- Phase 7 preservation gate: open — reusable painter extraction/testing is not
+  evidenced; decal authoring is currently deferred by the disposition record
+- Next: resolve or amend the painter-preservation requirement before Phase 8
 - Source baseline commit: `b7638887bf85e3909ca49dba28c4a07fb5b4aea0`
+
 
 
 
@@ -235,6 +241,14 @@ renderer/lighting/raycast receive `TEST_FEATURE_*` defs/includes/libs.
 | 2026-07-24 Phase 4 | `./build/test-unified-editor` | 11/11 passed |
 | 2026-07-24 Phase 4 | `make test` | All runners passed including unified-editor + updated ui-ele |
 | 2026-07-24 Phase 4 | Main menu entry | `open_level_editor` → `APP_STATE_EDITOR` loads `assets/maps/1.txt` |
+| 2026-07-27 Phase 5 | `make -B all` | Success |
+| 2026-07-27 Phase 5 | `./build/test-unified-editor` | 20/20 passed |
+| 2026-07-27 Phase 5 | `make test` | All runners passed |
+| 2026-07-27 Phase 6 | `./build/test-unified-editor` | 25/25 passed (11 Phase 4 + 9 Phase 5 + 5 Phase 6) |
+| 2026-07-27 Phase 6 | `make test` | All runners passed, no regressions |
+| 2026-07-27 Phase 6 | Exit-prompt tests | Resume, Save-and-Exit, Discard-and-Exit, failed-save blocks exit all verified |
+| 2026-07-27 Phase 6 | Vertical-slice acceptance | `test_phase6_vertical_slice_acceptance` covers full workflow headlessly |
+
 
 ## Phase 3 decisions
 
@@ -336,11 +350,76 @@ renderer/lighting/raycast receive `TEST_FEATURE_*` defs/includes/libs.
 | Escape hierarchy | `test_escape_hierarchy_inspector_before_exit` |
 | Edit mode consumes pointer | `test_edit_mode_consumes_pointer` |
 
-## Phase 5 preview (next)
+## Phase 5 decisions
 
-Implement material picker + controller wrappers:
-`unified_editor_set_wall_material`, undo/redo/save; route through
-`command_history_set_wall_material`; dirty/unsaveable status; no world rebuild.
+1. Public wrappers added exactly as planned:
+   `unified_editor_set_wall_material`, `unified_editor_undo`,
+   `unified_editor_redo`, `unified_editor_save`.
+2. Apply path validates selection + `material_id_is_loaded` before calling
+   `command_history_set_wall_material`. Unloaded IDs never enter history.
+3. Material picker enumerates loaded IDs in ascending order (1..255 scan).
+   Select rebuilds picker index to the wall's current material when loaded.
+4. Up/Down cycle the picker while inspector is open; Enter applies the
+   highlighted material. Shortcuts still consume input outside the inspector.
+5. IDs above `9` are live-allowed; status becomes
+   `EDITOR_STATUS_UNSAVABLE_MATERIAL_ID` immediately on successful apply.
+6. Save failure (including unrepresentable material) preserves history and
+   document edits; only status/last_save_result change.
+7. Dirty reload opens `EDITOR_MODAL_RELOAD_PROMPT`; confirm reloads path and
+   resets history/selection via `unified_editor_load_scene`.
+8. Overlay lists a scrolling material window, dirty flag, unsaveable warning,
+   and shortcut help. No world rebuild — map cells mutate in place.
+9. Command-result mapping: invalid target → invalid selection; OOM / state-id
+   exhaustion surface dedicated statuses; unsaveable refresh runs after every
+   successful mutation/undo/redo.
 
+## Phase 5 deliverables
 
+| Path | Change |
+|---|---|
+| `src/unified_editor.h` | Added set/undo/redo/save wrappers |
+| `src/unified_editor.c` | Picker, apply path, status mapping, overlay list, reload prompt |
+| `tests/test_unified_editor.c` | 20 tests (11 Phase 4 + 9 Phase 5) |
+
+### Phase 5 test coverage vs plan
+
+| Plan requirement | Test |
+|---|---|
+| Material validation (selection required) | `test_set_material_requires_selection` |
+| Reject unloaded material | `test_set_material_rejects_unloaded` |
+| Apply dirties + history | `test_set_material_applies_and_dirties` |
+| Undo / redo wrappers | `test_undo_redo_via_wrappers` |
+| Unsaveable ID status + failed save preserves edits | `test_unsaveable_material_id_status` |
+| Save success clears dirty | `test_save_success_clears_dirty` |
+| Picker next/prev + confirm apply | `test_picker_next_prev_and_confirm` |
+| Input undo/redo/save shortcuts | `test_input_undo_redo_save_shortcuts` |
+| Dirty reload prompt | `test_reload_prompt_when_dirty` |
+
+## Phase 6 deliverables
+
+| Path | Change |
+|---|---|
+| `src/unified_editor.h` | Added `EditorExitChoice` enum + `exit_choice` field |
+| `src/unified_editor.c` | Exit-prompt input handlers (prev/next/confirm), `editor_handle_exit_confirm`, overlay renders choice list with dirty warning |
+| `tests/test_unified_editor.c` | 5 new tests (25 total): exit resume, save-and-exit, discard-and-exit, failed-save blocks exit, vertical-slice acceptance |
+
+### Phase 6 test coverage vs plan
+
+| Plan requirement | Test |
+|---|---|
+| Resume keeps dirty edits | `test_exit_resume_default_does_not_discard` |
+| Save and Exit persists to disk | `test_exit_save_and_exit_persists` |
+| Discard and Exit does not write | `test_exit_discard_and_exit_does_not_write` |
+| Failed save blocks exit | `test_exit_save_failure_blocks_exit` |
+| Full workflow: open → hover → select → apply → undo/redo → save → reload → dirty exit choices | `test_phase6_vertical_slice_acceptance` |
+
+### Phase 6 exit-prompt behavior
+
+- Escape opens the exit prompt with default choice `EDITOR_EXIT_RESUME`.
+- Up/Down cycle through Resume → Save and Exit → Discard and Exit → Cancel.
+- Enter on Resume or Cancel dismisses the prompt without exiting.
+- Enter on Save and Exit saves first; if save succeeds, sets `request_exit_to_main_menu`.
+- Enter on Discard and Exit sets `request_exit_to_main_menu` without writing.
+- If save fails (e.g. unrepresentable material), exit is blocked and edits preserved.
+- Overlay shows the choice list with `>` marker, dirty warning, and color-coded highlight.
 

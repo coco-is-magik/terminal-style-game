@@ -1,9 +1,0 @@
-name=slot_decal_step_v
-type=text
-parent=le_dec_meta_pane
-x=2
-y=7
-coords=relative
-width=42
-height=1
-content=
