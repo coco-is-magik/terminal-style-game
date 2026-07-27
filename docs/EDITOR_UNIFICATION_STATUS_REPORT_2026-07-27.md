@@ -1,5 +1,11 @@
 # Editor Unification Status Report
 
+> **Chronological historical report:** The opening sections preserve the broken
+> state originally observed. Later follow-ups record recovery and final closure.
+> For current behavior and regression ownership, use
+> `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`; for deferred work, use
+> `docs/TODO.md`.
+
 **Review date:** 2026-07-27  
 **Scope:** Compare `docs/EDITOR_UNIFICATION_PLAN.md`, the editor implementation
 notes and handoff, the legacy-symbol disposition, current source and assets, and
@@ -418,3 +424,31 @@ I/O, asset registry, and decal runtime/rendering behavior, but no extracted
 painter module or migrated painter tests exist. The next step is a requirements
 decision: implement that extraction, or explicitly amend the plan to defer
 painter authoring with the other broader authoring features.
+
+## Follow-up — Painter Preservation and Phase 7 Closure (2026-07-27)
+
+The user selected extraction rather than deferral. Phase 7's final preservation
+gate is now satisfied by a new headless `decal_painter` domain module.
+
+- `src/decal_painter.h/.c` supports explicit initialized lifecycle, owned canvas
+  allocation, borrowing existing `PatternCell` storage, bounded row-major reads
+  and paints, erase, fill, clear, and no-change results.
+- Dimension multiplication/allocation overflow is rejected before mutation.
+- Failed create/attach operations preserve the active painter transactionally.
+- Owned storage is freed exactly by `decal_painter_destroy`; borrowed storage is
+  never freed. Reattaching an owned painter to its own pointer is rejected to
+  avoid converting it into a dangling borrowed view.
+- `tests/test_decal_painter.c` provides 12 focused tests for lifecycle,
+  ownership, transactionality, coordinates, bounds, no-change behavior, erase,
+  fill, clear, overflow, and invalid arguments.
+- `Makefile` contains a narrow `test-decal-painter` runner in the aggregate suite.
+- Fresh `make -B all`: **PASS** under strict warnings.
+- Fresh `make -B test`: **PASS**, 178/178 tests across 11 runners.
+- Focused painter suite under ASan + UBSan + leak detection: **PASS**, 12/12,
+  with no reported runtime or leak errors.
+
+The extraction intentionally does not restore the legacy Asset Designer state,
+SDL painter UI, cursor/input routing, filename policy, save prompt, or decal
+placement workflow. Those remain deferred product-layer features. Reusable
+painter and asset-domain code is now available and tested, so Phase 7's exit
+gate is complete and Phase 8 is next.

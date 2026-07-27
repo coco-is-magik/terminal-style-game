@@ -23,8 +23,19 @@ USE_SMC_INDEXED_STATE_TRACKER ?= 0
 # SMC batch state tracker toggle.  Set USE_SMC_BATCH_STATE_TRACKER=1 for SMC batch indexed mode (fallback/comparator).
 USE_SMC_BATCH_STATE_TRACKER ?= 0
 
-# SMC stream state tracker toggle.  Set USE_SMC_STREAM_STATE_TRACKER=1 for preferred SMC renderer stream mode.
-USE_SMC_STREAM_STATE_TRACKER ?= 0
+# Explicit baseline toggle. Set USE_NO_STATE_TRACKER=1 to disable all
+# dirty/state tracking; this is diagnostic and never selected by default.
+USE_NO_STATE_TRACKER ?= 0
+
+# SMC stream state tracker toggle. This preferred mode is selected by default
+# when no other dirty/state tracker was requested explicitly.
+ifeq ($(origin USE_SMC_STREAM_STATE_TRACKER),undefined)
+  ifeq ($(filter 1,$(USE_NO_STATE_TRACKER) $(USE_DIRTY_CELLS) $(USE_SMC_STATE_TRACKER) $(USE_SMC_INDEXED_STATE_TRACKER) $(USE_SMC_BATCH_STATE_TRACKER)),)
+    USE_SMC_STREAM_STATE_TRACKER := 1
+  else
+    USE_SMC_STREAM_STATE_TRACKER := 0
+  endif
+endif
 
 # Frame profiling toggle.  Set PROFILE_FRAME=1 to compile in per-frame phase timing.
 PROFILE_FRAME ?= 0
@@ -32,10 +43,10 @@ PROFILE_FRAME ?= 0
 # SMC-specific CFLAGS for disabling optimizations in vendored SMC sources
 SMC_CFLAGS ?=
 
-# Mutual exclusivity check - only one dirty/state tracking mode allowed
-ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER) + $(USE_SMC_STREAM_STATE_TRACKER)),0)
-  ifneq ($(shell expr $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER) + $(USE_SMC_STREAM_STATE_TRACKER)),1)
-    $(error Only one of USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER, USE_SMC_STREAM_STATE_TRACKER may be set)
+# Mutual exclusivity check - select exactly one explicit/default tracker mode.
+ifneq ($(shell expr $(USE_NO_STATE_TRACKER) + $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER) + $(USE_SMC_STREAM_STATE_TRACKER)),0)
+  ifneq ($(shell expr $(USE_NO_STATE_TRACKER) + $(USE_DIRTY_CELLS) + $(USE_SMC_STATE_TRACKER) + $(USE_SMC_INDEXED_STATE_TRACKER) + $(USE_SMC_BATCH_STATE_TRACKER) + $(USE_SMC_STREAM_STATE_TRACKER)),1)
+    $(error Only one of USE_NO_STATE_TRACKER, USE_DIRTY_CELLS, USE_SMC_STATE_TRACKER, USE_SMC_INDEXED_STATE_TRACKER, USE_SMC_BATCH_STATE_TRACKER, USE_SMC_STREAM_STATE_TRACKER may be set)
   endif
 endif
 
@@ -95,6 +106,7 @@ TEST_CORE_RUNNER := $(BUILD_DIR)/test-core
 TEST_DECALS_RUNNER := $(BUILD_DIR)/test-decals
 TEST_MENU_STATE_RUNNER := $(BUILD_DIR)/test-menu-state
 TEST_DECAL_IO_RUNNER         := $(BUILD_DIR)/test-decal-io
+TEST_DECAL_PAINTER_RUNNER    := $(BUILD_DIR)/test-decal-painter
 TEST_UI_ELE_RUNNER           := $(BUILD_DIR)/test-ui-ele
 TEST_SCENE_DOCUMENT_RUNNER   := $(BUILD_DIR)/test-scene-document
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
@@ -134,6 +146,7 @@ SRC_CAMERA        := src/camera.c
 SRC_MAP_LOADER    := src/map_loader.c
 SRC_ASSET_LOADER  := src/asset_loader.c
 SRC_DECAL_IO      := src/decal_io.c
+SRC_DECAL_PAINTER := src/decal_painter.c
 SRC_UI_ELE        := src/ui_ele.c
 SRC_MENU_STATE    := src/menu_state.c
 SRC_SCALE         := src/scale.c
@@ -261,6 +274,9 @@ TEST_DECAL_IO_SRC := \
 	$(SRC_MAP_LOADER) \
 	$(SRC_CONFIG)
 
+TEST_DECAL_PAINTER_SRC := \
+	$(SRC_DECAL_PAINTER)
+
 TEST_CORE_SRC := \
 	$(SRC_GRID) \
 	$(SRC_SCALE) \
@@ -362,6 +378,10 @@ $(TEST_DECAL_IO_RUNNER): tests/test_decal_io.c $(TEST_DECAL_IO_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decal_io.c $(TEST_DECAL_IO_SRC) \
 		-o $(TEST_DECAL_IO_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_DECAL_PAINTER_RUNNER): tests/test_decal_painter.c $(TEST_DECAL_PAINTER_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decal_painter.c $(TEST_DECAL_PAINTER_SRC) \
+		-o $(TEST_DECAL_PAINTER_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_UI_ELE_RUNNER): tests/test_ui_ele.c $(TEST_UI_ELE_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_ele.c $(TEST_UI_ELE_SRC) \
 		-o $(TEST_UI_ELE_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -398,12 +418,13 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
 	./$(TEST_DECALS_RUNNER)
 	./$(TEST_MENU_STATE_RUNNER)
 	./$(TEST_DECAL_IO_RUNNER)
+	./$(TEST_DECAL_PAINTER_RUNNER)
 	./$(TEST_UI_ELE_RUNNER)
 	./$(TEST_SCENE_DOCUMENT_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
@@ -416,7 +437,7 @@ test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_
 
 
 benchmark: $(APP)
-	./$(APP) --benchmark-stress 5
+	./$(APP) --benchmark-raycast 5
 
 stability: $(APP)
 	./$(APP) --stability-test 30

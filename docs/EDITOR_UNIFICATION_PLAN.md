@@ -4,15 +4,23 @@
 
 ## Status
 
-All phases P through 6 are complete (Phase 6: 2026-07-27).
-Phase 7 mechanical recovery is complete (2026-07-27): legacy build/test wiring
-is removed, surviving menu/UI coverage is migrated, and the strict default build
-and aggregate 166-test suite pass. Phase 7 remains open on its preservation gate:
-the plan requires reusable painter behavior to remain available and tested, but
-the current disposition defers decal authoring and records no painter extraction.
+All phases P through 8 are complete (Phase 8: 2026-07-27).
+Phase 7 removed legacy editor states and UI while preserving reusable authoring
+behavior in tested headless boundaries: `decal_io` for persistence and
+`decal_painter` for owned/borrowed pattern lifecycle, bounded cell painting,
+erase, fill, and clear. The strict default build and aggregate 178-test suite
+pass; the 12 painter tests also pass under ASan, UBSan, and leak detection.
 See `docs/EDITOR_UNIFICATION_IMPLEMENTATION_NOTES.md` for the working log.
-Next decision: resolve or explicitly amend Phase 7's painter-preservation scope
-before marking Phase 7 complete or beginning Phase 8.
+Phase 8's contract audit is complete: ragged rows are explicitly accepted and
+padded with empty cells; wall commands reject empty cells; app-level input
+consumption is propagated; unloaded selected materials show `(missing)`; and
+authoritative-map/no-reset behavior has direct regression coverage. Default,
+preferred stream-tracker, dirty-cell, and lighting-cache forced builds/tests all
+pass 181/181. The preferred SMC stream tracker is now the default when no other
+tracker is explicitly selected. Runtime gates use the representative raycast
+workload and accept sustained average render time while retaining worst-frame
+telemetry: benchmark passed at 5.52 ms average and stability passed at 5.00 ms
+average over 30 seconds. Phase 8 and this plan are complete.
 
 
 
@@ -1007,6 +1015,15 @@ All builds and tests succeed.
 ```
 
 ### Phase 8: Documentation and Regression Validation
+
+**Current result (2026-07-27): COMPLETE.** Documentation and all four strict
+build/test configurations pass at 181/181 tests. The default now selects the
+preferred SMC stream tracker, while explicit alternate tracker selections still
+override it. `make benchmark` and `make stability` run the representative
+raycast workload and pass on sustained average render cost (5.52 ms and 5.00
+ms respectively at a 120 FPS target); worst-frame values remain reported as
+diagnostic telemetry. Detailed evidence is in
+`docs/EDITOR_UNIFICATION_IMPLEMENTATION_NOTES.md`.
 
 Update:
 

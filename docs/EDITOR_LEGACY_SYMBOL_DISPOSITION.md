@@ -13,11 +13,20 @@ The interrupted mechanical removal was reconciled on 2026-07-27:
 - the surviving generic quit-confirmation layout/elements were restored; and
 - `make -B all` plus `make -B test` pass under strict warnings (166/166 tests).
 
-This does **not** by itself satisfy the plan's complete Phase 7 preservation
-gate. The entries below intentionally remove/defer canvas paint and brush
-behavior; no extracted painter module or migrated painter tests currently exist.
-Phase 7 therefore remains open until that requirement is implemented or the plan
-is explicitly amended to make painter authoring deferred scope.
+The painter-preservation gate was completed later on 2026-07-27 by extracting
+`src/decal_painter.c/.h` and `tests/test_decal_painter.c`. The headless module
+preserves the reusable domain boundary without restoring the legacy product:
+
+- zero-initialized owned rectangular `PatternCell` canvases;
+- borrowed existing pattern storage with explicit non-ownership;
+- overflow-checked dimensions and transactional replacement;
+- bounded row-major read and paint;
+- erase, fill, clear, and no-change reporting; and
+- deterministic invalid-argument/out-of-bounds behavior.
+
+The focused 12-test runner passes normally and under ASan/UBSan/leak detection.
+Painter cursor/input dispatch, SDL UI/rendering, filename/path policy, save
+prompts, and decal placement remain intentionally deferred product-layer work.
 
 Every externally visible function, significant static helper, state structure,
 and relevant test in the three legacy editor modules. Each symbol's disposition
@@ -46,8 +55,8 @@ is one of:
 
 | Symbol | Role | Disposition |
 |--------|------|-------------|
-| `asset_designer_init()` | Heap-allocate pattern, zero state | **remove** — canvas editor deferred |
-| `asset_designer_destroy()` | Free pattern | **remove** |
+| `asset_designer_init()` | Heap-allocate pattern, zero state | **move with adaptation** → `decal_painter_create()` for headless owned canvas lifecycle; legacy UI state removed |
+| `asset_designer_destroy()` | Free pattern | **move with adaptation** → `decal_painter_destroy()` with explicit owned/borrowed semantics |
 | `asset_designer_update()` | Frame input dispatch | **remove** |
 | `asset_designer_render()` | Draw canvas, cursor, overlays | **remove** |
 | `ad_validate_basename()` | Filename validator `[A-Za-z0-9_-]` | **remove/defer** — no current caller; no replacement symbol exists in `decal_io` |
@@ -57,14 +66,18 @@ is one of:
 | Symbol | Role | Disposition |
 |--------|------|-------------|
 | `ad_finalize_decal()` | Closes decal + converts pattern to asset | **remove** — editors removed |
-| `ad_clear_pattern()` | Resets pattern cells | **remove** |
-| All static paint/brush/input helpers | Canvas manipulation | **remove** |
+| `ad_clear_pattern()` | Resets pattern cells | **move with adaptation** → `decal_painter_clear()` |
+| Static single-cell paint/erase helpers | Canvas mutation | **move with adaptation** → bounded `decal_painter_paint_cell()` / `decal_painter_erase_cell()` |
+| Static fill helpers | Whole-canvas mutation | **move with adaptation** → `decal_painter_fill()` |
+| Cursor/navigation/input helpers | Product-layer input dispatch | **remove/defer** — intentionally outside the headless painter boundary |
 
 ### Tests (`tests/test_asset_designer.c`)
 
 | Test | Role | Disposition |
 |------|------|-------------|
-| All 11 tests | Canvas init, draw, clear, save, load, file path, navigation, basename validation | **remove** — entire module removed; `ad_validate_basename` has no caller |
+| Canvas lifecycle and mutation coverage | Init, allocation, ownership, paint, erase, clear, bounds | **replace** → 12 focused tests in `tests/test_decal_painter.c` |
+| Save/load coverage | Decal persistence | **replace** → `tests/test_decal_io.c` |
+| UI navigation, save prompts, basename policy | Legacy product workflow | **remove/defer** — no current caller or UI |
 
 ---
 

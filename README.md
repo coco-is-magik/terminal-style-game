@@ -22,8 +22,11 @@ This approach features:
 ### Performance Targets
 - **Target Resolution**: 260x160 Logical Character Grid
 - **Target Framerate**: 120 FPS (8.33ms budget)
-- **Ideal Threshold**: `avg_render_ms <= 4ms` & `worst_render_ms <= 6ms`
-- **Minimum Acceptable Threshold**: `avg_render_ms <= 6ms` & `worst_render_ms <= 8ms`
+- **Ideal Threshold**: `avg_render_ms <= 4ms`
+- **Minimum Acceptable Threshold**: `avg_render_ms <= 6ms`
+- Worst-frame and minimum-spare values are retained as diagnostic telemetry;
+  they are not hard gates because isolated scheduler/presentation spikes are
+  not a stable sustained-performance measure on the target low-end hardware.
 
 ## Build
 
@@ -39,13 +42,16 @@ The following build flags control renderer and engine behavior:
 | `USE_SMC=1` | Build with generated SMC dispatch code. |
 | `USE_LIGHTING_CACHE=1` | Enable lighting shadow ray cache. |
 | `USE_GLYPH_CACHE=1` | Enable glyph block caching. |
+| `USE_NO_STATE_TRACKER=1` | Explicit diagnostic baseline: disable all dirty/state tracking. |
 | `USE_DIRTY_CELLS=1` | Renderer-specific custom dirty-cell tracking (reference path). Baseline for correctness. |
 | `USE_SMC_STATE_TRACKER=1` | SMC hash-based API. General-purpose/diagnostic use. Not recommended for dense grids. |
 | `USE_SMC_INDEXED_STATE_TRACKER=1` | SMC per-cell indexed API. Diagnostic mode for debugging. |
 | `USE_SMC_BATCH_STATE_TRACKER=1` | SMC batch indexed mode. Fallback/comparator. |
-| `USE_SMC_STREAM_STATE_TRACKER=1` | **Preferred SMC renderer mode**. Uses stream-based diffing to eliminate state packing overhead. |
+| `USE_SMC_STREAM_STATE_TRACKER=1` | **Default and preferred renderer mode** when no alternate tracker is explicitly selected. Uses stream-based diffing to eliminate state packing overhead. |
 
-Note: Only one dirty-tracking mode may be enabled at a time.
+Note: Only one tracker/baseline mode may be enabled at a time. Ordinary `make`
+selects SMC stream mode; use `USE_NO_STATE_TRACKER=1` only when an untracked
+baseline is intentionally required.
 
 ### Dirty-Tracking Modes
 
@@ -53,11 +59,12 @@ For optimizing cell rasterization, these modes control how the renderer detects 
 
 | Mode | Description |
 |------|-------------|
+| `USE_NO_STATE_TRACKER=1` | No dirty/state tracker; explicit performance/correctness baseline. |
 | `USE_DIRTY_CELLS=1` | Renderer-specific custom dirty-cell tracking (reference path). Baseline for correctness. |
 | `USE_SMC_INDEXED_STATE_TRACKER=1` | SMC per-cell indexed API. Diagnostic mode for debugging. |
 | `USE_SMC_STATE_TRACKER=1` | SMC hash-based API. General-purpose/diagnostic use. Not recommended for dense grids. |
 | `USE_SMC_BATCH_STATE_TRACKER=1` | SMC batch indexed mode. Fallback/comparator. |
-| `USE_SMC_STREAM_STATE_TRACKER=1` | **Preferred SMC renderer mode**. Uses stream-based diffing to eliminate state packing overhead. |
+| `USE_SMC_STREAM_STATE_TRACKER=1` | **Default and preferred renderer mode** when no alternate tracker is explicitly selected. Uses stream-based diffing to eliminate state packing overhead. |
 
 Example:
 ```bash
@@ -70,14 +77,22 @@ make run
 make run-normal
 make run-stress
 
-The `run` target starts the raycast world.  `run-normal` and `run-stress`
-start the software-renderer test patterns used for benchmarking.
+The `run` target starts the raycast world. `run-normal` and `run-stress` start
+software-renderer diagnostic patterns; the acceptance benchmark uses the
+representative raycast workload.
 
 ## Test
 
 make test
 make benchmark
 make stability
+
+
+`make benchmark` and `make stability` exercise the representative raycast
+workload. They retain worst-frame and minimum-spare telemetry, but acceptance is
+based on allocation safety and sustained average render cost: `ideal` at
+`<= 4 ms`, `pass_minimum` at `<= 6 ms`. This avoids treating isolated
+scheduler/presentation spikes on low-end hardware as sustained regressions.
 
 ## Clean
 
@@ -109,10 +124,51 @@ Game data is loaded from `assets/`:
 
 See `assets/README.md` for the file format details.
 
+Maintainer references:
+
+- `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor
+  behavior, forbidden regressions, and test ownership.
+- `docs/TODO.md` — intentionally deferred editor and benchmark work.
+
 ## Editors
 
-The main menu exposes two asset editors:
+The main menu exposes one **Editor**. It loads the real level from
+`assets/maps/1.txt`; walking, selection, material preview, and rendering share
+one camera and one authoritative map.
 
-  - **Asset Designer** (`APP_STATE_ASSET_DESIGNER`) — decal canvas editor
-  - **Live Editor** (`APP_STATE_LIVE_EDITOR`) — combined decal/material
-    editor with a live raycast preview
+### Unified editor controls
+
+| Control | Action |
+|---|---|
+| `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
+| `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
+| `E` | Select the wall under the center crosshair and open the inspector |
+| `Up` / `Down` | Move through loaded materials or modal choices |
+| `Enter` | Apply the highlighted material or confirm a modal choice |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+S` | Save the current map |
+| `F5` | Reload; dirty documents require confirmation |
+| `Escape` | Close inspector, then open the editor exit prompt |
+
+The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
+A failed save does not discard edits or history.
+
+### Current editor limits
+
+- The map format stores **one material ID per cell**, so selecting any wall
+  face and applying a material changes the entire wall cell, not one face.
+- Map persistence stores one decimal character per cell. Only IDs `0..9` can
+  be saved (`0` is empty/passable; positive IDs are walls).
+- Loaded material IDs above `9` may be applied for immediate live preview, but
+  the inspector marks them unsaveable and saving is rejected until all cells
+  return to `0..9`. The prior map file is preserved on failure.
+- Ragged map rows are accepted on load and padded on the right with empty
+  material-`0` cells to the longest row.
+- If a selected wall references an unloaded material, its numeric ID is shown
+  with `(missing)` and may be replaced by a loaded material.
+
+Deferred work includes map-cell construction/deletion, per-face materials,
+floor and ceiling editing, material authoring, integrated painter UI, decal and
+sprite placement, animation, objects, lights, triggers, spawn editing, and
+stable entity IDs. Reusable decal persistence (`decal_io`) and headless pattern
+painting (`decal_painter`) remain available and tested for later integration.

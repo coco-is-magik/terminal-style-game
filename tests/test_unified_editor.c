@@ -134,6 +134,28 @@ static MaterialId wall_mat(const UnifiedEditorState *ed) {
     return mat;
 }
 
+static bool grid_contains_text(const Grid *grid, const char *text) {
+    size_t text_len;
+
+    if (!grid || !text) return false;
+    text_len = strlen(text);
+    if (text_len == 0 || text_len > (size_t)grid->width) return false;
+
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x <= grid->width - (int)text_len; x++) {
+            size_t i;
+            for (i = 0; i < text_len; i++) {
+                if (grid->cells[y * grid->width + x + (int)i].glyph !=
+                    (uint8_t)text[i]) {
+                    break;
+                }
+            }
+            if (i == text_len) return true;
+        }
+    }
+    return false;
+}
+
 static int load_editor(UnifiedEditorState *ed, const char *name) {
     char path[512];
     path_in_tmpdir(path, sizeof(path), name);
@@ -144,6 +166,56 @@ static int load_editor(UnifiedEditorState *ed, const char *name) {
         return -1;
     }
     return 0;
+}
+
+static void test_authoritative_map_updates_without_state_reset(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    select_east_wall(&ed);
+
+    Map *map_before = scene_document_get_map_for_runtime(&ed.document);
+    AssetRegistry *assets_before = ed.assets;
+    SelectionTarget selection_before = ed.selection;
+
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_ptr_equal(scene_document_get_map_for_runtime(&ed.document), map_before);
+    assert_ptr_equal(ed.assets, assets_before);
+    assert_int_equal(map_get(map_before, 4, 2)->material_id, 2);
+    assert_memory_equal(&ed.selection, &selection_before, sizeof(selection_before));
+    assert_true(ed.inspector_open);
+
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_ptr_equal(scene_document_get_map_for_runtime(&ed.document), map_before);
+    assert_int_equal(map_get(map_before, 4, 2)->material_id, 1);
+
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_ptr_equal(scene_document_get_map_for_runtime(&ed.document), map_before);
+    assert_int_equal(map_get(map_before, 4, 2)->material_id, 2);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_overlay_marks_unloaded_selected_material_missing(void **state) {
+    (void)state;
+    char path[512];
+    UnifiedEditorState ed;
+    Grid *grid;
+
+    path_in_tmpdir(path, sizeof(path), "map.txt");
+    assert_int_equal(write_text_file(path, "3\n"), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
+    ed.selection.type = SELECTION_WALL_FACE;
+    ed.selection.value.wall_face = (WallFaceRef){0, 0, WALL_FACE_WEST};
+
+    grid = grid_create(100, 30);
+    assert_non_null(grid);
+    unified_editor_render_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "mat:3 (missing)"));
+
+    grid_destroy(grid);
+    unified_editor_destroy(&ed);
 }
 
 /* ===================================================================
@@ -973,6 +1045,9 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        /* Phase 8 contract regressions */
+        cmocka_unit_test(test_authoritative_map_updates_without_state_reset),
+        cmocka_unit_test(test_overlay_marks_unloaded_selected_material_missing),
         /* Phase 4 */
         cmocka_unit_test(test_init_destroy),
         cmocka_unit_test(test_init_null_rejects),

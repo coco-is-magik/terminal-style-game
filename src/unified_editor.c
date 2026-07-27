@@ -777,8 +777,10 @@ void unified_editor_render_overlay(
             WallMaterialRef ref = editor_wall_face_to_material_ref(*wf);
             scene_document_get_wall_material(&editor->document, ref, &mat);
             snprintf(line, sizeof(line),
-                     "Select (%d,%d) face:%s mat:%d",
-                     wf->map_x, wf->map_y, editor_face_label(wf->face), mat);
+                     "Select (%d,%d) face:%s mat:%d%s",
+                     wf->map_x, wf->map_y, editor_face_label(wf->face), mat,
+                     material_id_is_loaded(editor->assets, (int)mat)
+                         ? "" : " (missing)");
         } else {
             snprintf(line, sizeof(line), "Select (none)");
         }

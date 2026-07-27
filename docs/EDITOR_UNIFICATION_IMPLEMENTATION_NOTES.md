@@ -10,10 +10,37 @@
 - Phase 4: complete (2026-07-24)
 - Phase 5: complete (2026-07-27)
 - Phase 6: complete (2026-07-27)
-- Phase 7 mechanical recovery: complete (2026-07-27)
-- Phase 7 preservation gate: open — reusable painter extraction/testing is not
-  evidenced; decal authoring is currently deferred by the disposition record
-- Next: resolve or amend the painter-preservation requirement before Phase 8
+- Phase 7: complete (2026-07-27)
+- Phase 7 painter preservation: `decal_painter` headless domain module plus 12
+  focused tests; full painter UI/input/file workflow remains deferred
+- Phase 8: complete (2026-07-27)
+- Phase 8 contract audit resolved the five carried gaps as follows:
+  1. Ragged map rows remain valid and are padded with material `0`, matching
+     `map_loader.c` and `assets/README.md`; SceneDocument "row semantics"
+     validation means acceptance of that loader contract, not equal row widths.
+  2. `command_history_set_wall_material` now rejects material-`0` empty cells;
+     command-system regression coverage verifies no document/history mutation.
+  3. `app.c` now applies `EditorInputConsumption` by clearing consumed editor/
+     generic edge flags and mouse deltas before later application processing.
+  4. The overlay marks an unloaded selected material ID with `(missing)` and a
+     grid-level overlay test locks the visible marker.
+  5. A controller regression test proves execute/undo/redo mutate the same
+     authoritative map allocation immediately while preserving asset and
+     selection/inspector state; `app.c` renders that map every editor frame and
+     contains no world reconstruction in the mutation path.
+- Build/test matrix and runtime benchmark/stability targets are complete and
+  green. SMC stream tracking is the default unless another mode is explicitly
+  selected; runtime acceptance uses average render cost and preserves worst
+  samples as telemetry because current outlier trimming does not reliably
+  classify low-end-hardware scheduling/presentation spikes.
+- Post-Phase-8 maintenance (2026-07-27): stable accepted requirements and test
+  ownership now live in `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`;
+  intentionally deferred editor and benchmark work lives in `docs/TODO.md`.
+  The user completed an interactive editor smoke test and accepted the result as
+  a strong foundation. Historical handoffs/plans are marked superseded.
+- `USE_NO_STATE_TRACKER=1` now provides an explicit untracked diagnostic
+  baseline. Ordinary builds still default to stream mode, and conflicting mode
+  selections fail during Makefile evaluation.
 - Source baseline commit: `b7638887bf85e3909ca49dba28c4a07fb5b4aea0`
 
 
@@ -248,6 +275,31 @@ renderer/lighting/raycast receive `TEST_FEATURE_*` defs/includes/libs.
 | 2026-07-27 Phase 6 | `make test` | All runners passed, no regressions |
 | 2026-07-27 Phase 6 | Exit-prompt tests | Resume, Save-and-Exit, Discard-and-Exit, failed-save blocks exit all verified |
 | 2026-07-27 Phase 6 | Vertical-slice acceptance | `test_phase6_vertical_slice_acceptance` covers full workflow headlessly |
+| 2026-07-27 Phase 7 | `make -B all` | Success under `-Wall -Wextra -Wpedantic -Werror` |
+| 2026-07-27 Phase 7 | `make -B test` | 178/178 passed across 11 current runners |
+| 2026-07-27 Phase 7 | `test-decal-painter` | 12/12 passed |
+| 2026-07-27 Phase 7 | Painter ASan/UBSan/LSan | 12/12 passed; no reported runtime or leak errors |
+| 2026-07-27 Phase 8 | First focused command/editor run | Command runner: 16/17 passed; historical allocation-growth test generated material `0`, which is now correctly rejected as an empty-cell transition. Test data fixed to cycle only occupied IDs `1..9`; unified runner did not run because command chaining stopped on failure. |
+| 2026-07-27 Phase 8 | Focused rerun after test-data fix | Command-system 17/17 and unified-editor 27/27 passed under strict warnings. |
+| 2026-07-27 Phase 8 | Default `make -B all` + `make -B test` | PASS; 181/181 across 11 runners. |
+| 2026-07-27 Phase 8 | `USE_SMC_STREAM_STATE_TRACKER=1` forced build + tests | PASS; 181/181 across 11 runners. |
+| 2026-07-27 Phase 8 | `USE_DIRTY_CELLS=1` forced build + tests | PASS; 181/181 across 11 runners. |
+| 2026-07-27 Phase 8 | `USE_LIGHTING_CACHE=1` forced build + tests | PASS; 181/181 across 11 runners. |
+| 2026-07-27 Phase 8 | Video environment check | `DISPLAY=:0`; X11 socket present. |
+| 2026-07-27 Phase 8 | First `make benchmark` after lighting-cache matrix | Executed but failed performance: avg 8.87 ms, worst/effective worst 14.15 ms, 499 frames. Repeated after forced default rebuild to remove configuration ambiguity. |
+| 2026-07-27 Phase 8 | Default `make benchmark` | **FAIL performance**, not environment: avg 8.90 ms, worst/effective worst 13.16 ms, min spare -5.91 ms, 500 frames; target minimum is avg <=6 / worst <=8. No allocation error reported. |
+| 2026-07-27 Phase 8 | Default `make stability` | Ran full 30 seconds / 3026 frames but **FAIL performance**: avg 8.79 ms, worst/effective worst 13.90 ms, min spare -6.86 ms. No allocation error reported. |
+| 2026-07-27 Phase 8 follow-up | Runtime-policy diagnosis | Confirmed prior default had no tracker and `make benchmark` used a full-change stress pattern; project SMC evidence instead records ~5.2 ms on representative raycast workloads. |
+| 2026-07-27 Phase 8 follow-up | Default selection | `make` now selects `USE_SMC_STREAM_STATE_TRACKER=1` when no tracker is explicitly requested; explicit dirty/general/indexed/batch choices suppress the default. Strict build passes and compile line confirms the stream define/vendor sources. |
+| 2026-07-27 Phase 8 follow-up | Runtime acceptance | Allocation safety remains mandatory. `ideal`/`pass_minimum` use average render thresholds <=4/<=6 ms; worst/effective-worst and min-spare remain visible telemetry rather than unstable hard gates. |
+| 2026-07-27 Phase 8 follow-up | Default stream `make -B test` | PASS; 181/181 across 11 runners. |
+| 2026-07-27 Phase 8 follow-up | `make benchmark` (raycast) | PASS minimum: target 120 FPS, avg 5.52 ms, worst 14.95 ms, 571 frames, zero stream fallback/out-of-range; 42,501 cells rasterized. |
+| 2026-07-27 Phase 8 follow-up | `make stability` (raycast, 30 s) | PASS minimum: target 120 FPS, avg 5.00 ms, worst 14.70 ms, 3668 frames, zero stream fallback/out-of-range; no allocation failure. |
+| 2026-07-27 maintenance | Manual unified-editor smoke test | User performed the interactive check and reported it looks good: “strong foundation to move forward.” |
+| 2026-07-27 maintenance | Requirements/regression documentation | Added `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`; added deferred editor/benchmark backlog in `docs/TODO.md`; marked stale handoffs/plans as historical/superseded. |
+| 2026-07-27 maintenance | Tracker selection dry runs | Default compile recipe includes stream define/vendor sources; `USE_NO_STATE_TRACKER=1` recipe includes neither; no-tracker + dirty conflict is rejected immediately. |
+| 2026-07-27 maintenance | `make -B all USE_NO_STATE_TRACKER=1` | PASS under strict C11 warnings; no tracker define or tracker vendor source linked. |
+| 2026-07-27 maintenance | Default `make -B test` | PASS; runner totals 4+34+25+12+11+12+13+14+17+12+27 = 181/181 across 11 runners. |
 
 
 ## Phase 3 decisions

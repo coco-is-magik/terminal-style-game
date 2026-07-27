@@ -145,6 +145,11 @@ CommandResult command_history_set_wall_material(
         return CMD_RESULT_INVALID_TARGET;
     }
 
+    /* Wall-material commands may only retheme existing wall geometry. */
+    if (old_material <= 0) {
+        return CMD_RESULT_INVALID_TARGET;
+    }
+
     if (old_material == new_material) {
         return CMD_RESULT_NO_CHANGE;
     }

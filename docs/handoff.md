@@ -1,5 +1,11 @@
 # SMC Renderer Integration — Handoff Document
 
+> **Historical / superseded:** This handoff stops during indexed-tracker work.
+> Stream integration and dynamic validation are complete, and stream tracking is
+> now the default. See `docs/SMC_STREAM_INTEGRATION_PLAN.md`,
+> `docs/DYNAMIC_SCENE_VALIDATION_PLAN.md`, and `docs/TODO.md` for current state
+> and deferred benchmark-methodology work.
+
 ## Overview
 
 This document tracks the SMC (Self-Modifying Calculator) integration into the

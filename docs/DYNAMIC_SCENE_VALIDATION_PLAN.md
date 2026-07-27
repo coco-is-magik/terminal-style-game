@@ -1,5 +1,10 @@
 # Dynamic Scene Validation Implementation Plan
 
+> **Completed historical gate:** The instruction below not to make stream the
+> default applied during validation. Validation later passed, and stream tracking
+> is now the default when no alternate or explicit no-tracker mode is selected.
+> Deferred methodology improvements are tracked in `docs/TODO.md`.
+
 ## Objective
 Create a deterministic second benchmark suite to validate `USE_SMC_STREAM_STATE_TRACKER=1` against `USE_SMC_BATCH_STATE_TRACKER=1` and `USE_DIRTY_CELLS=1`. Do not make stream default yet. Do not remove packed batch.
 

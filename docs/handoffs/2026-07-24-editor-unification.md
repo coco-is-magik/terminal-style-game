@@ -1,5 +1,10 @@
 # Editor Unification Handoff
 
+> **Historical / superseded:** This handoff stops after Phase 5. Phases 6–8 are
+> complete. Current requirements and test ownership are documented in
+> `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`; deferred work is tracked in
+> `docs/TODO.md`.
+
 **Date and time:** 2026-07-27 ~08:33 America/New_York  
 **Task objective:** Implement the unified in-world editor vertical slice per  
 `docs/EDITOR_UNIFICATION_PLAN.md` (architectural foundation + wall-material MVP).  

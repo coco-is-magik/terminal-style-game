@@ -256,6 +256,28 @@ static void test_invalid_coordinates(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_empty_cell_is_not_a_wall_target(void **state) {
+    (void)state;
+    SceneDocument doc;
+    load_fixture(&doc);
+    CommandHistory h;
+    command_history_init(&h, doc.current_state);
+
+    WallMaterialRef empty = {1, 1};
+    assert_int_equal(read_mat(&doc, 1, 1), 0);
+    assert_int_equal(
+        command_history_set_wall_material(&h, &doc, empty, 4),
+        CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(read_mat(&doc, 1, 1), 0);
+    assert_int_equal(h.count, 0);
+    assert_int_equal(h.cursor, 0);
+    assert_int_equal(doc.current_state, 1);
+    assert_false(scene_document_is_dirty(&doc));
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
 static void test_undo_at_zero(void **state) {
     (void)state;
     SceneDocument doc;
@@ -295,7 +317,7 @@ static void test_execute_after_undo_discards_redo(void **state) {
     command_history_init(&h, doc.current_state);
 
     WallMaterialRef a = {0, 0};
-    WallMaterialRef b = {1, 1};
+    WallMaterialRef b = {1, 0};
 
     assert_int_equal(command_history_set_wall_material(&h, &doc, a, 4), CMD_RESULT_OK);
     DocumentStateId after_first = doc.current_state; /* 2 */
@@ -316,7 +338,7 @@ static void test_execute_after_undo_discards_redo(void **state) {
     assert_int_equal(h.commands[1].after_state, next_after_two);
     assert_int_equal(h.commands[1].before_state, after_first);
     assert_int_equal(read_mat(&doc, 0, 0), 6);
-    assert_int_equal(read_mat(&doc, 1, 1), 0); /* second command undone and discarded */
+    assert_int_equal(read_mat(&doc, 1, 0), 2); /* second command undone and discarded */
 
     /* Discarded after_second (3) must not appear as next_state_id. */
     assert_true(h.next_state_id > after_second);
@@ -460,8 +482,7 @@ static void test_allocation_failure_unchanged(void **state) {
     assert_int_equal(command_history_set_wall_material(&h, &doc, ref, 5), CMD_RESULT_OK);
     while (h.cursor < h.capacity) {
         MaterialId cur = read_mat(&doc, 0, 0);
-        MaterialId next = (MaterialId)((cur + 1) % 9);
-        if (next == cur) next = (MaterialId)((next + 1) % 9);
+        MaterialId next = (MaterialId)((cur % 9) + 1);
         assert_int_equal(
             command_history_set_wall_material(&h, &doc, ref, next),
             CMD_RESULT_OK);
@@ -563,6 +584,7 @@ int main(void) {
         cmocka_unit_test(test_redo_restores_new_material),
         cmocka_unit_test(test_no_change_assignment),
         cmocka_unit_test(test_invalid_coordinates),
+        cmocka_unit_test(test_empty_cell_is_not_a_wall_target),
         cmocka_unit_test(test_undo_at_zero),
         cmocka_unit_test(test_redo_at_count),
         cmocka_unit_test(test_execute_after_undo_discards_redo),

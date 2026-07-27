@@ -1,5 +1,10 @@
 # SMC Renderer Integration Plan
 
+> **Historical / superseded:** This plan records the original optimization
+> investigation through custom dirty cells. SMC stream tracking was subsequently
+> validated and is now the default. See `docs/SMC_STREAM_INTEGRATION_PLAN.md`,
+> `docs/DYNAMIC_SCENE_VALIDATION_PLAN.md`, and `docs/TODO.md`.
+
 ## Objective
 
 Integrate SMC into the terminal-style-game as a generated-code optimization path for repeated renderer math. The goal is to identify hot-path computations, generate optimized C dispatch code from SMC, and replace selected calculations with `smc_call_*` calls.
