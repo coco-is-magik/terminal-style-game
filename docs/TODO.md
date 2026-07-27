@@ -6,6 +6,9 @@ This document preserves desired features, follow-up ideas, unresolved design
 questions, and deferred engineering work. It is an **idea inventory**, not an
 authoritative roadmap, implementation plan, commitment, or priority order.
 
+Dependency order, engineering gates, review checkpoints, and the current next
+phase are maintained separately in `docs/FEATURE_ROADMAP.md`.
+
 An unchecked item means “wanted or worth investigating,” not “ready to build.”
 Before implementation, each substantial item needs its own requirements
 discussion and scoped plan. Accepted current behavior remains defined by
@@ -447,4 +450,5 @@ inclusion rules, output tests, and documented spike interpretation.
 Record: desired outcome; relevant current constraints; likely model, format,
 renderer, editor, and test implications; shared dependencies; unresolved product
 or architecture decisions; and planning readiness. Do not assign implementation
-order here. Roadmap decisions belong in a separate document after discussion.
+order here. Promote understood dependencies into `docs/FEATURE_ROADMAP.md` only
+after discussion; keep unsequenced and rejected/deferred ideas here for context.

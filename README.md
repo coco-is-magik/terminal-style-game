@@ -128,7 +128,10 @@ Maintainer references:
 
 - `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor
   behavior, forbidden regressions, and test ownership.
-- `docs/TODO.md` — intentionally deferred editor and benchmark work.
+- `docs/FEATURE_ROADMAP.md` — authoritative dependency order, engineering
+  principles, quality gates, and review checkpoints for future feature work.
+- `docs/TODO.md` — unordered future-feature ideas, unresolved questions, and
+  deferred work; it is intentionally not a roadmap.
 
 ## Editors
 
