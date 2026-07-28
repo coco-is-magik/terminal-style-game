@@ -12,7 +12,10 @@ A simple digit grid.  Each row is a line of characters:
 - `'1'`–`'9'` — solid wall using that material ID
 - any other character — solid wall using `default_material_id` from `config.ini`
 
-Rows are padded to the longest line with empty tiles.  Example:
+Rows must be non-empty. Ragged rows are accepted for compatibility and padded
+with empty material cells to the width of the longest row. Maps are limited to
+512 columns and 256 rows; empty or oversized maps are rejected without partially
+populating the world. Example:
 
 ```
 1111111111
@@ -117,6 +120,14 @@ pattern_0=This is a decal
 material_0=4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
 ```
 
+Pattern dimensions must be positive, with at most 255 columns and 64 rows.
+Both structured rows and inline `art=` rows use the same parser and limits.
+Invalid dimensions, truncated inline art, allocation failure, or malformed
+files reject that decal; loading continues with other decal files. A loaded
+decal owns its pattern until successfully inserted into a `WorldState`. On a
+failed insertion, ownership remains with the caller; `world_clear()` releases
+patterns accepted by the world.
+
 ## Lights (`assets/lights/<id>.txt`)
 
 A point light source:
@@ -201,5 +212,6 @@ elements=main_menu_title,main_menu_start,main_menu_asset_editor,main_menu_quit
 ## Sprites (`assets/sprites/<id>.txt` — optional)
 
 Sprite support exists in the asset registry but no sprite rendering pipeline
-is currently implemented.  The expected format mirrors the decal pattern style
-if and when it is used.
+is currently implemented. Sprite patterns are limited to 255 columns and 32
+rows. The asset registry owns successfully loaded sprite patterns and releases
+them through `asset_registry_clear()`.

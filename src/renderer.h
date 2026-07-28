@@ -13,6 +13,14 @@
 #include "grid.h"          /* Grid — the source data to render */
 #include <SDL3/SDL.h>      /* SDL_Window, SDL_Renderer, SDL_Texture */
 #include <stdbool.h>       /* bool */
+#include <stddef.h>
+
+#define RENDERER_GLYPH_WIDTH 8
+#define RENDERER_GLYPH_HEIGHT 8
+
+bool renderer_preflight(int win_w, int win_h, int grid_w, int grid_h,
+                        int cell_w, int cell_h, int *logical_w,
+                        int *logical_h, size_t *pixel_bytes);
 
 /* ---- Instrumentation counters (declared extern) ---- */
 
@@ -35,16 +43,12 @@ extern uint64_t renderer_smc_fallback_count; /* SMC stream fallback count */
 extern FrameProfileStats g_frame_profile;    /* Accumulated frame phase timings */
 #endif
 
-/* Include the GlyphAtlas definition used by Renderer. */
-#include "glyph_atlas.h"    /* GlyphAtlas struct */
-
 /**
  * Renderer — The display subsystem
  *
  * window          — SDL window handle
  * sdl_ren         — SDL renderer handle
  * screen_texture  — Streaming SDL texture for pixel buffer upload
- * atlas           — Glyph atlas texture (for potential GPU path)
  * pixel_buffer    — Software pixel buffer (CPU-side, one uint32_t per pixel)
  * logical_w       — Logical rendering width in pixels (grid_w × cell_w)
  * logical_h       — Logical rendering height in pixels (grid_h × cell_h)
@@ -55,7 +59,6 @@ typedef struct {
     SDL_Window     *window;            /* SDL window */
     SDL_Renderer   *sdl_ren;           /* SDL renderer */
     SDL_Texture    *screen_texture;     /* Streaming screen texture */
-    GlyphAtlas     *atlas;             /* Glyph atlas (GPU) */
     uint32_t       *pixel_buffer;      /* CPU pixel buffer */
     int logical_w;                     /* Logical pixel width */
     int logical_h;                     /* Logical pixel height */

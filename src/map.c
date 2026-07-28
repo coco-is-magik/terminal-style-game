@@ -30,6 +30,7 @@
  */
 
 #include "map.h"        /* Map struct, MapCell struct, function declarations */
+#include "checked_size.h"
 #include <stdlib.h>      /* malloc(), free(), calloc() */
 #include <string.h>      /* (included for future use; not used now) */
 
@@ -52,8 +53,14 @@
  * @return        Pointer to the new Map, or NULL on allocation failure
  */
 Map* map_create(int width, int height) {
-    /* Reject invalid dimensions */
-    if (width <= 0 || height <= 0) return NULL;
+    size_t cell_count;
+    size_t cell_bytes;
+    size_t light_bytes;
+    if (!checked_size_2d(width, height, &cell_count) ||
+        !checked_size_bytes(cell_count, sizeof(MapCell), &cell_bytes) ||
+        !checked_size_bytes(cell_count, sizeof(double), &light_bytes)) return NULL;
+    (void)cell_bytes;
+    (void)light_bytes;
 
     /* Allocate the Map struct itself */
     Map *m = malloc(sizeof(Map));
@@ -64,7 +71,7 @@ Map* map_create(int width, int height) {
 
     /* Allocate the tile grid.  calloc zeros every byte, so all cells
      * have material_id = 0 (empty / void). */
-    m->cells = calloc(width * height, sizeof(MapCell));
+    m->cells = calloc(cell_count, sizeof(MapCell));
     if (!m->cells) {
         free(m);
         return NULL;
@@ -72,7 +79,7 @@ Map* map_create(int width, int height) {
 
     /* Allocate the light map — a parallel array of doubles, one per tile.
      * Zero-initialised means all tiles start dark (0.0 brightness). */
-    m->light_map = calloc(width * height, sizeof(double));
+    m->light_map = calloc(cell_count, sizeof(double));
     if (!m->light_map) {
         /* Clean up both allocations on failure */
         free(m->cells);

@@ -32,6 +32,7 @@
  */
 
 #include "lighting.h"    /* lighting_update() declaration, Map, WorldState types */
+#include "checked_size.h" /* checked_size_2d() — validates row-major cell count */
 #include "raycast.h"     /* raycast_fire(), RayResult — for shadow testing */
 #include "camera.h"      /* Camera struct — used to construct a dummy camera
                             positioned at the light source for raycasting */
@@ -93,7 +94,18 @@ double lighting_total_time_ms = 0.0;
  * @param world  The WorldState containing all active PointLights
  */
 void lighting_update(Map *map, WorldState *world) {
-    if (!map || !map->light_map || !world) return;
+    size_t cell_count;
+    int light_count;
+
+    if (!map || !map->cells || !map->light_map || !world ||
+        !checked_size_2d(map->width, map->height, &cell_count)) {
+        return;
+    }
+
+    light_count = world->num_lights;
+    if (light_count < 0 || light_count > MAX_LIGHTS) {
+        return;
+    }
 
     LIGHTING_TIME_START();
 
@@ -104,12 +116,12 @@ void lighting_update(Map *map, WorldState *world) {
     /* ---- Step 1: Reset light map to ambient level ---- */
     /* Every tile starts at the ambient light level (e.g. 0.2 = 20% brightness).
      * This ensures no tile is ever completely black. */
-    for (int i = 0; i < map->width * map->height; i++) {
+    for (size_t i = 0; i < cell_count; i++) {
         map->light_map[i] = config_get()->ambient_light;
     }
 
     /* ---- Step 2: Process each light in the world ---- */
-    for (int i = 0; i < world->num_lights; i++) {
+    for (int i = 0; i < light_count; i++) {
         Light *l = &world->lights[i];
         if (l->radius <= 0.0) continue;    /* Zero-radius light = no effect */
 

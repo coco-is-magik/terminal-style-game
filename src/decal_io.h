@@ -43,6 +43,9 @@
 
 #include "decal.h"  /* Decal, DecalSurface */
 
+#define DECAL_PATTERN_MAX_ROWS 64
+#define DECAL_PATTERN_MAX_COLS 255
+
 /**
  * decal_load_from_file() — Load a single decal from a file
  *

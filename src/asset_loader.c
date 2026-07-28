@@ -48,9 +48,18 @@
                                 asset_loader_load_materials() */
 #include "map_loader.h"      /* map_load_from_string() — parses the digit-grid map format */
 #include "config.h"          /* config_get() values are used indirectly by map loading */
+#include "checked_size.h"
+#include <errno.h>
+#include <limits.h>
+#include <math.h>
+#include "decal_io.h"
 #include <stdio.h>           /* FILE, fopen(), fgets(), fclose(), fprintf(), snprintf() */
-#include <stdlib.h>          /* atoi(), atof(), malloc(), free(), calloc() */
+#include <stdlib.h>          /* strtol(), strtod(), malloc(), free(), calloc() */
 #include <string.h>          /* strcmp(), strncmp(), strtok(), strncpy(), memset() */
+
+#define SPRITE_PATTERN_MAX_ROWS 32
+#define SPRITE_PATTERN_MAX_COLS 255
+#define MAP_FILE_MAX_BYTES (1024U * 1024U)
 #include <dirent.h>          /* opendir(), readdir(), closedir(), struct dirent */
 
 /* ===================================================================
@@ -91,6 +100,57 @@ static void trim_string(char *str) {
         *end = '\0';
         end--;
     }
+}
+
+static bool parse_bounded_int(const char *text, int minimum, int maximum, int *out) {
+    char *end = NULL;
+    long value;
+    if (!text || !out) return false;
+    errno = 0;
+    value = strtol(text, &end, 10);
+    if (errno == ERANGE || end == text) return false;
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') end++;
+    if (*end != '\0' || value < minimum || value > maximum ||
+        value < INT_MIN || value > INT_MAX) return false;
+    *out = (int)value;
+    return true;
+}
+
+static bool parse_finite_double(const char *text, double minimum,
+                                bool minimum_inclusive, double *out) {
+    char *end = NULL;
+    double value;
+    if (!text || !out) return false;
+    errno = 0;
+    value = strtod(text, &end);
+    if (errno == ERANGE || end == text || !isfinite(value)) return false;
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') end++;
+    if (*end != '\0') return false;
+    if (minimum_inclusive ? value < minimum : value <= minimum) return false;
+    *out = value;
+    return true;
+}
+
+static bool parse_material_row(const char *text, int count, int *materials) {
+    const char *cursor = text;
+    if (!text || count < 0 || !materials) return false;
+    for (int index = 0; index < count; index++) {
+        char *end = NULL;
+        long value;
+        errno = 0;
+        value = strtol(cursor, &end, 10);
+        if (errno == ERANGE || end == cursor || value < 0 || value > 255) return false;
+        while (*end == ' ' || *end == '\t') end++;
+        materials[index] = (int)value;
+        if (index + 1 < count) {
+            if (*end != ',') return false;
+            cursor = end + 1;
+        } else {
+            while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') end++;
+            if (*end != '\0') return false;
+        }
+    }
+    return true;
 }
 
 /* ===================================================================
@@ -152,6 +212,7 @@ static bool load_material(AssetRegistry *reg, int id, const char *filepath) {
     FILE *f = fopen(filepath, "r");
     if (!f) return false;
 
+    bool valid = true;
     int pal_id = 0;
     char glyphs[5] = "    ";   /* Up to 4 glyphs + NUL; defaults to spaces */
     char line[256];
@@ -160,14 +221,17 @@ static bool load_material(AssetRegistry *reg, int id, const char *filepath) {
         char *val = strtok(NULL, "=");
         if (key && val) {
             trim_string(val);
-            if (strcmp(key, "palette") == 0) pal_id = atoi(val);
+            if (strcmp(key, "palette") == 0 &&
+                !parse_bounded_int(val, 0, 255, &pal_id)) valid = false;
             else if (strcmp(key, "glyphs") == 0) {
                 strncpy(glyphs, val, 4);
                 glyphs[4] = '\0';
             }
         }
     }
-    fclose(f);
+    if (ferror(f)) valid = false;
+    if (fclose(f) != 0) valid = false;
+    if (!valid) return false;
 
     asset_registry_set_material(reg, id, pal_id, glyphs);
 
@@ -258,6 +322,7 @@ static bool load_named_material(AssetRegistry *reg, const char *filepath,
     FILE *f = fopen(filepath, "r");
     if (!f) return false;
 
+    bool valid = true;
     int pal_id = 0;
     char glyphs[5] = "    ";
     int explicit_id = 0;
@@ -268,17 +333,18 @@ static bool load_named_material(AssetRegistry *reg, const char *filepath,
         if (key && val) {
             trim_string(val);
             if (strcmp(key, "palette") == 0) {
-                pal_id = atoi(val);
+                if (!parse_bounded_int(val, 0, 255, &pal_id)) valid = false;
             } else if (strcmp(key, "glyphs") == 0) {
                 strncpy(glyphs, val, 4);
                 glyphs[4] = '\0';
             } else if (strcmp(key, "id") == 0) {
-                int v = atoi(val);
-                if (v >= 1 && v <= 255) explicit_id = v;
+                if (!parse_bounded_int(val, 1, 255, &explicit_id)) valid = false;
             }
         }
     }
-    fclose(f);
+    if (ferror(f)) valid = false;
+    if (fclose(f) != 0) valid = false;
+    if (!valid) return false;
 
     int id;
     if (explicit_id > 0) {
@@ -375,139 +441,12 @@ static void parse_key_val(char *line, char **key, char **val) {
  * @return          true on success, false if the file could not be opened
  */
 static bool load_decal(WorldState *world, const char *filepath) {
-    FILE *f = fopen(filepath, "r");
-    if (!f) return false;
-
-    Decal d;
-    memset(&d, 0, sizeof(Decal));          /* Zero out everything */
-    d.pattern_cols = 1;                    /* Default to 1×1 if not specified */
-    d.pattern_rows = 1;
-    int default_material = 1;
-
-    /* Buffers to hold pattern rows (up to 64) and material rows */
-    char p_buf[64][256] = {0};
-    char m_buf[64][256] = {0};
-    bool art_mode = false;                 /* Becomes true once we hit "art=" */
-
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        /* Check if this line signals the start of inline ASCII art */
-        if (strncmp(line, "art=", 4) == 0 || strcmp(line, "art\n") == 0 || strcmp(line, "art\r\n") == 0) {
-            art_mode = true;
-            break;                         /* Exit parse loop — remaining lines are art */
-        }
-
-        char *key = NULL;
-        char *val = NULL;
-        parse_key_val(line, &key, &val);
-        if (key && val) {
-            /* --- Spatial properties --- */
-            if (strcmp(key, "surface") == 0) d.surface = atoi(val);
-            else if (strcmp(key, "x") == 0) d.x = atof(val);
-            else if (strcmp(key, "y") == 0) d.y = atof(val);
-            else if (strcmp(key, "z") == 0) d.z = atof(val);
-            else if (strcmp(key, "map_x") == 0) d.map_x = atoi(val);
-            else if (strcmp(key, "map_y") == 0) d.map_y = atoi(val);
-            else if (strcmp(key, "side") == 0) d.side = atoi(val);
-            else if (strcmp(key, "u") == 0) d.u = atof(val);
-            else if (strcmp(key, "v") == 0) d.v = atof(val);
-            else if (strcmp(key, "width") == 0) d.width = atof(val);
-            else if (strcmp(key, "height") == 0) d.height = atof(val);
-            else if (strcmp(key, "glyph_step_u") == 0) d.glyph_step_u = atof(val);
-            else if (strcmp(key, "glyph_step_v") == 0) d.glyph_step_v = atof(val);
-            else if (strcmp(key, "depth") == 0) d.depth = atof(val);
-            else if (strcmp(key, "rotation") == 0) d.rotation = atof(val);
-
-            /* --- Pattern layout --- */
-            else if (strcmp(key, "pattern_cols") == 0) d.pattern_cols = atoi(val);
-            else if (strcmp(key, "pattern_rows") == 0) d.pattern_rows = atoi(val);
-            else if (strcmp(key, "default_material") == 0) default_material = atoi(val);
-
-            /* --- Per-row pattern data (key formats: pattern_0, pattern_1, ...) --- */
-            else if (strncmp(key, "pattern_", 8) == 0) {
-                int r = atoi(key + 8);     /* Extract row index from key suffix */
-                if (r >= 0 && r < 64) {
-                    strncpy(p_buf[r], val, 255);
-                }
-            }
-            /* --- Per-row material data (key formats: material_0, material_1, ...) --- */
-            else if (strncmp(key, "material_", 9) == 0) {
-                int r = atoi(key + 9);
-                if (r >= 0 && r < 64) {
-                    strncpy(m_buf[r], val, 255);
-                }
-            }
-        }
-    }
-    
-    /* Allocate the pattern array (calloc zeros out memory) */
-    d.pattern = calloc(d.pattern_cols * d.pattern_rows, sizeof(PatternCell));
-    if (d.pattern) {
-        bool success = true;
-        if (art_mode) {
-            /* --- Inline ASCII art mode --- */
-            /* Read exactly pattern_rows lines from the file after "art=" */
-            for (int r = 0; r < d.pattern_rows; r++) {
-                if (!fgets(line, sizeof(line), f)) {
-                    success = false;
-                    break;
-                }
-                /* Strip trailing newline/carriage-return */
-                int len = (int)strlen(line);
-                while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
-                    line[--len] = '\0';
-                }
-                /* Each line must be at least pattern_cols wide */
-                if (len < d.pattern_cols) {
-                    success = false;
-                    break;
-                }
-                for (int c = 0; c < d.pattern_cols; c++) {
-                    char g = line[c];
-                    if (g == '\t') g = ' ';     /* Replace tabs with spaces */
-                    d.pattern[r * d.pattern_cols + c].glyph = g;
-                    d.pattern[r * d.pattern_cols + c].material_id = default_material;
-                }
-            }
-        } else {
-            /* --- Structured key-value mode --- */
-            for (int r = 0; r < d.pattern_rows; r++) {
-                /* Parse the comma-separated material IDs for this row */
-                int mats[256];
-                for (int i = 0; i < 256; i++) mats[i] = default_material;
-                if (m_buf[r][0] != '\0') {
-                    char *p = m_buf[r];
-                    int c = 0;
-                    while (*p && c < d.pattern_cols) {
-                        mats[c++] = atoi(p);
-                        /* Skip past current digit and the comma */
-                        while (*p && *p != ',') p++;
-                        if (*p == ',') p++;
-                    }
-                }
-                /* Assign glyphs and material IDs from the parsed buffers */
-                for (int c = 0; c < d.pattern_cols; c++) {
-                    char glyph = ' ';
-                    if (c < (int)strlen(p_buf[r])) glyph = p_buf[r][c];
-                    d.pattern[r * d.pattern_cols + c].glyph = glyph;
-                    d.pattern[r * d.pattern_cols + c].material_id = mats[c];
-                }
-            }
-        }
-        
-        /* If something went wrong (e.g. mismatched dimensions), fill with error markers */
-        if (!success) {
-            fprintf(stderr, "Decal load failed: %s (dimensions mismatch)\n", filepath);
-            for (int i = 0; i < d.pattern_cols * d.pattern_rows; i++) {
-                d.pattern[i].glyph = '!';               /* Visual error indicator */
-                d.pattern[i].material_id = default_material;
-            }
-        }
-    }
-    
-    fclose(f);
-    world_add_decal(world, d);     /* Copy decal into the world (pattern pointer is retained) */
-    return true;
+    Decal *decal = decal_load_from_file(filepath);
+    if (!decal) return false;
+    WorldInsertResult result = world_add_decal(world, *decal);
+    if (result == WORLD_INSERT_OK) decal->pattern = NULL;
+    decal_free(decal);
+    return result == WORLD_INSERT_OK;
 }
 
 /* ===================================================================
@@ -526,6 +465,7 @@ static bool load_decal(WorldState *world, const char *filepath) {
  * @return          true on success, false if the file could not be opened
  */
 static bool load_light(WorldState *world, const char *filepath) {
+    bool valid = true;
     FILE *f = fopen(filepath, "r");
     if (!f) return false;
 
@@ -539,17 +479,22 @@ static bool load_light(WorldState *world, const char *filepath) {
         char *val = strtok(NULL, "=");
         if (key && val) {
             trim_string(val);
-            if (strcmp(key, "x") == 0) x = atof(val);
-            else if (strcmp(key, "y") == 0) y = atof(val);
+            if (strcmp(key, "x") == 0 &&
+                !parse_finite_double(val, -INFINITY, true, &x)) valid = false;
+            else if (strcmp(key, "y") == 0 &&
+                     !parse_finite_double(val, -INFINITY, true, &y)) valid = false;
             else if (strcmp(key, "color") == 0) parse_color(val, &color);
-            else if (strcmp(key, "intensity") == 0) intensity = atof(val);
-            else if (strcmp(key, "radius") == 0) radius = atof(val);
+            else if (strcmp(key, "intensity") == 0 &&
+                     !parse_finite_double(val, -INFINITY, true, &intensity)) valid = false;
+            else if (strcmp(key, "radius") == 0 &&
+                     !parse_finite_double(val, 0.0, false, &radius)) valid = false;
         }
     }
-    fclose(f);
+    if (ferror(f)) valid = false;
+    if (fclose(f) != 0) valid = false;
+    if (!valid) return false;
     
-    world_add_light(world, x, y, color, intensity, radius);
-    return true;
+    return world_add_light(world, x, y, color, intensity, radius) == WORLD_INSERT_OK;
 }
 
 /* ===================================================================
@@ -574,8 +519,9 @@ static bool load_light(WorldState *world, const char *filepath) {
  * @return          true on success, false if the file could not be opened
  */
 static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
+    bool valid = true;
     FILE *f = fopen(filepath, "r");
-    if (!f) return false;
+    if (!reg || id < 1 || id > 255 || !f) return false;
 
     SpriteAsset s;
     memset(&s, 0, sizeof(SpriteAsset));
@@ -584,8 +530,8 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
     int default_material = 1;
 
     /* Pattern and material buffers (up to 32 rows) */
-    char p_buf[32][256] = {0};
-    char m_buf[32][256] = {0};
+    char p_buf[SPRITE_PATTERN_MAX_ROWS][SPRITE_PATTERN_MAX_COLS + 1] = {0};
+    char m_buf[SPRITE_PATTERN_MAX_ROWS][SPRITE_PATTERN_MAX_COLS + 1] = {0};
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
@@ -593,39 +539,49 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
         char *val = NULL;
         parse_key_val(line, &key, &val);
         if (key && val) {
-            if (strcmp(key, "cols") == 0) s.cols = atoi(val);
-            else if (strcmp(key, "rows") == 0) s.rows = atoi(val);
-            else if (strcmp(key, "default_material") == 0) default_material = atoi(val);
+            if (strcmp(key, "cols") == 0) {
+                if (!parse_bounded_int(val, 1, SPRITE_PATTERN_MAX_COLS, &s.cols)) valid = false;
+            }
+            else if (strcmp(key, "rows") == 0) {
+                if (!parse_bounded_int(val, 1, SPRITE_PATTERN_MAX_ROWS, &s.rows)) valid = false;
+            }
+            else if (strcmp(key, "default_material") == 0) {
+                if (!parse_bounded_int(val, 0, 255, &default_material)) valid = false;
+            }
             else if (strncmp(key, "pattern_", 8) == 0) {
-                int r = atoi(key + 8);
-                if (r >= 0 && r < 32) {
+                int r;
+                if (parse_bounded_int(key + 8, 0, SPRITE_PATTERN_MAX_ROWS - 1, &r)) {
                     strncpy(p_buf[r], val, 255);
-                }
+                } else valid = false;
             }
             else if (strncmp(key, "material_", 9) == 0) {
-                int r = atoi(key + 9);
-                if (r >= 0 && r < 32) {
+                int r;
+                if (parse_bounded_int(key + 9, 0, SPRITE_PATTERN_MAX_ROWS - 1, &r)) {
                     strncpy(m_buf[r], val, 255);
-                }
+                } else valid = false;
             }
         }
     }
-    fclose(f);
+    if (ferror(f)) valid = false;
+    if (fclose(f) != 0) valid = false;
+    if (!valid) return false;
     
     /* Allocate pattern array */
-    s.pattern = calloc(s.cols * s.rows, sizeof(PatternCell));
-    if (s.pattern) {
-        for (int r = 0; r < s.rows; r++) {
+    size_t cells;
+    size_t bytes;
+    if (!checked_size_2d(s.cols, s.rows, &cells) ||
+        !checked_size_bytes(cells, sizeof(PatternCell), &bytes)) return false;
+    (void)bytes;
+    s.pattern = calloc(cells, sizeof(PatternCell));
+    if (!s.pattern) return false;
+    for (int r = 0; r < s.rows; r++) {
             /* Parse material IDs from the comma-separated material row */
             int mats[256];
             for (int i = 0; i < 256; i++) mats[i] = default_material;
             if (m_buf[r][0] != '\0') {
-                char *p = m_buf[r];
-                int c = 0;
-                while (*p && c < s.cols) {
-                    mats[c++] = atoi(p);
-                    while (*p && *p != ',') p++;
-                    if (*p == ',') p++;
+                if (!parse_material_row(m_buf[r], s.cols, mats)) {
+                    free(s.pattern);
+                    return false;
                 }
             }
             /* Assign glyphs and material IDs */
@@ -635,9 +591,9 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
                 s.pattern[r * s.cols + c].glyph = glyph;
                 s.pattern[r * s.cols + c].material_id = mats[c];
             }
-        }
     }
     
+    free(reg->sprites[id].pattern);
     reg->sprites[id] = s;             /* Store directly (struct copy) into registry */
     return true;
 }
@@ -739,9 +695,12 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         strncpy(base, numeric[i], baselen);
         base[baselen] = '\0';
 
-        int id = atoi(base);
-        if (id >= 1 && id <= 255) {
-            snprintf(filepath, sizeof(filepath), "%s/%s", materials_dir, numeric[i]);
+        int id;
+        if (parse_bounded_int(base, 1, 255, &id) &&
+            strlen(materials_dir) + 1 + strlen(numeric[i]) < sizeof(filepath)) {
+            memcpy(filepath, materials_dir, strlen(materials_dir));
+            filepath[strlen(materials_dir)] = '/';
+            strcpy(filepath + strlen(materials_dir) + 1, numeric[i]);
             load_material(reg, id, filepath);
         }
     }
@@ -754,8 +713,12 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         strncpy(base, named[i], baselen);
         base[baselen] = '\0';
 
-        snprintf(filepath, sizeof(filepath), "%s/%s", materials_dir, named[i]);
-        load_named_material(reg, filepath, base);
+        if (strlen(materials_dir) + 1 + strlen(named[i]) < sizeof(filepath)) {
+            memcpy(filepath, materials_dir, strlen(materials_dir));
+            filepath[strlen(materials_dir)] = '/';
+            strcpy(filepath + strlen(materials_dir) + 1, named[i]);
+            load_named_material(reg, filepath, base);
+        }
     }
 
 #undef MAT_NAME_MAX
@@ -827,24 +790,47 @@ void asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
  */
 Map* asset_loader_load_map_data(WorldState *world, const char *base_path, int map_id) {
     char filepath[512];
-    snprintf(filepath, sizeof(filepath), "%s/maps/%d.txt", base_path, map_id);
+    int path_length;
+    if (!world || !base_path || map_id < 0) return NULL;
+    path_length = snprintf(filepath, sizeof(filepath), "%s/maps/%d.txt", base_path, map_id);
+    if (path_length < 0 || (size_t)path_length >= sizeof(filepath)) return NULL;
     
     /* ---- Read entire map file into a heap-allocated buffer ---- */
     FILE *f = fopen(filepath, "r");
     if (!f) return NULL;
     
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
     long fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (fsize < 0 || (unsigned long)fsize > MAP_FILE_MAX_BYTES ||
+        fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
     
-    char *map_str = malloc(fsize + 1);
-    fread(map_str, fsize, 1, f);
-    fclose(f);
-    map_str[fsize] = 0;          /* NUL-terminate */
+    size_t file_size = (size_t)fsize;
+    char *map_str = malloc(file_size + 1U);
+    if (!map_str) {
+        fclose(f);
+        return NULL;
+    }
+    if (file_size > 0 && fread(map_str, 1, file_size, f) != file_size) {
+        free(map_str);
+        fclose(f);
+        return NULL;
+    }
+    if (fclose(f) != 0) {
+        free(map_str);
+        return NULL;
+    }
+    map_str[file_size] = '\0';
     
     /* Parse the digit-grid into a Map struct */
     Map *map = map_load_from_string(map_str);
     free(map_str);
+    if (!map) return NULL;
     
     /* ---- Load decals associated with this world ---- */
     for (int i = 1; i < 256; i++) {

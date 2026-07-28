@@ -190,8 +190,10 @@ Review at minimum:
 9. accessibility, input consumption, and editor workflow regressions;
 10. whether roadmap assumptions or ordering must change.
 
-Store each review under `docs/reviews/` once the first review is performed, using
-a dated searchable name such as:
+The initial Review A predates this storage convention and remains at
+`docs/REPOSITORY_CODE_REVIEW_2026-07-28.md` so established references remain valid.
+Store subsequent reviews under `docs/reviews/`, using a dated searchable name such
+as:
 
 ```text
 docs/reviews/2026-08-15-roadmap-r0-baseline.md
@@ -213,7 +215,7 @@ Do not create empty review directories or placeholder review files.
 
 | Phase | Purpose | Depends on | Unlocks | Status |
 |---|---|---|---|---|
-| R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Ready to plan |
+| R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Active |
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Decision-blocked |
 | R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Proposed |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Proposed |
@@ -236,17 +238,28 @@ Q4 review findings.
 
 ## R0 — Repository health and visible editor wins
 
-**Status:** Ready to plan
+**Status:** Active
+
+The initial Q4 review is complete:
+[`REPOSITORY_CODE_REVIEW_2026-07-28.md`](REPOSITORY_CODE_REVIEW_2026-07-28.md).
+Its remediation sequence is active in
+[`REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md`](REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md).
+Safety-critical parsing, allocation, renderer-contract, and ownership findings must
+clear their plan gates before broad architectural feature work proceeds. This does
+not silently expand the scope of the visible editor outcomes below; it establishes
+the health prerequisite required by Q2–Q4.
 
 **Purpose:** Establish a reviewed baseline and deliver small editor improvements
 before persistent world formats and shared architecture change.
 
 **Prerequisites:** The completed unified wall-material editor and its regression
-contract.
+contract. The initial review prerequisite is satisfied; remediation findings and
+their phase gates are tracked in the linked action plan.
 
 **Required outcomes:**
 
-1. Perform the initial Q4 full repository review.
+1. Perform the initial Q4 full repository review. **Complete 2026-07-28; remediation
+   remains active under the linked action plan.**
 2. Add world-space selected-wall highlighting through an editor-only overlay.
 3. Add safe open/switch flow for current map files with dirty confirmation and
    transactional failure behavior.
@@ -775,6 +788,9 @@ The dependency table must also state what the phase unlocks.
 
 ## Initial next action
 
-The next active planning task is **Review A**, the baseline Q4 full repository
-review. R0 feature implementation should not begin until its blocker findings
-are resolved or assigned explicitly.
+**Review A is complete.** The next active task is Phase 1 of
+[`REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md`](REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md):
+safety-critical parsing, dimension, and allocation remediation. Broader R0 feature
+implementation should not begin until the review's safety-critical findings clear
+their named gates; all other findings must remain explicitly assigned in the action
+plan.

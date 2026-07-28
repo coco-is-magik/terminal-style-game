@@ -23,6 +23,7 @@
  */
 
 #include "grid.h"        /* Grid struct, Cell struct, function declarations */
+#include "checked_size.h"
 #include <stdlib.h>       /* malloc(), free(), calloc() */
 #include <string.h>       /* strlen() */
 
@@ -43,8 +44,11 @@
  * @return        Pointer to the new Grid, or NULL on failure
  */
 Grid* grid_create(int width, int height) {
-    /* Reject invalid dimensions */
-    if (width <= 0 || height <= 0) return NULL;
+    size_t cell_count;
+    size_t bytes;
+    if (!checked_size_2d(width, height, &cell_count) ||
+        !checked_size_bytes(cell_count, sizeof(Cell), &bytes)) return NULL;
+    (void)bytes;
 
     /* Allocate the Grid struct itself */
     Grid *grid = malloc(sizeof(Grid));
@@ -54,7 +58,6 @@ Grid* grid_create(int width, int height) {
     grid->height = height;
 
     /* Allocate the cell array and previous-frame storage for dirty tracking. */
-    size_t cell_count = (size_t)width * (size_t)height;
     grid->cells = calloc(cell_count, sizeof(Cell));
     grid->prev_cells = calloc(cell_count, sizeof(Cell));
     if (!grid->cells || !grid->prev_cells) {

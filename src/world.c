@@ -10,8 +10,8 @@
  *   - Decals:   Surface decorations (up to MAX_DECALS = 256)
  *   - Spawn:    Player starting position and facing angle
  *
- * All three "add" functions append to their respective arrays and silently
- * drop new elements if the capacity limit is reached (no error message).
+ * All three "add" functions report invalid input and capacity exhaustion with
+ * WorldInsertResult. Decal pattern ownership transfers only on success.
  *
  * The world_add_decal() function includes a "legacy decal migration" path
  * that converts decals defined with the older map_x/map_y/side/u/v format
@@ -19,6 +19,7 @@
  */
 
 #include "world.h"        /* WorldState, Light, SpriteEntity, Decal, constants */
+#include <math.h>          /* isfinite() */
 #include <stdlib.h>        /* free() */
 #include <string.h>        /* memset() */
 
@@ -70,8 +71,7 @@ void world_clear(WorldState *world) {
  * world_add_light() — Add a point light source to the world
  *
  * Creates a new Light entry at the end of the lights array and increments
- * num_lights.  If the array is full (num_lights >= MAX_LIGHTS), the light
- * is silently dropped — no error is reported.
+ * num_lights. If the array is full, WORLD_INSERT_FULL is returned.
  *
  * @param world     WorldState to add to (NULL-safe)
  * @param x         World X position of the light source
@@ -80,8 +80,11 @@ void world_clear(WorldState *world) {
  * @param intensity Brightness (>0) or darkness (<0 for anti-light zones)
  * @param radius    Maximum distance the light reaches (grid cells)
  */
-void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius) {
-    if (!world || world->num_lights >= MAX_LIGHTS) return;
+WorldInsertResult world_add_light(WorldState *world, double x, double y,
+                                  SDL_Color col, double intensity, double radius) {
+    if (!world || !isfinite(x) || !isfinite(y) || !isfinite(intensity) ||
+        !isfinite(radius) || radius <= 0.0) return WORLD_INSERT_INVALID;
+    if (world->num_lights >= MAX_LIGHTS) return WORLD_INSERT_FULL;
 
     /* Get a pointer to the next unused slot and increment the counter */
     Light *l = &world->lights[world->num_lights++];
@@ -92,13 +95,14 @@ void world_add_light(WorldState *world, double x, double y, SDL_Color col, doubl
     l->color     = col;
     l->intensity = intensity;
     l->radius    = radius;
+    return WORLD_INSERT_OK;
 }
 
 /**
  * world_add_sprite() — Add an intended billboard-style sprite instance to the world
  *
- * Creates a new SpriteEntity at the end of the sprites array.  Silently
- * drops the sprite if the array is full (num_sprites >= MAX_SPRITES).
+ * Creates a new SpriteEntity at the end of the sprites array and reports
+ * capacity exhaustion instead of silently dropping the sprite.
  *
  * Note: The actual sprite visual data (pattern, material) is stored in
  * the AssetRegistry under sprite_id.  This function only stores the
@@ -109,20 +113,24 @@ void world_add_light(WorldState *world, double x, double y, SDL_Color col, doubl
  * @param y         World Y position
  * @param sprite_id Index into AssetRegistry.sprites[] (0–255)
  */
-void world_add_sprite(WorldState *world, double x, double y, int sprite_id) {
-    if (!world || world->num_sprites >= MAX_SPRITES) return;
+WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sprite_id) {
+    if (!world || !isfinite(x) || !isfinite(y) || sprite_id < 1 || sprite_id > 255) {
+        return WORLD_INSERT_INVALID;
+    }
+    if (world->num_sprites >= MAX_SPRITES) return WORLD_INSERT_FULL;
 
     SpriteEntity *s = &world->sprites[world->num_sprites++];
     s->pos.x     = x;
     s->pos.y     = y;
     s->sprite_id = sprite_id;
+    return WORLD_INSERT_OK;
 }
 
 /**
  * world_add_decal() — Add a surface decoration to the world
  *
- * Appends a Decal to the decals array.  Silently drops if MAX_DECALS
- * is reached.
+ * Appends a Decal to the decals array. Pattern ownership transfers to the
+ * world only when WORLD_INSERT_OK is returned.
  *
  * LEGACY DECAL MIGRATION:
  *   Older decal definition files used map_x, map_y, side, u, and v to
@@ -148,8 +156,11 @@ void world_add_sprite(WorldState *world, double x, double y, int sprite_id) {
  * @param world  WorldState to add to (NULL-safe)
  * @param decal  The Decal struct to add (copied by value into the array)
  */
-void world_add_decal(WorldState *world, Decal decal) {
-    if (!world || world->num_decals >= MAX_DECALS) return;
+WorldInsertResult world_add_decal(WorldState *world, Decal decal) {
+    if (!world || !decal.pattern || decal.pattern_cols <= 0 || decal.pattern_rows <= 0) {
+        return WORLD_INSERT_INVALID;
+    }
+    if (world->num_decals >= MAX_DECALS) return WORLD_INSERT_FULL;
 
     /* ---- Legacy decal migration to world space ---- */
 
@@ -194,4 +205,5 @@ void world_add_decal(WorldState *world, Decal decal) {
     /* Store the (possibly migrated) decal in the array.  This is a struct
      * copy — the caller's original is not modified. */
     world->decals[world->num_decals++] = decal;
+    return WORLD_INSERT_OK;
 }

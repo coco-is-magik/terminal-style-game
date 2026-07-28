@@ -33,6 +33,7 @@
 #include "config.h"          /* config_get() — raycast_max_distance,
                                  side_shadow_attenuation */
 #include "smc_render_opt.h"  /* SMC-generated hot-path wrappers */
+#include "decal_projection.h"
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
                                  sqrt(), floor() */
 #include "math.h"             /* PI, normalize_angle() */
@@ -57,32 +58,6 @@
 /* ===================================================================
  *  Decal projection helpers
  * =================================================================== */
-
-static void decal_basis(const Decal *d,
-                        double *nx, double *ny, double *nz,
-                        double *tx, double *ty, double *tz,
-                        double *bx, double *by, double *bz) {
-    double cos_r = cos(d->rotation);
-    double sin_r = sin(d->rotation);
-
-    switch (d->surface) {
-        case DECAL_SURFACE_WALL:
-            *nx = cos_r; *ny = sin_r; *nz = 0.0;
-            *tx = sin_r; *ty = -cos_r; *tz = 0.0;
-            *bx = 0.0;   *by = 0.0;    *bz = -1.0;
-            break;
-        case DECAL_SURFACE_FLOOR:
-            *nx = 0.0;   *ny = 0.0;   *nz = 1.0;
-            *tx = cos_r; *ty = sin_r; *tz = 0.0;
-            *bx = -sin_r; *by = cos_r; *bz = 0.0;
-            break;
-        default:
-            *nx = 0.0;   *ny = 0.0;   *nz = -1.0;
-            *tx = cos_r; *ty = sin_r; *tz = 0.0;
-            *bx = -sin_r; *by = cos_r; *bz = 0.0;
-            break;
-    }
-}
 
 static bool project_world_point(Grid *grid, Camera *cam,
                                 double world_x, double world_y, double world_z,
@@ -152,28 +127,23 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
         if (!d->pattern || d->pattern_cols <= 0 || d->pattern_rows <= 0) continue;
         if (d->width <= 0.0 || d->height <= 0.0) continue;
 
-        double nx, ny, nz, tx, ty, tz, bx, by, bz;
-        decal_basis(d, &nx, &ny, &nz, &tx, &ty, &tz, &bx, &by, &bz);
+        DecalBasis basis = decal_projection_basis(d);
 
         double view_x = cam->transform.pos.x - d->x;
         double view_y = cam->transform.pos.y - d->y;
         double view_z = camera_z - d->z;
-        if (view_x * nx + view_y * ny + view_z * nz <= 0.0) continue;
+        if (view_x * basis.normal[0] + view_y * basis.normal[1] +
+            view_z * basis.normal[2] <= 0.0) continue;
 
         for (int py = 0; py < d->pattern_rows; py++) {
             for (int px = 0; px < d->pattern_cols; px++) {
                 PatternCell pc = d->pattern[py * d->pattern_cols + px];
                 if (pc.glyph == ' ' || pc.glyph == '\0') continue;
 
-                double glyph_step_u = d->glyph_step_u > 0.0 ? d->glyph_step_u :
-                                      d->width / (double)d->pattern_cols / DEFAULT_DECAL_GLYPH_COMPRESSION;
-                double glyph_step_v = d->glyph_step_v > 0.0 ? d->glyph_step_v :
-                                      d->height / (double)d->pattern_rows / DEFAULT_DECAL_GLYPH_COMPRESSION;
-                double local_u = ((double)px - ((double)d->pattern_cols - 1.0) * 0.5) * glyph_step_u;
-                double local_v = ((double)py - ((double)d->pattern_rows - 1.0) * 0.5) * glyph_step_v;
-                double world_x = d->x + local_u * tx + local_v * bx;
-                double world_y = d->y + local_u * ty + local_v * by;
-                double world_z = d->z + local_u * tz + local_v * bz;
+                double world_x, world_y, world_z;
+                decal_projection_glyph_world(d, &basis, px, py,
+                                             DEFAULT_DECAL_GLYPH_COMPRESSION,
+                                             &world_x, &world_y, &world_z);
                 double screen_x_f, screen_y_f, depth;
 
                 if (!project_world_point(grid, cam, world_x, world_y, world_z,
@@ -203,7 +173,8 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 if (!grid_get(grid, screen_x, screen_y, &existing)) continue;
 
                 Material *d_mat = &assets->materials[pc.material_id];
-                double light_level = decal_light_level(map, d, world_x, world_y, ny);
+                double light_level = decal_light_level(map, d, world_x, world_y,
+                                                       basis.normal[1]);
                 SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
                                                depth, light_level);
                 grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);

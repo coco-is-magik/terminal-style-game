@@ -22,6 +22,7 @@
  */
 
 #include "assets.h"        /* AssetRegistry, Palette, Material, SpriteAsset, PatternCell */
+#include <stdlib.h>
 #include <string.h>        /* memset(), strlen(), strcmp() */
 
 /**
@@ -37,6 +38,15 @@
 void asset_registry_init(AssetRegistry *reg) {
     if (!reg) return;
     memset(reg, 0, sizeof(AssetRegistry));
+}
+
+void asset_registry_clear(AssetRegistry *reg) {
+    if (!reg) return;
+    for (int id = 0; id < 256; id++) {
+        free(reg->sprites[id].pattern);
+        reg->sprites[id].pattern = NULL;
+    }
+    asset_registry_init(reg);
 }
 
 /**

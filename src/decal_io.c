@@ -14,7 +14,10 @@
  */
 
 #include "decal_io.h"
+#include "checked_size.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>   /* FILE, fopen, fclose, fgets, fprintf, fputc, remove */
 #include <stdlib.h>  /* calloc, free, atoi, atof */
 #include <string.h>  /* strcmp, strncmp, strncpy, strlen, memset */
@@ -62,6 +65,19 @@ static void parse_kv(char *line, char **key, char **val) {
     }
 }
 
+static bool parse_bounded_dimension(const char *text, int maximum, int *out) {
+    char *end = NULL;
+    long value;
+    if (!text || !out) return false;
+    errno = 0;
+    value = strtol(text, &end, 10);
+    if (errno == ERANGE || end == text) return false;
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') end++;
+    if (*end != '\0' || value <= 0 || value > maximum || value > INT_MAX) return false;
+    *out = (int)value;
+    return true;
+}
+
 /* ===================================================================
  *  Public API
  * =================================================================== */
@@ -88,8 +104,8 @@ Decal *decal_load_from_file(const char *path) {
      * p_buf[r] holds the glyph string for row r.
      * m_buf[r] holds the comma-separated material IDs for row r.
      */
-    char p_buf[64][256];
-    char m_buf[64][256];
+    char p_buf[DECAL_PATTERN_MAX_ROWS][DECAL_PATTERN_MAX_COLS + 1];
+    char m_buf[DECAL_PATTERN_MAX_ROWS][DECAL_PATTERN_MAX_COLS + 1];
     memset(p_buf, 0, sizeof(p_buf));
     memset(m_buf, 0, sizeof(m_buf));
 
@@ -128,14 +144,18 @@ Decal *decal_load_from_file(const char *path) {
         else if (strcmp(key, "rotation")    == 0) d->rotation     = atof(val);
 
         /* Pattern layout */
-        else if (strcmp(key, "pattern_cols")    == 0) d->pattern_cols   = atoi(val);
-        else if (strcmp(key, "pattern_rows")    == 0) d->pattern_rows   = atoi(val);
+        else if (strcmp(key, "pattern_cols") == 0) {
+            if (!parse_bounded_dimension(val, DECAL_PATTERN_MAX_COLS, &d->pattern_cols)) goto fail;
+        }
+        else if (strcmp(key, "pattern_rows") == 0) {
+            if (!parse_bounded_dimension(val, DECAL_PATTERN_MAX_ROWS, &d->pattern_rows)) goto fail;
+        }
         else if (strcmp(key, "default_material")== 0) default_material  = atoi(val);
 
         /* Per-row pattern data: keys are "pattern_0", "pattern_1", ... */
         else if (strncmp(key, "pattern_", 8) == 0) {
             int r = atoi(key + 8);
-            if (r >= 0 && r < 64) {
+            if (r >= 0 && r < DECAL_PATTERN_MAX_ROWS) {
                 strncpy(p_buf[r], val, 255);
                 p_buf[r][255] = '\0';
             }
@@ -144,7 +164,7 @@ Decal *decal_load_from_file(const char *path) {
         /* Per-row material data: keys are "material_0", "material_1", ... */
         else if (strncmp(key, "material_", 9) == 0) {
             int r = atoi(key + 9);
-            if (r >= 0 && r < 64) {
+            if (r >= 0 && r < DECAL_PATTERN_MAX_ROWS) {
                 strncpy(m_buf[r], val, 255);
                 m_buf[r][255] = '\0';
             }
@@ -152,15 +172,13 @@ Decal *decal_load_from_file(const char *path) {
     }
 
     /* Allocate the flat pattern array (calloc zeroes it) */
-    int cells = d->pattern_cols * d->pattern_rows;
-    if (cells > 0) {
-        d->pattern = calloc((size_t)cells, sizeof(PatternCell));
-        if (!d->pattern) {
-            fclose(f);
-            free(d);
-            return NULL;
-        }
-    }
+    size_t cells;
+    size_t pattern_bytes;
+    if (!checked_size_2d(d->pattern_cols, d->pattern_rows, &cells) ||
+        !checked_size_bytes(cells, sizeof(PatternCell), &pattern_bytes)) goto fail;
+    (void)pattern_bytes;
+    d->pattern = calloc(cells, sizeof(PatternCell));
+    if (!d->pattern) goto fail;
 
     if (art_mode) {
         /* --- Inline ASCII art mode ---
@@ -188,7 +206,7 @@ Decal *decal_load_from_file(const char *path) {
         }
         if (!success && d->pattern) {
             /* Fill with error markers on dimension mismatch */
-            for (int i = 0; i < cells; i++) {
+            for (size_t i = 0; i < cells; i++) {
                 d->pattern[i].glyph       = '!';
                 d->pattern[i].material_id = (uint8_t)default_material;
             }
@@ -220,6 +238,11 @@ Decal *decal_load_from_file(const char *path) {
 
     fclose(f);
     return d;
+
+fail:
+    fclose(f);
+    decal_free(d);
+    return NULL;
 }
 
 int decal_save_to_file(const char *path, const Decal *decal) {

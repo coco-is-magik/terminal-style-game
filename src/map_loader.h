@@ -13,6 +13,9 @@
 
 #include "map.h"       /* Map struct — the output of parsing */
 
+#define MAP_TEXT_MAX_WIDTH 512
+#define MAP_TEXT_MAX_HEIGHT 256
+
 /**
  * map_load_from_string() — Parse a digit-grid string into a Map
  *
@@ -23,7 +26,12 @@
  *      Non-digit characters use config_get()->default_material_id.
  *
  * @param map_txt  NUL-terminated string containing the digit grid
- * @return         Newly allocated Map, or NULL on failure
+ * Ragged rows are padded with material 0 to the longest accepted row.
+ * Width and height are limited to MAP_TEXT_MAX_WIDTH and
+ * MAP_TEXT_MAX_HEIGHT respectively.
+ *
+ * @return         Newly allocated Map, or NULL on empty/oversized input or
+ *                 allocation failure
  */
 Map* map_load_from_string(const char *map_txt);
 

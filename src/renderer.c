@@ -35,6 +35,7 @@
  */
 
 #include "renderer.h"        /* Renderer struct, function declarations */
+#include "checked_size.h"
 #include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
@@ -49,6 +50,7 @@
 #include <stdlib.h>           /* malloc(), free(), size_t */
 #include <string.h>           /* memset() */
 #include <stddef.h>           /* offsetof */
+#include <limits.h>           /* INT_MAX */
 
 /* C99 compile-time assertions for Cell layout used by stream mode */
 #define CASSERT(name, expr) typedef char name[(expr) ? 1 : -1]
@@ -167,8 +169,6 @@ extern const unsigned char font8x8_basic[128][8];
  *   6. Create the SDL renderer
  *   7. Enable logical presentation (letterbox) at the logical resolution
  *   8. Create a streaming SDL_Texture for the pixel buffer upload
- *   9. Build the glyph atlas texture for potential use (though the
- *      software rasterizer uses the raw font data directly)
  *
  * If any step fails, all previously allocated resources are freed and
  * NULL is returned (clean failure).
@@ -181,9 +181,33 @@ extern const unsigned char font8x8_basic[128][8];
  * @param cell_h  Height of each glyph in pixels (typically 8)
  * @return        Pointer to the new Renderer, or NULL on failure
  */
+bool renderer_preflight(int win_w, int win_h, int grid_w, int grid_h,
+                        int cell_w, int cell_h, int *logical_w,
+                        int *logical_h, size_t *pixel_bytes) {
+    size_t width_pixels;
+    size_t height_pixels;
+    size_t pixel_count;
+    size_t bytes;
+    if (!logical_w || !logical_h || !pixel_bytes || win_w <= 0 || win_h <= 0 ||
+        cell_w != RENDERER_GLYPH_WIDTH || cell_h != RENDERER_GLYPH_HEIGHT ||
+        !checked_size_2d(grid_w, cell_w, &width_pixels) ||
+        !checked_size_2d(grid_h, cell_h, &height_pixels) ||
+        width_pixels > INT_MAX || height_pixels > INT_MAX ||
+        width_pixels > SIZE_MAX / height_pixels) return false;
+    pixel_count = width_pixels * height_pixels;
+    if (!checked_size_bytes(pixel_count, sizeof(uint32_t), &bytes)) return false;
+    *logical_w = (int)width_pixels;
+    *logical_h = (int)height_pixels;
+    *pixel_bytes = bytes;
+    return true;
+}
+
 Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h) {
-    /* Reject invalid grid/cell dimensions */
-    if (grid_w <= 0 || grid_h <= 0 || cell_w <= 0 || cell_h <= 0) return NULL;
+    int logical_w;
+    int logical_h;
+    size_t pixel_bytes;
+    if (!renderer_preflight(win_w, win_h, grid_w, grid_h, cell_w, cell_h,
+                            &logical_w, &logical_h, &pixel_bytes)) return NULL;
 
     /* --- Step 1: Allocate the Renderer struct --- */
     Renderer *ren = ren_malloc(sizeof(Renderer));
@@ -191,14 +215,13 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
 
     ren->cell_w = cell_w;
     ren->cell_h = cell_h;
-    ren->logical_w = grid_w * cell_w;       /* Logical width in pixels */
-    ren->logical_h = grid_h * cell_h;       /* Logical height in pixels */
-    ren->atlas = NULL;
+    ren->logical_w = logical_w;
+    ren->logical_h = logical_h;
 
     /* --- Step 3: Allocate the software pixel buffer --- */
     /* One uint32_t per pixel in the logical area.  This buffer is written
      * to every frame by renderer_draw() and then uploaded to the GPU. */
-    ren->pixel_buffer = ren_malloc(ren->logical_w * ren->logical_h * sizeof(uint32_t));
+    ren->pixel_buffer = ren_malloc(pixel_bytes);
     if (!ren->pixel_buffer) {
         ren_free(ren);
         return NULL;
@@ -257,24 +280,8 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     }
     renderer_texture_create_count++;     /* Track this texture creation */
 
-    /* --- Step 9: Build the glyph atlas (for future GPU-accelerated path) --- */
-    /* Currently the software rasterizer in renderer_draw() uses the raw
-     * font8x8_basic data directly, bypassing the atlas.  The atlas exists
-     * for a potential future GPU-accelerated rendering path. */
-    ren->atlas = glyph_atlas_create_builtin(ren->sdl_ren);
-    if (!ren->atlas) {
-        fprintf(stderr, "glyph_atlas_create_builtin failed\n");
-        SDL_DestroyTexture(ren->screen_texture);
-        SDL_DestroyRenderer(ren->sdl_ren);
-        SDL_DestroyWindow(ren->window);
-        SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        ren_free(ren->pixel_buffer);
-        ren_free(ren);
-        return NULL;
-    }
-
 #if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
-    /* Allocate batch/stream mode buffers after successful atlas creation */
+    /* Allocate batch/stream mode buffers after texture creation. */
     size_t cell_count = (size_t)grid_w * (size_t)grid_h;
     size_t state_buffer_bytes, dirty_indices_bytes;
     smc_indexed_state_tracker_get_buffer_sizes(cell_count,
@@ -284,7 +291,6 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     ren->batch_state_buffer = ren_malloc(state_buffer_bytes);
     if (!ren->batch_state_buffer) {
         fprintf(stderr, "renderer_create: failed to allocate batch state buffer\n");
-        glyph_atlas_destroy(ren->atlas);
         SDL_DestroyTexture(ren->screen_texture);
         SDL_DestroyRenderer(ren->sdl_ren);
         SDL_DestroyWindow(ren->window);
@@ -300,7 +306,6 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
 #ifdef USE_SMC_BATCH_STATE_TRACKER
         ren_free(ren->batch_state_buffer);
 #endif
-        glyph_atlas_destroy(ren->atlas);
         SDL_DestroyTexture(ren->screen_texture);
         SDL_DestroyRenderer(ren->sdl_ren);
         SDL_DestroyWindow(ren->window);
@@ -312,12 +317,6 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     ren->batch_buffer_size = cell_count;
 #endif
 
-    /* Enable SDL text input so SDL_EVENT_TEXT_INPUT fires for all windows.
-     * This is required for the Asset Designer save-prompt to receive typed
-     * characters.  We leave it enabled globally — consuming code (asset_designer.c)
-     * reads text_input only when in AD_SAVE_PROMPT mode. */
-    SDL_StartTextInput(ren->window);
-
     return ren;
 }
 
@@ -328,7 +327,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
 /**
  * renderer_destroy() — Free all renderer resources (reverse of create)
  *
- * Destroys in order: atlas → screen_texture → SDL_renderer → window →
+ * Destroys in order: screen_texture → SDL_renderer → window →
  * pixel_buffer → Renderer struct.  Also quits the SDL video subsystem.
  * Safe to call with NULL (no-op).
  *
@@ -336,7 +335,6 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
  */
 void renderer_destroy(Renderer *ren) {
     if (!ren) return;
-    if (ren->atlas)          glyph_atlas_destroy(ren->atlas);
     if (ren->screen_texture) SDL_DestroyTexture(ren->screen_texture);
     if (ren->sdl_ren)        SDL_DestroyRenderer(ren->sdl_ren);
     if (ren->window)         SDL_DestroyWindow(ren->window);

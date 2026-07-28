@@ -253,6 +253,19 @@ void ui_ele_set_content(UiElement *element, const char *content) {
     element->content = copy;
 }
 
+void ui_ele_set_colors(UiElement *element, SDL_Color fg, SDL_Color bg) {
+    if (!element) return;
+    element->has_fg = true;
+    element->has_bg = true;
+    element->fg = fg;
+    element->bg = bg;
+}
+
+const char *ui_ele_get_action(const UiElement *element) {
+    if (!element || element->action[0] == '\0') return NULL;
+    return element->action;
+}
+
 static int aligned_x(int x, int width, int len, UiAlign align) {
     if (width <= len) return x;
     if (align == UI_ALIGN_CENTER) return x + (width - len) / 2;

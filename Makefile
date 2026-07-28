@@ -112,11 +112,21 @@ TEST_SCENE_DOCUMENT_RUNNER   := $(BUILD_DIR)/test-scene-document
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
 TEST_UNIFIED_EDITOR_RUNNER   := $(BUILD_DIR)/test-unified-editor
+TEST_INPUT_RUNNER            := $(BUILD_DIR)/test-input
+TEST_GLYPH_CACHE_RUNNER      := $(BUILD_DIR)/test-glyph-block-cache
+TEST_LIGHTING_CACHE_RUNNER   := $(BUILD_DIR)/test-lighting-cache
+TEST_LIGHTING_RUNNER         := $(BUILD_DIR)/test-lighting
+TEST_APP_OPTIONS_RUNNER      := $(BUILD_DIR)/test-app-options
+TEST_SMC_STATE_RUNNER        := $(BUILD_DIR)/test-smc-state-tracker
+TEST_SMC_INDEXED_RUNNER      := $(BUILD_DIR)/test-smc-indexed-state-tracker
+TEST_BENCHMARK_RUNNER        := $(BUILD_DIR)/test-benchmark-session
+TEST_APP_MODULES_RUNNER      := $(BUILD_DIR)/test-app-modules
+TEST_DECAL_PROJECTION_RUNNER := $(BUILD_DIR)/test-decal-projection
 
 
 
 
-.PHONY: all run test clean dirs benchmark-raycast
+.PHONY: all run test check clean dirs benchmark-raycast asan ubsan sanitize leak coverage style matrix matrix-one smoke
 
 
 all: $(APP)
@@ -136,6 +146,7 @@ SRC_FILES := $(wildcard src/*.c)
 # ---------------------------------------------------------------------------
 
 SRC_CONFIG        := src/config.c
+SRC_CHECKED_SIZE  := src/checked_size.c
 SRC_GRID          := src/grid.c
 SRC_MATH          := src/math.c
 SRC_MAP           := src/map.c
@@ -151,7 +162,7 @@ SRC_UI_ELE        := src/ui_ele.c
 SRC_MENU_STATE    := src/menu_state.c
 SRC_SCALE         := src/scale.c
 SRC_TIMING        := src/timing.c
-SRC_RAYCAST       := src/raycast.c src/smc_render_opt.c
+SRC_RAYCAST       := src/raycast.c src/decal_projection.c src/smc_render_opt.c
 SRC_LIGHTING      := src/lighting.c
 SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
 SRC_SCENE_DOCUMENT := src/scene_document.c
@@ -262,10 +273,12 @@ TEST_MENU_STATE_SRC := \
 	$(SRC_CONFIG)
 
 TEST_UI_ELE_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_UI_ELE) \
 	$(SRC_GRID)
 
 TEST_DECAL_IO_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_DECAL_IO) \
 	$(SRC_ASSETS) \
 	$(SRC_WORLD) \
@@ -278,6 +291,8 @@ TEST_DECAL_PAINTER_SRC := \
 	$(SRC_DECAL_PAINTER)
 
 TEST_CORE_SRC := \
+	$(SRC_CHECKED_SIZE) \
+	$(SRC_DECAL_IO) \
 	$(SRC_GRID) \
 	$(SRC_SCALE) \
 	$(SRC_TIMING) \
@@ -295,6 +310,8 @@ TEST_CORE_SRC := \
 	$(SRC_INPUT)
 
 TEST_DECALS_SRC := \
+	$(SRC_CHECKED_SIZE) \
+	$(SRC_DECAL_IO) \
 	$(SRC_GRID) \
 	$(SRC_MAP) \
 	$(SRC_CAMERA) \
@@ -309,12 +326,14 @@ TEST_DECALS_SRC := \
 	$(SRC_INPUT)
 
 TEST_SCENE_DOCUMENT_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_SCENE_DOCUMENT) \
 	$(SRC_MAP) \
 	$(SRC_MAP_LOADER) \
 	$(SRC_CONFIG)
 
 TEST_COMMAND_SYSTEM_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_COMMAND_SYSTEM) \
 	$(SRC_SCENE_DOCUMENT) \
 	$(SRC_MAP) \
@@ -322,6 +341,7 @@ TEST_COMMAND_SYSTEM_SRC := \
 	$(SRC_CONFIG)
 
 TEST_EDITOR_SELECTION_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_EDITOR_SELECTION) \
 	$(SRC_RAYCAST) \
 	$(SRC_CAMERA) \
@@ -334,6 +354,7 @@ TEST_EDITOR_SELECTION_SRC := \
 	$(SRC_INPUT)
 
 TEST_UNIFIED_EDITOR_SRC := \
+	$(SRC_CHECKED_SIZE) \
 	$(SRC_UNIFIED_EDITOR) \
 	$(SRC_COMMAND_SYSTEM) \
 	$(SRC_SCENE_DOCUMENT) \
@@ -404,6 +425,55 @@ $(TEST_UNIFIED_EDITOR_RUNNER): tests/test_unified_editor.c $(TEST_UNIFIED_EDITOR
 		tests/test_unified_editor.c $(TEST_UNIFIED_EDITOR_SRC) $(TEST_FEATURE_EXTRA_SRC) \
 		-o $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
+$(TEST_INPUT_RUNNER): tests/test_input.c $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_input.c $(SRC_INPUT) \
+		-o $(TEST_INPUT_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_GLYPH_CACHE_RUNNER): tests/test_glyph_block_cache.c src/glyph_block_cache.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_block_cache.c src/glyph_block_cache.c \
+		-o $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_LIGHTING_CACHE_RUNNER): tests/test_lighting_cache.c src/lighting_cache.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_lighting_cache.c src/lighting_cache.c \
+		-o $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_LIGHTING_RUNNER): tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) $(TEST_FEATURE_EXTRA_SRC) | dirs
+	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
+		tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) \
+		$(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) \
+		$(TEST_FEATURE_EXTRA_SRC) -o $(TEST_LIGHTING_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
+
+$(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c \
+		-o $(TEST_APP_OPTIONS_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_SMC_STATE_RUNNER): tests/test_smc_state_tracker.c src/smc_state_tracker.c | dirs
+	$(CC) $(CFLAGS) -DUSE_SMC_STATE_TRACKER=1 $(INCLUDES) \
+		-I"vendor/src/smc/include" -I"vendor/src/smc/src/c" \
+		tests/test_smc_state_tracker.c src/smc_state_tracker.c \
+		vendor/src/smc/src/c/smc_runtime_stub.c vendor/src/smc/src/c/smc_artifact.c \
+		vendor/src/smc/src/c/smc_state.c -o $(TEST_SMC_STATE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_SMC_INDEXED_RUNNER): tests/test_smc_indexed_state_tracker.c src/smc_indexed_state_tracker.c | dirs
+	$(CC) $(CFLAGS) -DUSE_SMC_INDEXED_STATE_TRACKER=1 $(INCLUDES) \
+		-I"vendor/src/smc/include" -I"vendor/src/smc/src/c" \
+		tests/test_smc_indexed_state_tracker.c src/smc_indexed_state_tracker.c \
+		vendor/src/smc/src/c/smc_runtime_stub.c vendor/src/smc/src/c/smc_artifact.c \
+		vendor/src/smc/src/c/smc_state.c -o $(TEST_SMC_INDEXED_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_BENCHMARK_RUNNER): tests/test_benchmark_session.c src/benchmark_session.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_benchmark_session.c src/benchmark_session.c \
+		-o $(TEST_BENCHMARK_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/frame_dispatch.c src/grid.c src/camera.c src/math.c src/map.c src/checked_size.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_modules.c src/menu_controller.c \
+		src/frame_dispatch.c src/grid.c src/camera.c src/math.c src/map.c src/checked_size.c \
+		-o $(TEST_APP_MODULES_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_DECAL_PROJECTION_RUNNER): tests/test_decal_projection.c src/decal_projection.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decal_projection.c src/decal_projection.c \
+		-o $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_LIBS) $(RPATH)
+
 
 
 run: $(APP)
@@ -418,7 +488,7 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) $(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) $(TEST_DECAL_PROJECTION_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
 	./$(TEST_DECALS_RUNNER)
@@ -430,7 +500,70 @@ test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_UNIFIED_EDITOR_RUNNER)
+	./$(TEST_INPUT_RUNNER)
+	./$(TEST_GLYPH_CACHE_RUNNER)
+	./$(TEST_LIGHTING_CACHE_RUNNER)
+	./$(TEST_LIGHTING_RUNNER)
+	./$(TEST_APP_OPTIONS_RUNNER)
+	./$(TEST_SMC_STATE_RUNNER)
+	./$(TEST_SMC_INDEXED_RUNNER)
+	./$(TEST_BENCHMARK_RUNNER)
+	./$(TEST_APP_MODULES_RUNNER)
+	./$(TEST_DECAL_PROJECTION_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
+
+check: all test
+
+asan:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -O1 -g -fsanitize=address -fno-omit-frame-pointer" test
+
+ubsan:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -O1 -g -fsanitize=undefined -fno-omit-frame-pointer" test
+
+sanitize: asan ubsan
+
+leak:
+	@if command -v valgrind >/dev/null 2>&1; then \
+		$(MAKE) $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER) && \
+		valgrind --quiet --error-exitcode=1 --leak-check=full ./$(TEST_DECAL_IO_RUNNER) && \
+		valgrind --quiet --error-exitcode=1 --leak-check=full ./$(TEST_CORE_RUNNER); \
+	else echo "SKIP: valgrind is not available"; fi
+
+coverage:
+	@if command -v gcov >/dev/null 2>&1; then \
+		$(MAKE) clean && $(MAKE) CFLAGS="$(CFLAGS) -O0 -g --coverage" test && \
+		mkdir -p $(BUILD_DIR)/coverage && \
+		gcov -o $(BUILD_DIR) $(BUILD_DIR)/*.gcno; \
+		status=$$?; \
+		for report in ./*.gcov; do \
+			if test -f "$$report"; then mv "$$report" $(BUILD_DIR)/coverage/; fi; \
+		done; \
+		exit $$status; \
+	else echo "SKIP: gcov is not available"; fi
+
+style:
+	@if command -v cppcheck >/dev/null 2>&1; then cppcheck --quiet --error-exitcode=1 --std=c11 src; \
+	else echo "SKIP: cppcheck is not available"; fi
+
+matrix:
+	@set -e; for mode in \
+		"USE_NO_STATE_TRACKER=1" "USE_DIRTY_CELLS=1" "USE_SMC_STATE_TRACKER=1" \
+		"USE_SMC_INDEXED_STATE_TRACKER=1" "USE_SMC_BATCH_STATE_TRACKER=1" \
+		"USE_SMC_STREAM_STATE_TRACKER=1" "USE_LIGHTING_CACHE=1" "USE_GLYPH_CACHE=1"; do \
+		$(MAKE) matrix-one MATRIX_MODE="$$mode"; \
+	done
+
+matrix-one:
+	@test -n "$(MATRIX_MODE)" || { echo "MATRIX_MODE is required"; exit 2; }
+	@$(MAKE) clean >/dev/null
+	@$(MAKE) $(MATRIX_MODE) build/test-core >/dev/null
+	@./build/test-core >/dev/null
+	@echo "PASS: $(MATRIX_MODE)"
+
+smoke: all
+	./$(APP) --smoke-test
 
 
 
@@ -444,3 +577,4 @@ stability: $(APP)
 
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -f -- *.gcov

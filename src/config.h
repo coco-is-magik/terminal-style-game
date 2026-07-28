@@ -68,14 +68,18 @@ void config_init_defaults(void);
 /**
  * config_load_from_file() — Load INI-style overrides from a file
  *
- * Opens filepath and parses key=value lines into the global config.
- * Unknown keys are ignored.  If the file cannot be opened, the function
- * returns false and the existing config values remain unchanged.
+ * Parses recognized key=value lines into a temporary copy and commits only
+ * after the entire file validates. Unknown keys are ignored. Malformed or
+ * out-of-range recognized values return false and leave the active config
+ * unchanged. Cell dimensions must match the renderer's supported 8x8 glyphs.
  *
  * @param filepath  Path to the configuration file (e.g. "config.ini")
- * @return          true if the file was read, false if it could not be opened
+ * @return          true if the file was read and valid, false otherwise
  */
 bool config_load_from_file(const char *filepath);
+
+/** Return true when every effective configuration field is supported. */
+bool config_validate(const EngineConfig *config);
 
 /**
  * config_get() — Return a read-only pointer to the global EngineConfig
@@ -90,9 +94,13 @@ const EngineConfig* config_get(void);
  * Used by tests and headless modes to force settings that differ from
  * defaults and config.ini.  NULL is a no-op.
  *
- * @param new_config  Pointer to the EngineConfig to copy (may be NULL)
+ * Invalid or NULL configurations are rejected without changing the active
+ * configuration.
+ *
+ * @param new_config  Pointer to the EngineConfig to validate and copy
+ * @return            true if committed, false if rejected
  */
-void config_set(const EngineConfig *new_config);
+bool config_set(const EngineConfig *new_config);
 
 /* ---- Run mode enum ---- */
 
@@ -102,7 +110,8 @@ typedef enum {
     RUN_MODE_BENCHMARK_RAYCAST,   /* Timed raycast benchmark, prints JSON results */
     RUN_MODE_BENCHMARK_SCENARIO,  /* Deterministic scenario benchmark (fixed frames) */
     RUN_MODE_BENCHMARK_LIGHTING,  /* Timed lighting benchmark, prints JSON results */
-    RUN_MODE_STABILITY            /* Stability test (detects leaks/crashes) */
+    RUN_MODE_STABILITY,           /* Stability test (detects leaks/crashes) */
+    RUN_MODE_SMOKE                /* Headless startup/assets validation */
 } RunMode;
 
 /* ---- Visual mode enum ---- */

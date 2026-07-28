@@ -25,7 +25,13 @@
 #include "entity.h"       /* Vec2 type — used by Light, SpriteEntity, spawn_pos */
 #include "decal.h"        /* Decal struct and DecalSurface enum */
 #include <SDL3/SDL.h>     /* SDL_Color — used by Light */
-#include <stdbool.h>      /* (included for future use) */
+#include <stdbool.h>
+
+typedef enum {
+    WORLD_INSERT_OK = 0,
+    WORLD_INSERT_INVALID,
+    WORLD_INSERT_FULL
+} WorldInsertResult;
 
 /* ===================================================================
  *  Dynamic entity types
@@ -122,8 +128,9 @@ void world_clear(WorldState *world);
 /**
  * world_add_light() — Add a point light to the world
  *
- * Appends a Light to the lights array.  Silently drops the light if
- * MAX_LIGHTS has been reached.
+ * Appends a Light to the lights array. Returns WORLD_INSERT_FULL at capacity
+ * and WORLD_INSERT_INVALID for a NULL world, non-finite numeric input, or a
+ * non-positive radius; the world is unchanged on failure.
  *
  * @param world     WorldState to add to (NULL-safe)
  * @param x         World X position of the light
@@ -132,26 +139,29 @@ void world_clear(WorldState *world);
  * @param intensity Brightness (>0) or darkness (<0 for anti-light)
  * @param radius    Max distance the light reaches (grid cells)
  */
-void world_add_light(WorldState *world, double x, double y, SDL_Color col, double intensity, double radius);
+WorldInsertResult world_add_light(WorldState *world, double x, double y,
+                                  SDL_Color col, double intensity, double radius);
 
 /**
  * world_add_sprite() — Add an intended billboard-style sprite instance to the world
  *
- * Appends a SpriteEntity to the sprites array.  Silently drops if
- * MAX_SPRITES has been reached.
+ * Appends a SpriteEntity to the sprites array. Returns WORLD_INSERT_FULL at
+ * capacity and WORLD_INSERT_INVALID for a NULL world, non-finite position, or
+ * a sprite ID outside 1..255.
  *
  * @param world     WorldState to add to (NULL-safe)
  * @param x         World X position
  * @param y         World Y position
  * @param sprite_id Index into AssetRegistry.sprites[]
  */
-void world_add_sprite(WorldState *world, double x, double y, int sprite_id);
+WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sprite_id);
 
 /**
  * world_add_decal() — Add a surface decoration to the world
  *
- * Appends a Decal to the decals array.  Silently drops if MAX_DECALS
- * has been reached.
+ * Appends a Decal to the decals array and takes ownership of decal.pattern only
+ * on WORLD_INSERT_OK. On WORLD_INSERT_INVALID or WORLD_INSERT_FULL, ownership
+ * remains with the caller and the world is unchanged.
  *
  * IMPORTANT: This function performs "legacy decal migration" — if the
  * decal was defined with the old file format (using map_x/map_y/side/u/v
@@ -161,6 +171,6 @@ void world_add_sprite(WorldState *world, double x, double y, int sprite_id);
  * @param world  WorldState to add to (NULL-safe)
  * @param decal  The Decal struct to add (copied into the array)
  */
-void world_add_decal(WorldState *world, Decal decal);
+WorldInsertResult world_add_decal(WorldState *world, Decal decal);
 
 #endif /* WORLD_H */

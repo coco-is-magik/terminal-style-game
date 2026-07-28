@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 
 #include "../src/decal.h"
 #include "../src/decal_io.h"
@@ -294,6 +295,80 @@ static void test_load_missing_file(void **state) {
     assert_null(d);
 }
 
+static void test_load_rejects_invalid_dimensions(void **state) {
+    (void)state;
+    FILE *file = fopen(TMP_PATH, "w");
+    assert_non_null(file);
+    assert_true(fputs("pattern_cols=256\npattern_rows=1\npattern_0=X\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    assert_null(decal_load_from_file(TMP_PATH));
+    assert_int_equal(remove(TMP_PATH), 0);
+
+    file = fopen(TMP_PATH, "w");
+    assert_non_null(file);
+    assert_true(fputs("pattern_cols=1\npattern_rows=-1\npattern_0=X\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    assert_null(decal_load_from_file(TMP_PATH));
+    assert_int_equal(remove(TMP_PATH), 0);
+}
+
+static void assert_dimension_file_rejected(const char *cols, const char *rows,
+                                           const char *suffix) {
+    FILE *file = fopen(TMP_PATH, "w");
+    assert_non_null(file);
+    assert_true(fprintf(file, "pattern_cols=%s\npattern_rows=%s\n%s",
+                        cols, rows, suffix) > 0);
+    assert_int_equal(fclose(file), 0);
+    assert_null(decal_load_from_file(TMP_PATH));
+    assert_int_equal(remove(TMP_PATH), 0);
+}
+
+static void test_load_dimension_boundaries(void **state) {
+    (void)state;
+    Decal *decal;
+    FILE *file = fopen(TMP_PATH, "w");
+    assert_non_null(file);
+    assert_true(fputs("pattern_cols=255\npattern_rows=1\nart=\n", file) >= 0);
+    for (int i = 0; i < 255; i++) assert_int_not_equal(fputc('X', file), EOF);
+    assert_int_not_equal(fputc('\n', file), EOF);
+    assert_int_equal(fclose(file), 0);
+    decal = decal_load_from_file(TMP_PATH);
+    assert_non_null(decal);
+    assert_int_equal(decal->pattern_cols, 255);
+    decal_free(decal);
+    assert_int_equal(remove(TMP_PATH), 0);
+
+    assert_dimension_file_rejected("0", "1", "pattern_0=X\n");
+    assert_dimension_file_rejected("abc", "1", "pattern_0=X\n");
+    assert_dimension_file_rejected("1x", "1", "pattern_0=X\n");
+    assert_dimension_file_rejected("999999999999999999999", "1", "pattern_0=X\n");
+    assert_dimension_file_rejected("1", "65", "art=\nX\n");
+    assert_dimension_file_rejected("1", "0", "art=\nX\n");
+}
+
+static void test_all_checked_in_decals_load(void **state) {
+    (void)state;
+    DIR *directory = opendir("assets/decals");
+    struct dirent *entry;
+    int loaded = 0;
+    assert_non_null(directory);
+
+    while ((entry = readdir(directory)) != NULL) {
+        char path[512];
+        size_t length = strlen(entry->d_name);
+        Decal *decal;
+        if (length < 5 || strcmp(entry->d_name + length - 4, ".txt") != 0) continue;
+        assert_true(snprintf(path, sizeof(path), "assets/decals/%s", entry->d_name) > 0);
+        decal = decal_load_from_file(path);
+        assert_non_null(decal);
+        assert_non_null(decal->pattern);
+        decal_free(decal);
+        loaded++;
+    }
+    assert_int_equal(closedir(directory), 0);
+    assert_true(loaded > 0);
+}
+
 /**
  * test_free_null — decal_free(NULL) must not crash.
  */
@@ -397,12 +472,12 @@ static void test_engine_compatibility(void **state) {
 #define COMPAT_DIR "tests/tmp_decal_io_compat"
 
     /* Build the directory tree the engine loader expects */
-    system("mkdir -p " COMPAT_DIR "/maps "
+    assert_int_equal(system("mkdir -p " COMPAT_DIR "/maps "
                        COMPAT_DIR "/decals "
                        COMPAT_DIR "/lights "
                        COMPAT_DIR "/materials "
                        COMPAT_DIR "/palettes "
-                       COMPAT_DIR "/sprites");
+                       COMPAT_DIR "/sprites"), 0);
 
     /* Minimal map (3×3, all walls) */
     FILE *fmap = fopen(COMPAT_DIR "/maps/1.txt", "w");
@@ -445,7 +520,7 @@ static void test_engine_compatibility(void **state) {
     decal_free(d);
     world_clear(&world);
     map_destroy(m);
-    system("rm -rf " COMPAT_DIR);
+    assert_int_equal(system("rm -rf " COMPAT_DIR), 0);
 
 #undef COMPAT_DIR
 }
@@ -463,6 +538,9 @@ int main(void) {
         cmocka_unit_test(test_load_art_mode),
         cmocka_unit_test(test_save_invalid_path),
         cmocka_unit_test(test_load_missing_file),
+        cmocka_unit_test(test_load_rejects_invalid_dimensions),
+        cmocka_unit_test(test_load_dimension_boundaries),
+        cmocka_unit_test(test_all_checked_in_decals_load),
         cmocka_unit_test(test_free_null),
         cmocka_unit_test(test_multirow_materials),
         cmocka_unit_test(test_load_save_load_identity),

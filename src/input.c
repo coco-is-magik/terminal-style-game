@@ -25,6 +25,107 @@
 #include "input.h"        /* InputState struct, input_process() declaration */
 #include <SDL3/SDL.h>     /* SDL_PollEvent(), SDL_GetKeyboardState(),
                              SDL_EVENT_QUIT, SDLK_ESCAPE, etc. */
+#include <string.h>
+
+void input_begin_frame(InputState *input) {
+    if (!input) return;
+    input->mouse_dx = 0.0f;
+    input->mouse_dy = 0.0f;
+    input->mouse_wheel_x = 0.0f;
+    input->mouse_wheel_y = 0.0f;
+#define RESET_FIELD(field) input->field = false
+    RESET_FIELD(up); RESET_FIELD(down); RESET_FIELD(confirm); RESET_FIELD(esc);
+    RESET_FIELD(arrow_left); RESET_FIELD(arrow_right); RESET_FIELD(place);
+    RESET_FIELD(erase); RESET_FIELD(save); RESET_FIELD(load); RESET_FIELD(prev_glyph);
+    RESET_FIELD(next_glyph); RESET_FIELD(save_as); RESET_FIELD(tab);
+    RESET_FIELD(ctrl_left); RESET_FIELD(ctrl_right); RESET_FIELD(ctrl_up);
+    RESET_FIELD(ctrl_down); RESET_FIELD(editor_toggle_mode_pressed);
+    RESET_FIELD(editor_select_pressed); RESET_FIELD(editor_confirm_pressed);
+    RESET_FIELD(editor_cancel_pressed); RESET_FIELD(editor_undo_pressed);
+    RESET_FIELD(editor_redo_pressed); RESET_FIELD(editor_save_pressed);
+    RESET_FIELD(editor_reload_pressed); RESET_FIELD(editor_previous_pressed);
+    RESET_FIELD(editor_next_pressed);
+#undef RESET_FIELD
+    input->text_input[0] = '\0';
+    input->text_input_len = 0;
+}
+
+void input_apply_event(InputState *input, const InputEvent *event, bool headless_mode) {
+    if (!input || !event) return;
+    if (event->type == INPUT_EVENT_QUIT) {
+        input->quit = true;
+        return;
+    }
+    if (headless_mode) return;
+    if (event->type == INPUT_EVENT_TEXT && event->text) {
+        const char *text = event->text;
+        while (*text && input->text_input_len < (int)sizeof(input->text_input) - 1) {
+            input->text_input[input->text_input_len++] = *text++;
+        }
+        input->text_input[input->text_input_len] = '\0';
+        return;
+    }
+    if (event->type == INPUT_EVENT_MOUSE_MOTION) {
+        input->mouse_dx += event->x;
+        input->mouse_dy += event->y;
+        return;
+    }
+    if (event->type == INPUT_EVENT_MOUSE_WHEEL) {
+        input->mouse_wheel_x += event->x;
+        input->mouse_wheel_y += event->y;
+        return;
+    }
+    if (event->type == INPUT_EVENT_MOUSE_BUTTON_DOWN ||
+        event->type == INPUT_EVENT_MOUSE_BUTTON_UP) {
+        bool pressed = event->type == INPUT_EVENT_MOUSE_BUTTON_DOWN;
+        if (event->button == 1) input->mouse_left = pressed;
+        if (event->button == 3) input->mouse_right = pressed;
+        return;
+    }
+    if (event->type != INPUT_EVENT_KEY_DOWN || event->repeat) return;
+    switch (event->key) {
+        case INPUT_KEY_ESCAPE: input->esc = true; input->editor_cancel_pressed = true; break;
+        case INPUT_KEY_UP:
+            if (event->ctrl) input->ctrl_up = true;
+            else { input->up = true; input->editor_previous_pressed = true; }
+            break;
+        case INPUT_KEY_DOWN:
+            if (event->ctrl) input->ctrl_down = true;
+            else { input->down = true; input->editor_next_pressed = true; }
+            break;
+        case INPUT_KEY_RETURN: input->confirm = true; input->editor_confirm_pressed = true; break;
+        case INPUT_KEY_LEFT: if (event->ctrl) input->ctrl_left = true; else input->arrow_left = true; break;
+        case INPUT_KEY_RIGHT: if (event->ctrl) input->ctrl_right = true; else input->arrow_right = true; break;
+        case INPUT_KEY_SPACE: input->place = true; break;
+        case INPUT_KEY_BACKSPACE: input->erase = true; break;
+        case INPUT_KEY_F5: input->save = true; input->editor_reload_pressed = true; break;
+        case INPUT_KEY_F9: input->load = true; break;
+        case INPUT_KEY_LEFTBRACKET: input->prev_glyph = true; break;
+        case INPUT_KEY_RIGHTBRACKET: input->next_glyph = true; break;
+        case INPUT_KEY_F10: input->save_as = true; break;
+        case INPUT_KEY_TAB: input->tab = true; input->editor_toggle_mode_pressed = true; break;
+        case INPUT_KEY_E: input->editor_select_pressed = true; break;
+        case INPUT_KEY_Z: if (event->ctrl) input->editor_undo_pressed = true; break;
+        case INPUT_KEY_Y: if (event->ctrl) input->editor_redo_pressed = true; break;
+        case INPUT_KEY_S: if (event->ctrl) input->editor_save_pressed = true; break;
+        case INPUT_KEY_NONE: break;
+    }
+}
+
+static InputKey translate_key(SDL_Keycode key) {
+    switch (key) {
+        case SDLK_ESCAPE: return INPUT_KEY_ESCAPE; case SDLK_UP: return INPUT_KEY_UP;
+        case SDLK_DOWN: return INPUT_KEY_DOWN; case SDLK_RETURN: return INPUT_KEY_RETURN;
+        case SDLK_LEFT: return INPUT_KEY_LEFT; case SDLK_RIGHT: return INPUT_KEY_RIGHT;
+        case SDLK_SPACE: return INPUT_KEY_SPACE; case SDLK_BACKSPACE: return INPUT_KEY_BACKSPACE;
+        case SDLK_F5: return INPUT_KEY_F5; case SDLK_F9: return INPUT_KEY_F9;
+        case SDLK_LEFTBRACKET: return INPUT_KEY_LEFTBRACKET;
+        case SDLK_RIGHTBRACKET: return INPUT_KEY_RIGHTBRACKET; case SDLK_F10: return INPUT_KEY_F10;
+        case SDLK_TAB: return INPUT_KEY_TAB; case SDLK_E: return INPUT_KEY_E;
+        case SDLK_Z: return INPUT_KEY_Z; case SDLK_Y: return INPUT_KEY_Y;
+        case SDLK_S: return INPUT_KEY_S; default: return INPUT_KEY_NONE;
+    }
+}
 
 /**
  * input_process() — Poll SDL events and update the InputState
@@ -56,167 +157,30 @@
 void input_process(InputState *input, bool headless_mode) {
     /* ---- Reset per-frame fields ---- */
     /* Mouse deltas are re-accumulated from scratch each frame. */
-    input->mouse_dx = 0.0f;
-    input->mouse_dy = 0.0f;
-    /* Edge-triggered navigation fields: reset each frame so they are true
-     * for exactly one frame per key press (non-repeat only). */
-    input->up         = false;
-    input->down       = false;
-    input->confirm    = false;
-    input->esc        = false;
-    input->arrow_left  = false;
-    input->arrow_right = false;
-    input->place      = false;
-    input->erase      = false;
-    input->save       = false;
-    input->load       = false;
-    input->prev_glyph = false;
-    input->next_glyph = false;
-    input->save_as    = false;
-    input->tab        = false;
-    input->ctrl_left   = false;
-    input->ctrl_right  = false;
-    input->ctrl_up     = false;
-    input->ctrl_down   = false;
-    input->editor_toggle_mode_pressed = false;
-    input->editor_select_pressed      = false;
-    input->editor_confirm_pressed     = false;
-    input->editor_cancel_pressed      = false;
-    input->editor_undo_pressed        = false;
-    input->editor_redo_pressed        = false;
-    input->editor_save_pressed        = false;
-    input->editor_reload_pressed      = false;
-    input->editor_previous_pressed    = false;
-    input->editor_next_pressed        = false;
-    input->text_input[0]  = '\0';
-    input->text_input_len = 0;
-
-
+    if (!input) return;
+    input_begin_frame(input);
     /* ---- Poll the SDL event queue ---- */
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        /* Window close button (X) or system quit request */
-        if (e.type == SDL_EVENT_QUIT) {
-            input->quit = true;
-        }
-
-        /* Interactive-only input processing.
-         * In headless mode, we skip keyboard events and mouse motion
-         * so the simulation runs without user interference. */
-        if (!headless_mode) {
-            /* Key press events (non-repeat for navigation keys) */
-            if (e.type == SDL_EVENT_KEY_DOWN) {
-                bool ctrl_down = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
-                switch (e.key.key) {
-                    case SDLK_ESCAPE:
-                        if (!e.key.repeat) {
-                            input->esc = true;
-                            input->editor_cancel_pressed = true;
-                        }
-                        break;
-                    /* Edge-triggered navigation: only on initial press, not repeat */
-                    case SDLK_UP:
-                        if (!e.key.repeat) {
-                            if (ctrl_down) input->ctrl_up = true;
-                            else {
-                                input->up = true;
-                                input->editor_previous_pressed = true;
-                            }
-                        }
-                        break;
-                    case SDLK_DOWN:
-                        if (!e.key.repeat) {
-                            if (ctrl_down) input->ctrl_down = true;
-                            else {
-                                input->down = true;
-                                input->editor_next_pressed = true;
-                            }
-                        }
-                        break;
-                    case SDLK_RETURN:
-                        if (!e.key.repeat) {
-                            input->confirm = true;
-                            input->editor_confirm_pressed = true;
-                        }
-                        break;
-
-                    case SDLK_LEFT:
-                        if (!e.key.repeat) {
-                            if (ctrl_down) input->ctrl_left = true;
-                            else input->arrow_left = true;
-                        }
-                        break;
-                    case SDLK_RIGHT:
-                        if (!e.key.repeat) {
-                            if (ctrl_down) input->ctrl_right = true;
-                            else input->arrow_right = true;
-                        }
-                        break;
-                    case SDLK_SPACE:
-                        if (!e.key.repeat) input->place = true;
-                        break;
-                    case SDLK_BACKSPACE:
-                        if (!e.key.repeat) input->erase = true;
-                        break;
-                    case SDLK_F5:
-                        if (!e.key.repeat) {
-                            input->save = true;
-                            input->editor_reload_pressed = true;
-                        }
-                        break;
-                    case SDLK_F9:
-                        if (!e.key.repeat) input->load = true;
-                        break;
-                    case SDLK_LEFTBRACKET:
-                        if (!e.key.repeat) input->prev_glyph = true;
-                        break;
-                    case SDLK_RIGHTBRACKET:
-                        if (!e.key.repeat) input->next_glyph = true;
-                        break;
-                    case SDLK_F10:
-                        if (!e.key.repeat) input->save_as = true;
-                        break;
-                    case SDLK_TAB:
-                        if (!e.key.repeat) {
-                            input->tab = true;
-                            input->editor_toggle_mode_pressed = true;
-                        }
-                        break;
-                    case SDLK_E:
-                        if (!e.key.repeat) input->editor_select_pressed = true;
-                        break;
-                    case SDLK_Z:
-                        if (!e.key.repeat && ctrl_down) input->editor_undo_pressed = true;
-                        break;
-                    case SDLK_Y:
-                        if (!e.key.repeat && ctrl_down) input->editor_redo_pressed = true;
-                        break;
-                    case SDLK_S:
-                        if (!e.key.repeat && ctrl_down) input->editor_save_pressed = true;
-                        break;
-                    default:
-                        break;
-
-                }
-            }
-            /* Text typed this frame — used for filename entry in designer */
-            else if (e.type == SDL_EVENT_TEXT_INPUT) {
-                const char *t = e.text.text;
-                while (*t && input->text_input_len < 63) {
-                    input->text_input[input->text_input_len++] = *t++;
-                }
-                input->text_input[input->text_input_len] = '\0';
-            }
-
-            /* Relative mouse motion → look around.
-             * xrel/yrel are the delta from the last mouse position in
-             * pixels.  These are accumulated across multiple motion events
-             * that may occur in a single frame (e.g. fast mouse movements). */
-            else if (e.type == SDL_EVENT_MOUSE_MOTION) {
-                input->mouse_dx += e.motion.xrel;
-                input->mouse_dy += e.motion.yrel;
-            }
-        }
+        InputEvent event;
+        memset(&event, 0, sizeof(event));
+        if (e.type == SDL_EVENT_QUIT) event.type = INPUT_EVENT_QUIT;
+        else if (e.type == SDL_EVENT_KEY_DOWN) {
+            event.type = INPUT_EVENT_KEY_DOWN;
+            event.key = translate_key(e.key.key);
+            event.repeat = e.key.repeat;
+            event.ctrl = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
+        } else if (e.type == SDL_EVENT_TEXT_INPUT) {
+            event.type = INPUT_EVENT_TEXT; event.text = e.text.text;
+        } else if (e.type == SDL_EVENT_MOUSE_MOTION) {
+            event.type = INPUT_EVENT_MOUSE_MOTION; event.x = e.motion.xrel; event.y = e.motion.yrel;
+        } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+            event.type = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? INPUT_EVENT_MOUSE_BUTTON_DOWN : INPUT_EVENT_MOUSE_BUTTON_UP;
+            event.button = e.button.button;
+        } else if (e.type == SDL_EVENT_MOUSE_WHEEL) {
+            event.type = INPUT_EVENT_MOUSE_WHEEL; event.x = e.wheel.x; event.y = e.wheel.y;
+        } else continue;
+        input_apply_event(input, &event, headless_mode);
     }
 
     /* ---- Poll keyboard state (interactive mode only) ---- */

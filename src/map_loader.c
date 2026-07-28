@@ -31,7 +31,6 @@
 
 #include "map_loader.h"   /* map_load_from_string() declaration */
 #include "config.h"       /* config_get() — provides default_material_id */
-#include <string.h>        /* (included for future use; strlen not used here) */
 
 /**
  * map_load_from_string() — Parse a digit-grid string into a Map
@@ -79,13 +78,15 @@ Map* map_load_from_string(const char *map_txt) {
     int height = 0;          /* Total row count */
     int current_width = 0;   /* Characters in the current row */
 
-    for (int i = 0; map_txt[i] != '\0'; i++) {
-        if (map_txt[i] == '\n') {
+    for (const char *cursor = map_txt; *cursor != '\0'; cursor++) {
+        if (*cursor == '\n') {
             /* End of a row — update max width if this row was longer */
             if (current_width > width) width = current_width;
             current_width = 0;          /* Reset for next row */
+            if (height == MAP_TEXT_MAX_HEIGHT) return NULL;
             height++;                   /* Count this row */
         } else {
+            if (current_width == MAP_TEXT_MAX_WIDTH) return NULL;
             current_width++;            /* Count this character in the row */
         }
     }
@@ -93,6 +94,7 @@ Map* map_load_from_string(const char *map_txt) {
     /* Handle the last row if the string doesn't end with '\n' */
     if (current_width > 0) {
         if (current_width > width) width = current_width;
+        if (height == MAP_TEXT_MAX_HEIGHT) return NULL;
         height++;                       /* Count the final unterminated row */
     }
 
@@ -113,8 +115,8 @@ Map* map_load_from_string(const char *map_txt) {
     int x = 0;    /* Current column cursor */
     int y = 0;    /* Current row cursor */
 
-    for (int i = 0; map_txt[i] != '\0'; i++) {
-        if (map_txt[i] == '\n') {
+    for (const char *cursor = map_txt; *cursor != '\0'; cursor++) {
+        if (*cursor == '\n') {
             /* Newline: advance to the next row, reset column */
             x = 0;
             y++;
@@ -124,8 +126,8 @@ Map* map_load_from_string(const char *map_txt) {
              *   - anything else → config default material */
             int mat_id = config_get()->default_material_id;
 
-            if (map_txt[i] >= '0' && map_txt[i] <= '9') {
-                mat_id = map_txt[i] - '0';   /* ASCII digit → integer */
+            if (*cursor >= '0' && *cursor <= '9') {
+                mat_id = *cursor - '0';   /* ASCII digit → integer */
             }
             /* Non-digit characters (spaces, letters, punctuation) use
              * the default material — useful for ASCII art style map

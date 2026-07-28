@@ -126,6 +126,8 @@ void ui_ele_destroy(UiElement *element);
  * @param content  New NUL-terminated text (may be empty)
  */
 void ui_ele_set_content(UiElement *element, const char *content);
+void ui_ele_set_colors(UiElement *element, SDL_Color fg, SDL_Color bg);
+const char *ui_ele_get_action(const UiElement *element);
 
 /**
  * ui_ele_render() — Draw an element and its children into the grid

@@ -72,6 +72,10 @@ void glyph_block_cache_store(GlyphBlockKey key, GlyphBlock block) {
 }
 
 void glyph_block_cache_compute(GlyphBlockKey key, GlyphBlock *block_out) {
+    if (!block_out) {
+        return;
+    }
+
     const uint8_t *glyph_data = font8x8_basic[key.glyph_id < 128 ? key.glyph_id : 32];
     uint32_t fg = key.fg_rgba;
     uint32_t bg = key.bg_rgba;

@@ -105,6 +105,16 @@ typedef struct {
 void asset_registry_init(AssetRegistry *reg);
 
 /**
+ * asset_registry_clear() — Release registry-owned sprite patterns and reset
+ *
+ * Frees every loaded SpriteAsset pattern and returns the registry to the same
+ * zeroed state as asset_registry_init(). The registry object itself is not freed.
+ *
+ * @param reg  Pointer to AssetRegistry to clear (NULL-safe)
+ */
+void asset_registry_clear(AssetRegistry *reg);
+
+/**
  * asset_registry_set_palette() — Register a palette under a given ID
  *
  * @param reg  AssetRegistry to write into

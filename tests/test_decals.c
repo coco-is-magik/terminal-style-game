@@ -136,6 +136,90 @@ static void test_world_decal_add(void **state) {
     world_clear(&world);
 }
 
+static void test_world_decal_rejection_retains_caller_ownership(void **state) {
+    (void)state;
+    WorldState world;
+    world_init(&world);
+    world.num_decals = MAX_DECALS;
+
+    Decal decal;
+    memset(&decal, 0, sizeof(decal));
+    decal.pattern_cols = 1;
+    decal.pattern_rows = 1;
+    decal.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(decal.pattern);
+    decal.pattern[0] = (PatternCell){'X', 1};
+
+    assert_int_equal(world_add_decal(&world, decal), WORLD_INSERT_FULL);
+    assert_int_equal(world.num_decals, MAX_DECALS);
+    assert_int_equal(decal.pattern[0].glyph, 'X');
+    free(decal.pattern);
+}
+
+static void test_world_insert_boundaries(void **state) {
+    (void)state;
+    WorldState world;
+    SDL_Color color = {1, 2, 3, 4};
+    Decal decal;
+
+    world_init(&world);
+    world.num_lights = MAX_LIGHTS - 1;
+    assert_int_equal(world_add_light(&world, 1.0, 2.0, color, -1.0, 3.0),
+                     WORLD_INSERT_OK);
+    assert_int_equal(world.num_lights, MAX_LIGHTS);
+    assert_float_equal(world.lights[MAX_LIGHTS - 1].radius, 3.0, 0.0001);
+    assert_int_equal(world_add_light(&world, 9.0, 9.0, color, 1.0, 1.0),
+                     WORLD_INSERT_FULL);
+    assert_int_equal(world.num_lights, MAX_LIGHTS);
+
+    world_init(&world);
+    world.num_sprites = MAX_SPRITES - 1;
+    assert_int_equal(world_add_sprite(&world, 4.0, 5.0, 255), WORLD_INSERT_OK);
+    assert_int_equal(world.num_sprites, MAX_SPRITES);
+    assert_int_equal(world.sprites[MAX_SPRITES - 1].sprite_id, 255);
+    assert_int_equal(world_add_sprite(&world, 1.0, 1.0, 1), WORLD_INSERT_FULL);
+    assert_int_equal(world.num_sprites, MAX_SPRITES);
+
+    world_init(&world);
+    memset(&decal, 0, sizeof(decal));
+    decal.pattern_cols = 1;
+    decal.pattern_rows = 1;
+    decal.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(decal.pattern);
+    decal.pattern[0] = (PatternCell){'L', 1};
+    world.num_decals = MAX_DECALS - 1;
+    assert_int_equal(world_add_decal(&world, decal), WORLD_INSERT_OK);
+    assert_int_equal(world.num_decals, MAX_DECALS);
+    assert_ptr_equal(world.decals[MAX_DECALS - 1].pattern, decal.pattern);
+    world_clear(&world);
+}
+
+static void test_world_insert_invalid_inputs_unchanged(void **state) {
+    (void)state;
+    WorldState world;
+    SDL_Color color = {1, 2, 3, 4};
+    Decal decal;
+
+    world_init(&world);
+    assert_int_equal(world_add_light(NULL, 1.0, 1.0, color, 1.0, 1.0),
+                     WORLD_INSERT_INVALID);
+    assert_int_equal(world_add_light(&world, NAN, 1.0, color, 1.0, 1.0),
+                     WORLD_INSERT_INVALID);
+    assert_int_equal(world_add_light(&world, 1.0, 1.0, color, 1.0, 0.0),
+                     WORLD_INSERT_INVALID);
+    assert_int_equal(world.num_lights, 0);
+
+    assert_int_equal(world_add_sprite(NULL, 1.0, 1.0, 1), WORLD_INSERT_INVALID);
+    assert_int_equal(world_add_sprite(&world, 1.0, 1.0, 0), WORLD_INSERT_INVALID);
+    assert_int_equal(world_add_sprite(&world, INFINITY, 1.0, 1), WORLD_INSERT_INVALID);
+    assert_int_equal(world.num_sprites, 0);
+
+    memset(&decal, 0, sizeof(decal));
+    assert_int_equal(world_add_decal(NULL, decal), WORLD_INSERT_INVALID);
+    assert_int_equal(world_add_decal(&world, decal), WORLD_INSERT_INVALID);
+    assert_int_equal(world.num_decals, 0);
+}
+
 static void test_decal_rendering_wall(void **state) {
     (void)state;
     Grid *g = grid_create(10, 10);
@@ -291,7 +375,7 @@ static void test_decal_fisheye_correction(void **state) {
 
 static void test_decal_art_format(void **state) {
     (void)state;
-    system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites");
+    assert_int_equal(system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites"), 0);
     
     FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
     fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
@@ -316,12 +400,12 @@ static void test_decal_art_format(void **state) {
     
     world_clear(&world);
     map_destroy(m);
-    system("rm -rf tests/assets_test");
+    assert_int_equal(system("rm -rf tests/assets_test"), 0);
 }
 
 static void test_decal_art_format_failure(void **state) {
     (void)state;
-    system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites");
+    assert_int_equal(system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites"), 0);
     
     FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
     fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
@@ -343,7 +427,7 @@ static void test_decal_art_format_failure(void **state) {
     
     world_clear(&world);
     map_destroy(m);
-    system("rm -rf tests/assets_test");
+    assert_int_equal(system("rm -rf tests/assets_test"), 0);
 }
 
 static void test_decal_floor_continuous_sampling(void **state) {
@@ -1455,6 +1539,9 @@ int main(void) {
     
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_world_decal_add),
+        cmocka_unit_test(test_world_decal_rejection_retains_caller_ownership),
+        cmocka_unit_test(test_world_insert_boundaries),
+        cmocka_unit_test(test_world_insert_invalid_inputs_unchanged),
         cmocka_unit_test(test_decal_rendering_wall),
         cmocka_unit_test(test_decal_rendering_floor),
         cmocka_unit_test(test_decal_fisheye_correction),

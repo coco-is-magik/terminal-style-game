@@ -13,6 +13,35 @@
 
 #include <stdbool.h>     /* bool */
 
+typedef enum {
+    INPUT_EVENT_QUIT,
+    INPUT_EVENT_KEY_DOWN,
+    INPUT_EVENT_TEXT,
+    INPUT_EVENT_MOUSE_MOTION,
+    INPUT_EVENT_MOUSE_BUTTON_DOWN,
+    INPUT_EVENT_MOUSE_BUTTON_UP,
+    INPUT_EVENT_MOUSE_WHEEL
+} InputEventType;
+
+typedef enum {
+    INPUT_KEY_NONE, INPUT_KEY_ESCAPE, INPUT_KEY_UP, INPUT_KEY_DOWN,
+    INPUT_KEY_RETURN, INPUT_KEY_LEFT, INPUT_KEY_RIGHT, INPUT_KEY_SPACE,
+    INPUT_KEY_BACKSPACE, INPUT_KEY_F5, INPUT_KEY_F9, INPUT_KEY_LEFTBRACKET,
+    INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
+    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S
+} InputKey;
+
+typedef struct {
+    InputEventType type;
+    InputKey key;
+    bool repeat;
+    bool ctrl;
+    float x;
+    float y;
+    int button;
+    const char *text;
+} InputEvent;
+
 /**
  * InputState — Per-frame input snapshot
  *
@@ -29,6 +58,10 @@ typedef struct {
     bool right;             /* D key held */
     float mouse_dx;         /* Accumulated relative mouse X movement (pixels) */
     float mouse_dy;         /* Accumulated relative mouse Y movement (pixels) */
+    bool mouse_left;
+    bool mouse_right;
+    float mouse_wheel_x;
+    float mouse_wheel_y;
     bool up;                /* Up arrow key — edge-triggered: true for one frame on press */
     bool down;              /* Down arrow key — edge-triggered */
     bool confirm;           /* Enter key — edge-triggered */
@@ -94,5 +127,7 @@ typedef struct {
  * @param headless_mode If true, skip interactive input processing
  */
 void input_process(InputState *input, bool headless_mode);
+void input_begin_frame(InputState *input);
+void input_apply_event(InputState *input, const InputEvent *event, bool headless_mode);
 
 #endif /* INPUT_H */

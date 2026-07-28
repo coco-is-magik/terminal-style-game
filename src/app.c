@@ -2,6 +2,11 @@
  * app.c — Application Layer (Main Game Loop & Rendering Patterns)
  */
 #include "app.h"
+#include "app_options.h"
+#include "app_resources.h"
+#include "benchmark_session.h"
+#include "frame_dispatch.h"
+#include "menu_controller.h"
 #include "config.h"
 #include "renderer.h"
 #include "grid.h"
@@ -132,14 +137,12 @@ static void menu_sync_button_colors(UiLayout *layout, int selected) {
     for (int i = 0; i < count; i++) {
         UiElement *button = ui_layout_get_focused(layout, i);
         if (!button) continue;
-        button->has_fg = true;
-        button->has_bg = true;
         if (i == selected) {
-            button->fg = (SDL_Color){50, 255, 50, 255};
-            button->bg = (SDL_Color){0, 40, 0, 255};
+            ui_ele_set_colors(button, (SDL_Color){50, 255, 50, 255},
+                              (SDL_Color){0, 40, 0, 255});
         } else {
-            button->fg = (SDL_Color){200, 200, 200, 255};
-            button->bg = (SDL_Color){0, 0, 0, 255};
+            ui_ele_set_colors(button, (SDL_Color){200, 200, 200, 255},
+                              (SDL_Color){0, 0, 0, 255});
         }
     }
 }
@@ -181,37 +184,31 @@ static bool dispatch_menu_action(const char *action,
                                  Camera *cam,
                                  AssetRegistry *assets) {
     if (!action || !ms || !app_state) return false;
-    if (strcmp(action, "start_game") == 0) {
+    switch (menu_controller_parse_action(action)) {
+    case MENU_ACTION_START_GAME:
         menu_stack_clear(ms);
         *app_state = APP_STATE_PLAYING;
         return true;
-    }
-    if (strcmp(action, "open_level_editor") == 0) {
+    case MENU_ACTION_OPEN_EDITOR:
         return enter_unified_editor(ued, app_state, ms, assets, cam);
-    }
-    if (strcmp(action, "quit") == 0) {
+    case MENU_ACTION_QUIT:
         menu_stack_push(ms, MENU_CONFIRM_QUIT);
         return true;
-    }
-    if (strcmp(action, "resume") == 0) {
+    case MENU_ACTION_RESUME:
         menu_stack_pop(ms);
         return true;
-    }
-    if (strcmp(action, "return_to_main_menu") == 0) {
+    case MENU_ACTION_MAIN_MENU:
         menu_stack_clear(ms);
         *app_state = APP_STATE_MAIN_MENU;
         menu_stack_push(ms, MENU_MAIN);
         return true;
-    }
-    if (strcmp(action, "confirm_quit") == 0) {
+    case MENU_ACTION_CONFIRM_QUIT:
         if (input) input->quit = true;
         return true;
-    }
-    if (strcmp(action, "cancel") == 0) {
+    case MENU_ACTION_CANCEL:
         menu_stack_pop(ms);
         return true;
-    }
-    if (strcmp(action, "discard_changes") == 0) {
+    case MENU_ACTION_DISCARD_CHANGES:
         if (*app_state == APP_STATE_EDITOR && ued) {
             unified_editor_destroy(ued);
         }
@@ -219,51 +216,60 @@ static bool dispatch_menu_action(const char *action,
         *app_state = APP_STATE_MAIN_MENU;
         menu_stack_push(ms, MENU_MAIN);
         return true;
+    case MENU_ACTION_UNKNOWN:
+    default:
+        return false;
     }
-    return false;
+}
+
+static int run_headless_smoke(void) {
+    AssetRegistry assets;
+    WorldState world;
+    Map *map;
+
+    asset_registry_init(&assets);
+    world_init(&world);
+    asset_loader_load_registry(&assets, "assets");
+
+    map = asset_loader_load_map_data(&world, "assets", 1);
+    if (!map) {
+        fprintf(stderr, "{\"smoke\":\"fail\",\"stage\":\"map\"}\n");
+        world_clear(&world);
+        asset_registry_clear(&assets);
+        return 1;
+    }
+
+    printf("{\"smoke\":\"ok\",\"map_width\":%d,\"map_height\":%d}\n",
+           map->width, map->height);
+    map_destroy(map);
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    return 0;
 }
 
 int app_main(int argc, char* argv[]) {
+    AppResources resources;
+    app_resources_init(&resources);
+    AppOptions options;
+    AppOptionsResult options_result = app_options_parse(argc, argv, &options);
+    if (options_result != APP_OPTIONS_OK) {
+        fprintf(stderr, "Invalid command line: %s\n", app_options_result_string(options_result));
+        return 2;
+    }
+
     config_init_defaults();
     config_load_from_file("config.ini");
     const EngineConfig *cfg = config_get();
 
-    RunMode mode = RUN_MODE_NORMAL;
-    VisualMode visual_mode = VISUAL_RAYCAST;
-    double run_duration_seconds = 0.0;
-    const char *benchmark_scenario = NULL;
-    int benchmark_frames = 600;
-
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--benchmark-scenario") == 0 && i + 1 < argc) {
-            mode = RUN_MODE_BENCHMARK_SCENARIO;
-            visual_mode = VISUAL_RAYCAST;
-            benchmark_scenario = argv[++i];
-        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
-            benchmark_frames = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--benchmark-stress") == 0 && i + 1 < argc) {
-            mode = RUN_MODE_BENCHMARK_STRESS;
-            visual_mode = VISUAL_STRESS;
-            run_duration_seconds = atof(argv[++i]);
-        } else if (strcmp(argv[i], "--benchmark-raycast") == 0 && i + 1 < argc) {
-            mode = RUN_MODE_BENCHMARK_RAYCAST;
-            visual_mode = VISUAL_RAYCAST;
-            run_duration_seconds = atof(argv[++i]);
-        } else if (strcmp(argv[i], "--stability-test") == 0 && i + 1 < argc) {
-            mode = RUN_MODE_STABILITY;
-            visual_mode = VISUAL_RAYCAST;
-            run_duration_seconds = atof(argv[++i]);
-        } else if (strcmp(argv[i], "--benchmark-lighting") == 0 && i + 1 < argc) {
-            mode = RUN_MODE_BENCHMARK_LIGHTING;
-            visual_mode = VISUAL_RAYCAST;
-            run_duration_seconds = atof(argv[++i]);
-        } else if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
-            const char* mode_str = argv[++i];
-            if (strcmp(mode_str, "normal") == 0) visual_mode = VISUAL_NORMAL;
-            else if (strcmp(mode_str, "stress") == 0) visual_mode = VISUAL_STRESS;
-            else if (strcmp(mode_str, "raycast") == 0) visual_mode = VISUAL_RAYCAST;
-        }
+    if (options.mode == RUN_MODE_SMOKE) {
+        return run_headless_smoke();
     }
+
+    RunMode mode = options.mode;
+    VisualMode visual_mode = options.visual_mode;
+    double run_duration_seconds = options.run_duration_seconds;
+    const char *benchmark_scenario = options.benchmark_scenario;
+    int benchmark_frames = options.benchmark_frames;
 
     Renderer *ren = renderer_create(cfg->window_width, cfg->window_height,
                                      cfg->grid_width, cfg->grid_height,
@@ -272,26 +278,32 @@ int app_main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to initialize renderer. (Headless environment expected)\n");
         return 0;
     }
+    resources.renderer = ren;
 
     Grid *grid = grid_create(cfg->grid_width, cfg->grid_height);
     if (!grid) {
         fprintf(stderr, "Failed to initialize grid.\n");
-        renderer_destroy(ren);
+        app_resources_cleanup(&resources);
         return 1;
     }
+    resources.grid = grid;
 
     AssetRegistry assets;
     asset_registry_init(&assets);
+    resources.assets = &assets;
+    resources.assets_initialized = true;
     asset_loader_load_registry(&assets, "assets");
 
     WorldState world;
     world_init(&world);
+    resources.world = &world;
+    resources.world_initialized = true;
 
     Map *map = asset_loader_load_map_data(&world, "assets", 1);
+    resources.map = map;
     if (!map) {
         fprintf(stderr, "Failed to load map.\n");
-        grid_destroy(grid);
-        renderer_destroy(ren);
+        app_resources_cleanup(&resources);
         return 1;
     }
 
@@ -300,8 +312,7 @@ int app_main(int argc, char* argv[]) {
 
     if (smc_render_opt_init() != 0) {
         fprintf(stderr, "Failed to initialize SMC renderer optimization layer.\n");
-        grid_destroy(grid);
-        renderer_destroy(ren);
+        app_resources_cleanup(&resources);
         return 1;
     }
     smc_render_opt_reset_stats();
@@ -316,32 +327,36 @@ int app_main(int argc, char* argv[]) {
     { size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
       if (smc_state_tracker_init(max_cells) != SMC_OK) {
         fprintf(stderr, "Failed to initialize SMC state tracker.\n");
-        grid_destroy(grid); renderer_destroy(ren); return 1;
+        app_resources_cleanup(&resources); return 1;
       }
+      resources.state_tracker_initialized = true;
       smc_state_tracker_reset(); }
 #endif
 #ifdef USE_SMC_INDEXED_STATE_TRACKER
     { size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
       if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
         fprintf(stderr, "Failed to initialize SMC indexed state tracker.\n");
-        grid_destroy(grid); renderer_destroy(ren); return 1;
+        app_resources_cleanup(&resources); return 1;
       }
+      resources.indexed_tracker_initialized = true;
       smc_indexed_state_tracker_reset(); }
 #endif
 #ifdef USE_SMC_BATCH_STATE_TRACKER
     { size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
       if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
         fprintf(stderr, "Failed to initialize SMC batch state tracker.\n");
-        grid_destroy(grid); renderer_destroy(ren); return 1;
+        app_resources_cleanup(&resources); return 1;
       }
+      resources.indexed_tracker_initialized = true;
       smc_indexed_state_tracker_reset(); }
 #endif
 #ifdef USE_SMC_STREAM_STATE_TRACKER
     { size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
       if (smc_indexed_state_tracker_init(max_cells) != SMC_OK) {
         fprintf(stderr, "Failed to initialize SMC stream state tracker.\n");
-        grid_destroy(grid); renderer_destroy(ren); return 1;
+        app_resources_cleanup(&resources); return 1;
       }
+      resources.indexed_tracker_initialized = true;
       smc_indexed_state_tracker_reset(); }
 #endif
 
@@ -407,10 +422,8 @@ int app_main(int argc, char* argv[]) {
         uint64_t start_time = SDL_GetPerformanceCounter();
         double elapsed_total_sec = (double)(start_time - initial_time) / SDL_GetPerformanceFrequency();
 
-        if (mode == RUN_MODE_BENCHMARK_SCENARIO && frame_count >= (uint64_t)benchmark_frames) {
-            input.quit = true; break;
-        }
-        if (mode != RUN_MODE_NORMAL && mode != RUN_MODE_BENCHMARK_SCENARIO && elapsed_total_sec >= run_duration_seconds) {
+        if (benchmark_session_should_stop(mode, frame_count, benchmark_frames,
+                                          elapsed_total_sec, run_duration_seconds)) {
             input.quit = true; break;
         }
 
@@ -457,8 +470,9 @@ int app_main(int argc, char* argv[]) {
                 int sel = menu_selected[mid];
                 if (active_layout) {
                     UiElement *focused = ui_layout_get_focused(active_layout, sel);
-                    if (focused && focused->action[0] != '\0') {
-                        dispatch_menu_action(focused->action, &ms, &app_state, &input,
+                    const char *action = ui_ele_get_action(focused);
+                    if (action) {
+                        dispatch_menu_action(action, &ms, &app_state, &input,
                                              &ued, &cam, &assets);
                     }
                 }
@@ -513,40 +527,7 @@ int app_main(int argc, char* argv[]) {
 
         } else if (app_state == APP_STATE_PLAYING) {
             if (visual_mode == VISUAL_RAYCAST) {
-                if (benchmark_scenario && frame_count >= 64) {
-                    if (strcmp(benchmark_scenario, "idle") == 0) { }
-                    else if (strcmp(benchmark_scenario, "camera") == 0) {
-                        cam.transform.angle += 0.01047f;
-                    } else if (strcmp(benchmark_scenario, "rotate") == 0) {
-                        cam.transform.angle += 0.04189f;
-                    } else if (strcmp(benchmark_scenario, "flicker") == 0) {
-                        for (int idx = 0; idx < (int)grid->width * grid->height; idx++) {
-                            if (((idx * 1103515245u + (unsigned)frame_count * 12345u) % 100u) < 3u) {
-                                int x = idx % grid->width; int y = idx / grid->width; Cell c;
-                                grid_get(grid, x, y, &c);
-                                c.bg.r = (frame_count & 1) ? 0xFF : 0x80;
-                                grid_set(grid, x, y, c.glyph, c.fg, c.bg);
-                            }
-                        }
-                    } else if (strcmp(benchmark_scenario, "ui") == 0) {
-                        int row_start = grid->height >= 2 ? grid->height - 2 : 0;
-                        for (int y = row_start; y < grid->height; y++)
-                            for (int x = 0; x < grid->width; x++) {
-                                Cell c; grid_get(grid, x, y, &c);
-                                c.bg.r = (frame_count & 1) ? 0x40 : 0x20;
-                                c.bg.g = (frame_count & 2) ? 0x40 : 0x20;
-                                c.bg.b = (frame_count & 4) ? 0x40 : 0x20;
-                                grid_set(grid, x, y, c.glyph, c.fg, c.bg);
-                            }
-                    } else if (strcmp(benchmark_scenario, "fullchange") == 0) {
-                        for (int idx = 0; idx < (int)grid->width * grid->height; idx++) {
-                            int x = idx % grid->width; int y = idx / grid->width; Cell c;
-                            grid_get(grid, x, y, &c);
-                            c.bg.r = (frame_count & 1) ? 0xFF : 0x00;
-                            grid_set(grid, x, y, c.glyph, c.fg, c.bg);
-                        }
-                    }
-                }
+                frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
                 camera_update(&cam, map, &input, delta_time_sec);
                 lighting_update(map, &world);
                 raycast_render(grid, map, &cam, &assets, &world);
@@ -638,7 +619,7 @@ int app_main(int argc, char* argv[]) {
 #endif
     uint32_t framebuffer_checksum = 0;
 
-    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY || mode == RUN_MODE_BENCHMARK_SCENARIO) {
+    if (benchmark_session_is_active(mode)) {
         framebuffer_checksum = renderer_framebuffer_checksum(ren);
 #ifdef USE_SMC_STATE_TRACKER
         smc_state_tracker_get_stats(&smc_state_s);
@@ -655,38 +636,30 @@ int app_main(int argc, char* argv[]) {
     }
 
 #ifdef USE_SMC_STATE_TRACKER
+    resources.state_tracker_initialized = false;
     smc_state_tracker_shutdown();
 #endif
 #if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
+    resources.indexed_tracker_initialized = false;
     smc_indexed_state_tracker_shutdown();
 #endif
     unified_editor_destroy(&ued);
     for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
     ui_layout_destroy(hud_layout);
     ui_cache_destroy(&menu_cache);
-    world_clear(&world);
-    if (map) map_destroy(map);
-    grid_destroy(grid);
-    renderer_destroy(ren);
+    app_resources_cleanup(&resources);
 
-    if (mode == RUN_MODE_BENCHMARK_STRESS || mode == RUN_MODE_BENCHMARK_RAYCAST || mode == RUN_MODE_STABILITY || mode == RUN_MODE_BENCHMARK_SCENARIO) {
+    if (benchmark_session_is_active(mode)) {
         double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
         double effective_worst = absolute_worst_render_ms;
         if (absolute_worst_render_ms > second_worst_render_ms * 2.0 && second_worst_render_ms > 0) {
             effective_worst = second_worst_render_ms; outlier_trimmed = true;
         }
-        const char *result_str = "fail";
-        int exit_code = 1;
-        if (renderer_alloc_count > initial_alloc_count || renderer_texture_create_count > initial_texture_count) {
-            result_str = "fail_allocation_detected";
-        } else {
-            /* Worst-frame values remain diagnostic telemetry. On low-end
-             * hardware, isolated scheduler/presentation spikes are not a
-             * stable acceptance metric; sustained average render cost is. */
-            if (avg_render_ms <= 4.0) { result_str = "ideal"; exit_code = 0; }
-            else if (avg_render_ms <= 6.0) { result_str = "pass_minimum"; exit_code = 0; }
-            else { result_str = "fail_performance"; }
-        }
+        BenchmarkResult result = benchmark_session_classify(
+            avg_render_ms, renderer_alloc_count > initial_alloc_count ||
+                           renderer_texture_create_count > initial_texture_count);
+        const char *result_str = benchmark_session_result_name(result);
+        int exit_code = benchmark_session_exit_code(result);
         printf("{\n  \"grid_width\": %d,\n  \"grid_height\": %d,\n  \"target_fps\": %d,\n  \"avg_render_ms\": %.2f,\n  \"worst_render_ms\": %.2f,\n  \"effective_worst_ms\": %.2f,\n  \"outlier_trimmed\": %s,\n  \"min_spare_ms\": %.2f,\n  \"frames\": %llu,\n  \"result\": \"%s\"\n}\n",
                cfg->grid_width, cfg->grid_height, cfg->target_fps, avg_render_ms, absolute_worst_render_ms, effective_worst,
                outlier_trimmed ? "true" : "false", global_min_spare_ms, (unsigned long long)frame_count, result_str);

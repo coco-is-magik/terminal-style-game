@@ -2,7 +2,10 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>       /* FILE, fopen(), fputs(), fclose(), remove() */
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>        /* cos(), atan(), tan() */
 #include <sys/stat.h>    /* mkdir() */
 #include <unistd.h>      /* rmdir() */
@@ -18,6 +21,8 @@
 #include "../src/raycast.h"
 #include "../src/lighting.h"
 #include "../src/config.h"
+#include "../src/checked_size.h"
+#include "../src/map_loader.h"
 
 // --- GRID TESTS ---
 
@@ -134,6 +139,51 @@ static void test_renderer_backend_instrumentation(void **state) {
     renderer_destroy(NULL);
 }
 
+static void test_checked_size_boundaries(void **state) {
+    (void)state;
+    size_t result = 99;
+
+    assert_true(checked_size_2d(1, 1, &result));
+    assert_int_equal(result, 1);
+    assert_true(checked_size_2d(INT_MAX, INT_MAX, &result));
+    assert_int_equal(result, (size_t)INT_MAX * (size_t)INT_MAX);
+    assert_false(checked_size_2d(0, 1, &result));
+    assert_false(checked_size_2d(1, -1, &result));
+    assert_false(checked_size_2d(1, 1, NULL));
+
+    assert_true(checked_size_bytes(SIZE_MAX, 1, &result));
+    assert_int_equal(result, SIZE_MAX);
+    assert_false(checked_size_bytes(SIZE_MAX, 2, &result));
+    assert_false(checked_size_bytes(0, 1, &result));
+    assert_false(checked_size_bytes(1, 0, &result));
+    assert_false(checked_size_bytes(1, 1, NULL));
+}
+
+static void test_renderer_preflight_boundaries(void **state) {
+    (void)state;
+    int logical_w = -1;
+    int logical_h = -1;
+    size_t bytes = 0;
+
+    assert_true(renderer_preflight(640, 480, 1, 1, 8, 8,
+                                   &logical_w, &logical_h, &bytes));
+    assert_int_equal(logical_w, 8);
+    assert_int_equal(logical_h, 8);
+    assert_int_equal(bytes, 8U * 8U * sizeof(uint32_t));
+    assert_false(renderer_preflight(640, 480, 1, 1, 1, 8,
+                                    &logical_w, &logical_h, &bytes));
+    assert_false(renderer_preflight(640, 480, 1, 1, 8, 1,
+                                    &logical_w, &logical_h, &bytes));
+    assert_false(renderer_preflight(640, 480, INT_MAX, 1, 8, 8,
+                                    &logical_w, &logical_h, &bytes));
+    assert_false(renderer_preflight(640, 480, 1, INT_MAX, 8, 8,
+                                    &logical_w, &logical_h, &bytes));
+    assert_false(renderer_preflight(0, 480, 1, 1, 8, 8,
+                                    &logical_w, &logical_h, &bytes));
+    assert_false(renderer_preflight(640, 480, 1, 1, 8, 8,
+                                    NULL, &logical_h, &bytes));
+}
+
 // --- ENGINE REFACTOR TESTS ---
 
 #include "../src/asset_loader.h"
@@ -182,6 +232,72 @@ static void test_config_parsing(void **state) {
     assert_float_equal(config_get()->ambient_light, 0.2, DOUBLE_EPSILON);
 }
 
+static void test_config_transactional_valid_override(void **state) {
+    (void)state;
+    const char *path = "tests/tmp_config_valid.ini";
+    EngineConfig saved = *config_get();
+    FILE *file = fopen(path, "w");
+    assert_non_null(file);
+    assert_true(fputs("grid_width = 80\nambient_light = 0.35\ndebug_display_enabled = 0\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+
+    assert_true(config_load_from_file(path));
+    assert_int_equal(config_get()->grid_width, 80);
+    assert_float_equal(config_get()->ambient_light, 0.35, DOUBLE_EPSILON);
+    assert_false(config_get()->debug_display_enabled);
+
+    config_set(&saved);
+    assert_int_equal(remove(path), 0);
+}
+
+static void test_config_invalid_file_rolls_back(void **state) {
+    (void)state;
+    const char *path = "tests/tmp_config_invalid.ini";
+    EngineConfig saved = *config_get();
+    FILE *file = fopen(path, "w");
+    assert_non_null(file);
+    assert_true(fputs("grid_width = 80\ncell_width = 16\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+
+    assert_false(config_load_from_file(path));
+    assert_int_equal(config_get()->grid_width, saved.grid_width);
+    assert_int_equal(config_get()->cell_width, saved.cell_width);
+
+    assert_int_equal(remove(path), 0);
+}
+
+static void test_config_rejects_malformed_numbers(void **state) {
+    (void)state;
+    const char *path = "tests/tmp_config_malformed.ini";
+    EngineConfig saved = *config_get();
+    FILE *file = fopen(path, "w");
+    assert_non_null(file);
+    assert_true(fputs("target_fps = 120fps\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+
+    assert_false(config_load_from_file(path));
+    assert_int_equal(config_get()->target_fps, saved.target_fps);
+
+    assert_int_equal(remove(path), 0);
+}
+
+static void test_config_effective_validation(void **state) {
+    (void)state;
+    EngineConfig saved = *config_get();
+    EngineConfig candidate = saved;
+
+    assert_true(config_validate(&candidate));
+    assert_false(config_validate(NULL));
+    candidate.grid_width = 0;
+    assert_false(config_set(&candidate));
+    assert_int_equal(config_get()->grid_width, saved.grid_width);
+    candidate = saved;
+    candidate.ambient_light = NAN;
+    assert_false(config_set(&candidate));
+    assert_float_equal(config_get()->ambient_light, saved.ambient_light, DOUBLE_EPSILON);
+    assert_true(config_set(&saved));
+}
+
 static void test_math_normalize(void **state) {
     (void)state;
     assert_float_equal(normalize_angle(0.0), 0.0, DOUBLE_EPSILON);
@@ -215,6 +331,53 @@ static void test_map_lookup(void **state) {
     assert_int_equal(map_get(m, 2, 2)->material_id, 1);
     assert_int_equal(map_get(m, 0, 0)->material_id, 0);
     map_destroy(m);
+}
+
+static void test_map_text_ragged_padding(void **state) {
+    (void)state;
+    Map *map = map_load_from_string("12\n3\n");
+    assert_non_null(map);
+    assert_int_equal(map->width, 2);
+    assert_int_equal(map->height, 2);
+    assert_int_equal(map_get(map, 0, 0)->material_id, 1);
+    assert_int_equal(map_get(map, 1, 0)->material_id, 2);
+    assert_int_equal(map_get(map, 0, 1)->material_id, 3);
+    assert_int_equal(map_get(map, 1, 1)->material_id, 0);
+    map_destroy(map);
+}
+
+static void test_map_text_dimension_limits(void **state) {
+    (void)state;
+    size_t max_size = (size_t)MAP_TEXT_MAX_HEIGHT *
+                      ((size_t)MAP_TEXT_MAX_WIDTH + 1U) + 1U;
+    char *text = malloc(max_size);
+    assert_non_null(text);
+
+    size_t offset = 0;
+    for (int y = 0; y < MAP_TEXT_MAX_HEIGHT; y++) {
+        memset(text + offset, '1', MAP_TEXT_MAX_WIDTH);
+        offset += MAP_TEXT_MAX_WIDTH;
+        text[offset++] = '\n';
+    }
+    text[offset] = '\0';
+    Map *map = map_load_from_string(text);
+    assert_non_null(map);
+    assert_int_equal(map->width, MAP_TEXT_MAX_WIDTH);
+    assert_int_equal(map->height, MAP_TEXT_MAX_HEIGHT);
+    map_destroy(map);
+
+    text[MAP_TEXT_MAX_WIDTH] = '1';
+    text[MAP_TEXT_MAX_WIDTH + 1] = '\0';
+    assert_null(map_load_from_string(text));
+
+    offset = 0;
+    for (int y = 0; y <= MAP_TEXT_MAX_HEIGHT; y++) {
+        text[offset++] = '1';
+        text[offset++] = '\n';
+    }
+    text[offset] = '\0';
+    assert_null(map_load_from_string(text));
+    free(text);
 }
 
 static void test_camera_init(void **state) {
@@ -543,13 +706,21 @@ int main(void) {
         cmocka_unit_test(test_perf_stats),
         cmocka_unit_test(test_renderer_backend_init_invalid),
         cmocka_unit_test(test_renderer_backend_instrumentation),
+        cmocka_unit_test(test_checked_size_boundaries),
+        cmocka_unit_test(test_renderer_preflight_boundaries),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
         cmocka_unit_test(test_asset_loader),
         cmocka_unit_test(test_config_parsing),
+        cmocka_unit_test(test_config_transactional_valid_override),
+        cmocka_unit_test(test_config_invalid_file_rolls_back),
+        cmocka_unit_test(test_config_rejects_malformed_numbers),
+        cmocka_unit_test(test_config_effective_validation),
         cmocka_unit_test(test_math_normalize),
         cmocka_unit_test(test_map_creation),
         cmocka_unit_test(test_map_bounds),
         cmocka_unit_test(test_map_lookup),
+        cmocka_unit_test(test_map_text_ragged_padding),
+        cmocka_unit_test(test_map_text_dimension_limits),
         cmocka_unit_test(test_camera_init),
         cmocka_unit_test(test_raycast_hit),
         cmocka_unit_test(test_raycast_miss),
