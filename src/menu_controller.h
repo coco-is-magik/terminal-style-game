@@ -1,6 +1,8 @@
 #ifndef MENU_CONTROLLER_H
 #define MENU_CONTROLLER_H
 
+#include <stdbool.h>
+
 typedef enum {
     MENU_ACTION_UNKNOWN = 0,
     MENU_ACTION_START_GAME,
@@ -14,5 +16,8 @@ typedef enum {
 } MenuAction;
 
 MenuAction menu_controller_parse_action(const char *action);
+void menu_controller_consume_confirm(bool *confirm_pressed,
+                                     bool *editor_confirm_pressed,
+                                     bool action_handled);
 
 #endif

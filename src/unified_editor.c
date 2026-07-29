@@ -11,9 +11,11 @@
 #include "camera.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define EDITOR_PICKER_VISIBLE 6
+#define EDITOR_MAP_CHOOSER_VISIBLE 10
 
 
 static void editor_clear_selection(UnifiedEditorState *editor) {
@@ -34,9 +36,25 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->highlighted_material = 0;
     editor->last_command_result = CMD_RESULT_OK;
     editor->last_save_result = SCENE_SAVE_OK;
+    editor->last_catalog_result = MAP_CATALOG_OK;
     editor->request_exit_to_main_menu = false;
     editor->exit_choice = EDITOR_EXIT_RESUME;
+    editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
+    editor->map_chooser_index = 0;
+    editor->pending_map_index = 0;
     editor_clear_selection(editor);
+}
+
+static char *editor_duplicate_string(const char *text) {
+    size_t len;
+    char *copy;
+
+    if (!text) return NULL;
+    len = strlen(text);
+    copy = malloc(len + 1);
+    if (!copy) return NULL;
+    memcpy(copy, text, len + 1);
+    return copy;
 }
 
 static const char *editor_exit_choice_label(EditorExitChoice choice) {
@@ -46,6 +64,15 @@ static const char *editor_exit_choice_label(EditorExitChoice choice) {
         case EDITOR_EXIT_DISCARD_AND_EXIT: return "Discard and Exit";
         case EDITOR_EXIT_CANCEL:           return "Cancel";
         default:                           return "?";
+    }
+}
+
+static const char *editor_dirty_open_choice_label(EditorDirtyOpenChoice choice) {
+    switch (choice) {
+        case EDITOR_DIRTY_OPEN_CANCEL:  return "Cancel";
+        case EDITOR_DIRTY_OPEN_SAVE:    return "Save current map";
+        case EDITOR_DIRTY_OPEN_DISCARD: return "Discard changes";
+        default:                        return "?";
     }
 }
 
@@ -78,6 +105,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_OUT_OF_MEMORY:         return "Out of memory";
         case EDITOR_STATUS_STATE_ID_EXHAUSTED:    return "State ID exhausted";
         case EDITOR_STATUS_LOAD_FAILED:           return "Load failed";
+        case EDITOR_STATUS_CATALOG_FAILED:        return "Map list failed";
         case EDITOR_STATUS_NONE:
         default:                                  return "";
     }
@@ -282,6 +310,7 @@ bool unified_editor_init(
     memset(editor, 0, sizeof(*editor));
     scene_document_init(&editor->document);
     command_history_init(&editor->history, 1);
+    map_catalog_init(&editor->map_catalog);
     editor->assets = assets;
     editor_reset_session_ui(editor);
     editor->active = true;
@@ -295,9 +324,71 @@ void unified_editor_destroy(UnifiedEditorState *editor) {
 
     command_history_destroy(&editor->history);
     scene_document_destroy(&editor->document);
+    map_catalog_clear(&editor->map_catalog);
+    free(editor->map_root);
+    editor->map_root = NULL;
     editor->assets = NULL;
     editor->active = false;
     editor_reset_session_ui(editor);
+}
+
+bool unified_editor_has_document(const UnifiedEditorState *editor) {
+    return editor && editor->active && editor->document.path != NULL;
+}
+
+MapCatalogResult unified_editor_begin_map_open(
+    UnifiedEditorState *editor,
+    const char *map_root
+) {
+    const char *root;
+    char *new_root = NULL;
+    MapCatalogResult result;
+
+    if (!editor || !editor->active) return MAP_CATALOG_INVALID_ARGUMENT;
+
+    if (map_root) {
+        if (map_root[0] == '\0') return MAP_CATALOG_INVALID_ARGUMENT;
+        new_root = editor_duplicate_string(map_root);
+        if (!new_root) {
+            editor->last_catalog_result = MAP_CATALOG_OUT_OF_MEMORY;
+            editor->status = EDITOR_STATUS_CATALOG_FAILED;
+            editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+            return MAP_CATALOG_OUT_OF_MEMORY;
+        }
+        root = new_root;
+    } else {
+        root = editor->map_root;
+    }
+
+    editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
+    if (!root) {
+        editor->last_catalog_result = MAP_CATALOG_INVALID_ARGUMENT;
+        editor->status = EDITOR_STATUS_CATALOG_FAILED;
+        return MAP_CATALOG_INVALID_ARGUMENT;
+    }
+
+    result = map_catalog_refresh(&editor->map_catalog, root);
+    editor->last_catalog_result = result;
+    if (result != MAP_CATALOG_OK) {
+        free(new_root);
+        editor->status = EDITOR_STATUS_CATALOG_FAILED;
+        return result;
+    }
+
+    if (new_root) {
+        free(editor->map_root);
+        editor->map_root = new_root;
+        new_root = NULL;
+    }
+
+    if (editor->map_catalog.count == 0) {
+        editor->map_chooser_index = 0;
+    } else if (editor->map_chooser_index >= editor->map_catalog.count) {
+        editor->map_chooser_index = editor->map_catalog.count - 1;
+    }
+    editor->status = EDITOR_STATUS_NONE;
+    return MAP_CATALOG_OK;
 }
 
 SceneLoadResult unified_editor_load_scene(
@@ -544,6 +635,92 @@ static void editor_handle_reload_request(UnifiedEditorState *editor) {
     }
 }
 
+static void editor_handle_map_chooser_prev(UnifiedEditorState *editor) {
+    if (editor->map_catalog.count == 0) return;
+    if (editor->map_chooser_index == 0) {
+        editor->map_chooser_index = editor->map_catalog.count - 1;
+    } else {
+        editor->map_chooser_index--;
+    }
+}
+
+static void editor_handle_map_chooser_next(UnifiedEditorState *editor) {
+    if (editor->map_catalog.count == 0) return;
+    editor->map_chooser_index =
+        (editor->map_chooser_index + 1) % editor->map_catalog.count;
+}
+
+static void editor_return_to_map_chooser(UnifiedEditorState *editor) {
+    editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
+}
+
+static void editor_attempt_pending_map_load(UnifiedEditorState *editor) {
+    const MapCatalogEntry *entry =
+        map_catalog_get(&editor->map_catalog, editor->pending_map_index);
+
+    if (!entry) {
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        editor_return_to_map_chooser(editor);
+        return;
+    }
+    editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    if (unified_editor_load_scene(editor, entry->path) != SCENE_LOAD_OK) {
+        editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    }
+}
+
+static void editor_handle_map_chooser_confirm(UnifiedEditorState *editor) {
+    if (editor->map_catalog.count == 0 ||
+        editor->map_chooser_index >= editor->map_catalog.count) {
+        return;
+    }
+    editor->pending_map_index = editor->map_chooser_index;
+    if (unified_editor_has_document(editor) &&
+        scene_document_is_dirty(&editor->document)) {
+        editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
+        editor->modal = EDITOR_MODAL_DIRTY_OPEN_PROMPT;
+        return;
+    }
+    editor_attempt_pending_map_load(editor);
+}
+
+static void editor_handle_dirty_open_prev(UnifiedEditorState *editor) {
+    if (editor->dirty_open_choice == EDITOR_DIRTY_OPEN_CANCEL) {
+        editor->dirty_open_choice =
+            (EditorDirtyOpenChoice)(EDITOR_DIRTY_OPEN_CHOICE_COUNT - 1);
+    } else {
+        editor->dirty_open_choice =
+            (EditorDirtyOpenChoice)(editor->dirty_open_choice - 1);
+    }
+}
+
+static void editor_handle_dirty_open_next(UnifiedEditorState *editor) {
+    editor->dirty_open_choice = (EditorDirtyOpenChoice)(
+        (editor->dirty_open_choice + 1) % EDITOR_DIRTY_OPEN_CHOICE_COUNT);
+}
+
+static void editor_handle_dirty_open_confirm(UnifiedEditorState *editor) {
+    switch (editor->dirty_open_choice) {
+        case EDITOR_DIRTY_OPEN_CANCEL:
+            editor_return_to_map_chooser(editor);
+            break;
+        case EDITOR_DIRTY_OPEN_SAVE:
+            if (unified_editor_save(editor) == SCENE_SAVE_OK) {
+                editor_attempt_pending_map_load(editor);
+            } else {
+                editor->modal = EDITOR_MODAL_DIRTY_OPEN_PROMPT;
+            }
+            break;
+        case EDITOR_DIRTY_OPEN_DISCARD:
+            editor_attempt_pending_map_load(editor);
+            break;
+        default:
+            editor_return_to_map_chooser(editor);
+            break;
+    }
+}
+
 static void editor_handle_exit_choice_prev(UnifiedEditorState *editor) {
     if (editor->exit_choice == EDITOR_EXIT_RESUME) {
         editor->exit_choice = (EditorExitChoice)(EDITOR_EXIT_CHOICE_COUNT - 1);
@@ -588,6 +765,16 @@ static void editor_handle_exit_confirm(UnifiedEditorState *editor) {
 }
 
 static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
+    if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
+        editor_handle_map_chooser_confirm(editor);
+        return;
+    }
+
+    if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
+        editor_handle_dirty_open_confirm(editor);
+        return;
+    }
+
     if (editor->modal == EDITOR_MODAL_EXIT_PROMPT) {
         editor_handle_exit_confirm(editor);
         return;
@@ -637,10 +824,34 @@ EditorInputConsumption unified_editor_update(
         /* 2. Modal input first. */
         if (editor->modal != EDITOR_MODAL_NONE) {
             if (input->editor_cancel_pressed) {
-                editor->modal = EDITOR_MODAL_NONE;
+                if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
+                    editor_return_to_map_chooser(editor);
+                } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER &&
+                           !unified_editor_has_document(editor)) {
+                    editor->modal = EDITOR_MODAL_NONE;
+                    editor->request_exit_to_main_menu = true;
+                } else {
+                    editor->modal = EDITOR_MODAL_NONE;
+                }
                 editor_mark_keyboard(&consumed);
             } else if (input->editor_confirm_pressed) {
                 editor_handle_modal_confirm(editor);
+                editor_mark_keyboard(&consumed);
+            } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER &&
+                       input->editor_previous_pressed) {
+                editor_handle_map_chooser_prev(editor);
+                editor_mark_keyboard(&consumed);
+            } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER &&
+                       input->editor_next_pressed) {
+                editor_handle_map_chooser_next(editor);
+                editor_mark_keyboard(&consumed);
+            } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT &&
+                       input->editor_previous_pressed) {
+                editor_handle_dirty_open_prev(editor);
+                editor_mark_keyboard(&consumed);
+            } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT &&
+                       input->editor_next_pressed) {
+                editor_handle_dirty_open_next(editor);
                 editor_mark_keyboard(&consumed);
             } else if (editor->modal == EDITOR_MODAL_EXIT_PROMPT &&
                        input->editor_previous_pressed) {
@@ -655,6 +866,7 @@ EditorInputConsumption unified_editor_update(
                        input->editor_undo_pressed ||
                        input->editor_redo_pressed ||
                        input->editor_save_pressed ||
+                       input->editor_open_pressed ||
                        input->editor_reload_pressed ||
                        input->editor_previous_pressed ||
                        input->editor_next_pressed) {
@@ -679,14 +891,15 @@ EditorInputConsumption unified_editor_update(
         }
 
         /* 5. Walk mode: camera moves; edit mode: freeze movement/look. */
-        if (editor->mode == EDITOR_MODE_WALK && rmap) {
+        if (editor->mode == EDITOR_MODE_WALK &&
+            unified_editor_has_document(editor) && rmap) {
             camera_update(camera, rmap, input, delta_seconds);
         } else {
             consumed.pointer_consumed = true;
         }
 
         /* 6. Hover ray every frame (both modes; aim freezes in edit). */
-        if (cmap) {
+        if (unified_editor_has_document(editor) && cmap) {
             EditorHit hit = editor_raycast_selection(camera, cmap);
             editor->hover = hit;
         }
@@ -721,6 +934,9 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_save_pressed) {
             (void)unified_editor_save(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_open_pressed) {
+            (void)unified_editor_begin_map_open(editor, NULL);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_reload_pressed) {
             editor_handle_reload_request(editor);
@@ -870,15 +1086,61 @@ void unified_editor_render_overlay(
         } else if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
             grid_print(grid, 1, row + 1,
                        "Reload scene? Enter=yes  Esc=cancel", warn, bg);
+        } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
+            size_t start = 0;
+            size_t i;
+
+            grid_print(grid, 1, row++,
+                       "Open current map  Up/Down  Enter=open  Esc=cancel",
+                       warn, bg);
+            if (editor->map_catalog.count == 0) {
+                grid_print(grid, 1, row++, "  (no map .txt files found)", dim, bg);
+            } else {
+                if (editor->map_chooser_index >= EDITOR_MAP_CHOOSER_VISIBLE) {
+                    start = editor->map_chooser_index -
+                            (EDITOR_MAP_CHOOSER_VISIBLE - 1);
+                }
+                if (start + EDITOR_MAP_CHOOSER_VISIBLE > editor->map_catalog.count &&
+                    editor->map_catalog.count >= EDITOR_MAP_CHOOSER_VISIBLE) {
+                    start = editor->map_catalog.count - EDITOR_MAP_CHOOSER_VISIBLE;
+                }
+                for (i = 0; i < EDITOR_MAP_CHOOSER_VISIBLE &&
+                            start + i < editor->map_catalog.count; i++) {
+                    size_t index = start + i;
+                    const MapCatalogEntry *entry =
+                        map_catalog_get(&editor->map_catalog, index);
+                    snprintf(line, sizeof(line), " %s %s",
+                             index == editor->map_chooser_index ? ">" : " ",
+                             entry ? entry->name : "?");
+                    grid_print(grid, 1, row++, line,
+                               index == editor->map_chooser_index ? hi : dim, bg);
+                }
+            }
+        } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
+            int c;
+            grid_print(grid, 1, row++,
+                       "Unsaved changes  Up/Down  Enter=choose  Esc=back",
+                       warn, bg);
+            for (c = 0; c < EDITOR_DIRTY_OPEN_CHOICE_COUNT; c++) {
+                snprintf(line, sizeof(line), " %s %s",
+                         c == (int)editor->dirty_open_choice ? ">" : " ",
+                         editor_dirty_open_choice_label((EditorDirtyOpenChoice)c));
+                grid_print(grid, 1, row++, line,
+                           c == (int)editor->dirty_open_choice ? hi : dim, bg);
+            }
         }
 
 
         grid_print(grid, 1, grid->height - 2,
                    "Tab=walk/edit  E=select  Enter=apply  "
-                   "Ctrl+Z/Y=undo/redo  Ctrl+S=save",
+                   "Ctrl+Z/Y=undo/redo  Ctrl+S=save  Ctrl+O=open",
                    dim, bg);
     }
 
     /* UI-layer center ray indicator always wins over world highlights. */
-    editor_crosshair_render(grid);
+    if (unified_editor_has_document(editor) &&
+        editor->modal != EDITOR_MODAL_MAP_CHOOSER &&
+        editor->modal != EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
+        editor_crosshair_render(grid);
+    }
 }

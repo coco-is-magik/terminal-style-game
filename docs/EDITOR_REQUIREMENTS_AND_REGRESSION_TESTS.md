@@ -50,6 +50,23 @@ useful chronology but must not override these accepted requirements.
     and solid world highlight. A later ordinary frame may still show the dashed
     hover target under the center crosshair. The next Escape opens the editor
     exit prompt as before.
+17. Entering **Editor** opens an in-game current-map chooser instead of loading a
+    hard-coded map. `Ctrl+O` reopens it after a document is loaded. Discovery is
+    limited to sorted, regular, lowercase `.txt` direct children of `assets/maps/`;
+    symlinks, subdirectories, other suffixes, editable paths, recent files, New,
+    and Save As are outside this workflow.
+18. Choosing a target from a dirty document requires Save, Discard, or Cancel.
+    Escape from the dirty prompt returns to the chooser. Escape from the initial
+    no-document chooser returns to the main menu.
+19. Catalog refresh, save, and target load are failure-preserving. Discovery
+    failure keeps the previous catalog/root and live editor state. Save failure
+    remains in the dirty prompt. Target-load failure remains in the chooser and
+    preserves document, path, map, history, selection, and camera. If Save succeeds
+    but the subsequent target load fails, the current document remains loaded and
+    is correctly clean because its save committed.
+20. A handled menu Enter action consumes both generic and editor-specific confirm
+    edges before a newly entered application state updates in the same frame. The
+    Enter that opens **Editor** must not also select the first map.
 
 ## Forbidden regressions
 
@@ -63,6 +80,8 @@ useful chronology but must not override these accepted requirements.
   application states as separate products.
 - No material mutation, authored-state copy, heap allocation, or through-wall
   rendering to visualize editor selection.
+- No arbitrary-path entry, recursion, native file dialog, symlink target, or
+  implication that the current digit-grid chooser is a final scene system.
 
 ## Regression suite map
 
@@ -73,9 +92,12 @@ useful chronology but must not override these accepted requirements.
 | Center ray, four face directions, bounds, empty-cell rejection | `test-editor-selection` |
 | Selected/hover wall-face outlines, cardinal faces, occlusion, contrast, overlap priority, map/interior preservation, crosshair | `test-editor-highlight` |
 | Mode/camera preservation, input consumption, selection/dismissal, picker, missing marker, apply/undo/redo/save/reload/exit, authoritative map/no-reset state | `test-unified-editor` |
+| Direct-child `.txt` filtering, symlink rejection, deterministic sorting, owned replacement, failed-refresh preservation | `test-map-catalog` |
+| `Ctrl+O`, initial chooser, clean/dirty switching, prompt back/cancel, save/load failure sequencing, catalog failure preservation | `test-input`, `test-unified-editor` |
 | Painter lifecycle, ownership, bounded paint/erase/fill/clear, transactionality | `test-decal-painter` |
 | Decal persistence | `test-decal-io` |
 | Current menu/layout/action contracts | `test-menu-state`, `test-ui-ele` |
+| Same-frame menu-to-editor Enter consumption | `test-app-modules` |
 | Rendering and engine regression under configured tracker | `test-core`, `test-decals` |
 
 The aggregate `make test` includes a dedicated editor-highlight runner. A future
@@ -105,3 +127,10 @@ focused sanitizer verification passed.
 Later on 2026-07-29 the user confirmed the post-acceptance correction: pressing
 Escape once after wall selection closes the inspector and removes the solid
 persistent-selection outline.
+
+The current-map open/switch workflow passed strict focused, aggregate, smoke, and
+focused ASan+UBSan verification on 2026-07-29. Interactive acceptance confirmed
+initial chooser entry/Escape, `Ctrl+O`, and dirty Save/Discard switching. The
+first interactive run exposed same-frame reuse of both Enter-derived input edges;
+after handled menu actions consumed both, the user confirmed the corrected flow.
+Roadmap outcome R0.3 is Verified.

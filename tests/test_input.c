@@ -58,11 +58,34 @@ static void test_key_and_editor_shortcuts(void **state) {
     input_apply_event(&input, &event, false);
     assert_true(input.confirm);
     assert_true(input.editor_confirm_pressed);
+    event.key = INPUT_KEY_O;
+    event.ctrl = true;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_open_pressed);
     input_begin_frame(&input);
+    assert_false(input.editor_open_pressed);
     event.key = INPUT_KEY_UP;
     event.repeat = true;
     input_apply_event(&input, &event, false);
     assert_false(input.up);
+}
+
+static void test_editor_open_requires_ctrl_and_nonrepeat(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_O, false, false, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_open_pressed);
+    event.ctrl = true;
+    event.repeat = true;
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_open_pressed);
+    event.repeat = false;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_open_pressed);
 }
 
 static void test_text_mouse_buttons_and_wheel(void **state) {
@@ -91,6 +114,7 @@ int main(void) {
         cmocka_unit_test(test_frame_reset_preserves_held_and_quit),
         cmocka_unit_test(test_quit_and_headless_filter),
         cmocka_unit_test(test_key_and_editor_shortcuts),
+        cmocka_unit_test(test_editor_open_requires_ctrl_and_nonrepeat),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

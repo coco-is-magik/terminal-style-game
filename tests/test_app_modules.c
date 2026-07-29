@@ -15,6 +15,26 @@ static void test_menu_actions(void **state) {
     assert_int_equal(menu_controller_parse_action("other"), MENU_ACTION_UNKNOWN);
 }
 
+static void test_handled_menu_action_consumes_confirm(void **state) {
+    bool confirm_pressed = true;
+    bool editor_confirm_pressed = true;
+    (void)state;
+
+    menu_controller_consume_confirm(&confirm_pressed, &editor_confirm_pressed,
+                                    true);
+    assert_false(confirm_pressed);
+    assert_false(editor_confirm_pressed);
+
+    confirm_pressed = true;
+    editor_confirm_pressed = true;
+    menu_controller_consume_confirm(&confirm_pressed, &editor_confirm_pressed,
+                                    false);
+    assert_true(confirm_pressed);
+    assert_true(editor_confirm_pressed);
+
+    menu_controller_consume_confirm(NULL, NULL, true);
+}
+
 static void test_scenario_dispatch(void **state) {
     (void)state;
     Grid *grid = grid_create(2, 2);
@@ -35,6 +55,7 @@ static void test_scenario_dispatch(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_menu_actions),
+        cmocka_unit_test(test_handled_menu_action_consumes_confirm),
         cmocka_unit_test(test_scenario_dispatch),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

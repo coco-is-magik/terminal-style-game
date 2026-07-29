@@ -166,11 +166,7 @@ static bool enter_unified_editor(UnifiedEditorState *ued,
         fprintf(stderr, "unified_editor_init failed\n");
         return false;
     }
-    if (unified_editor_load_scene(ued, "assets/maps/1.txt") != SCENE_LOAD_OK) {
-        fprintf(stderr, "unified_editor_load_scene failed for assets/maps/1.txt\n");
-        unified_editor_destroy(ued);
-        return false;
-    }
+    (void)unified_editor_begin_map_open(ued, "assets/maps");
     camera_init(cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
     menu_stack_clear(ms);
     *app_state = APP_STATE_EDITOR;
@@ -440,7 +436,8 @@ int app_main(int argc, char* argv[]) {
                                  || (app_state == APP_STATE_EDITOR
                                      && ued.active
                                      && ued.mode == EDITOR_MODE_WALK
-                                     && ued.modal == EDITOR_MODAL_NONE));
+                                      && ued.modal == EDITOR_MODAL_NONE
+                                      && unified_editor_has_document(&ued)));
             if (want_lock != mouse_locked) {
                 SDL_SetWindowRelativeMouseMode(ren->window, want_lock);
                 mouse_locked = want_lock;
@@ -473,8 +470,11 @@ int app_main(int argc, char* argv[]) {
                     UiElement *focused = ui_layout_get_focused(active_layout, sel);
                     const char *action = ui_ele_get_action(focused);
                     if (action) {
-                        dispatch_menu_action(action, &ms, &app_state, &input,
-                                             &ued, &cam, &assets);
+                        bool action_handled = dispatch_menu_action(
+                            action, &ms, &app_state, &input, &ued, &cam, &assets);
+                        menu_controller_consume_confirm(
+                            &input.confirm, &input.editor_confirm_pressed,
+                            action_handled);
                     }
                 }
                 active_menu = menu_stack_peek(&ms);
@@ -496,6 +496,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_undo_pressed = false;
                 input.editor_redo_pressed = false;
                 input.editor_save_pressed = false;
+                input.editor_open_pressed = false;
                 input.editor_reload_pressed = false;
                 input.editor_previous_pressed = false;
                 input.editor_next_pressed = false;
@@ -548,8 +549,10 @@ int app_main(int argc, char* argv[]) {
 
         } else if (app_state == APP_STATE_EDITOR) {
             if (ued.active) {
-                Map *ed_map = scene_document_get_map_for_runtime(&ued.document);
-                if (ed_map) {
+                Map *ed_map = unified_editor_has_document(&ued)
+                    ? scene_document_get_map_for_runtime(&ued.document)
+                    : NULL;
+                if (ed_map && ed_map->cells && ed_map->width > 0 && ed_map->height > 0) {
                     lighting_update(ed_map, &world);
                     raycast_render(grid, ed_map, &cam, &assets, &world);
                     editor_highlight_render(grid, ed_map, &cam,

@@ -43,7 +43,8 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_select_pressed); RESET_FIELD(editor_confirm_pressed);
     RESET_FIELD(editor_cancel_pressed); RESET_FIELD(editor_undo_pressed);
     RESET_FIELD(editor_redo_pressed); RESET_FIELD(editor_save_pressed);
-    RESET_FIELD(editor_reload_pressed); RESET_FIELD(editor_previous_pressed);
+    RESET_FIELD(editor_open_pressed); RESET_FIELD(editor_reload_pressed);
+    RESET_FIELD(editor_previous_pressed);
     RESET_FIELD(editor_next_pressed);
 #undef RESET_FIELD
     input->text_input[0] = '\0';
@@ -108,6 +109,7 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_Z: if (event->ctrl) input->editor_undo_pressed = true; break;
         case INPUT_KEY_Y: if (event->ctrl) input->editor_redo_pressed = true; break;
         case INPUT_KEY_S: if (event->ctrl) input->editor_save_pressed = true; break;
+        case INPUT_KEY_O: if (event->ctrl) input->editor_open_pressed = true; break;
         case INPUT_KEY_NONE: break;
     }
 }
@@ -123,7 +125,8 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_RIGHTBRACKET: return INPUT_KEY_RIGHTBRACKET; case SDLK_F10: return INPUT_KEY_F10;
         case SDLK_TAB: return INPUT_KEY_TAB; case SDLK_E: return INPUT_KEY_E;
         case SDLK_Z: return INPUT_KEY_Z; case SDLK_Y: return INPUT_KEY_Y;
-        case SDLK_S: return INPUT_KEY_S; default: return INPUT_KEY_NONE;
+        case SDLK_S: return INPUT_KEY_S; case SDLK_O: return INPUT_KEY_O;
+        default: return INPUT_KEY_NONE;
     }
 }
 

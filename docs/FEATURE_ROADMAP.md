@@ -268,6 +268,17 @@ contract. The initial review and remediation prerequisites are satisfied.
    the highlight overlay share the same full-grid-width contract.
 3. Add safe open/switch flow for current map files with dirty confirmation and
    transactional failure behavior.
+   **Verified 2026-07-29:** Editor entry and
+   `Ctrl+O` use a bounded in-game catalog of regular lowercase `.txt` direct
+   children under `assets/maps/`. Dirty switches use Save/Discard/Cancel, and
+   catalog/save/load failures preserve the live document according to
+   `EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`. Strict full build, focused
+   runners, aggregate `make test`, smoke, and focused ASan+UBSan checks pass. A
+   sanitizer-discovered empty-catalog `qsort(NULL, 0, ...)` call was fixed.
+   Interactive acceptance confirmed initial chooser/Escape, `Ctrl+O`, and dirty
+   Save/Discard switching after a same-frame Enter-edge leak was found and fixed.
+   Root causes and the incomplete first input correction are preserved in
+   `R0_MAP_OPEN_SWITCH_RCA_2026-07-29.md`.
 4. Add a bounded UI zoom/accessibility mechanism, not a premature responsive
    layout framework.
 5. Replace the fixed pitch clamp with a documented grid-relative safe range while
@@ -796,8 +807,7 @@ The dependency table must also state what the phase unlocks.
 
 ## Next action
 
-**Review A, repository remediation, and R0 outcome 2 are verified.** The next
-planning target is **R0 outcome 3**: a safe open/switch flow for current map files,
-including dirty Save/Discard/Cancel confirmation and transactional failure
-behavior. Keep this explicitly map-scoped; do not present it as the final scene
-format or begin R1 world-model work early.
+**Review A, repository remediation, and R0 outcomes 2 and 3 are verified.** The
+next planning target is **R0 outcome 4**, a bounded UI zoom/accessibility
+mechanism. Do not begin a premature responsive-layout framework or R1 world-model
+work early.

@@ -128,6 +128,10 @@ Maintainer references:
 
 - `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor
   behavior, forbidden regressions, and test ownership.
+- `docs/R0_MAP_OPEN_SWITCH_PLAN_2026-07-29.md` — bounded current-map chooser
+  contract, failure matrix, implementation record, and verification evidence.
+- `docs/R0_MAP_OPEN_SWITCH_RCA_2026-07-29.md` — failed approaches, root causes,
+  detection gaps, corrections, and preventive lessons from R0 outcome 3.
 - `docs/FEATURE_ROADMAP.md` — authoritative dependency order, engineering
   principles, quality gates, and review checkpoints for future feature work.
 - `docs/TODO.md` — unordered future-feature ideas, unresolved questions, and
@@ -135,9 +139,13 @@ Maintainer references:
 
 ## Editors
 
-The main menu exposes one **Editor**. It loads the real level from
-`assets/maps/1.txt`; walking, selection, material preview, and rendering share
-one camera and one authoritative map.
+The main menu exposes one **Editor**. Entering it opens an in-game chooser for
+regular lowercase `.txt` map files directly under `assets/maps/`; walking,
+selection, material preview, and rendering then share one camera and one
+authoritative map. The chooser is deliberately limited to the current digit-grid
+map workflow, not a general file dialog or final scene system. Handled menu input
+is consumed before the new editor state updates, so the Enter used to choose
+**Editor** does not also select a map.
 
 In edit mode, an adaptive center `+` marks the aim point. The hovered wall face
 uses a dashed outline; pressing `E` opens the inspector and gives the selected
@@ -154,11 +162,18 @@ face a solid outline. Closing the inspector clears that persistent selection.
 | `Enter` | Apply the highlighted material or confirm a modal choice |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` | Save the current map |
+| `Ctrl+O` | Reopen the current-map chooser |
 | `F5` | Reload; dirty documents require confirmation |
 | `Escape` | Close inspector, then open the editor exit prompt |
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.
+
+Selecting another map while the document is dirty opens a separate
+Save/Discard/Cancel prompt. Failed save or target load keeps the current document
+loaded and leaves the workflow open with a visible error. Escape returns one
+level: dirty prompt to chooser, in-editor chooser to the current document, and
+the initial no-document chooser to the main menu.
 
 ### Current editor limits
 
@@ -173,6 +188,9 @@ A failed save does not discard edits or history.
   material-`0` cells to the longest row.
 - If a selected wall references an unloaded material, its numeric ID is shown
   with `(missing)` and may be replaced by a loaded material.
+- Map discovery is non-recursive and does not follow symlinks. Native dialogs,
+  editable paths, recent files, New, and Save As are not part of the current-map
+  workflow.
 
 Deferred work includes map-cell construction/deletion, per-face materials,
 floor and ceiling editing, material authoring, integrated painter UI, decal and

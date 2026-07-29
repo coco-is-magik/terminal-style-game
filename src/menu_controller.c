@@ -13,3 +13,11 @@ MenuAction menu_controller_parse_action(const char *action) {
     if (strcmp(action, "discard_changes") == 0) return MENU_ACTION_DISCARD_CHANGES;
     return MENU_ACTION_UNKNOWN;
 }
+
+void menu_controller_consume_confirm(bool *confirm_pressed,
+                                     bool *editor_confirm_pressed,
+                                     bool action_handled) {
+    if (!action_handled) return;
+    if (confirm_pressed) *confirm_pressed = false;
+    if (editor_confirm_pressed) *editor_confirm_pressed = false;
+}

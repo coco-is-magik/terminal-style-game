@@ -28,7 +28,7 @@ typedef enum {
     INPUT_KEY_RETURN, INPUT_KEY_LEFT, INPUT_KEY_RIGHT, INPUT_KEY_SPACE,
     INPUT_KEY_BACKSPACE, INPUT_KEY_F5, INPUT_KEY_F9, INPUT_KEY_LEFTBRACKET,
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
-    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S
+    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O
 } InputKey;
 
 typedef struct {
@@ -91,6 +91,7 @@ typedef struct {
     bool editor_undo_pressed;        /* Ctrl+Z */
     bool editor_redo_pressed;        /* Ctrl+Y */
     bool editor_save_pressed;        /* Ctrl+S */
+    bool editor_open_pressed;        /* Ctrl+O — current-map chooser */
     bool editor_reload_pressed;      /* F5 — reload scene */
     bool editor_previous_pressed;    /* Up — picker previous */
     bool editor_next_pressed;        /* Down — picker next */

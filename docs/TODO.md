@@ -111,18 +111,24 @@ Likely implications:
 - remain clear at distance/oblique angles and not rely only on color;
 - define hidden/occluded indicators and reduced-motion behavior.
 
-## Open and switch saved scenes/files — **Ready for maps; scene-dependent later**
+## Open and switch saved scenes/files — **Current-map baseline implemented; scene-dependent later**
 
-**Wanted:** Open different saved content instead of hard-coding
-`assets/maps/1.txt`.
+**Verified baseline (2026-07-29):** Main-menu
+Editor and in-editor `Ctrl+O` open a sorted in-game list of regular lowercase
+`.txt` direct children under `assets/maps/`. Dirty switches use Save/Discard/Cancel,
+and discovery/save/load failures preserve the live document as defined by
+`EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`.
 
-Likely implications:
+**Intentionally not included in the current-map baseline:** native dialogs,
+editable/arbitrary paths, recursion, symlink following, recent files, New, Save As,
+or a generic scene/list framework.
 
-- picker, validation, empty states, load errors, recent files, and Save As;
-- Save/Discard/Cancel prompt for dirty content;
-- transactional load preserving the current document on failure;
-- reset history/selection only after successful replacement;
-- path/name policy and safe asset-root handling.
+Preserved future scene/file implications:
+
+- versioned scene picker, validation, empty states, load errors, recent files, and
+  Save As after the scene format and ownership model exist;
+- migration/import policy for current digit-grid maps;
+- scene-root path/name policy and safe asset-root handling.
 
 Avoid making the UI permanently map-file-specific if a future level contains
 map, lights, decals, spawn, and ambient data.

@@ -74,6 +74,10 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "map_saved.txt");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "a_current.txt");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "b_target.txt");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -85,6 +89,10 @@ static const char *VALID_MAP =
     "00001\n"
     "00000\n"
     "00000\n";
+
+static const char *SECOND_MAP =
+    "22\n"
+    "22\n";
 
 static AssetRegistry g_assets;
 
@@ -174,6 +182,295 @@ static int load_editor(UnifiedEditorState *ed, const char *name) {
         return -1;
     }
     return 0;
+}
+
+static EditorInputConsumption update_with(
+    UnifiedEditorState *ed,
+    Camera *cam,
+    InputState *in
+) {
+    return unified_editor_update(ed, in, cam, 0.016);
+}
+
+static int prepare_catalog_maps(char *first, size_t first_size,
+                                char *second, size_t second_size) {
+    path_in_tmpdir(first, first_size, "a_current.txt");
+    path_in_tmpdir(second, second_size, "b_target.txt");
+    if (write_text_file(first, VALID_MAP) != 0) return -1;
+    if (write_text_file(second, SECOND_MAP) != 0) return -1;
+    return 0;
+}
+
+static void test_initial_chooser_load_and_escape(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char first[512];
+    char second[512];
+    (void)state;
+
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    assert_false(unified_editor_has_document(&ed));
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    camera_init(&cam, 7.0, 8.0, 0.25, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_true(unified_editor_has_document(&ed));
+    assert_string_equal(ed.document.path, first);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_float_equal(cam.transform.pos.x, 7.0, 0.0001);
+
+    unified_editor_destroy(&ed);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_true(ed.request_exit_to_main_menu);
+    assert_false(unified_editor_has_document(&ed));
+    unified_editor_destroy(&ed);
+    remove(first);
+    remove(second);
+}
+
+static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char first[512];
+    char second[512];
+    char missing_root[512];
+    char *root_before;
+    SelectionTarget selection_before;
+    (void)state;
+
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    camera_init(&cam, 4.0, 5.0, 0.5, PI / 2.0);
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+
+    select_east_wall(&ed);
+    selection_before = ed.selection;
+    zero_input(&in);
+    in.editor_open_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_int_equal(ed.map_catalog.count, 2);
+
+    root_before = ed.map_root;
+    path_in_tmpdir(missing_root, sizeof(missing_root), "missing-directory");
+    assert_int_equal(unified_editor_begin_map_open(&ed, missing_root),
+                     MAP_CATALOG_OPEN_FAILED);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_int_equal(ed.status, EDITOR_STATUS_CATALOG_FAILED);
+    assert_ptr_equal(ed.map_root, root_before);
+    assert_string_equal(ed.map_root, g_tmpdir);
+    assert_int_equal(ed.map_catalog.count, 2);
+    assert_string_equal(ed.document.path, first);
+    assert_memory_equal(&ed.selection, &selection_before,
+                        sizeof(selection_before));
+    assert_true(ed.inspector_open);
+    assert_float_equal(cam.transform.pos.x, 4.0, 0.0001);
+
+    unified_editor_destroy(&ed);
+    remove(first);
+    remove(second);
+}
+
+static void test_clean_switch_and_failed_load_preserve(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char first[512];
+    char second[512];
+    SelectionTarget selection_before;
+    (void)state;
+
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    camera_init(&cam, 4.0, 5.0, 0.5, PI / 2.0);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.document.path, second);
+    assert_int_equal(ed.document.map.width, 2);
+    assert_int_equal(ed.history.count, 0);
+    assert_float_equal(cam.transform.pos.y, 5.0, 0.0001);
+
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    selection_before = ed.selection;
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    assert_int_equal(remove(second), 0);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_int_equal(ed.status, EDITOR_STATUS_LOAD_FAILED);
+    assert_string_equal(ed.document.path, first);
+    assert_memory_equal(&ed.selection, &selection_before, sizeof(selection_before));
+    assert_true(ed.inspector_open);
+    assert_float_equal(cam.transform.pos.x, 4.0, 0.0001);
+
+    unified_editor_destroy(&ed);
+    remove(first);
+}
+
+static void test_dirty_switch_cancel_discard_and_failure(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char first[512];
+    char second[512];
+    (void)state;
+
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    camera_init(&cam, 3.0, 3.0, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_DIRTY_OPEN_PROMPT);
+    assert_int_equal(ed.dirty_open_choice, EDITOR_DIRTY_OPEN_CANCEL);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_string_equal(ed.document.path, first);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_previous_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.dirty_open_choice, EDITOR_DIRTY_OPEN_DISCARD);
+    assert_int_equal(remove(second), 0);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_string_equal(ed.document.path, first);
+    assert_int_equal(east_wall_mat(&ed), 2);
+    assert_int_equal(ed.history.count, 1);
+
+    assert_int_equal(write_text_file(second, SECOND_MAP), 0);
+    assert_int_equal(unified_editor_begin_map_open(&ed, NULL), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_previous_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.document.path, second);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.selection.type, SELECTION_NONE);
+    assert_int_equal(ed.history.count, 0);
+
+    unified_editor_destroy(&ed);
+    remove(first);
+    remove(second);
+}
+
+static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char first[512];
+    char second[512];
+    char saved[256];
+    (void)state;
+
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    camera_init(&cam, 3.0, 3.0, 0.0, PI / 2.0);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.dirty_open_choice, EDITOR_DIRTY_OPEN_SAVE);
+    assert_int_equal(remove(second), 0);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    assert_int_equal(ed.status, EDITOR_STATUS_LOAD_FAILED);
+    assert_string_equal(ed.document.path, first);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(east_wall_mat(&ed), 2);
+    assert_int_equal(ed.history.count, 1);
+    assert_int_equal(read_text_file(first, saved, sizeof(saved)), 0);
+    assert_non_null(strstr(saved, "2"));
+
+    assert_int_equal(write_text_file(second, SECOND_MAP), 0);
+    assert_int_equal(unified_editor_begin_map_open(&ed, NULL), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.document.path, second);
+
+    assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 12), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_begin_map_open(&ed, NULL), MAP_CATALOG_OK);
+    ed.map_chooser_index = 1;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_DIRTY_OPEN_PROMPT);
+    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    assert_string_equal(ed.document.path, first);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(east_wall_mat(&ed), 12);
+    assert_int_equal(ed.history.count, 1);
+
+    unified_editor_destroy(&ed);
+    remove(first);
+    remove(second);
 }
 
 static void test_authoritative_map_updates_without_state_reset(void **state) {
@@ -1053,6 +1350,12 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        /* R0 current-map open/switch workflow */
+        cmocka_unit_test(test_initial_chooser_load_and_escape),
+        cmocka_unit_test(test_ctrl_o_and_catalog_failure_preserve_document),
+        cmocka_unit_test(test_clean_switch_and_failed_load_preserve),
+        cmocka_unit_test(test_dirty_switch_cancel_discard_and_failure),
+        cmocka_unit_test(test_dirty_save_success_then_switch_and_save_failure),
         /* Phase 8 contract regressions */
         cmocka_unit_test(test_authoritative_map_updates_without_state_reset),
         cmocka_unit_test(test_overlay_marks_unloaded_selected_material_missing),
