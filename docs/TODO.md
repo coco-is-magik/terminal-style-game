@@ -90,15 +90,23 @@ or deletion, and selection survival need explicit rules.
 
 # Editor usability and workflow
 
-## Selected-item highlighting — **Ready for focused planning**
+## Selected-item highlighting — **Wall-face baseline verified; generalization deferred**
 
-**Wanted:** Highlight the selected wall, surface, light, decal, or item in the
-world instead of relying only on inspector text.
+**Implemented baseline (2026-07-29):** The current wall editor draws a dashed
+hovered wall-face outline, a solid persistent selected-wall-face outline, and an
+adaptive center crosshair. Escape dismissal clears the persistent selection. The
+overlay is allocation-free, respects nearest-wall occlusion, and does not mutate
+authored materials. See `EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` and
+`EDITOR_HIGHLIGHT_IMPLEMENTATION_RECORD_2026-07-29.md`.
+
+**Preserved future idea:** Generalize the same interaction vocabulary to floors,
+ceilings, lights, decals, objects, bulk selections, and hidden targets after those
+target types and occlusion semantics exist.
 
 Likely implications:
 
 - editor-only overlay; never mutate the authored material;
-- first support wall-face outline/tint, then generalize by target type;
+- reuse the verified wall-face vocabulary, then generalize by target type;
 - distinguish hover, primary selection, and future bulk selection;
 - remain clear at distance/oblique angles and not rely only on color;
 - define hidden/occluded indicators and reduced-motion behavior.

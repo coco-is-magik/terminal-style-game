@@ -1,4 +1,10 @@
-# Editor Unification Handoff
+# Editor Unification Handoff — 2026-07-24
+
+> **Historical / superseded:** This handoff records an intermediate Phase 6
+> checkpoint. Editor unification, repository remediation, and wall-face highlight
+> outcome R0.2 are now verified. Use
+> `../EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`, `../FEATURE_ROADMAP.md`, and
+> `2026-07-29-editor-highlight-closeout.md` for current state and next action.
 
 > **Historical / superseded:** This handoff stops after Phase 5. Phases 6–8 are
 > complete. Current requirements and test ownership are documented in

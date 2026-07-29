@@ -34,6 +34,9 @@ SceneDocument -> CommandHistory -> editor runtime map
 - `menu_controller` / `menu_state`: pure action decoding and menu stack state;
   `app.c` performs side effects such as editor startup.
 - `raycast`: ray intersection and scene raster orchestration.
+- `editor_highlight`: allocation-free editor-only world visualization. It borrows
+  the authoritative map, camera, hover, and selection data and mutates only the
+  current `Grid` framebuffer after world rendering.
 - `decal_projection`: one surface-local normal/tangent/bitangent model shared by
   wall, floor, and ceiling glyph placement.
 - `renderer`: SDL/software presentation resources only. The backend accepts fixed
@@ -46,6 +49,9 @@ SceneDocument -> CommandHistory -> editor runtime map
 ## Invariants
 
 - All grid-like allocation counts use checked `size_t` arithmetic.
+- `Grid` owns framebuffer storage and a reusable width-sized column-depth
+  workspace. World rendering and editor highlighting process the full configured
+  grid width without fixed column cutoffs or per-frame allocation.
 - Maps accept ragged rows by padding to the longest row, with 512x256 limits.
 - Decals use a shared surface-local mapping:
   `origin + u*tangent*glyph_width + v*bitangent*glyph_height`.

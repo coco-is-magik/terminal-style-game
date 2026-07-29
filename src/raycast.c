@@ -333,11 +333,11 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world) {
     if (!grid || !map || !cam || !assets || !world) return;
 
-    /* ---- Z-buffer: stores the camera-forward perpendicular distance of the
-     *     nearest wall for each column.  Used later for decal/light occlusion.
-     *     Hardcoded max width of 1024 columns. ---- */
-    double z_buffer[1024];
-    int max_x_idx = grid->width < 1024 ? grid->width : 1024;
+    /* Grid-owned workspace avoids both a hidden width cap and per-frame allocation. */
+    double *z_buffer = grid->column_depths;
+    int max_x_idx = grid->width;
+
+    if (!z_buffer) return;
 
     /* ================================================================
      *  MAIN RAYCASTING LOOP — one iteration per screen column

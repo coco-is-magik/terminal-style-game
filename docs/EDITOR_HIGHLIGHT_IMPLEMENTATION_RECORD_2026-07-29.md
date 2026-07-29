@@ -98,3 +98,25 @@ document data had been lost.
 
 The user then repeated the interactive select-and-Escape flow and confirmed that
 the solid selected outline now disappears when the inspector closes.
+
+## Closeout standards review
+
+A final architecture/documentation pass confirmed that `editor_highlight` remains
+a single-purpose, allocation-free framebuffer post-pass with narrow borrowed data
+inputs. It does not own editor state, mutate authored data, or add behavior to the
+application orchestrator.
+
+The review found one cross-module contract mismatch: `editor_highlight` supported
+the full grid width while `raycast_render()` silently stopped after 1,024 columns.
+The renderer now uses a reusable width-sized depth workspace owned by `Grid`, so
+the world and overlay process the same configured columns without per-frame
+allocation. `test-core` now renders and inspects column 1,099; the existing
+highlight test independently covers the same wide-grid boundary.
+
+Final post-review verification:
+
+- strict `make -B all`: passed;
+- aggregate `make test`: passed, including `test-core` 43/43,
+  `test-editor-highlight` 9/9, and `test-unified-editor` 27/27;
+- focused ASan + UBSan `test-core`: 43/43 passed with no reported sanitizer
+  error.

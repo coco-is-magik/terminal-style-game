@@ -139,6 +139,10 @@ The main menu exposes one **Editor**. It loads the real level from
 `assets/maps/1.txt`; walking, selection, material preview, and rendering share
 one camera and one authoritative map.
 
+In edit mode, an adaptive center `+` marks the aim point. The hovered wall face
+uses a dashed outline; pressing `E` opens the inspector and gives the selected
+face a solid outline. Closing the inspector clears that persistent selection.
+
 ### Unified editor controls
 
 | Control | Action |

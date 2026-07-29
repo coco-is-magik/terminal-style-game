@@ -12,11 +12,10 @@ into an incremental remediation program. The review remains the evidence record;
 this document is the authoritative sequence, scope, and exit-gate definition for
 addressing it.
 
-This plan is part of roadmap phase R0. Safety-critical remediation and its
-verification gates take priority over broad new architectural feature work. Only one
-major remediation phase should normally be active at a time. A later phase may be
-resequenced only when the reason, affected findings, and replacement gate are
-recorded here.
+This closed plan is part of roadmap phase R0. While it was active,
+safety-critical remediation and its verification gates took priority over broad
+new architectural feature work. Its sequencing rules below are retained as the
+historical execution contract, not as current work instructions.
 
 ## Objective
 

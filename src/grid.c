@@ -46,9 +46,12 @@
 Grid* grid_create(int width, int height) {
     size_t cell_count;
     size_t bytes;
+    size_t depth_bytes;
     if (!checked_size_2d(width, height, &cell_count) ||
-        !checked_size_bytes(cell_count, sizeof(Cell), &bytes)) return NULL;
+        !checked_size_bytes(cell_count, sizeof(Cell), &bytes) ||
+        !checked_size_bytes((size_t)width, sizeof(double), &depth_bytes)) return NULL;
     (void)bytes;
+    (void)depth_bytes;
 
     /* Allocate the Grid struct itself */
     Grid *grid = malloc(sizeof(Grid));
@@ -57,12 +60,14 @@ Grid* grid_create(int width, int height) {
     grid->width  = width;
     grid->height = height;
 
-    /* Allocate the cell array and previous-frame storage for dirty tracking. */
+    /* Allocate framebuffer and reusable per-grid render workspaces. */
     grid->cells = calloc(cell_count, sizeof(Cell));
     grid->prev_cells = calloc(cell_count, sizeof(Cell));
-    if (!grid->cells || !grid->prev_cells) {
+    grid->column_depths = calloc((size_t)width, sizeof(double));
+    if (!grid->cells || !grid->prev_cells || !grid->column_depths) {
         free(grid->cells);
         free(grid->prev_cells);
+        free(grid->column_depths);
         free(grid);
         return NULL;
     }
@@ -85,6 +90,7 @@ void grid_destroy(Grid *grid) {
     if (grid->prev_cells) {
         free(grid->prev_cells);  /* Free the previous frame buffer */
     }
+    free(grid->column_depths);
     free(grid);                  /* Free the Grid struct */
 }
 

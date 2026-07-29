@@ -240,33 +240,32 @@ Q4 review findings.
 
 **Status:** Active
 
-The initial Q4 review is complete:
+The initial Q4 review and its remediation sequence are complete:
 [`REPOSITORY_CODE_REVIEW_2026-07-28.md`](REPOSITORY_CODE_REVIEW_2026-07-28.md).
-Its remediation sequence is active in
+All applicable remediation gates are verified in
 [`REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md`](REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md).
-Safety-critical parsing, allocation, renderer-contract, and ownership findings must
-clear their plan gates before broad architectural feature work proceeds. This does
-not silently expand the scope of the visible editor outcomes below; it establishes
-the health prerequisite required by Q2–Q4.
+That closed work established the health prerequisite required by Q2–Q4; it is not
+an active phase and does not expand the visible editor outcomes below.
 
 **Purpose:** Establish a reviewed baseline and deliver small editor improvements
 before persistent world formats and shared architecture change.
 
 **Prerequisites:** The completed unified wall-material editor and its regression
-contract. The initial review prerequisite is satisfied; remediation findings and
-their phase gates are tracked in the linked action plan.
+contract. The initial review and remediation prerequisites are satisfied.
 
 **Required outcomes:**
 
-1. Perform the initial Q4 full repository review. **Complete 2026-07-28; remediation
-   remains active under the linked action plan.**
+1. Perform the initial Q4 full repository review and close its remediation plan.
+   **Verified 2026-07-28; all applicable remediation phases and gates passed.**
 2. Add world-space selected-wall highlighting through an editor-only overlay.
    **Implemented 2026-07-29:** allocation-free selected/hovered wall-face
    outlines and an adaptive center crosshair now compose after world rendering
    and before editor UI. Focused automated verification is recorded in
    `test-editor-highlight`; strict build, aggregate, and focused sanitizer checks
-   pass. Focused interactive acceptance passed on 2026-07-29; this R0 outcome is
-   verified.
+   pass. Focused interactive acceptance, including inspector-dismissal selection
+   clearing, passed on 2026-07-29; this R0 outcome is verified. A closeout review
+   also removed the renderer's hidden 1,024-column cutoff so world rendering and
+   the highlight overlay share the same full-grid-width contract.
 3. Add safe open/switch flow for current map files with dirty confirmation and
    transactional failure behavior.
 4. Add a bounded UI zoom/accessibility mechanism, not a premature responsive
@@ -274,6 +273,9 @@ their phase gates are tracked in the linked action plan.
 5. Replace the fixed pitch clamp with a documented grid-relative safe range while
    retaining and accurately naming the current 2.5D horizon-offset model.
 6. Add deferred tracker-selection and benchmark-classification regression tests.
+   **Verified 2026-07-28:** dedicated generic/indexed tracker runners, bounded
+   build-mode coverage, application-option conflict tests, and benchmark-session
+   classification tests were added during repository remediation.
 
 **Data-first opportunities:** UI-scale presets, file-filter/path policy, highlight
 style parameters, and pitch policy should be validated configuration where that
@@ -792,11 +794,10 @@ The dependency table must also state what the phase unlocks.
 10. Preserve superseded phases and decisions with clear links; do not erase the
     evidence or reasoning that changed the roadmap.
 
-## Initial next action
+## Next action
 
-**Review A is complete.** The next active task is Phase 1 of
-[`REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md`](REPOSITORY_REMEDIATION_ACTION_PLAN_2026-07-28.md):
-safety-critical parsing, dimension, and allocation remediation. Broader R0 feature
-implementation should not begin until the review's safety-critical findings clear
-their named gates; all other findings must remain explicitly assigned in the action
-plan.
+**Review A, repository remediation, and R0 outcome 2 are verified.** The next
+planning target is **R0 outcome 3**: a safe open/switch flow for current map files,
+including dirty Save/Discard/Cancel confirmation and transactional failure
+behavior. Keep this explicitly map-scoped; do not present it as the final scene
+format or begin R1 world-model work early.

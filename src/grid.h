@@ -35,12 +35,14 @@ typedef struct {
  * width  — Number of columns (horizontal cells)
  * height — Number of rows (vertical cells)
  * cells  — Linear array of Cells in row-major order (index = y * width + x)
+ * column_depths — Reusable width-sized world-render depth workspace
  */
 typedef struct {
     int width;               /* Grid width in cells */
     int height;              /* Grid height in cells */
     Cell *cells;             /* Cell data (heap-allocated, width × height) */
     Cell *prev_cells;        /* Previous frame cells (for dirty tracking) */
+    double *column_depths;   /* Per-column world depth; owned by Grid */
 } Grid;
 
 /* ---- Grid API ---- */
