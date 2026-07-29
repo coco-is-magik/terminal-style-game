@@ -27,6 +27,7 @@
 #include "ui_ele.h"
 #include "menu_state.h"
 #include "unified_editor.h"
+#include "editor_highlight.h"
 #include "smc_render_opt.h"
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc_state_tracker.h"
@@ -551,6 +552,8 @@ int app_main(int argc, char* argv[]) {
                 if (ed_map) {
                     lighting_update(ed_map, &world);
                     raycast_render(grid, ed_map, &cam, &assets, &world);
+                    editor_highlight_render(grid, ed_map, &cam,
+                                            ued.selection, ued.hover);
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);

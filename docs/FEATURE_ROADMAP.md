@@ -261,6 +261,12 @@ their phase gates are tracked in the linked action plan.
 1. Perform the initial Q4 full repository review. **Complete 2026-07-28; remediation
    remains active under the linked action plan.**
 2. Add world-space selected-wall highlighting through an editor-only overlay.
+   **Implemented 2026-07-29:** allocation-free selected/hovered wall-face
+   outlines and an adaptive center crosshair now compose after world rendering
+   and before editor UI. Focused automated verification is recorded in
+   `test-editor-highlight`; strict build, aggregate, and focused sanitizer checks
+   pass. Focused interactive acceptance passed on 2026-07-29; this R0 outcome is
+   verified.
 3. Add safe open/switch flow for current map files with dirty confirmation and
    transactional failure behavior.
 4. Add a bounded UI zoom/accessibility mechanism, not a premature responsive

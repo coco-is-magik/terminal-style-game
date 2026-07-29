@@ -41,6 +41,15 @@ useful chronology but must not override these accepted requirements.
 14. Reusable decal persistence and headless pattern editing remain available as
     `decal_io` and `decal_painter`; future UI integration must reuse rather than
     duplicate these boundaries.
+15. Editor world visualization draws a persistent solid selected-wall-face
+    outline, a distinct dashed hover outline, and an adaptive center crosshair.
+    It is an editor-only post-pass: normal nearest-wall occlusion applies,
+    selection wins overlap, the face interior remains visible, and no authored
+    map/material state is mutated.
+16. Escape dismissing the wall inspector also clears its persistent selection
+    and solid world highlight. A later ordinary frame may still show the dashed
+    hover target under the center crosshair. The next Escape opens the editor
+    exit prompt as before.
 
 ## Forbidden regressions
 
@@ -52,6 +61,8 @@ useful chronology but must not override these accepted requirements.
 - No checked-in asset writes from automated tests.
 - No restoration of removed Asset Designer, Live Editor, or Material Designer
   application states as separate products.
+- No material mutation, authored-state copy, heap allocation, or through-wall
+  rendering to visualize editor selection.
 
 ## Regression suite map
 
@@ -60,13 +71,14 @@ useful chronology but must not override these accepted requirements.
 | Scene ownership, transactional load, atomic save, `0..9`, ragged rows, derived data exclusion | `test-scene-document` |
 | Occupied-wall target, command transaction, state IDs, branch truncation, OOM, undo/redo dirty semantics | `test-command-system` |
 | Center ray, four face directions, bounds, empty-cell rejection | `test-editor-selection` |
-| Mode/camera preservation, input consumption, selection, picker, missing marker, apply/undo/redo/save/reload/exit, authoritative map/no-reset state | `test-unified-editor` |
+| Selected/hover wall-face outlines, cardinal faces, occlusion, contrast, overlap priority, map/interior preservation, crosshair | `test-editor-highlight` |
+| Mode/camera preservation, input consumption, selection/dismissal, picker, missing marker, apply/undo/redo/save/reload/exit, authoritative map/no-reset state | `test-unified-editor` |
 | Painter lifecycle, ownership, bounded paint/erase/fill/clear, transactionality | `test-decal-painter` |
 | Decal persistence | `test-decal-io` |
 | Current menu/layout/action contracts | `test-menu-state`, `test-ui-ele` |
 | Rendering and engine regression under configured tracker | `test-core`, `test-decals` |
 
-The aggregate `make test` currently runs 181 tests across 11 runners. A future
+The aggregate `make test` includes a dedicated editor-highlight runner. A future
 change that intentionally alters a requirement must update this contract, the
 relevant tests, and user-facing documentation together; tests must not simply be
 removed or weakened to obtain a pass.
@@ -85,3 +97,11 @@ On 2026-07-27 the unified editor was exercised interactively and accepted by
 the user: entry, walk/edit behavior, visual material editing, and the overall
 foundation looked correct. Repeat a focused smoke test when changing SDL input,
 application state transitions, renderer integration, or editor overlays.
+
+On 2026-07-29 the user interactively accepted the adaptive center crosshair and
+the distinct hovered/selected wall-face outlines after strict, aggregate, and
+focused sanitizer verification passed.
+
+Later on 2026-07-29 the user confirmed the post-acceptance correction: pressing
+Escape once after wall selection closes the inspector and removes the solid
+persistent-selection outline.

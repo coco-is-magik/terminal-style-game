@@ -134,6 +134,14 @@ static MaterialId wall_mat(const UnifiedEditorState *ed) {
     return mat;
 }
 
+static MaterialId east_wall_mat(const UnifiedEditorState *ed) {
+    MaterialId mat = 0;
+    WallMaterialRef ref = {4, 2};
+
+    scene_document_get_wall_material(&ed->document, ref, &mat);
+    return mat;
+}
+
 static bool grid_contains_text(const Grid *grid, const char *text) {
     size_t text_len;
 
@@ -475,7 +483,7 @@ static void test_escape_hierarchy_inspector_before_exit(void **state) {
     assert_true(c.keyboard_consumed);
     assert_false(ed.inspector_open);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    assert_int_equal(ed.selection.type, SELECTION_WALL_FACE);
+    assert_int_equal(ed.selection.type, SELECTION_NONE);
 
     zero_input(&in);
     in.editor_cancel_pressed = true;
@@ -787,7 +795,7 @@ static void test_exit_resume_default_does_not_discard(void **state) {
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
     assert_false(ed.request_exit_to_main_menu);
     assert_true(scene_document_is_dirty(&ed.document));
-    assert_int_equal(wall_mat(&ed), 2);
+    assert_int_equal(east_wall_mat(&ed), 2);
 
     unified_editor_destroy(&ed);
 }
@@ -917,7 +925,7 @@ static void test_exit_save_failure_blocks_exit(void **state) {
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
     assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
     assert_true(scene_document_is_dirty(&ed.document));
-    assert_int_equal(wall_mat(&ed), 12);
+    assert_int_equal(east_wall_mat(&ed), 12);
 
     unified_editor_destroy(&ed);
 }

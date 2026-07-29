@@ -6,6 +6,7 @@
  */
 
 #include "unified_editor.h"
+#include "editor_highlight.h"
 
 #include "camera.h"
 
@@ -458,6 +459,7 @@ static void editor_handle_escape(
 
     if (editor->inspector_open) {
         editor->inspector_open = false;
+        editor_clear_selection(editor);
         editor_mark_keyboard(consumed);
         return;
     }
@@ -876,4 +878,7 @@ void unified_editor_render_overlay(
                    "Ctrl+Z/Y=undo/redo  Ctrl+S=save",
                    dim, bg);
     }
+
+    /* UI-layer center ray indicator always wins over world highlights. */
+    editor_crosshair_render(grid);
 }
