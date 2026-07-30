@@ -359,7 +359,7 @@ colored lighting, and outdoor/no-ceiling areas.
 
 # Camera and vertical world
 
-## Increase/remove look-up/down bound — **Needs product decision**
+## Increase/remove look-up/down bound — **Bounded 2.5D policy approved**
 
 Current `Camera.pitch` is a horizon offset clamped to `[-100,100]`, not an angle.
 
@@ -369,6 +369,11 @@ Two different features are possible:
    and projection safety audit.
 2. True unrestricted pitch: camera Z/angular pitch and a replacement of current
    projection assumptions, coupled to vertical-world design.
+
+**Decision 2026-07-30:** R0 uses option 1 with an exact
+`[-viewport_rows, +viewport_rows]` bound derived from the active logical grid.
+This remains a 2.5D horizon offset. True angular pitch remains deferred to R8.
+See `R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`.
 
 Define expected behavior near straight up/down, extreme-pitch safety, decal
 coherence, sensitivity/inversion, and avoid calling a wider horizon offset

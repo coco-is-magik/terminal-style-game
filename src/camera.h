@@ -22,13 +22,15 @@
  *
  * transform — position (x, y) and yaw angle (radians)
  * fov       — horizontal field of view (radians, e.g. PI/2 = 90°)
- * pitch     — vertical look offset in grid cells (positive shifts horizon downward)
+ * pitch     — horizon offset in logical grid rows (positive shifts horizon down)
  */
 typedef struct {
     Entity transform;      /* Position + yaw angle */
     double fov;            /* Horizontal field of view (radians) */
-    double pitch;          /* Vertical look offset (cells, clamped ±100) */
+    double pitch;          /* 2.5D horizon offset in logical grid rows */
 } Camera;
+
+double camera_clamp_horizon_offset(double offset, int viewport_rows);
 
 /**
  * camera_init() — Initialise a Camera with position, angle, and FOV
@@ -52,7 +54,9 @@ void camera_init(Camera *cam, double x, double y, double angle, double fov);
  * @param map              Map for collision queries (NULL-safe)
  * @param input            Current input state
  * @param delta_time_sec   Time since last frame (seconds)
+ * @param viewport_rows    Active logical viewport height
  */
-void camera_update(Camera *cam, Map *map, InputState *input, double delta_time_sec);
+void camera_update(Camera *cam, Map *map, InputState *input,
+                   double delta_time_sec, int viewport_rows);
 
 #endif /* CAMERA_H */

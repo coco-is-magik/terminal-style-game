@@ -130,7 +130,8 @@ EditorInputConsumption unified_editor_update(
     UnifiedEditorState *editor,
     InputState *input,
     Camera *camera,
-    double delta_seconds
+    double delta_seconds,
+    int viewport_rows
 );
 
 void unified_editor_render_overlay(

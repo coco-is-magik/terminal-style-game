@@ -801,7 +801,8 @@ EditorInputConsumption unified_editor_update(
     UnifiedEditorState *editor,
     InputState *input,
     Camera *camera,
-    double delta_seconds
+    double delta_seconds,
+    int viewport_rows
 ) {
     EditorInputConsumption consumed = {false, false};
 
@@ -893,7 +894,7 @@ EditorInputConsumption unified_editor_update(
         /* 5. Walk mode: camera moves; edit mode: freeze movement/look. */
         if (editor->mode == EDITOR_MODE_WALK &&
             unified_editor_has_document(editor) && rmap) {
-            camera_update(camera, rmap, input, delta_seconds);
+            camera_update(camera, rmap, input, delta_seconds, viewport_rows);
         } else {
             consumed.pointer_consumed = true;
         }

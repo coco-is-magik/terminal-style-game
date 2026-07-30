@@ -1006,6 +1006,49 @@ static void test_decal_wall_orientation(void **state) {
     grid_destroy(g);
 }
 
+static void test_decal_rendering_extreme_horizon_offsets(void **state) {
+    Grid *g = grid_create(41, 25);
+    Map *m = map_create(5, 5);
+    Camera cam;
+    AssetRegistry assets;
+    WorldState world;
+    Decal d;
+    (void)state;
+
+    assert_non_null(g);
+    assert_non_null(m);
+    map_set(m, 3, 2, 1);
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    asset_registry_init(&assets);
+    asset_registry_set_palette(
+        &assets, 1,
+        (SDL_Color){255,255,255,255},
+        (SDL_Color){255,255,255,255},
+        (SDL_Color){255,255,255,255});
+    asset_registry_set_material(&assets, 1, 1, "####");
+    world_init(&world);
+    memset(&d, 0, sizeof(d));
+    d.surface = DECAL_SURFACE_WALL;
+    d.x = 3.0; d.y = 2.5; d.z = 0.5;
+    d.rotation = PI;
+    d.width = 1.0; d.height = 1.0; d.depth = 0.1;
+    d.pattern_cols = 1; d.pattern_rows = 1;
+    d.pattern = malloc(sizeof(PatternCell));
+    assert_non_null(d.pattern);
+    d.pattern[0] = (PatternCell){'X', 1};
+    assert_int_equal(world_add_decal(&world, d), WORLD_INSERT_OK);
+    lighting_update(m, &world);
+
+    cam.pitch = -(double)g->height;
+    raycast_render(g, m, &cam, &assets, &world);
+    cam.pitch = (double)g->height;
+    raycast_render(g, m, &cam, &assets, &world);
+
+    world_clear(&world);
+    map_destroy(m);
+    grid_destroy(g);
+}
+
 static GlyphBounds render_single_wall_decal_bounds(double cam_x, uint8_t glyph) {
     Grid *g = grid_create(80, 80);
     Map *m = map_create(8, 5);
@@ -1558,6 +1601,7 @@ int main(void) {
         cmocka_unit_test(test_decal_wall_authoritative_dimensions),
         cmocka_unit_test(test_decal_wall_backface_rejected),
         cmocka_unit_test(test_decal_wall_orientation),
+        cmocka_unit_test(test_decal_rendering_extreme_horizon_offsets),
         cmocka_unit_test(test_decal_wall_distance_footprint),
         cmocka_unit_test(test_decal_floor_perspective_plane),
         cmocka_unit_test(test_decal_wall_size_respects_width),

@@ -20,6 +20,10 @@
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
+
+/* Editor behavior tests use the production logical viewport height. */
+#define unified_editor_update(editor, input, camera, delta) \
+    unified_editor_update((editor), (input), (camera), (delta), 160)
 #include "../src/assets.h"
 #include "../src/camera.h"
 #include "../src/config.h"

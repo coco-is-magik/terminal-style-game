@@ -297,6 +297,32 @@ static void test_wide_grid_has_no_fixed_width_cutoff(void **state) {
     grid_destroy(grid);
 }
 
+static void test_extreme_horizon_offsets_clip_safely(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SelectionTarget target = wall_target(5, 3, WALL_FACE_WEST);
+    EditorHit hover = hover_hit(target);
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+
+    assert_non_null(grid);
+    assert_non_null(map);
+    map_set(map, 5, 3, 1);
+    camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
+
+    fill_grid(grid, 'w', dark, dark);
+    camera.pitch = (double)grid->height;
+    editor_highlight_render(grid, map, &camera, target, hover);
+
+    fill_grid(grid, 'w', dark, dark);
+    camera.pitch = -(double)grid->height;
+    editor_highlight_render(grid, map, &camera, target, hover);
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
 static void test_null_inputs_are_safe(void **state) {
     SelectionTarget none = {0};
     EditorHit hover = {0};
@@ -316,6 +342,7 @@ int main(void) {
         cmocka_unit_test(test_render_does_not_mutate_map_or_interior),
         cmocka_unit_test(test_crosshair_is_centered_and_adaptive),
         cmocka_unit_test(test_wide_grid_has_no_fixed_width_cutoff),
+        cmocka_unit_test(test_extreme_horizon_offsets_clip_safely),
         cmocka_unit_test(test_null_inputs_are_safe),
     };
 

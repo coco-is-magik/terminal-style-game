@@ -652,7 +652,9 @@ int app_main(int argc, char* argv[]) {
 
         EditorInputConsumption ued_consume = {false, false};
         if (app_state == APP_STATE_EDITOR && menu_stack_peek(&ms) == MENU_NONE && ued.active) {
-            ued_consume = unified_editor_update(&ued, &input, &cam, delta_time_ms / 1000.0);
+            ued_consume = unified_editor_update(&ued, &input, &cam,
+                                                delta_time_ms / 1000.0,
+                                                grid->height);
             if (ued_consume.keyboard_consumed) {
                 input.up = false;
                 input.down = false;
@@ -717,7 +719,7 @@ int app_main(int argc, char* argv[]) {
         } else if (app_state == APP_STATE_PLAYING) {
             if (visual_mode == VISUAL_RAYCAST) {
                 frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
-                camera_update(&cam, map, &input, delta_time_sec);
+                camera_update(&cam, map, &input, delta_time_sec, grid->height);
                 lighting_update(map, &world);
                 raycast_render(grid, map, &cam, &assets, &world);
             } else if (visual_mode == VISUAL_STRESS) {

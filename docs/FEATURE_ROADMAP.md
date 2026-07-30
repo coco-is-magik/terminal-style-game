@@ -297,6 +297,12 @@ contract. The initial review and remediation prerequisites are satisfied.
    geometry with exact layout and all-preset visibility regressions.
 5. Replace the fixed pitch clamp with a documented grid-relative safe range while
    retaining and accurately naming the current 2.5D horizon-offset model.
+   **Implemented and automatically verified 2026-07-30; manual acceptance
+   remains:** the policy clamps the existing horizon offset to `±viewport_rows`,
+   passed explicitly from the active logical grid. It does not add angular pitch
+   or vertical-world behavior. See
+   `R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md` and
+   `R0_GRID_RELATIVE_HORIZON_OFFSET_IMPLEMENTATION_RECORD_2026-07-30.md`.
 6. Add deferred tracker-selection and benchmark-classification regression tests.
    **Verified 2026-07-28:** dedicated generic/indexed tracker runners, bounded
    build-mode coverage, application-option conflict tests, and benchmark-session
@@ -827,8 +833,7 @@ The dependency table must also state what the phase unlocks.
 ## Next action
 
 **Review A, repository remediation, and R0 outcomes 2, 3, and 4 are verified.**
-Bounded UI zoom/accessibility is implemented according to
-`R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md`; verification evidence and retained
-constraints are recorded in
-`R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`. The next action is
-the next dependency-ordered roadmap outcome after confirming its entry criteria.
+R0 outcome 5 is implemented and automatically verified under
+`R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`; manual gameplay/editor
+acceptance remains before Review B. Evidence is in
+`R0_GRID_RELATIVE_HORIZON_OFFSET_IMPLEMENTATION_RECORD_2026-07-30.md`.

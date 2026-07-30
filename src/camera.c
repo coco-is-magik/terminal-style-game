@@ -22,6 +22,17 @@
 #include "camera.h"     /* Camera struct, camera_init(), camera_update() */
 #include <math.h>        /* cos(), sin(), sqrt() */
 
+double camera_clamp_horizon_offset(double offset, int viewport_rows) {
+    if (viewport_rows <= 0 || !isfinite(offset)) {
+        return 0.0;
+    }
+
+    double limit = (double)viewport_rows;
+    if (offset > limit) return limit;
+    if (offset < -limit) return -limit;
+    return offset;
+}
+
 /**
  * camera_init() — Initialise a Camera with a starting position and orientation
  *
@@ -68,8 +79,10 @@ void camera_init(Camera *cam, double x, double y, double angle, double fov) {
  * @param map              The Map for collision queries (NULL-safe)
  * @param input            Current InputState with mouse deltas and WASD flags
  * @param delta_time_sec   Time elapsed since the last frame (seconds)
+ * @param viewport_rows    Active logical viewport height
  */
-void camera_update(Camera *cam, Map *map, InputState *input, double delta_time_sec) {
+void camera_update(Camera *cam, Map *map, InputState *input,
+                   double delta_time_sec, int viewport_rows) {
     if (!cam || !map || !input) return;
 
     /* ================================================================
@@ -93,11 +106,8 @@ void camera_update(Camera *cam, Map *map, InputState *input, double delta_time_s
      * controls vertical sensitivity independently of horizontal. */
     cam->pitch -= input->mouse_dy * 0.5;
 
-    /* Clamp pitch so the player can't flip upside down.
-     * 100.0 is roughly 100 cells of vertical offset on screen —
-     * enough for a generous look-up/look-down range. */
-    if (cam->pitch > 100.0) cam->pitch = 100.0;
-    if (cam->pitch < -100.0) cam->pitch = -100.0;
+    /* This is a 2.5D horizon displacement, not angular camera pitch. */
+    cam->pitch = camera_clamp_horizon_offset(cam->pitch, viewport_rows);
 
     /* ================================================================
      *  3. Translation (WASD movement)

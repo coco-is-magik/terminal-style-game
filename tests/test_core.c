@@ -515,6 +515,39 @@ static void test_raycast_render_output(void **state) {
     grid_destroy(g);
 }
 
+static void test_raycast_render_extreme_horizon_offsets(void **state) {
+    Grid *g = grid_create(41, 25);
+    Map *m = map_create(5, 5);
+    Camera cam;
+    AssetRegistry assets;
+    WorldState world;
+    (void)state;
+
+    assert_non_null(g);
+    assert_non_null(m);
+    for (int x = 0; x < 5; x++) map_set(m, x, 0, 1);
+    camera_init(&cam, 2.5, 2.5, -PI / 2, PI / 2);
+    asset_registry_init(&assets);
+    asset_registry_set_palette(
+        &assets, 1,
+        (SDL_Color){255, 255, 255, 255},
+        (SDL_Color){255, 255, 255, 255},
+        (SDL_Color){255, 255, 255, 255});
+    asset_registry_set_material(&assets, 1, 1, "#x-.");
+    world_init(&world);
+    lighting_update(m, &world);
+
+    cam.pitch = -(double)g->height;
+    raycast_render(g, m, &cam, &assets, &world);
+    cam.pitch = 0.0;
+    raycast_render(g, m, &cam, &assets, &world);
+    cam.pitch = (double)g->height;
+    raycast_render(g, m, &cam, &assets, &world);
+
+    map_destroy(m);
+    grid_destroy(g);
+}
+
 static void test_raycast_render_has_no_fixed_width_cutoff(void **state) {
     (void)state;
     Grid *g = grid_create(1100, 10);
@@ -763,6 +796,7 @@ int main(void) {
         cmocka_unit_test(test_raycast_perpendicular_correction),
         cmocka_unit_test(test_raycast_near_plane_clipping),
         cmocka_unit_test(test_raycast_render_output),
+        cmocka_unit_test(test_raycast_render_extreme_horizon_offsets),
         cmocka_unit_test(test_raycast_render_has_no_fixed_width_cutoff),
         /* --- Material name lookup --- */
         cmocka_unit_test(test_material_name_storage),
