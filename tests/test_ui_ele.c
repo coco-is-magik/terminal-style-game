@@ -41,6 +41,23 @@ static void release_stack_element(UiElement *e) {
     e->content = NULL;
 }
 
+static void test_ui_ele_reserved_content_updates_in_place(void **state) {
+    UiElement element = make_text_element("dynamic", "short", 0, 0, 32, 0);
+    char *reserved;
+    (void)state;
+    assert_true(ui_ele_reserve_content(&element, 64U));
+    reserved = element.content;
+    assert_true(ui_ele_set_content_bounded(&element, "a longer dynamic value"));
+    assert_ptr_equal(element.content, reserved);
+    assert_string_equal(element.content, "a longer dynamic value");
+    assert_false(ui_ele_set_content_bounded(
+        &element,
+        "this string is deliberately longer than the reserved sixty-four byte buffer capacity"));
+    assert_ptr_equal(element.content, reserved);
+    assert_string_equal(element.content, "a longer dynamic value");
+    release_stack_element(&element);
+}
+
 static void test_ui_ele_load_text(void **state) {
     (void)state;
 
@@ -405,6 +422,7 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_color_override),
         cmocka_unit_test(test_ui_ele_button_action),
         cmocka_unit_test(test_ui_ele_z_index_child_order),
+        cmocka_unit_test(test_ui_ele_reserved_content_updates_in_place),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

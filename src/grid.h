@@ -50,6 +50,7 @@ typedef struct {
 Grid*  grid_create(int width, int height);
 void   grid_destroy(Grid *grid);
 void   grid_clear(Grid *grid, SDL_Color bg);
+bool   grid_clear_region_zero(Grid *grid, int x, int y, int width, int height);
 void   grid_swap_prev(Grid *grid);   /* Swap cells/prev_cells after frame */
 bool   grid_set(Grid *grid, int x, int y, uint8_t glyph, SDL_Color fg, SDL_Color bg);
 bool   grid_get(Grid *grid, int x, int y, Cell *out_cell);

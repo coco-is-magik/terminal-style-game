@@ -42,6 +42,15 @@ These labels describe readiness, not priority.
 9. Rendering assumes the nearest opaque wall hit per column. Layered
    transparency, reflected views, and stacked geometry are not primitives.
 
+## Build and performance maintenance
+
+- [ ] **Research track — explicit optimized build profiles:** evaluate separate
+  strict `-O2` and `-O3` Make profiles only after resolving all optimization-only
+  diagnostics under `-Werror`. Verify framebuffer checksums, aggregate tests,
+  sanitizers, tracker modes, and native renderer/layered benchmarks independently.
+  Do not replace the current strict unoptimized default or use optimization to
+  conceal algorithmic regressions.
+
 ## Cross-cutting decisions for later discussion
 
 ### Versioned scene persistence — **Needs architecture/design**

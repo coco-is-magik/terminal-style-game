@@ -245,12 +245,49 @@ void ui_ele_destroy(UiElement *element) {
 
 void ui_ele_set_content(UiElement *element, const char *content) {
     char *copy;
+    size_t length;
 
     if (!element) return;
-    copy = ui_strdup(content ? content : "");
+    if (!content) content = "";
+    length = strlen(content);
+    if (element->content && length + 1U <= element->content_capacity) {
+        memcpy(element->content, content, length + 1U);
+        return;
+    }
+    copy = ui_strdup(content);
     if (!copy) return;
     free(element->content);
     element->content = copy;
+    element->content_capacity = length + 1U;
+}
+
+bool ui_ele_reserve_content(UiElement *element, size_t capacity) {
+    char *replacement;
+    size_t length;
+    if (!element || capacity == 0U) return false;
+    if (element->content && element->content_capacity >= capacity) return true;
+    replacement = malloc(capacity);
+    if (!replacement) return false;
+    length = element->content ? strlen(element->content) : 0U;
+    if (length >= capacity) {
+        free(replacement);
+        return false;
+    }
+    if (element->content) memcpy(replacement, element->content, length + 1U);
+    else replacement[0] = '\0';
+    free(element->content);
+    element->content = replacement;
+    element->content_capacity = capacity;
+    return true;
+}
+
+bool ui_ele_set_content_bounded(UiElement *element, const char *content) {
+    size_t length;
+    if (!element || !element->content || !content) return false;
+    length = strlen(content);
+    if (length + 1U > element->content_capacity) return false;
+    memcpy(element->content, content, length + 1U);
+    return true;
 }
 
 void ui_ele_set_colors(UiElement *element, SDL_Color fg, SDL_Color bg) {

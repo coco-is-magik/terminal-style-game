@@ -818,6 +818,15 @@ The dependency table must also state what the phase unlocks.
 
 # Roadmap maintenance process
 
+## Deferred build-performance checkpoint
+
+After the R0 UI zoom performance remediation, evaluate explicit strict `-O2` and
+`-O3` profiles as a separate maintenance checkpoint. Entry requires resolving
+optimization-only diagnostics without weakening `-Werror`; exit requires matching
+framebuffer checksums, full tests/sanitizers/tracker matrix, and repeated native
+renderer-only plus layered-UI measurements. The default build remains unchanged
+until that evidence exists.
+
 1. Preserve new unsequenced ideas in `docs/TODO.md` first.
 2. Promote an idea here only after its dependencies and role are understood.
 3. Resolve named decisions and pass Q1 before writing implementation code.

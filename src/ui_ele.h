@@ -12,6 +12,7 @@
 #include "grid.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define UI_ELE_NAME_MAX      64
 #define UI_ELE_PATH_MAX     256
@@ -58,6 +59,7 @@ struct UiElement {
     UiElement *children[UI_ELE_MAX_CHILDREN];
     int child_count;
     char *content;
+    size_t content_capacity;
     int visible;
     int z_index;
     UiAlign align;
@@ -126,6 +128,8 @@ void ui_ele_destroy(UiElement *element);
  * @param content  New NUL-terminated text (may be empty)
  */
 void ui_ele_set_content(UiElement *element, const char *content);
+bool ui_ele_reserve_content(UiElement *element, size_t capacity);
+bool ui_ele_set_content_bounded(UiElement *element, const char *content);
 void ui_ele_set_colors(UiElement *element, SDL_Color fg, SDL_Color bg);
 const char *ui_ele_get_action(const UiElement *element);
 

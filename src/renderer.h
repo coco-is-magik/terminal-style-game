@@ -22,6 +22,11 @@
 bool renderer_preflight(int win_w, int win_h, int grid_w, int grid_h,
                         int cell_w, int cell_h, int *logical_w,
                         int *logical_h, size_t *pixel_bytes);
+size_t renderer_merge_restore_indices(uint32_t *dirty_indices,
+                                      size_t dirty_count,
+                                      size_t dirty_capacity,
+                                      uint8_t *restore_cells,
+                                      size_t cell_count);
 
 /* ---- Instrumentation counters (declared extern) ---- */
 

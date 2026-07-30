@@ -88,6 +88,30 @@ static void test_grid_clear(void **state) {
     grid_destroy(g);
 }
 
+static void test_grid_clear_region_zero(void **state) {
+    Grid *g = grid_create(5, 4);
+    SDL_Color color = {1, 2, 3, 4};
+    Cell c;
+    (void)state;
+    assert_non_null(g);
+    for (int y = 0; y < g->height; y++) {
+        for (int x = 0; x < g->width; x++) {
+            assert_true(grid_set(g, x, y, 'X', color, color));
+        }
+    }
+    assert_true(grid_clear_region_zero(g, 1, 1, 3, 2));
+    assert_true(grid_get(g, 0, 0, &c));
+    assert_int_equal(c.glyph, 'X');
+    assert_true(grid_get(g, 1, 1, &c));
+    assert_int_equal(c.glyph, 0);
+    assert_true(grid_get(g, 3, 2, &c));
+    assert_int_equal(c.glyph, 0);
+    assert_true(grid_get(g, 4, 3, &c));
+    assert_int_equal(c.glyph, 'X');
+    assert_false(grid_clear_region_zero(g, 4, 3, 2, 1));
+    grid_destroy(g);
+}
+
 // --- SCALE TESTS ---
 
 static void test_scale_calculations(void **state) {
@@ -138,6 +162,50 @@ static void test_renderer_backend_init_invalid(void **state) {
 static void test_renderer_backend_instrumentation(void **state) {
     (void)state;
     renderer_destroy(NULL);
+}
+
+static void test_renderer_restore_merge_no_overlap(void **state) {
+    uint32_t dirty[8] = {1U, 3U};
+    uint8_t restore[8] = {0U, 0U, 1U, 0U, 0U, 1U, 0U, 0U};
+    size_t count;
+    (void)state;
+
+    count = renderer_merge_restore_indices(dirty, 2U, 8U, restore, 8U);
+    assert_int_equal(count, 4U);
+    assert_int_equal(dirty[0], 1U);
+    assert_int_equal(dirty[1], 3U);
+    assert_int_equal(dirty[2], 2U);
+    assert_int_equal(dirty[3], 5U);
+}
+
+static void test_renderer_restore_merge_overlap_and_capacity(void **state) {
+    uint32_t dirty[5] = {1U, 3U, 4U, 0U, 0U};
+    uint8_t restore[8] = {1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U};
+    size_t count;
+    (void)state;
+
+    count = renderer_merge_restore_indices(dirty, 3U, 5U, restore, 8U);
+    assert_int_equal(count, 5U);
+    assert_int_equal(dirty[0], 1U);
+    assert_int_equal(dirty[1], 3U);
+    assert_int_equal(dirty[2], 4U);
+    assert_int_equal(dirty[3], 0U);
+    assert_int_equal(dirty[4], 2U);
+    assert_int_equal(restore[1], 0U);
+    assert_int_equal(restore[3], 0U);
+    assert_int_equal(restore[4], 0U);
+}
+
+static void test_renderer_restore_merge_ignores_invalid_dirty_index(void **state) {
+    uint32_t dirty[4] = {99U};
+    uint8_t restore[4] = {1U, 0U, 0U, 1U};
+    size_t count;
+    (void)state;
+    count = renderer_merge_restore_indices(dirty, 1U, 4U, restore, 4U);
+    assert_int_equal(count, 3U);
+    assert_int_equal(dirty[0], 99U);
+    assert_int_equal(dirty[1], 0U);
+    assert_int_equal(dirty[2], 3U);
 }
 
 static void test_checked_size_boundaries(void **state) {
@@ -769,12 +837,16 @@ int main(void) {
         cmocka_unit_test(test_grid_destroy_safety),
         cmocka_unit_test(test_grid_set_get_bounds),
         cmocka_unit_test(test_grid_clear),
+        cmocka_unit_test(test_grid_clear_region_zero),
         cmocka_unit_test(test_scale_calculations),
         cmocka_unit_test(test_scale_invalid),
         cmocka_unit_test(test_timing_math),
         cmocka_unit_test(test_perf_stats),
         cmocka_unit_test(test_renderer_backend_init_invalid),
         cmocka_unit_test(test_renderer_backend_instrumentation),
+        cmocka_unit_test(test_renderer_restore_merge_no_overlap),
+        cmocka_unit_test(test_renderer_restore_merge_overlap_and_capacity),
+        cmocka_unit_test(test_renderer_restore_merge_ignores_invalid_dirty_index),
         cmocka_unit_test(test_checked_size_boundaries),
         cmocka_unit_test(test_renderer_preflight_boundaries),
         // NEW ENGINE REFACTOR & RAYCAST TESTS

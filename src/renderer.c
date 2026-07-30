@@ -367,6 +367,29 @@ void renderer_destroy(Renderer *ren) {
     ren_free(ren);
 }
 
+size_t renderer_merge_restore_indices(uint32_t *dirty_indices,
+                                      size_t dirty_count,
+                                      size_t dirty_capacity,
+                                      uint8_t *restore_cells,
+                                      size_t cell_count) {
+    size_t i;
+    if (!dirty_indices || !restore_cells || dirty_count > dirty_capacity ||
+        dirty_capacity > cell_count) {
+        return dirty_count;
+    }
+
+    /* A tracker-dirty cell already restores its base pixels, so consume its
+     * restore bit.  Remaining bits can then be appended in one bounded scan. */
+    for (i = 0; i < dirty_count; i++) {
+        uint32_t index = dirty_indices[i];
+        if ((size_t)index < cell_count) restore_cells[index] = 0;
+    }
+    for (i = 0; i < cell_count && dirty_count < dirty_capacity; i++) {
+        if (restore_cells[i]) dirty_indices[dirty_count++] = (uint32_t)i;
+    }
+    return dirty_count;
+}
+
 /* ===================================================================
  *  Frame rendering — software rasterizer
  * =================================================================== */
@@ -458,9 +481,7 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
                                                      &dirty_count);
     }
 #if PROFILE_FRAME
-    profile_phase_end = profile_now_ms();
     g_frame_profile.state_pack_ms += 0.0; /* No packing in stream mode */
-    profile_phase_start = profile_phase_end;
 #endif
 #endif
 
@@ -489,17 +510,21 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     
     /* Count skipped cells */
     renderer_cells_skipped = cell_count - dirty_count;
+
+#if PROFILE_FRAME
+    profile_phase_start = profile_now_ms();
+#endif
     
-    /* Render only dirty cells */
-    for (size_t i = 0; i < cell_count; i++) {
-        if (ren->ui_restore_cells[i]) {
-            bool present = false;
-            for (size_t d = 0; d < dirty_count; d++) {
-                if (dirty_indices[d] == (uint32_t)i) { present = true; break; }
-            }
-            if (!present && dirty_count < cell_count) dirty_indices[dirty_count++] = (uint32_t)i;
-        }
-    }
+    /* Restore previous UI coverage without searching the dirty list once per
+     * cell.  This is linear in dirty cells plus the fixed restore mask size. */
+    dirty_count = renderer_merge_restore_indices(
+        dirty_indices, dirty_count, cell_count,
+        ren->ui_restore_cells, cell_count);
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.restore_merge_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
     renderer_cells_skipped = cell_count - dirty_count;
     for (size_t d = 0; d < dirty_count; d++) {
         uint32_t idx = dirty_indices[d];
@@ -535,7 +560,6 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     }
 #if PROFILE_FRAME
     profile_phase_end = profile_now_ms();
-    g_frame_profile.dirty_iter_ms += (profile_phase_end - profile_phase_start);
     g_frame_profile.raster_ms += (profile_phase_end - profile_phase_start);
     profile_phase_start = profile_phase_end;
 #endif
@@ -626,19 +650,25 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     }
 #if PROFILE_FRAME
     profile_phase_end = profile_now_ms();
-    g_frame_profile.dirty_check_ms += (profile_phase_end - profile_phase_start);
-    g_frame_profile.dirty_iter_ms += (profile_phase_end - profile_phase_start);
     g_frame_profile.raster_ms += (profile_phase_end - profile_phase_start);
     profile_phase_start = profile_phase_end;
 #endif
 #endif
 
     memset(ren->ui_restore_cells, 0, ren->ui_restore_cell_count);
+#if PROFILE_FRAME
+    profile_phase_start = profile_now_ms();
+#endif
     if (layers) {
         (void)ui_compositor_compose(layers, ui_scale_percent, pixels,
                                     ren->logical_w, ren->logical_h,
                                     ren->ui_restore_cells, grid->width, grid->height);
     }
+#if PROFILE_FRAME
+    profile_phase_end = profile_now_ms();
+    g_frame_profile.compositor_ms += (profile_phase_end - profile_phase_start);
+    profile_phase_start = profile_phase_end;
+#endif
 
     /* ---- Phase 2 Timing ---- */
     uint64_t phase2_start = SDL_GetPerformanceCounter();

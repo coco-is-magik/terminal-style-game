@@ -204,9 +204,11 @@ void frame_profile_init(FrameProfileStats *stats) {
     stats->state_pack_ms   = 0.0;
     stats->smc_batch_diff_ms = 0.0;
     stats->smc_stream_diff_ms = 0.0;
+    stats->restore_merge_ms = 0.0;
     stats->dirty_check_ms  = 0.0;
     stats->dirty_iter_ms   = 0.0;
     stats->raster_ms       = 0.0;
+    stats->compositor_ms   = 0.0;
     stats->sdl_update_ms   = 0.0;
     stats->frame_total_ms  = 0.0;
     stats->frames          = 0;
@@ -230,13 +232,16 @@ void frame_profile_print(const FrameProfileStats *stats, const char *mode) {
     double pack_ms   = stats->state_pack_ms * inv;
     double batch_diff_ms = stats->smc_batch_diff_ms * inv;
     double stream_diff_ms = stats->smc_stream_diff_ms * inv;
+    double restore_ms = stats->restore_merge_ms * inv;
     double check_ms  = stats->dirty_check_ms * inv;
     double iter_ms   = stats->dirty_iter_ms * inv;
     double raster_ms = stats->raster_ms * inv;
+    double compositor_ms = stats->compositor_ms * inv;
     double sdl_ms    = stats->sdl_update_ms * inv;
     double total_ms  = stats->frame_total_ms * inv;
 
-    double accounted = grid_ms + pack_ms + check_ms + iter_ms + raster_ms + sdl_ms;
+    double accounted = grid_ms + pack_ms + restore_ms + check_ms + iter_ms +
+                       raster_ms + compositor_ms + sdl_ms;
     if (batch_diff_ms > 0) accounted += batch_diff_ms;
     if (stream_diff_ms > 0) accounted += stream_diff_ms;
     double other_ms  = total_ms - accounted;
@@ -248,9 +253,11 @@ void frame_profile_print(const FrameProfileStats *stats, const char *mode) {
     fprintf(stderr, "  state packing:       %.3f ms/frame\n", pack_ms);
     fprintf(stderr, "  smc batch diff:      %.3f ms/frame\n", batch_diff_ms);
     fprintf(stderr, "  smc stream diff:     %.3f ms/frame\n", stream_diff_ms);
+    fprintf(stderr, "  UI restore merge:    %.3f ms/frame\n", restore_ms);
     fprintf(stderr, "  dirty decision:      %.3f ms/frame\n", check_ms);
     fprintf(stderr, "  dirty iteration:     %.3f ms/frame\n", iter_ms);
     fprintf(stderr, "  rasterization:       %.3f ms/frame\n", raster_ms);
+    fprintf(stderr, "  UI compositor:       %.3f ms/frame\n", compositor_ms);
     fprintf(stderr, "  SDL/update/present:  %.3f ms/frame\n", sdl_ms);
     fprintf(stderr, "  other/unaccounted:   %.3f ms/frame\n", other_ms);
     fprintf(stderr, "  total profiled:      %.3f ms/frame\n", total_ms);

@@ -53,7 +53,7 @@ static bool parse_positive_int(const char *text, int *out) {
 
 static bool scenario_is_valid(const char *scenario) {
     static const char *const names[] = {
-        "idle", "camera", "rotate", "flicker", "ui", "fullchange"
+        "idle", "camera", "rotate", "flicker", "ui", "ui-layered", "fullchange"
     };
     size_t count = sizeof(names) / sizeof(names[0]);
 

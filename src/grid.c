@@ -141,6 +141,20 @@ void grid_clear(Grid *grid, SDL_Color bg) {
     }
 }
 
+bool grid_clear_region_zero(Grid *grid, int x, int y, int width, int height) {
+    int row;
+    if (!grid || !grid->cells || x < 0 || y < 0 || width < 0 || height < 0 ||
+        x > grid->width || y > grid->height || width > grid->width - x ||
+        height > grid->height - y) {
+        return false;
+    }
+    for (row = 0; row < height; row++) {
+        memset(&grid->cells[(y + row) * grid->width + x], 0,
+               (size_t)width * sizeof(*grid->cells));
+    }
+    return true;
+}
+
 /**
  * grid_set() — Write a single cell at coordinates (x, y)
  *

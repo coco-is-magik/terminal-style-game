@@ -94,6 +94,21 @@ based on allocation safety and sustained average render cost: `ideal` at
 `<= 4 ms`, `pass_minimum` at `<= 6 ms`. This avoids treating isolated
 scheduler/presentation spikes on low-end hardware as sustained regressions.
 
+To measure the scaled layered-UI path that the renderer-only acceptance target
+does not cover, run:
+
+```sh
+./build/ascii-fps --benchmark-scenario ui-layered --frames 600
+```
+
+This deterministic stress scenario uses the real staging, compact-canvas,
+layer-compositor, restore, and renderer path at 150% UI scale. It periodically
+hides the layer to exercise previous-frame restoration, excludes 64 warm-up
+frames from reported timing, and emits a framebuffer checksum. Its dense
+UI workload is intentionally informational; the generic renderer-only 6 ms
+acceptance threshold is not calibrated for it. Build with `PROFILE_FRAME=1` to
+print tracker, restore-merge, raster, compositor, and presentation timings.
+
 ## Clean
 
 make clean

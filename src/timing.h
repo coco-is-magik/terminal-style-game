@@ -161,9 +161,11 @@ typedef struct {
     double state_pack_ms;     /* building the packed uint64_t state array */
     double smc_batch_diff_ms; /* SMC batch diff call (batch mode only) */
     double smc_stream_diff_ms; /* SMC stream diff call (stream mode only) */
+    double restore_merge_ms;  /* previous layered-UI coverage merged into dirty work */
     double dirty_check_ms;    /* custom dirty-cell comparison / decision */
     double dirty_iter_ms;     /* walking dirty indices and selecting cells */
     double raster_ms;         /* actual 8x8 glyph rasterization */
+    double compositor_ms;     /* scaled/clipped layered-UI composition */
     double sdl_update_ms;     /* SDL_UpdateTexture + RenderTexture + Present */
     double frame_total_ms;    /* total renderer_draw() wall time */
     uint64_t frames;          /* number of frames accumulated */

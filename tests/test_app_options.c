@@ -23,6 +23,7 @@ static void test_benchmark_forms(void **state) {
     AppOptions options;
     char *scenario[] = {"app", "--benchmark-scenario", "idle", "--frames", "2"};
     char *timed[] = {"app", "--benchmark-raycast", "0.25"};
+    char *layered[] = {"app", "--benchmark-scenario", "ui-layered", "--frames", "120"};
     (void)state;
 
     assert_int_equal(app_options_parse(5, scenario, &options), APP_OPTIONS_OK);
@@ -32,6 +33,9 @@ static void test_benchmark_forms(void **state) {
     assert_int_equal(app_options_parse(3, timed, &options), APP_OPTIONS_OK);
     assert_int_equal(options.mode, RUN_MODE_BENCHMARK_RAYCAST);
     assert_float_equal(options.run_duration_seconds, 0.25, 0.0001);
+    assert_int_equal(app_options_parse(5, layered, &options), APP_OPTIONS_OK);
+    assert_string_equal(options.benchmark_scenario, "ui-layered");
+    assert_int_equal(options.benchmark_frames, 120);
 }
 
 static void test_smoke_mode(void **state) {

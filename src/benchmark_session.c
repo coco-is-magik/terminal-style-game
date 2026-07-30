@@ -8,11 +8,25 @@ bool benchmark_session_is_active(RunMode mode) {
 }
 
 bool benchmark_session_should_stop(RunMode mode, uint64_t frame_count,
-                                   int frame_limit, double elapsed_seconds,
+                                   uint64_t frame_limit, double elapsed_seconds,
                                    double duration_seconds) {
     if (mode == RUN_MODE_BENCHMARK_SCENARIO)
-        return frame_limit >= 0 && frame_count >= (uint64_t)frame_limit;
+        return frame_count >= frame_limit;
     return mode != RUN_MODE_NORMAL && elapsed_seconds >= duration_seconds;
+}
+
+bool benchmark_session_frame_is_measured(uint64_t frame_count) {
+    return frame_count >= BENCHMARK_WARMUP_FRAMES;
+}
+
+uint64_t benchmark_session_total_scenario_frames(int measured_frames) {
+    if (measured_frames <= 0) return BENCHMARK_WARMUP_FRAMES;
+    return BENCHMARK_WARMUP_FRAMES + (uint64_t)measured_frames;
+}
+
+uint64_t benchmark_session_measured_frames(uint64_t total_frames) {
+    return total_frames > BENCHMARK_WARMUP_FRAMES
+        ? total_frames - BENCHMARK_WARMUP_FRAMES : 0;
 }
 
 BenchmarkResult benchmark_session_classify(double average_render_ms,

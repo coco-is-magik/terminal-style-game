@@ -91,7 +91,10 @@ static void app_ui_resources_destroy(AppUiResources *ui) {
 
 static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
                                     int grid_height) {
-    if (!ui) return false;
+    if (!ui || grid_width < APP_UI_FOOTER_WIDTH ||
+        grid_height < APP_UI_EDITOR_HEIGHT + 2) {
+        return false;
+    }
     memset(ui, 0, sizeof(*ui));
     ui->staging = grid_create(grid_width, grid_height);
     ui->menu = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
@@ -106,12 +109,6 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
         return false;
     }
     return true;
-}
-
-static void staging_grid_clear(Grid *grid) {
-    if (!grid || !grid->cells) return;
-    memset(grid->cells, 0,
-           (size_t)grid->width * (size_t)grid->height * sizeof(*grid->cells));
 }
 
 static void ui_scale_feedback_set(UiScaleFeedback *feedback,
@@ -133,6 +130,39 @@ static bool app_add_ui_layer(UiLayerList *layers, int role, const UiCanvas *canv
         z_order, true, 0
     };
     return ui_layer_list_add(layers, &layer);
+}
+
+static bool benchmark_is_layered_ui(const char *scenario) {
+    return scenario && strcmp(scenario, "ui-layered") == 0;
+}
+
+static void prepare_layered_ui_benchmark(AppUiResources *ui, UiLayerList *layers,
+                                         int pixel_width, int pixel_height,
+                                         uint64_t frame_count) {
+    SDL_Color fg = {255, 255, 255, 255};
+    SDL_Color bg = {(uint8_t)(32U + (frame_count & 31U)), 16, 48, 255};
+    int y;
+    int x;
+    /* Hide the layer regularly so the next draw must restore its prior coverage.
+     * This deterministically exercises appear, steady overlap, and disappear. */
+    if (frame_count % 16U == 15U) return;
+    (void)grid_clear_region_zero(ui->staging, 0, 0,
+                                 APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
+    for (y = 0; y < APP_UI_HUD_HEIGHT; y++) {
+        for (x = 0; x < APP_UI_HUD_WIDTH; x++) {
+            uint8_t glyph = (uint8_t)('!' + ((x + y + (int)frame_count) % 90));
+            (void)grid_set(ui->staging, x, y, glyph, fg, bg);
+        }
+    }
+    ui_canvas_copy_grid_region(ui->hud, ui->staging, 0, 0);
+    {
+        UiLayer layer = {
+            APP_UI_ROLE_HUD, ui->hud, UI_ANCHOR_TOP_LEFT,
+            {0, 0, pixel_width, pixel_height}, UI_SCALE_EXPLICIT_PRESET,
+            150, 10, true, 0
+        };
+        (void)ui_layer_list_add(layers, &layer);
+    }
 }
 
 static void draw_world_pattern(Grid *grid, uint64_t frame_count) {
@@ -184,6 +214,27 @@ static void set_ui_text(UiCache *cache, const char *name, const char *text) {
     if (element) ui_ele_set_content(element, text);
 }
 
+static bool reserve_dynamic_ui_text(UiCache *cache) {
+    static const char *const names[] = {
+        "hud_grid", "hud_frame", "hud_mode", "hud_target_fps",
+        "hud_actual_fps", "hud_avg_frame", "hud_worst_frame",
+        "hud_min_spare", "hud_status", "settings_ui_scale_value"
+    };
+    size_t i;
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        UiElement *element = ui_cache_get(cache, names[i]);
+        if (!element || !ui_ele_reserve_content(element, 128U)) return false;
+    }
+    return true;
+}
+
+static bool set_ui_text_bounded(UiCache *cache, const char *name, const char *text) {
+    UiElement *element;
+    if (!cache || !name || !text) return false;
+    element = ui_cache_get(cache, name);
+    return element && ui_ele_set_content_bounded(element, text);
+}
+
 static void update_settings_scale_text(UiCache *cache,
                                        const UiPreferences *preferences) {
     char text[48];
@@ -203,23 +254,23 @@ static void draw_data_ui_overlay(Grid *grid, UiCache *cache, UiLayout *layout,
     if (mode == VISUAL_STRESS) mode_str = "STRESS PATTERN";
     else if (mode == VISUAL_RAYCAST) mode_str = "RAYCAST WORLD";
     snprintf(line, sizeof(line), "Grid: %dx%d", grid->width, grid->height);
-    set_ui_text(cache, "hud_grid", line);
+    (void)set_ui_text_bounded(cache, "hud_grid", line);
     snprintf(line, sizeof(line), "Frame: %llu", (unsigned long long)frame_count);
-    set_ui_text(cache, "hud_frame", line);
+    (void)set_ui_text_bounded(cache, "hud_frame", line);
     snprintf(line, sizeof(line), "Mode: %s", mode_str);
-    set_ui_text(cache, "hud_mode", line);
+    (void)set_ui_text_bounded(cache, "hud_mode", line);
     snprintf(line, sizeof(line), "Target FPS: %d", target_fps);
-    set_ui_text(cache, "hud_target_fps", line);
+    (void)set_ui_text_bounded(cache, "hud_target_fps", line);
     snprintf(line, sizeof(line), "Actual FPS: %.1f", stats->pub_avg_fps);
-    set_ui_text(cache, "hud_actual_fps", line);
+    (void)set_ui_text_bounded(cache, "hud_actual_fps", line);
     snprintf(line, sizeof(line), "Avg Frame Time: %.2f ms", stats->pub_avg_frame_time_ms);
-    set_ui_text(cache, "hud_avg_frame", line);
+    (void)set_ui_text_bounded(cache, "hud_avg_frame", line);
     snprintf(line, sizeof(line), "Worst Frame Time: %.2f ms", stats->pub_worst_frame_time_ms);
-    set_ui_text(cache, "hud_worst_frame", line);
+    (void)set_ui_text_bounded(cache, "hud_worst_frame", line);
     snprintf(line, sizeof(line), "Min Spare Time: %.2f ms", stats->pub_min_spare_time_ms);
-    set_ui_text(cache, "hud_min_spare", line);
+    (void)set_ui_text_bounded(cache, "hud_min_spare", line);
     snprintf(line, sizeof(line), "Status: %s", stats->pub_min_spare_time_ms < 0 ? "OVER BUDGET" : "OK");
-    set_ui_text(cache, "hud_status", line);
+    (void)set_ui_text_bounded(cache, "hud_status", line);
     bg = stats->pub_min_spare_time_ms < 0 ? (SDL_Color){150, 0, 0, 255} : (SDL_Color){0, 0, 0, 255};
     ui_layout_render(layout, grid, fg, bg);
 }
@@ -393,6 +444,9 @@ int app_main(int argc, char* argv[]) {
     double run_duration_seconds = options.run_duration_seconds;
     const char *benchmark_scenario = options.benchmark_scenario;
     int benchmark_frames = options.benchmark_frames;
+    bool layered_ui_benchmark = benchmark_is_layered_ui(benchmark_scenario);
+    uint64_t benchmark_frame_limit = mode == RUN_MODE_BENCHMARK_SCENARIO
+        ? benchmark_session_total_scenario_frames(benchmark_frames) : 0;
 
     Renderer *ren = renderer_create(cfg->window_width, cfg->window_height,
                                      cfg->grid_width, cfg->grid_height,
@@ -524,6 +578,14 @@ int app_main(int argc, char* argv[]) {
     }
     ui_cache_tick(&menu_cache, "hud_overlay", "assets/ui_elements");
     UiLayout *hud_layout = ui_layout_load("assets/ui_layouts/hud_overlay.txt", &menu_cache);
+    if (!reserve_dynamic_ui_text(&menu_cache)) {
+        fprintf(stderr, "Failed to reserve bounded dynamic UI text.\n");
+        for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
+        ui_layout_destroy(hud_layout);
+        ui_cache_destroy(&menu_cache);
+        app_resources_cleanup(&resources);
+        return 1;
+    }
     UiPreferences preferences;
     UiScaleFeedback scale_feedback = {{0}, 0};
     AppUiResources ui_resources;
@@ -565,7 +627,7 @@ int app_main(int argc, char* argv[]) {
         uint64_t start_time = SDL_GetPerformanceCounter();
         double elapsed_total_sec = (double)(start_time - initial_time) / SDL_GetPerformanceFrequency();
 
-        if (benchmark_session_should_stop(mode, frame_count, benchmark_frames,
+        if (benchmark_session_should_stop(mode, frame_count, benchmark_frame_limit,
                                           elapsed_total_sec, run_duration_seconds)) {
             input.quit = true; break;
         }
@@ -688,12 +750,15 @@ int app_main(int argc, char* argv[]) {
         active_menu = menu_stack_peek(&ms);
 
 #if PROFILE_FRAME
+        if (mode == RUN_MODE_BENCHMARK_SCENARIO &&
+            frame_count == BENCHMARK_WARMUP_FRAMES) {
+            frame_profile_init(&g_frame_profile);
+        }
         double profile_grid_start = profile_now_ms();
 #endif
 
         UiLayerList ui_layers;
         ui_layer_list_clear(&ui_layers);
-        staging_grid_clear(ui_resources.staging);
         ui_canvas_clear(ui_resources.menu);
         ui_canvas_clear(ui_resources.hud);
         ui_canvas_clear(ui_resources.editor);
@@ -701,11 +766,22 @@ int app_main(int argc, char* argv[]) {
         ui_canvas_clear(ui_resources.feedback);
         ui_canvas_clear(ui_resources.crosshair);
 
+        if (layered_ui_benchmark) {
+            prepare_layered_ui_benchmark(&ui_resources, &ui_layers,
+                                         grid->width * 8, grid->height * 8,
+                                         frame_count);
+        }
+
         if (active_menu != MENU_NONE) {
             SDL_Color mbg = {0, 0, 0, 255};
             UiLayout *active_layout = ((int)active_menu >= 0 && (int)active_menu < MENU_ID_COUNT)
                                       ? menu_layouts[(int)active_menu] : NULL;
             grid_clear(grid, mbg);
+            (void)grid_clear_region_zero(
+                ui_resources.staging,
+                (grid->width - APP_UI_MENU_WIDTH) / 2,
+                (grid->height - APP_UI_MENU_HEIGHT) / 2,
+                APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
             draw_data_menu(ui_resources.staging, active_layout,
                            menu_selected[(int)active_menu]);
             ui_canvas_copy_grid_region(
@@ -717,6 +793,8 @@ int app_main(int argc, char* argv[]) {
                                    grid->width * 8, grid->height * 8);
 
         } else if (app_state == APP_STATE_PLAYING) {
+            (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
+                                         APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
             if (visual_mode == VISUAL_RAYCAST) {
                 frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
                 camera_update(&cam, map, &input, delta_time_sec, grid->height);
@@ -727,7 +805,7 @@ int app_main(int argc, char* argv[]) {
             } else {
                 draw_world_pattern(grid, frame_count);
             }
-            if (cfg->debug_display_enabled) {
+            if (cfg->debug_display_enabled && !layered_ui_benchmark) {
                 draw_data_ui_overlay(ui_resources.staging, &menu_cache, hud_layout, frame_count,
                                      &perf_stats, visual_mode, cfg->target_fps);
                 ui_canvas_copy_grid_region(ui_resources.hud, ui_resources.staging, 0, 0);
@@ -741,6 +819,10 @@ int app_main(int argc, char* argv[]) {
 #endif
 
         } else if (app_state == APP_STATE_EDITOR) {
+            (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
+                                         APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
+            (void)grid_clear_region_zero(ui_resources.staging, 0, grid->height - 2,
+                                         APP_UI_FOOTER_WIDTH, 2);
             if (ued.active) {
                 Map *ed_map = unified_editor_has_document(&ued)
                     ? scene_document_get_map_for_runtime(&ued.document)
@@ -804,17 +886,20 @@ int app_main(int argc, char* argv[]) {
         }
 
         uint64_t render_start = SDL_GetPerformanceCounter();
-        if (mode == RUN_MODE_NORMAL) {
+        if (mode == RUN_MODE_NORMAL || layered_ui_benchmark) {
             renderer_draw_layers(ren, grid, &ui_layers,
-                                 ui_preferences_scale(&preferences));
+                                 layered_ui_benchmark ? 150 : ui_preferences_scale(&preferences));
         } else {
             renderer_draw(ren, grid);
         }
         uint64_t render_end = SDL_GetPerformanceCounter();
         double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
-        global_total_render_ms += current_render_ms;
+        if (mode != RUN_MODE_BENCHMARK_SCENARIO ||
+            benchmark_session_frame_is_measured(frame_count)) {
+            global_total_render_ms += current_render_ms;
+        }
 
-        if (frame_count >= 64) {
+        if (benchmark_session_frame_is_measured(frame_count)) {
             if (current_render_ms > absolute_worst_render_ms) {
                 second_worst_render_ms = absolute_worst_render_ms;
                 absolute_worst_render_ms = current_render_ms;
@@ -827,7 +912,7 @@ int app_main(int argc, char* argv[]) {
         double frame_time_ms = (double)((end_time - start_time) * 1000) / SDL_GetPerformanceFrequency();
         double spare_time_ms = timing_spare_ms(frame_time_ms, target_time_ms);
 
-        if (frame_count >= 64 && spare_time_ms < global_min_spare_ms)
+        if (benchmark_session_frame_is_measured(frame_count) && spare_time_ms < global_min_spare_ms)
             global_min_spare_ms = spare_time_ms;
 
         perf_stats_update(&perf_stats, delta_time_ms, frame_time_ms, spare_time_ms);
@@ -893,7 +978,10 @@ int app_main(int argc, char* argv[]) {
     app_resources_cleanup(&resources);
 
     if (benchmark_session_is_active(mode)) {
-        double avg_render_ms = frame_count > 0 ? (global_total_render_ms / frame_count) : 0.0;
+        uint64_t measured_frames = mode == RUN_MODE_BENCHMARK_SCENARIO
+            ? benchmark_session_measured_frames(frame_count) : frame_count;
+        double avg_render_ms = measured_frames > 0
+            ? (global_total_render_ms / (double)measured_frames) : 0.0;
         double effective_worst = absolute_worst_render_ms;
         if (absolute_worst_render_ms > second_worst_render_ms * 2.0 && second_worst_render_ms > 0) {
             effective_worst = second_worst_render_ms; outlier_trimmed = true;
@@ -903,9 +991,14 @@ int app_main(int argc, char* argv[]) {
                            renderer_texture_create_count > initial_texture_count);
         const char *result_str = benchmark_session_result_name(result);
         int exit_code = benchmark_session_exit_code(result);
-        printf("{\n  \"grid_width\": %d,\n  \"grid_height\": %d,\n  \"target_fps\": %d,\n  \"avg_render_ms\": %.2f,\n  \"worst_render_ms\": %.2f,\n  \"effective_worst_ms\": %.2f,\n  \"outlier_trimmed\": %s,\n  \"min_spare_ms\": %.2f,\n  \"frames\": %llu,\n  \"result\": \"%s\"\n}\n",
-               cfg->grid_width, cfg->grid_height, cfg->target_fps, avg_render_ms, absolute_worst_render_ms, effective_worst,
-               outlier_trimmed ? "true" : "false", global_min_spare_ms, (unsigned long long)frame_count, result_str);
+        printf("{\n  \"grid_width\": %d,\n  \"grid_height\": %d,\n  \"target_fps\": %d,\n  \"scenario\": \"%s\",\n  \"ui_scale_percent\": %d,\n  \"warmup_frames\": %u,\n  \"avg_render_ms\": %.2f,\n  \"worst_render_ms\": %.2f,\n  \"effective_worst_ms\": %.2f,\n  \"outlier_trimmed\": %s,\n  \"min_spare_ms\": %.2f,\n  \"frames\": %llu,\n  \"framebuffer_checksum\": %u,\n  \"result\": \"%s\"\n}\n",
+               cfg->grid_width, cfg->grid_height, cfg->target_fps,
+               benchmark_scenario ? benchmark_scenario : "timed",
+               layered_ui_benchmark ? 150 : 0,
+               mode == RUN_MODE_BENCHMARK_SCENARIO ? BENCHMARK_WARMUP_FRAMES : 0U,
+               avg_render_ms, absolute_worst_render_ms, effective_worst,
+               outlier_trimmed ? "true" : "false", global_min_spare_ms,
+               (unsigned long long)measured_frames, framebuffer_checksum, result_str);
 #ifdef USE_GLYPH_CACHE
         { uint64_t glyphs_total = renderer_cache_hits + renderer_cache_misses;
           double glyph_hit_rate = glyphs_total > 0 ? (100.0 * renderer_cache_hits / glyphs_total) : 0.0;

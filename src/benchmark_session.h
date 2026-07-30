@@ -13,10 +13,15 @@ typedef enum {
     BENCHMARK_RESULT_FAIL_ALLOCATION
 } BenchmarkResult;
 
+#define BENCHMARK_WARMUP_FRAMES 64U
+
 bool benchmark_session_is_active(RunMode mode);
 bool benchmark_session_should_stop(RunMode mode, uint64_t frame_count,
-                                   int frame_limit, double elapsed_seconds,
+                                   uint64_t frame_limit, double elapsed_seconds,
                                    double duration_seconds);
+bool benchmark_session_frame_is_measured(uint64_t frame_count);
+uint64_t benchmark_session_total_scenario_frames(int measured_frames);
+uint64_t benchmark_session_measured_frames(uint64_t total_frames);
 BenchmarkResult benchmark_session_classify(double average_render_ms,
                                            bool allocation_detected);
 const char *benchmark_session_result_name(BenchmarkResult result);

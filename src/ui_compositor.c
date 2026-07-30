@@ -2,6 +2,7 @@
 #include "ui_preferences.h"
 
 #include <SDL3/SDL.h>
+#include <string.h>
 
 extern const unsigned char font8x8_basic[128][8];
 
@@ -65,12 +66,36 @@ static void layer_origin(const UiLayer *layer, int scale, int width, int height,
     }
 }
 
-static bool in_clip(const UiLayer *layer, int x, int y, int width, int height) {
-    int clip_right = layer->clip.x + layer->clip.width;
-    int clip_bottom = layer->clip.y + layer->clip.height;
-    return x >= 0 && y >= 0 && x < width && y < height &&
-           x >= layer->clip.x && y >= layer->clip.y &&
-           x < clip_right && y < clip_bottom;
+static int maximum(int a, int b) {
+    return a > b ? a : b;
+}
+
+static int minimum(int a, int b) {
+    return a < b ? a : b;
+}
+
+static void mark_touched_cell_span(uint8_t *touched_cells,
+                                   int cell_columns, int cell_rows,
+                                   int x0, int y0, int x1, int y1) {
+    int cell_x0;
+    int cell_y0;
+    int cell_x1;
+    int cell_y1;
+    int cell_y;
+    if (!touched_cells || cell_columns <= 0 || cell_rows <= 0 || x0 >= x1 || y0 >= y1) {
+        return;
+    }
+    cell_x0 = x0 / 8;
+    cell_y0 = y0 / 8;
+    cell_x1 = (x1 - 1) / 8;
+    cell_y1 = (y1 - 1) / 8;
+    if (cell_x0 >= cell_columns || cell_y0 >= cell_rows) return;
+    cell_x1 = minimum(cell_x1, cell_columns - 1);
+    cell_y1 = minimum(cell_y1, cell_rows - 1);
+    for (cell_y = cell_y0; cell_y <= cell_y1; cell_y++) {
+        memset(&touched_cells[(size_t)cell_y * (size_t)cell_columns + (size_t)cell_x0],
+               1, (size_t)(cell_x1 - cell_x0 + 1));
+    }
 }
 
 static void compose_layer(const UiLayer *layer, int global_scale_percent,
@@ -79,10 +104,19 @@ static void compose_layer(const UiLayer *layer, int global_scale_percent,
     int scale = layer_scale(layer, global_scale_percent);
     int origin_x;
     int origin_y;
+    int clip_x0;
+    int clip_y0;
+    int clip_x1;
+    int clip_y1;
     int cy;
     int cx;
     if (!layer->visible || layer->clip.width == 0 || layer->clip.height == 0) return;
     layer_origin(layer, scale, width, height, &origin_x, &origin_y);
+    clip_x0 = maximum(0, layer->clip.x);
+    clip_y0 = maximum(0, layer->clip.y);
+    clip_x1 = minimum(width, layer->clip.x + layer->clip.width);
+    clip_y1 = minimum(height, layer->clip.y + layer->clip.height);
+    if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) return;
     for (cy = 0; cy < layer->canvas->height; cy++) {
         for (cx = 0; cx < layer->canvas->width; cx++) {
             const Cell *cell;
@@ -92,6 +126,11 @@ static void compose_layer(const UiLayer *layer, int global_scale_percent,
             int sy;
             int sx;
             if (!ui_canvas_is_touched(layer->canvas, cx, cy)) continue;
+            mark_touched_cell_span(touched_cells, cell_columns, cell_rows,
+                                   maximum(clip_x0, origin_x + ui_compositor_scaled_edge(cx * 8, scale)),
+                                   maximum(clip_y0, origin_y + ui_compositor_scaled_edge(cy * 8, scale)),
+                                   minimum(clip_x1, origin_x + ui_compositor_scaled_edge((cx + 1) * 8, scale)),
+                                   minimum(clip_y1, origin_y + ui_compositor_scaled_edge((cy + 1) * 8, scale)));
             cell = &layer->canvas->cells[cy * layer->canvas->width + cx];
             glyph = font8x8_basic[cell->glyph < 128 ? cell->glyph : 32];
             fg = UI_COLOR_TO_UINT32(cell->fg);
@@ -100,19 +139,16 @@ static void compose_layer(const UiLayer *layer, int global_scale_percent,
                 int y0 = origin_y + ui_compositor_scaled_edge(cy * 8 + sy, scale);
                 int y1 = origin_y + ui_compositor_scaled_edge(cy * 8 + sy + 1, scale);
                 for (sx = 0; sx < 8; sx++) {
-                    int x0 = origin_x + ui_compositor_scaled_edge(cx * 8 + sx, scale);
-                    int x1 = origin_x + ui_compositor_scaled_edge(cx * 8 + sx + 1, scale);
+                    int x0 = maximum(clip_x0, origin_x + ui_compositor_scaled_edge(cx * 8 + sx, scale));
+                    int x1 = minimum(clip_x1, origin_x + ui_compositor_scaled_edge(cx * 8 + sx + 1, scale));
                     uint32_t color = (glyph[sy] & (1u << sx)) ? fg : bg;
                     int y;
                     int x;
+                    y0 = maximum(y0, clip_y0);
+                    y1 = minimum(y1, clip_y1);
                     for (y = y0; y < y1; y++) {
                         for (x = x0; x < x1; x++) {
-                            if (in_clip(layer, x, y, width, height)) {
-                                pixels[y * width + x] = color;
-                                if (touched_cells && x / 8 < cell_columns && y / 8 < cell_rows) {
-                                    touched_cells[(y / 8) * cell_columns + (x / 8)] = 1;
-                                }
-                            }
+                            pixels[y * width + x] = color;
                         }
                     }
                 }
