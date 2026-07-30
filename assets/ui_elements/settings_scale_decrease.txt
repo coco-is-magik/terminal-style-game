@@ -1,0 +1,11 @@
+name=settings_scale_decrease
+type=button
+parent=settings_container
+x=2
+y=8
+coords=relative
+width=28
+height=1
+align=center
+action=ui_scale_decrease
+content=UI SCALE -

@@ -952,7 +952,7 @@ EditorInputConsumption unified_editor_update(
     return consumed;
 }
 
-void unified_editor_render_overlay(
+void unified_editor_render_text_overlay(
     const UnifiedEditorState *editor,
     Grid *grid
 ) {
@@ -1137,10 +1137,17 @@ void unified_editor_render_overlay(
                    dim, bg);
     }
 
-    /* UI-layer center ray indicator always wins over world highlights. */
-    if (unified_editor_has_document(editor) &&
-        editor->modal != EDITOR_MODAL_MAP_CHOOSER &&
-        editor->modal != EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
+}
+
+bool unified_editor_crosshair_visible(const UnifiedEditorState *editor) {
+    return editor && editor->active && unified_editor_has_document(editor) &&
+           editor->modal != EDITOR_MODAL_MAP_CHOOSER &&
+           editor->modal != EDITOR_MODAL_DIRTY_OPEN_PROMPT;
+}
+
+void unified_editor_render_overlay(const UnifiedEditorState *editor, Grid *grid) {
+    unified_editor_render_text_overlay(editor, grid);
+    if (unified_editor_crosshair_visible(editor)) {
         editor_crosshair_render(grid);
     }
 }

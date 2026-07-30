@@ -46,6 +46,9 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_open_pressed); RESET_FIELD(editor_reload_pressed);
     RESET_FIELD(editor_previous_pressed);
     RESET_FIELD(editor_next_pressed);
+    RESET_FIELD(ui_scale_increase_pressed);
+    RESET_FIELD(ui_scale_decrease_pressed);
+    RESET_FIELD(ui_scale_reset_pressed);
 #undef RESET_FIELD
     input->text_input[0] = '\0';
     input->text_input_len = 0;
@@ -84,6 +87,20 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         return;
     }
     if (event->type != INPUT_EVENT_KEY_DOWN || event->repeat) return;
+    if (event->ctrl) {
+        if (event->key == INPUT_KEY_EQUALS) {
+            input->ui_scale_increase_pressed = true;
+            return;
+        }
+        if (event->key == INPUT_KEY_MINUS) {
+            input->ui_scale_decrease_pressed = true;
+            return;
+        }
+        if (event->key == INPUT_KEY_ZERO) {
+            input->ui_scale_reset_pressed = true;
+            return;
+        }
+    }
     switch (event->key) {
         case INPUT_KEY_ESCAPE: input->esc = true; input->editor_cancel_pressed = true; break;
         case INPUT_KEY_UP:
@@ -110,6 +127,9 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_Y: if (event->ctrl) input->editor_redo_pressed = true; break;
         case INPUT_KEY_S: if (event->ctrl) input->editor_save_pressed = true; break;
         case INPUT_KEY_O: if (event->ctrl) input->editor_open_pressed = true; break;
+        case INPUT_KEY_EQUALS:
+        case INPUT_KEY_MINUS:
+        case INPUT_KEY_ZERO:
         case INPUT_KEY_NONE: break;
     }
 }
@@ -126,6 +146,8 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_TAB: return INPUT_KEY_TAB; case SDLK_E: return INPUT_KEY_E;
         case SDLK_Z: return INPUT_KEY_Z; case SDLK_Y: return INPUT_KEY_Y;
         case SDLK_S: return INPUT_KEY_S; case SDLK_O: return INPUT_KEY_O;
+        case SDLK_EQUALS: return INPUT_KEY_EQUALS; case SDLK_MINUS: return INPUT_KEY_MINUS;
+        case SDLK_0: return INPUT_KEY_ZERO;
         default: return INPUT_KEY_NONE;
     }
 }

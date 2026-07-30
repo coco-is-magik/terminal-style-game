@@ -28,7 +28,8 @@ typedef enum {
     INPUT_KEY_RETURN, INPUT_KEY_LEFT, INPUT_KEY_RIGHT, INPUT_KEY_SPACE,
     INPUT_KEY_BACKSPACE, INPUT_KEY_F5, INPUT_KEY_F9, INPUT_KEY_LEFTBRACKET,
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
-    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O
+    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O,
+    INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO
 } InputKey;
 
 typedef struct {
@@ -66,6 +67,9 @@ typedef struct {
     bool down;              /* Down arrow key — edge-triggered */
     bool confirm;           /* Enter key — edge-triggered */
     bool esc;               /* ESC key — edge-triggered: true for one frame on press (non-repeat) */
+    bool ui_scale_increase_pressed; /* Ctrl+= — global UI scale increase */
+    bool ui_scale_decrease_pressed; /* Ctrl+- — global UI scale decrease */
+    bool ui_scale_reset_pressed;    /* Ctrl+0 — reset immutable UI default */
 
     /* ---- Asset Designer input (ignored outside designer state) ---- */
     bool arrow_left;    /* Left arrow key — edge-triggered, non-repeat */

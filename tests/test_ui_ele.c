@@ -124,12 +124,13 @@ static void test_ui_cache_master_map(void **state) {
 
     UiCache cache;
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
-    assert_int_equal(cache.master_count, 4);
+    assert_int_equal(cache.master_count, 5);
     assert_string_equal(cache.master_entries[0].layout, "main_menu");
-    assert_int_equal(cache.master_entries[0].cache_next_count, 5);
+    assert_int_equal(cache.master_entries[0].cache_next_count, 6);
     assert_string_equal(cache.master_entries[1].layout, "pause_menu");
     assert_string_equal(cache.master_entries[2].layout, "confirm_quit");
-    assert_string_equal(cache.master_entries[3].layout, "hud_overlay");
+    assert_string_equal(cache.master_entries[3].layout, "settings");
+    assert_string_equal(cache.master_entries[4].layout, "hud_overlay");
 
     ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
     assert_non_null(ui_cache_get(&cache, "main_menu_container"));
@@ -179,7 +180,7 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     UiLayout *layout = ui_layout_load("assets/ui_layouts/main_menu.txt", &cache);
     assert_non_null(layout);
-    assert_int_equal(ui_layout_focusable_count(layout), 3);
+    assert_int_equal(ui_layout_focusable_count(layout), 4);
 
     UiElement *focused = ui_layout_get_focused(layout, 0);
     assert_non_null(focused);
@@ -193,10 +194,15 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     focused = ui_layout_get_focused(layout, 2);
     assert_non_null(focused);
+    assert_string_equal(focused->name, "main_menu_settings");
+    assert_string_equal(focused->action, "open_settings");
+
+    focused = ui_layout_get_focused(layout, 3);
+    assert_non_null(focused);
     assert_string_equal(focused->name, "main_menu_quit");
     assert_string_equal(focused->action, "quit");
 
-    assert_null(ui_layout_get_focused(layout, 3));
+    assert_null(ui_layout_get_focused(layout, 4));
 
 
     ui_layout_destroy(layout);
@@ -231,12 +237,51 @@ static void test_ui_layout_remaining_menu_focus_actions(void **state) {
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
     ui_cache_tick(&cache, "pause_menu", "assets/ui_elements");
     ui_cache_tick(&cache, "confirm_quit", "assets/ui_elements");
+    ui_cache_tick(&cache, "settings", "assets/ui_elements");
 
-    assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 3,
-                          "resume", "return_to_main_menu", "quit", NULL);
+    assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 4,
+                          "resume", "return_to_main_menu", "open_settings", "quit");
     assert_layout_actions(&cache, "assets/ui_layouts/confirm_quit.txt", 2,
                           "confirm_quit", "cancel", NULL, NULL);
+    assert_layout_actions(&cache, "assets/ui_layouts/settings.txt", 4,
+                          "ui_scale_decrease", "ui_scale_increase",
+                          "ui_scale_reset", "back");
 
+    ui_cache_destroy(&cache);
+}
+
+static void test_confirm_quit_layout_is_centered(void **state) {
+    UiCache cache;
+    UiLayout *layout;
+    UiElement *container;
+    Grid *grid;
+    SDL_Color fg = {255, 255, 255, 255};
+    SDL_Color bg = {0, 0, 0, 255};
+    (void)state;
+
+    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+    ui_cache_tick(&cache, "confirm_quit", "assets/ui_elements");
+    container = ui_cache_get(&cache, "confirm_menu_container");
+    assert_non_null(container);
+    assert_int_equal(container->layout.coords_mode, UI_COORD_ABSOLUTE);
+    assert_int_equal(container->layout.x, 120);
+    assert_int_equal(container->layout.y, 76);
+    assert_int_equal(container->layout.width, 20);
+    assert_int_equal(container->layout.height, 7);
+
+    layout = ui_layout_load("assets/ui_layouts/confirm_quit.txt", &cache);
+    assert_non_null(layout);
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+    grid_clear(grid, bg);
+    ui_layout_render(layout, grid, fg, bg);
+
+    assert_true(grid_has_text_at(grid, 125, 77, "QUIT GAME?"));
+    assert_true(grid_has_text_at(grid, 124, 79, "YES"));
+    assert_true(grid_has_text_at(grid, 133, 79, "NO"));
+
+    grid_destroy(grid);
+    ui_layout_destroy(layout);
     ui_cache_destroy(&cache);
 }
 
@@ -354,6 +399,7 @@ int main(void) {
         cmocka_unit_test(test_ui_layout_hud_overlay_slots),
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),
         cmocka_unit_test(test_ui_layout_remaining_menu_focus_actions),
+        cmocka_unit_test(test_confirm_quit_layout_is_centered),
         cmocka_unit_test(test_ui_ele_hidden_not_rendered),
         cmocka_unit_test(test_ui_ele_center_align),
         cmocka_unit_test(test_ui_ele_color_override),

@@ -36,6 +36,7 @@
 
 #include "renderer.h"        /* Renderer struct, function declarations */
 #include "checked_size.h"
+#include "ui_preferences.h"
 #include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
@@ -217,6 +218,8 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     ren->cell_h = cell_h;
     ren->logical_w = logical_w;
     ren->logical_h = logical_h;
+    ren->ui_restore_cells = NULL;
+    ren->ui_restore_cell_count = 0;
 
     /* --- Step 3: Allocate the software pixel buffer --- */
     /* One uint32_t per pixel in the logical area.  This buffer is written
@@ -226,11 +229,20 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         ren_free(ren);
         return NULL;
     }
+    ren->ui_restore_cell_count = (size_t)grid_w * (size_t)grid_h;
+    ren->ui_restore_cells = ren_malloc(ren->ui_restore_cell_count);
+    if (!ren->ui_restore_cells) {
+        ren_free(ren->pixel_buffer);
+        ren_free(ren);
+        return NULL;
+    }
+    memset(ren->ui_restore_cells, 0, ren->ui_restore_cell_count);
 
     /* --- Step 4: Initialise SDL video subsystem --- */
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -241,6 +253,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -252,6 +265,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         SDL_DestroyWindow(ren->window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -275,6 +289,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         SDL_DestroyWindow(ren->window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -296,6 +311,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         SDL_DestroyWindow(ren->window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -311,6 +327,7 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
         SDL_DestroyWindow(ren->window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         ren_free(ren->pixel_buffer);
+        ren_free(ren->ui_restore_cells);
         ren_free(ren);
         return NULL;
     }
@@ -339,6 +356,7 @@ void renderer_destroy(Renderer *ren) {
     if (ren->sdl_ren)        SDL_DestroyRenderer(ren->sdl_ren);
     if (ren->window)         SDL_DestroyWindow(ren->window);
     if (ren->pixel_buffer)   ren_free(ren->pixel_buffer);
+    if (ren->ui_restore_cells) ren_free(ren->ui_restore_cells);
 #ifdef USE_SMC_BATCH_STATE_TRACKER
     if (ren->batch_state_buffer)  ren_free(ren->batch_state_buffer);
 #endif
@@ -381,7 +399,8 @@ void renderer_destroy(Renderer *ren) {
  * @param ren   The Renderer (provides pixel buffer, SDL assets)
  * @param grid  The Grid containing the cells to render
  */
-void renderer_draw(Renderer *ren, Grid *grid) {
+void renderer_draw_layers(Renderer *ren, Grid *grid,
+                          const UiLayerList *layers, int ui_scale_percent) {
     uint32_t *pixels = ren->pixel_buffer;
     int pitch_pixels = ren->logical_w;   /* Number of uint32_t per row */
 
@@ -472,6 +491,16 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     renderer_cells_skipped = cell_count - dirty_count;
     
     /* Render only dirty cells */
+    for (size_t i = 0; i < cell_count; i++) {
+        if (ren->ui_restore_cells[i]) {
+            bool present = false;
+            for (size_t d = 0; d < dirty_count; d++) {
+                if (dirty_indices[d] == (uint32_t)i) { present = true; break; }
+            }
+            if (!present && dirty_count < cell_count) dirty_indices[dirty_count++] = (uint32_t)i;
+        }
+    }
+    renderer_cells_skipped = cell_count - dirty_count;
     for (size_t d = 0; d < dirty_count; d++) {
         uint32_t idx = dirty_indices[d];
         int cy = (int)(idx / grid->width);
@@ -527,7 +556,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             int idx = cy * grid->width + cx;
             Cell prev = grid->prev_cells[idx];
             
-            if (c.glyph == prev.glyph &&
+            if (!ren->ui_restore_cells[idx] && c.glyph == prev.glyph &&
                 c.fg.r == prev.fg.r && c.fg.g == prev.fg.g && c.fg.b == prev.fg.b &&
                 c.bg.r == prev.bg.r && c.bg.g == prev.bg.g && c.bg.b == prev.bg.b) {
                 renderer_cells_skipped++;
@@ -541,7 +570,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             CellState state = pack_cell_state(&c);
             int changed = 1;
             int rc = smc_indexed_state_tracker_cell_changed(cell_index, &state, &changed);
-            if (rc == SMC_OK && !changed) {
+            if (rc == SMC_OK && !changed && !ren->ui_restore_cells[cell_index]) {
                 renderer_cells_skipped++;
                 continue;  /* Cell unchanged, skip rasterization */
             }
@@ -553,7 +582,7 @@ void renderer_draw(Renderer *ren, Grid *grid) {
             CellState state = pack_cell_state(&c);
             int changed = 1;
             int rc = smc_state_tracker_cell_changed(cell_index, &state, &changed);
-            if (rc == SMC_OK && !changed) {
+            if (rc == SMC_OK && !changed && !ren->ui_restore_cells[cell_index]) {
                 renderer_cells_skipped++;
                 continue;  /* Cell unchanged, skip rasterization */
             }
@@ -604,6 +633,13 @@ void renderer_draw(Renderer *ren, Grid *grid) {
 #endif
 #endif
 
+    memset(ren->ui_restore_cells, 0, ren->ui_restore_cell_count);
+    if (layers) {
+        (void)ui_compositor_compose(layers, ui_scale_percent, pixels,
+                                    ren->logical_w, ren->logical_h,
+                                    ren->ui_restore_cells, grid->width, grid->height);
+    }
+
     /* ---- Phase 2 Timing ---- */
     uint64_t phase2_start = SDL_GetPerformanceCounter();
     double raster_time = (double)((phase2_start - phase1_start) * 1000) / SDL_GetPerformanceFrequency();
@@ -636,6 +672,10 @@ void renderer_draw(Renderer *ren, Grid *grid) {
     /* After rendering, swap prev_cells for next frame's comparison */
     grid_swap_prev(grid);
 #endif
+}
+
+void renderer_draw(Renderer *ren, Grid *grid) {
+    renderer_draw_layers(ren, grid, NULL, UI_PREFERENCES_EMERGENCY_SCALE);
 }
 
 /* ===================================================================

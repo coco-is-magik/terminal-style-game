@@ -32,6 +32,7 @@ typedef enum {
     MENU_NONE = 0,         /* No menu active (returned by peek on empty stack) */
     MENU_MAIN,             /* Main menu: Start Game, Editor, Quit */
     MENU_PAUSE,            /* Pause menu: Resume, Main Menu, Quit */
+    MENU_SETTINGS,         /* Accessibility settings; returns to prior menu */
     MENU_CONFIRM_QUIT,     /* Quit confirmation: Yes, No */
     MENU_ID_COUNT          /* Sentinel — total number of valid MenuId values */
 } MenuId;

@@ -109,6 +109,36 @@ static void test_text_mouse_buttons_and_wheel(void **state) {
     assert_float_equal(input.mouse_wheel_y, -2.0f, 0.001f);
 }
 
+static void test_ui_scale_shortcuts_are_global_nonrepeat_edges(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_EQUALS, false, true, 0, 0, 0, NULL
+    };
+    (void)state;
+    input_apply_event(&input, &event, false);
+    assert_true(input.ui_scale_increase_pressed);
+    assert_false(input.confirm);
+
+    event.key = INPUT_KEY_MINUS;
+    input_apply_event(&input, &event, false);
+    assert_true(input.ui_scale_decrease_pressed);
+    event.key = INPUT_KEY_ZERO;
+    input_apply_event(&input, &event, false);
+    assert_true(input.ui_scale_reset_pressed);
+
+    input_begin_frame(&input);
+    assert_false(input.ui_scale_increase_pressed);
+    assert_false(input.ui_scale_decrease_pressed);
+    assert_false(input.ui_scale_reset_pressed);
+    event.key = INPUT_KEY_EQUALS;
+    event.repeat = true;
+    input_apply_event(&input, &event, false);
+    assert_false(input.ui_scale_increase_pressed);
+    event.repeat = false;
+    input_apply_event(&input, &event, true);
+    assert_false(input.ui_scale_increase_pressed);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_frame_reset_preserves_held_and_quit),
@@ -116,6 +146,7 @@ int main(void) {
         cmocka_unit_test(test_key_and_editor_shortcuts),
         cmocka_unit_test(test_editor_open_requires_ctrl_and_nonrepeat),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
+        cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

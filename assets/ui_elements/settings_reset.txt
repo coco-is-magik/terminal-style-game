@@ -1,0 +1,11 @@
+name=settings_reset
+type=button
+parent=settings_container
+x=2
+y=14
+coords=relative
+width=28
+height=1
+align=center
+action=ui_scale_reset
+content=RESET DEFAULTS

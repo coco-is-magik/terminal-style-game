@@ -281,6 +281,20 @@ contract. The initial review and remediation prerequisites are satisfied.
    `R0_MAP_OPEN_SWITCH_RCA_2026-07-29.md`.
 4. Add a bounded UI zoom/accessibility mechanism, not a premature responsive
    layout framework.
+   **Verified 2026-07-30:** the bounded implementation uses immutable
+   `default_user.ini` defaults, runtime-owned `user.ini` persistence, 100/125/150/
+   200% UI-only presets with a shipped 150% default, global shortcuts, and a
+   Settings menu. It introduces a bounded ordered UI-layer compositor with one
+   global inherited scale and fixed/internal per-layer policies so menus, HUD,
+   and editor text can scale without changing the world grid, projection, or
+   fixed 8x8 source font. User-facing per-role/per-element controls remain
+   deferred. Strict focused and aggregate tests, the full build matrix, ASan,
+   UBSan, and a bounded dummy-video runtime path pass as recorded in
+   `R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`. Manual 200%
+   acceptance also found and closed a legacy quit-confirmation layout defect:
+   unsupported container geometry placed its children near the top-left and
+   outside the centered menu crop. The dialog now uses supported centered
+   geometry with exact layout and all-preset visibility regressions.
 5. Replace the fixed pitch clamp with a documented grid-relative safe range while
    retaining and accurately naming the current 2.5D horizon-offset model.
 6. Add deferred tracker-selection and benchmark-classification regression tests.
@@ -716,6 +730,11 @@ dependencies are stable.
 1. Define anchors, constraints, flow, sizing, resolution, and focus semantics.
 2. Version/migrate existing UI element/layout assets with compatibility tests.
 3. Make game and editor UI responsive and independently scalable as specified.
+   This includes reviewing the R0 ordered-layer seam and, where requirements
+   justify it, adding versioned per-role or element-subtree scale overrides with
+   deterministic overlap, inheritance, clipping, focus/hit-testing, reset, and
+   missing-role behavior. Do not expose arbitrary asset names or unbounded layers
+   as persistent user settings.
 4. Add `UiDocument` with document lifecycle and validation.
 5. Add visual hierarchy, property, canvas, drag/resize/reparent, and ordering
    workflows.
@@ -807,7 +826,9 @@ The dependency table must also state what the phase unlocks.
 
 ## Next action
 
-**Review A, repository remediation, and R0 outcomes 2 and 3 are verified.** The
-next planning target is **R0 outcome 4**, a bounded UI zoom/accessibility
-mechanism. Do not begin a premature responsive-layout framework or R1 world-model
-work early.
+**Review A, repository remediation, and R0 outcomes 2, 3, and 4 are verified.**
+Bounded UI zoom/accessibility is implemented according to
+`R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md`; verification evidence and retained
+constraints are recorded in
+`R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`. The next action is
+the next dependency-ordered roadmap outcome after confirming its entry criteria.

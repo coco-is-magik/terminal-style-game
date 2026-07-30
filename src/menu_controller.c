@@ -11,6 +11,11 @@ MenuAction menu_controller_parse_action(const char *action) {
     if (strcmp(action, "confirm_quit") == 0) return MENU_ACTION_CONFIRM_QUIT;
     if (strcmp(action, "cancel") == 0) return MENU_ACTION_CANCEL;
     if (strcmp(action, "discard_changes") == 0) return MENU_ACTION_DISCARD_CHANGES;
+    if (strcmp(action, "open_settings") == 0) return MENU_ACTION_OPEN_SETTINGS;
+    if (strcmp(action, "ui_scale_decrease") == 0) return MENU_ACTION_UI_SCALE_DECREASE;
+    if (strcmp(action, "ui_scale_increase") == 0) return MENU_ACTION_UI_SCALE_INCREASE;
+    if (strcmp(action, "ui_scale_reset") == 0) return MENU_ACTION_UI_SCALE_RESET;
+    if (strcmp(action, "back") == 0) return MENU_ACTION_BACK;
     return MENU_ACTION_UNKNOWN;
 }
 

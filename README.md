@@ -110,6 +110,25 @@ and a C compiler.
 lighting, raycasting, and the debug HUD.  See the comments in that file
 for the available keys.
 
+### UI accessibility scale
+
+Text UI is scaled independently of the world at 100%, 125%, 150%, or 200%.
+The shipped default is 150%. Use **Settings** from Main or Pause, or these global
+interactive shortcuts:
+
+| Control | Action |
+|---|---|
+| `Ctrl+=` | Next larger UI scale preset |
+| `Ctrl+-` | Next smaller UI scale preset |
+| `Ctrl+0` | Reset to the immutable default |
+
+`default_user.ini` is the application-owned default and must not be edited by
+runtime code. Live changes are atomically saved to runtime-owned `user.ini`.
+If saving fails, the selected scale remains active for that run and the UI reports
+that the preference was not saved. These controls are disabled in benchmark,
+stability, smoke, and other headless modes. World scale, editor highlights, and
+the fixed-size center crosshair are unaffected.
+
 ## Asset system
 
 Game data is loaded from `assets/`:
@@ -132,6 +151,8 @@ Maintainer references:
   contract, failure matrix, implementation record, and verification evidence.
 - `docs/R0_MAP_OPEN_SWITCH_RCA_2026-07-29.md` — failed approaches, root causes,
   detection gaps, corrections, and preventive lessons from R0 outcome 3.
+- `docs/R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md` — verified
+  bounded UI scale behavior, architecture, tests, and retained constraints.
 - `docs/FEATURE_ROADMAP.md` — authoritative dependency order, engineering
   principles, quality gates, and review checkpoints for future feature work.
 - `docs/TODO.md` — unordered future-feature ideas, unresolved questions, and

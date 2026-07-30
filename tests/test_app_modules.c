@@ -11,6 +11,11 @@ static void test_menu_actions(void **state) {
     (void)state;
     assert_int_equal(menu_controller_parse_action("start_game"), MENU_ACTION_START_GAME);
     assert_int_equal(menu_controller_parse_action("discard_changes"), MENU_ACTION_DISCARD_CHANGES);
+    assert_int_equal(menu_controller_parse_action("open_settings"), MENU_ACTION_OPEN_SETTINGS);
+    assert_int_equal(menu_controller_parse_action("ui_scale_decrease"), MENU_ACTION_UI_SCALE_DECREASE);
+    assert_int_equal(menu_controller_parse_action("ui_scale_increase"), MENU_ACTION_UI_SCALE_INCREASE);
+    assert_int_equal(menu_controller_parse_action("ui_scale_reset"), MENU_ACTION_UI_SCALE_RESET);
+    assert_int_equal(menu_controller_parse_action("back"), MENU_ACTION_BACK);
     assert_int_equal(menu_controller_parse_action(NULL), MENU_ACTION_UNKNOWN);
     assert_int_equal(menu_controller_parse_action("other"), MENU_ACTION_UNKNOWN);
 }

@@ -1,3 +1,7 @@
 name=confirm_menu_container
 type=container
-rect=10,5,20,7
+x=120
+y=76
+coords=absolute
+width=20
+height=7

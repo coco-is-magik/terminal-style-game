@@ -1,0 +1,11 @@
+name=settings_back
+type=button
+parent=settings_container
+x=2
+y=17
+coords=relative
+width=28
+height=1
+align=center
+action=back
+content=BACK

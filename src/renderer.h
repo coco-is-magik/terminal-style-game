@@ -11,6 +11,7 @@
 #define RENDERER_H
 
 #include "grid.h"          /* Grid — the source data to render */
+#include "ui_compositor.h"
 #include <SDL3/SDL.h>      /* SDL_Window, SDL_Renderer, SDL_Texture */
 #include <stdbool.h>       /* bool */
 #include <stddef.h>
@@ -64,6 +65,8 @@ typedef struct {
     int logical_h;                     /* Logical pixel height */
     int cell_w;                        /* Glyph width (pixels) */
     int cell_h;                        /* Glyph height (pixels) */
+    uint8_t *ui_restore_cells;
+    size_t ui_restore_cell_count;
 #ifdef USE_SMC_BATCH_STATE_TRACKER
      void           *batch_state_buffer;  /* CellState[cell_count] for batch mode */
 #endif
@@ -78,6 +81,8 @@ typedef struct {
 Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h);
 void      renderer_destroy(Renderer *ren);
 void      renderer_draw(Renderer *ren, Grid *grid);
+void      renderer_draw_layers(Renderer *ren, Grid *grid,
+                               const UiLayerList *layers, int ui_scale_percent);
 bool      renderer_process_events(void);
 uint32_t  renderer_framebuffer_checksum(Renderer *ren); /* For benchmark validation */
 

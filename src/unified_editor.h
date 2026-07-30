@@ -137,6 +137,11 @@ void unified_editor_render_overlay(
     const UnifiedEditorState *editor,
     Grid *grid
 );
+void unified_editor_render_text_overlay(
+    const UnifiedEditorState *editor,
+    Grid *grid
+);
+bool unified_editor_crosshair_visible(const UnifiedEditorState *editor);
 
 CommandResult unified_editor_set_wall_material(
     UnifiedEditorState *editor,

@@ -1,0 +1,10 @@
+name=settings_title
+type=text
+parent=settings_container
+x=2
+y=2
+coords=relative
+width=28
+height=1
+align=center
+content=ACCESSIBILITY SETTINGS

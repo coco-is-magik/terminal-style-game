@@ -133,7 +133,13 @@ Preserved future scene/file implications:
 Avoid making the UI permanently map-file-specific if a future level contains
 map, lights, decals, spawn, and ambient data.
 
-## UI scale and resizing — **Needs product decision**
+## UI scale and resizing — **Bounded accessibility zoom verified; responsive model deferred**
+
+**Verified baseline (2026-07-30):** Menu, HUD, and editor text support independent
+100%, 125%, 150%, and 200% UI scaling with a 150% default, immutable/runtime
+preference precedence, atomic live persistence, global shortcuts, and Main/Pause
+Settings access. The fixed crosshair and editor highlights remain unscaled. See
+`R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`.
 
 **Wanted:** Comfortably resize editor text and controls.
 
@@ -145,10 +151,45 @@ Possible scopes:
 3. Responsive reflow with anchors, percentages, min/max sizes, and flow/layout
    containers.
 
-Current inspector uses direct `grid_print` while menus use `UiLayout`; serious
-scaling should converge on one UI system. Decide whether the immediate goal is
-accessibility zoom or responsive layout, whether UI/world scale separately,
-and supported sizes/aspect ratios.
+**Decision 2026-07-30:** R0 implements scope 1 only through the approved
+`R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md`. The accepted model uses immutable
+`default_user.ini`, runtime-written `user.ini`, immediate persistent live
+adjustment, 100/125/150/200% presets with a 150% shipped default, global keyboard
+shortcuts, and a bounded Settings menu. UI is composited separately so world
+scale and the fixed logical grid remain unchanged. Scopes 2 and 3 remain
+deferred and require their own later decisions.
+
+The current inspector uses direct `grid_print` while menus use `UiLayout`; the
+verified R0 implementation converges their rendering through one bounded ordered
+layer/compositor boundary. R0 exposes one global inherited scale while retaining
+fixed-100% and internal explicit-preset layer policies so concrete UI subtrees
+can be separated later without a renderer redesign. It deliberately does not
+resolve the later responsive-layout model, runtime logical-grid resizing, or
+broader supported-resolution policy.
+
+### Independent UI-role and element sizing — **Deferred; foundation in R0**
+
+**Wanted later:** Independently size concrete UI roles or element subtrees—for
+example a 200% debug HUD, 150% editor inspector, 200% warning, and 100% crosshair—
+with deterministic overlap and persistence.
+
+R0 provides only the rendering seam: compact ordered layers, stable painter's
+order, per-layer scale policy, anchors, clips, visibility, and fixed capacity.
+The user-visible preference remains one global scale in version-1 user settings.
+
+Before exposing independent controls, decide:
+
+- which stable semantic roles are user-adjustable rather than arbitrary asset
+  names;
+- whether child elements inherit, override, or form separate layers;
+- preference schema/version migration and missing-role behavior;
+- settings-menu presentation and reset semantics;
+- overlap, focus/hit-testing, clipping, accessibility, and performance limits;
+- whether the capability belongs with the later responsive UI model rather than
+  as isolated scale overrides.
+
+Do not persist transient element pointers, file-order indices, or unrestricted
+user-created layers. Promote only proven concrete roles/subtrees.
 
 ## Bulk selection and batch editing — **Needs product and command design**
 

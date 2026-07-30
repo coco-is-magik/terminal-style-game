@@ -25,6 +25,9 @@
 #include "glyph_block_cache.h"
 #endif
 #include "ui_ele.h"
+#include "ui_canvas.h"
+#include "ui_compositor.h"
+#include "ui_preferences.h"
 #include "menu_state.h"
 #include "unified_editor.h"
 #include "editor_highlight.h"
@@ -39,6 +42,98 @@
 #include <string.h>
 #include <stdbool.h>
 #include <SDL3/SDL.h>
+
+#define APP_UI_MENU_WIDTH 80
+#define APP_UI_MENU_HEIGHT 40
+#define APP_UI_HUD_WIDTH 64
+#define APP_UI_HUD_HEIGHT 20
+#define APP_UI_EDITOR_WIDTH 100
+#define APP_UI_EDITOR_HEIGHT 40
+#define APP_UI_FOOTER_WIDTH 160
+#define APP_UI_FEEDBACK_WIDTH 80
+#define APP_UI_FEEDBACK_FRAMES 180
+
+enum {
+    APP_UI_ROLE_MENU = 1,
+    APP_UI_ROLE_HUD,
+    APP_UI_ROLE_EDITOR,
+    APP_UI_ROLE_FOOTER,
+    APP_UI_ROLE_FEEDBACK,
+    APP_UI_ROLE_CROSSHAIR
+};
+
+typedef struct {
+    char text[96];
+    int frames_remaining;
+} UiScaleFeedback;
+
+typedef struct {
+    Grid *staging;
+    UiCanvas *menu;
+    UiCanvas *hud;
+    UiCanvas *editor;
+    UiCanvas *footer;
+    UiCanvas *feedback;
+    UiCanvas *crosshair;
+} AppUiResources;
+
+static void app_ui_resources_destroy(AppUiResources *ui) {
+    if (!ui) return;
+    ui_canvas_destroy(ui->crosshair);
+    ui_canvas_destroy(ui->feedback);
+    ui_canvas_destroy(ui->footer);
+    ui_canvas_destroy(ui->editor);
+    ui_canvas_destroy(ui->hud);
+    ui_canvas_destroy(ui->menu);
+    grid_destroy(ui->staging);
+    memset(ui, 0, sizeof(*ui));
+}
+
+static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
+                                    int grid_height) {
+    if (!ui) return false;
+    memset(ui, 0, sizeof(*ui));
+    ui->staging = grid_create(grid_width, grid_height);
+    ui->menu = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
+    ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
+    ui->editor = ui_canvas_create(APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
+    ui->footer = ui_canvas_create(APP_UI_FOOTER_WIDTH, 2);
+    ui->feedback = ui_canvas_create(APP_UI_FEEDBACK_WIDTH, 1);
+    ui->crosshair = ui_canvas_create(1, 1);
+    if (!ui->staging || !ui->menu || !ui->hud || !ui->editor || !ui->footer ||
+        !ui->feedback || !ui->crosshair) {
+        app_ui_resources_destroy(ui);
+        return false;
+    }
+    return true;
+}
+
+static void staging_grid_clear(Grid *grid) {
+    if (!grid || !grid->cells) return;
+    memset(grid->cells, 0,
+           (size_t)grid->width * (size_t)grid->height * sizeof(*grid->cells));
+}
+
+static void ui_scale_feedback_set(UiScaleFeedback *feedback,
+                                  const UiPreferences *preferences,
+                                  UiPreferencesChangeResult result) {
+    const char *suffix = result == UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED
+        ? " active; preference not saved" : "";
+    if (!feedback || !preferences) return;
+    snprintf(feedback->text, sizeof(feedback->text), "UI Scale: %d%%%s",
+             ui_preferences_scale(preferences), suffix);
+    feedback->frames_remaining = APP_UI_FEEDBACK_FRAMES;
+}
+
+static bool app_add_ui_layer(UiLayerList *layers, int role, const UiCanvas *canvas,
+                             UiAnchor anchor, UiScalePolicy policy, int z_order,
+                             int pixel_width, int pixel_height) {
+    UiLayer layer = {
+        role, canvas, anchor, {0, 0, pixel_width, pixel_height}, policy, 100,
+        z_order, true, 0
+    };
+    return ui_layer_list_add(layers, &layer);
+}
 
 static void draw_world_pattern(Grid *grid, uint64_t frame_count) {
     SDL_Color bg_color = {0, 0, 0, 255};
@@ -89,6 +184,14 @@ static void set_ui_text(UiCache *cache, const char *name, const char *text) {
     if (element) ui_ele_set_content(element, text);
 }
 
+static void update_settings_scale_text(UiCache *cache,
+                                       const UiPreferences *preferences) {
+    char text[48];
+    if (!cache || !preferences) return;
+    snprintf(text, sizeof(text), "UI Scale: %d%%", ui_preferences_scale(preferences));
+    set_ui_text(cache, "settings_ui_scale_value", text);
+}
+
 static void draw_data_ui_overlay(Grid *grid, UiCache *cache, UiLayout *layout,
                                  uint64_t frame_count, PerfStats *stats,
                                  VisualMode mode, int target_fps) {
@@ -125,6 +228,7 @@ static const char *menu_layout_name(MenuId menu) {
     switch (menu) {
         case MENU_MAIN: return "main_menu";
         case MENU_PAUSE: return "pause_menu";
+        case MENU_SETTINGS: return "settings";
         case MENU_CONFIRM_QUIT: return "confirm_quit";
         case MENU_NONE:
         case MENU_ID_COUNT:
@@ -179,7 +283,10 @@ static bool dispatch_menu_action(const char *action,
                                  InputState *input,
                                  UnifiedEditorState *ued,
                                  Camera *cam,
-                                 AssetRegistry *assets) {
+                                 AssetRegistry *assets,
+                                 UiPreferences *preferences,
+                                 UiScaleFeedback *feedback,
+                                 UiCache *ui_cache) {
     if (!action || !ms || !app_state) return false;
     switch (menu_controller_parse_action(action)) {
     case MENU_ACTION_START_GAME:
@@ -213,6 +320,25 @@ static bool dispatch_menu_action(const char *action,
         *app_state = APP_STATE_MAIN_MENU;
         menu_stack_push(ms, MENU_MAIN);
         return true;
+    case MENU_ACTION_OPEN_SETTINGS:
+        return menu_stack_push(ms, MENU_SETTINGS);
+    case MENU_ACTION_UI_SCALE_DECREASE:
+        ui_scale_feedback_set(feedback, preferences,
+                              ui_preferences_decrease(preferences));
+        update_settings_scale_text(ui_cache, preferences);
+        return true;
+    case MENU_ACTION_UI_SCALE_INCREASE:
+        ui_scale_feedback_set(feedback, preferences,
+                              ui_preferences_increase(preferences));
+        update_settings_scale_text(ui_cache, preferences);
+        return true;
+    case MENU_ACTION_UI_SCALE_RESET:
+        ui_scale_feedback_set(feedback, preferences,
+                              ui_preferences_reset(preferences));
+        update_settings_scale_text(ui_cache, preferences);
+        return true;
+    case MENU_ACTION_BACK:
+        return menu_stack_pop(ms);
     case MENU_ACTION_UNKNOWN:
     default:
         return false;
@@ -398,6 +524,26 @@ int app_main(int argc, char* argv[]) {
     }
     ui_cache_tick(&menu_cache, "hud_overlay", "assets/ui_elements");
     UiLayout *hud_layout = ui_layout_load("assets/ui_layouts/hud_overlay.txt", &menu_cache);
+    UiPreferences preferences;
+    UiScaleFeedback scale_feedback = {{0}, 0};
+    AppUiResources ui_resources;
+    ui_preferences_init(&preferences, "default_user.ini", "user.ini");
+    if (preferences.default_load_result != UI_PREFERENCES_IO_OK) {
+        fprintf(stderr, "UI preferences: default_user.ini invalid or missing; using 150%% fallback\n");
+    }
+    if (preferences.user_load_result == UI_PREFERENCES_IO_INVALID ||
+        preferences.user_load_result == UI_PREFERENCES_IO_FAILED) {
+        fprintf(stderr, "UI preferences: user.ini invalid; using immutable default\n");
+    }
+    update_settings_scale_text(&menu_cache, &preferences);
+    if (!app_ui_resources_create(&ui_resources, cfg->grid_width, cfg->grid_height)) {
+        fprintf(stderr, "Failed to initialize bounded UI resources.\n");
+        for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
+        ui_layout_destroy(hud_layout);
+        ui_cache_destroy(&menu_cache);
+        app_resources_cleanup(&resources);
+        return 1;
+    }
 
     uint64_t initial_time = SDL_GetPerformanceCounter();
     uint64_t last_time = initial_time;
@@ -429,6 +575,28 @@ int app_main(int argc, char* argv[]) {
 
         input_process(&input, mode != RUN_MODE_NORMAL);
 
+        if (mode == RUN_MODE_NORMAL) {
+            UiPreferencesChangeResult scale_result;
+            bool scale_changed = false;
+            if (input.ui_scale_reset_pressed) {
+                scale_result = ui_preferences_reset(&preferences);
+                input.ui_scale_reset_pressed = false;
+                scale_changed = true;
+            } else if (input.ui_scale_increase_pressed) {
+                scale_result = ui_preferences_increase(&preferences);
+                input.ui_scale_increase_pressed = false;
+                scale_changed = true;
+            } else if (input.ui_scale_decrease_pressed) {
+                scale_result = ui_preferences_decrease(&preferences);
+                input.ui_scale_decrease_pressed = false;
+                scale_changed = true;
+            }
+            if (scale_changed) {
+                ui_scale_feedback_set(&scale_feedback, &preferences, scale_result);
+                update_settings_scale_text(&menu_cache, &preferences);
+            }
+        }
+
         {
             bool want_lock = (mode == RUN_MODE_NORMAL)
                              && (ms.depth == 0)
@@ -445,9 +613,9 @@ int app_main(int argc, char* argv[]) {
         }
 
         if (input.esc) {
-            if (app_state == APP_STATE_MAIN_MENU) {
-            } else if (ms.depth > 0) {
+            if (ms.depth > 1 || (ms.depth > 0 && app_state != APP_STATE_MAIN_MENU)) {
                 menu_stack_pop(&ms);
+            } else if (app_state == APP_STATE_MAIN_MENU) {
             } else if (app_state == APP_STATE_PLAYING) {
                 menu_stack_push(&ms, MENU_PAUSE);
             }
@@ -471,7 +639,8 @@ int app_main(int argc, char* argv[]) {
                     const char *action = ui_ele_get_action(focused);
                     if (action) {
                         bool action_handled = dispatch_menu_action(
-                            action, &ms, &app_state, &input, &ued, &cam, &assets);
+                            action, &ms, &app_state, &input, &ued, &cam, &assets,
+                            &preferences, &scale_feedback, &menu_cache);
                         menu_controller_consume_confirm(
                             &input.confirm, &input.editor_confirm_pressed,
                             action_handled);
@@ -520,12 +689,30 @@ int app_main(int argc, char* argv[]) {
         double profile_grid_start = profile_now_ms();
 #endif
 
+        UiLayerList ui_layers;
+        ui_layer_list_clear(&ui_layers);
+        staging_grid_clear(ui_resources.staging);
+        ui_canvas_clear(ui_resources.menu);
+        ui_canvas_clear(ui_resources.hud);
+        ui_canvas_clear(ui_resources.editor);
+        ui_canvas_clear(ui_resources.footer);
+        ui_canvas_clear(ui_resources.feedback);
+        ui_canvas_clear(ui_resources.crosshair);
+
         if (active_menu != MENU_NONE) {
             SDL_Color mbg = {0, 0, 0, 255};
             UiLayout *active_layout = ((int)active_menu >= 0 && (int)active_menu < MENU_ID_COUNT)
                                       ? menu_layouts[(int)active_menu] : NULL;
             grid_clear(grid, mbg);
-            draw_data_menu(grid, active_layout, menu_selected[(int)active_menu]);
+            draw_data_menu(ui_resources.staging, active_layout,
+                           menu_selected[(int)active_menu]);
+            ui_canvas_copy_grid_region(
+                ui_resources.menu, ui_resources.staging,
+                (grid->width - APP_UI_MENU_WIDTH) / 2,
+                (grid->height - APP_UI_MENU_HEIGHT) / 2);
+            (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_MENU, ui_resources.menu,
+                                   UI_ANCHOR_CENTER, UI_SCALE_INHERIT_GLOBAL, 20,
+                                   grid->width * 8, grid->height * 8);
 
         } else if (app_state == APP_STATE_PLAYING) {
             if (visual_mode == VISUAL_RAYCAST) {
@@ -539,8 +726,12 @@ int app_main(int argc, char* argv[]) {
                 draw_world_pattern(grid, frame_count);
             }
             if (cfg->debug_display_enabled) {
-                draw_data_ui_overlay(grid, &menu_cache, hud_layout, frame_count,
+                draw_data_ui_overlay(ui_resources.staging, &menu_cache, hud_layout, frame_count,
                                      &perf_stats, visual_mode, cfg->target_fps);
+                ui_canvas_copy_grid_region(ui_resources.hud, ui_resources.staging, 0, 0);
+                (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_HUD, ui_resources.hud,
+                                       UI_ANCHOR_TOP_LEFT, UI_SCALE_INHERIT_GLOBAL, 10,
+                                       grid->width * 8, grid->height * 8);
             }
 
 #if PROFILE_FRAME
@@ -561,7 +752,33 @@ int app_main(int argc, char* argv[]) {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);
                 }
-                unified_editor_render_overlay(&ued, grid);
+                unified_editor_render_text_overlay(&ued, ui_resources.staging);
+                ui_canvas_copy_grid_region(ui_resources.editor, ui_resources.staging, 0, 0);
+                ui_canvas_copy_grid_region(ui_resources.footer, ui_resources.staging,
+                                           0, grid->height - 2);
+                (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_EDITOR,
+                                       ui_resources.editor, UI_ANCHOR_TOP_LEFT,
+                                       UI_SCALE_INHERIT_GLOBAL, 10,
+                                       grid->width * 8, grid->height * 8);
+                (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_FOOTER,
+                                       ui_resources.footer, UI_ANCHOR_BOTTOM_LEFT,
+                                       UI_SCALE_INHERIT_GLOBAL, 11,
+                                       grid->width * 8, grid->height * 8);
+                if (unified_editor_crosshair_visible(&ued)) {
+                    int center_x = grid->width / 2;
+                    int center_y = grid->height / 2;
+                    Cell crosshair;
+                    ui_resources.staging->cells[center_y * grid->width + center_x] =
+                        grid->cells[center_y * grid->width + center_x];
+                    editor_crosshair_render(ui_resources.staging);
+                    crosshair = ui_resources.staging->cells[center_y * grid->width + center_x];
+                    (void)ui_canvas_set(ui_resources.crosshair, 0, 0, crosshair.glyph,
+                                        crosshair.fg, crosshair.bg);
+                    (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_CROSSHAIR,
+                                           ui_resources.crosshair, UI_ANCHOR_CENTER,
+                                           UI_SCALE_FIXED_100, 100,
+                                           grid->width * 8, grid->height * 8);
+                }
             } else {
                 SDL_Color ae_bg = {0, 0, 0, 255};
                 grid_clear(grid, ae_bg);
@@ -572,8 +789,25 @@ int app_main(int argc, char* argv[]) {
             grid_clear(grid, bg);
         }
 
+        if (mode == RUN_MODE_NORMAL && scale_feedback.frames_remaining > 0) {
+            SDL_Color feedback_fg = {255, 255, 255, 255};
+            SDL_Color feedback_bg = {80, 0, 0, 255};
+            ui_canvas_print(ui_resources.feedback, 1, 0, scale_feedback.text,
+                            feedback_fg, feedback_bg);
+            (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_FEEDBACK,
+                                   ui_resources.feedback, UI_ANCHOR_TOP_LEFT,
+                                   UI_SCALE_INHERIT_GLOBAL, 90,
+                                   grid->width * 8, grid->height * 8);
+            scale_feedback.frames_remaining--;
+        }
+
         uint64_t render_start = SDL_GetPerformanceCounter();
-        renderer_draw(ren, grid);
+        if (mode == RUN_MODE_NORMAL) {
+            renderer_draw_layers(ren, grid, &ui_layers,
+                                 ui_preferences_scale(&preferences));
+        } else {
+            renderer_draw(ren, grid);
+        }
         uint64_t render_end = SDL_GetPerformanceCounter();
         double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
         global_total_render_ms += current_render_ms;
@@ -653,6 +887,7 @@ int app_main(int argc, char* argv[]) {
     for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
     ui_layout_destroy(hud_layout);
     ui_cache_destroy(&menu_cache);
+    app_ui_resources_destroy(&ui_resources);
     app_resources_cleanup(&resources);
 
     if (benchmark_session_is_active(mode)) {
