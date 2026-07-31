@@ -637,6 +637,10 @@ int app_main(int argc, char* argv[]) {
         last_time = start_time;
 
         input_process(&input, mode != RUN_MODE_NORMAL);
+        if (input.quit && app_state == APP_STATE_EDITOR && ued.active) {
+            input.quit = false;
+            unified_editor_request_window_close(&ued);
+        }
 
         if (mode == RUN_MODE_NORMAL) {
             UiPreferencesChangeResult scale_result;
@@ -730,7 +734,10 @@ int app_main(int argc, char* argv[]) {
                 input.editor_undo_pressed = false;
                 input.editor_redo_pressed = false;
                 input.editor_save_pressed = false;
+                input.editor_save_as_pressed = false;
                 input.editor_open_pressed = false;
+                input.editor_import_pressed = false;
+                input.editor_new_pressed = false;
                 input.editor_reload_pressed = false;
                 input.editor_previous_pressed = false;
                 input.editor_next_pressed = false;
@@ -744,6 +751,9 @@ int app_main(int argc, char* argv[]) {
                 menu_stack_clear(&ms);
                 app_state = APP_STATE_MAIN_MENU;
                 menu_stack_push(&ms, MENU_MAIN);
+            }
+            if (ued.request_window_close) {
+                input.quit = true;
             }
         }
 
@@ -829,8 +839,8 @@ int app_main(int argc, char* argv[]) {
                     ? scene_document_get_map_for_runtime(&ued.document)
                     : NULL;
                 if (ed_map && ed_map->cells && ed_map->width > 0 && ed_map->height > 0) {
-                    lighting_update(ed_map, &world);
-                    raycast_render(grid, ed_map, &cam, &assets, &world);
+                    lighting_update(ed_map, &ued.runtime_world);
+                    raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world);
                     editor_highlight_render(grid, ed_map, &cam,
                                             ued.selection, ued.hover);
                 } else {

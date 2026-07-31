@@ -49,7 +49,9 @@ static int setup(void **state) {
     if (!mkdtemp(g_root)) return -1;
     g_ready = 1;
     if (write_file("zeta.txt") != 0 || write_file("alpha.txt") != 0 ||
-        write_file("notes.md") != 0 || write_file("upper.TXT") != 0) {
+        write_file("notes.md") != 0 || write_file("upper.TXT") != 0 ||
+        write_file("zeta.tscene") != 0 || write_file("alpha.tscene") != 0 ||
+        write_file("upper.TSCENE") != 0) {
         return -1;
     }
     root_path(path, sizeof(path), "folder.txt");
@@ -68,6 +70,9 @@ static int teardown(void **state) {
     remove_entry("beta.txt");
     remove_entry("notes.md");
     remove_entry("upper.TXT");
+    remove_entry("zeta.tscene");
+    remove_entry("alpha.tscene");
+    remove_entry("upper.TSCENE");
     remove_entry("link.txt");
     root_path(path, sizeof(path), "folder.txt");
     rmdir(path);
@@ -137,6 +142,21 @@ static void test_empty_catalog_and_invalid_arguments(void **state) {
     assert_int_equal(rmdir(empty), 0);
 }
 
+static void test_native_filter_is_lowercase_and_sorted(void **state) {
+    MapCatalog catalog;
+    (void)state;
+
+    map_catalog_init(&catalog);
+    assert_int_equal(map_catalog_refresh_native(&catalog, g_root), MAP_CATALOG_OK);
+    assert_int_equal(catalog.count, 2);
+    assert_string_equal(catalog.entries[0].name, "alpha.tscene");
+    assert_string_equal(catalog.entries[1].name, "zeta.tscene");
+    assert_int_equal(map_catalog_refresh_extension(&catalog, g_root, "tscene"),
+                     MAP_CATALOG_INVALID_ARGUMENT);
+    assert_int_equal(catalog.count, 2);
+    map_catalog_clear(&catalog);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(
@@ -147,6 +167,8 @@ int main(void) {
             test_failed_refresh_preserves_prior_catalog, setup, teardown),
         cmocka_unit_test_setup_teardown(
             test_empty_catalog_and_invalid_arguments, setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_native_filter_is_lowercase_and_sorted, setup, teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

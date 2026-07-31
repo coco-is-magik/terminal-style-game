@@ -207,3 +207,12 @@ WorldInsertResult world_add_decal(WorldState *world, Decal decal) {
     world->decals[world->num_decals++] = decal;
     return WORLD_INSERT_OK;
 }
+
+WorldInsertResult world_add_resolved_decal(WorldState *world, Decal decal) {
+    if (!world || !decal.pattern || decal.pattern_cols <= 0 || decal.pattern_rows <= 0) {
+        return WORLD_INSERT_INVALID;
+    }
+    if (world->num_decals >= MAX_DECALS) return WORLD_INSERT_FULL;
+    world->decals[world->num_decals++] = decal;
+    return WORLD_INSERT_OK;
+}

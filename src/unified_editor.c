@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define EDITOR_PICKER_VISIBLE 6
 #define EDITOR_MAP_CHOOSER_VISIBLE 10
@@ -38,10 +39,16 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->last_save_result = SCENE_SAVE_OK;
     editor->last_catalog_result = MAP_CATALOG_OK;
     editor->request_exit_to_main_menu = false;
+    editor->request_window_close = false;
     editor->exit_choice = EDITOR_EXIT_RESUME;
     editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
     editor->map_chooser_index = 0;
     editor->pending_map_index = 0;
+    editor->chooser_kind = EDITOR_CHOOSER_LEGACY_CURRENT;
+    editor->pending_action = EDITOR_PENDING_NONE;
+    editor->save_as_name[0] = '\0';
+    editor->save_as_name_length = 0;
+    editor->save_as_path[0] = '\0';
     editor_clear_selection(editor);
 }
 
@@ -106,6 +113,9 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_STATE_ID_EXHAUSTED:    return "State ID exhausted";
         case EDITOR_STATUS_LOAD_FAILED:           return "Load failed";
         case EDITOR_STATUS_CATALOG_FAILED:        return "Map list failed";
+        case EDITOR_STATUS_REPAIR_REQUIRED:       return "Repair required before Save";
+        case EDITOR_STATUS_DURABILITY_WARNING:    return "Saved; durability warning";
+        case EDITOR_STATUS_INVALID_SCENE_NAME:    return "Invalid scene name";
         case EDITOR_STATUS_NONE:
         default:                                  return "";
     }
@@ -309,6 +319,7 @@ bool unified_editor_init(
 
     memset(editor, 0, sizeof(*editor));
     scene_document_init(&editor->document);
+    world_init(&editor->runtime_world);
     command_history_init(&editor->history, 1);
     map_catalog_init(&editor->map_catalog);
     editor->assets = assets;
@@ -324,16 +335,22 @@ void unified_editor_destroy(UnifiedEditorState *editor) {
 
     command_history_destroy(&editor->history);
     scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
     map_catalog_clear(&editor->map_catalog);
     free(editor->map_root);
     editor->map_root = NULL;
+    free(editor->scene_root);
+    editor->scene_root = NULL;
     editor->assets = NULL;
     editor->active = false;
     editor_reset_session_ui(editor);
 }
 
 bool unified_editor_has_document(const UnifiedEditorState *editor) {
-    return editor && editor->active && editor->document.path != NULL;
+    const Map *map;
+    if (!editor || !editor->active) return false;
+    map = scene_document_get_map(&editor->document);
+    return map && map->cells && map->width > 0 && map->height > 0;
 }
 
 MapCatalogResult unified_editor_begin_map_open(
@@ -361,6 +378,7 @@ MapCatalogResult unified_editor_begin_map_open(
     }
 
     editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    editor->chooser_kind = EDITOR_CHOOSER_LEGACY_CURRENT;
     editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
     if (!root) {
         editor->last_catalog_result = MAP_CATALOG_INVALID_ARGUMENT;
@@ -391,10 +409,73 @@ MapCatalogResult unified_editor_begin_map_open(
     return MAP_CATALOG_OK;
 }
 
+static MapCatalogResult editor_begin_filtered_chooser(
+    UnifiedEditorState *editor,
+    const char *requested_root,
+    char **stored_root,
+    EditorChooserKind kind,
+    bool native
+) {
+    const char *root;
+    char *new_root = NULL;
+    MapCatalogResult result;
+
+    if (!editor || !editor->active || !stored_root) {
+        return MAP_CATALOG_INVALID_ARGUMENT;
+    }
+    if (requested_root) {
+        if (requested_root[0] == '\0') return MAP_CATALOG_INVALID_ARGUMENT;
+        new_root = editor_duplicate_string(requested_root);
+        if (!new_root) {
+            editor->status = EDITOR_STATUS_CATALOG_FAILED;
+            return MAP_CATALOG_OUT_OF_MEMORY;
+        }
+        root = new_root;
+    } else {
+        root = *stored_root;
+    }
+    if (!root) {
+        free(new_root);
+        editor->status = EDITOR_STATUS_CATALOG_FAILED;
+        return MAP_CATALOG_INVALID_ARGUMENT;
+    }
+    result = native ? map_catalog_refresh_native(&editor->map_catalog, root)
+                    : map_catalog_refresh(&editor->map_catalog, root);
+    editor->last_catalog_result = result;
+    if (result != MAP_CATALOG_OK) {
+        free(new_root);
+        editor->status = EDITOR_STATUS_CATALOG_FAILED;
+        return result;
+    }
+    if (new_root) {
+        free(*stored_root);
+        *stored_root = new_root;
+    }
+    editor->chooser_kind = kind;
+    editor->map_chooser_index = 0;
+    editor->modal = EDITOR_MODAL_MAP_CHOOSER;
+    editor->status = EDITOR_STATUS_NONE;
+    return MAP_CATALOG_OK;
+}
+
+MapCatalogResult unified_editor_begin_native_open(UnifiedEditorState *editor,
+                                                  const char *scene_root) {
+    return editor_begin_filtered_chooser(editor, scene_root, &editor->scene_root,
+                                         EDITOR_CHOOSER_NATIVE_OPEN, true);
+}
+
+MapCatalogResult unified_editor_begin_legacy_import(UnifiedEditorState *editor,
+                                                    const char *map_root) {
+    return editor_begin_filtered_chooser(editor, map_root, &editor->map_root,
+                                         EDITOR_CHOOSER_LEGACY_IMPORT, false);
+}
+
 SceneLoadResult unified_editor_load_scene(
     UnifiedEditorState *editor,
     const char *path
 ) {
+    SceneDocument candidate_document;
+    WorldState candidate_runtime;
     if (!editor || !path) {
         return SCENE_LOAD_FILE_NOT_FOUND;
     }
@@ -406,10 +487,14 @@ SceneLoadResult unified_editor_load_scene(
     bool prev_inspector = editor->inspector_open;
     EditorModal prev_modal = editor->modal;
 
-    SceneLoadResult result = scene_document_load(&editor->document, path);
+    scene_document_init(&candidate_document);
+    world_init(&candidate_runtime);
+    SceneLoadResult result = scene_document_load(&candidate_document, path);
     editor->last_load_result = result;
 
     if (result != SCENE_LOAD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
         editor->status = EDITOR_STATUS_LOAD_FAILED;
         editor->selection = prev_selection;
         editor->hover = prev_hover;
@@ -418,6 +503,20 @@ SceneLoadResult unified_editor_load_scene(
         editor->modal = prev_modal;
         return result;
     }
+
+    if (scene_document_build_runtime_world(&candidate_document, editor->assets,
+                                           &candidate_runtime) !=
+        SCENE_RUNTIME_BUILD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+
+    scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
+    editor->document = candidate_document;
+    editor->runtime_world = candidate_runtime;
 
     command_history_destroy(&editor->history);
     command_history_init(&editor->history, editor->document.current_state);
@@ -430,6 +529,117 @@ SceneLoadResult unified_editor_load_scene(
     editor->material_picker_index = 0;
     editor->highlighted_material = 0;
     editor_sync_highlighted_from_picker(editor);
+    return SCENE_LOAD_OK;
+}
+
+typedef SceneLoadResult (*EditorDocumentLoadFn)(SceneDocument *, const char *,
+                                                SceneDiagnostic *);
+
+static SceneLoadResult editor_replace_document(UnifiedEditorState *editor,
+                                               const char *path,
+                                               EditorDocumentLoadFn load) {
+    SceneDocument candidate_document;
+    WorldState candidate_runtime;
+    SceneDiagnostic diagnostic;
+    SceneLoadResult result;
+    if (!editor || !editor->active || !path || !load) {
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    scene_document_init(&candidate_document);
+    world_init(&candidate_runtime);
+    result = load(&candidate_document, path, &diagnostic);
+    editor->last_load_result = result;
+    if (result != SCENE_LOAD_OK ||
+        scene_document_build_runtime_world(&candidate_document, editor->assets,
+                                           &candidate_runtime) !=
+            SCENE_RUNTIME_BUILD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return result == SCENE_LOAD_OK ? SCENE_LOAD_VALIDATION_FAILED : result;
+    }
+    scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
+    editor->document = candidate_document;
+    editor->runtime_world = candidate_runtime;
+    command_history_destroy(&editor->history);
+    command_history_init(&editor->history, editor->document.current_state);
+    editor_clear_selection(editor);
+    editor->inspector_open = false;
+    editor->modal = EDITOR_MODAL_NONE;
+    editor->status = scene_document_is_repair_required(&editor->document)
+                         ? EDITOR_STATUS_REPAIR_REQUIRED : EDITOR_STATUS_NONE;
+    return SCENE_LOAD_OK;
+}
+
+SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
+                                           const char *path) {
+    SceneDocument candidate_document;
+    WorldState candidate_runtime;
+    SceneDiagnostic diagnostic;
+    SceneLoadResult result;
+    if (!editor || !editor->active || !path) return SCENE_LOAD_VALIDATION_FAILED;
+    scene_document_init(&candidate_document);
+    world_init(&candidate_runtime);
+    result = scene_document_load_native_with_assets(&candidate_document, path,
+                                                    editor->assets, &diagnostic);
+    if (result != SCENE_LOAD_OK ||
+        scene_document_build_runtime_world(&candidate_document, editor->assets,
+                                           &candidate_runtime) !=
+            SCENE_RUNTIME_BUILD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->last_load_result = result;
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return result == SCENE_LOAD_OK ? SCENE_LOAD_VALIDATION_FAILED : result;
+    }
+    scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
+    editor->document = candidate_document;
+    editor->runtime_world = candidate_runtime;
+    command_history_destroy(&editor->history);
+    command_history_init(&editor->history, editor->document.current_state);
+    editor_clear_selection(editor);
+    editor->inspector_open = false;
+    editor->modal = EDITOR_MODAL_NONE;
+    editor->last_load_result = SCENE_LOAD_OK;
+    editor->status = scene_document_is_repair_required(&editor->document)
+                         ? EDITOR_STATUS_REPAIR_REQUIRED : EDITOR_STATUS_NONE;
+    return SCENE_LOAD_OK;
+}
+
+SceneLoadResult unified_editor_import_legacy(UnifiedEditorState *editor,
+                                             const char *path) {
+    return editor_replace_document(editor, path, scene_document_import_legacy);
+}
+
+SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor) {
+    SceneDocument candidate_document;
+    WorldState candidate_runtime;
+    SceneLoadResult result;
+    if (!editor || !editor->active) return SCENE_LOAD_VALIDATION_FAILED;
+    scene_document_init(&candidate_document);
+    world_init(&candidate_runtime);
+    result = scene_document_create_new(&candidate_document);
+    if (result != SCENE_LOAD_OK ||
+        scene_document_build_runtime_world(&candidate_document, editor->assets,
+                                           &candidate_runtime) !=
+            SCENE_RUNTIME_BUILD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return result == SCENE_LOAD_OK ? SCENE_LOAD_VALIDATION_FAILED : result;
+    }
+    scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
+    editor->document = candidate_document;
+    editor->runtime_world = candidate_runtime;
+    command_history_destroy(&editor->history);
+    command_history_init(&editor->history, editor->document.current_state);
+    editor_clear_selection(editor);
+    editor->inspector_open = false;
+    editor->modal = EDITOR_MODAL_NONE;
+    editor->status = EDITOR_STATUS_NONE;
     return SCENE_LOAD_OK;
 }
 
@@ -521,11 +731,24 @@ SceneSaveResult unified_editor_save(UnifiedEditorState *editor) {
         return SCENE_SAVE_NO_PATH;
     }
 
-    result = scene_document_save(&editor->document);
+    if (editor->document.path) {
+        size_t length = strlen(editor->document.path);
+        result = length > 7U &&
+                         strcmp(editor->document.path + length - 7U,
+                                ".tscene") == 0
+                     ? scene_document_save_native(&editor->document, NULL)
+                     : scene_document_save(&editor->document);
+    } else {
+        result = SCENE_SAVE_NO_PATH;
+    }
     editor->last_save_result = result;
 
     if (result == SCENE_SAVE_OK) {
         editor->status = EDITOR_STATUS_SAVED;
+    } else if (result == SCENE_SAVE_OK_DURABILITY_WARNING) {
+        editor->status = EDITOR_STATUS_DURABILITY_WARNING;
+    } else if (result == SCENE_SAVE_REPAIR_BLOCKED) {
+        editor->status = EDITOR_STATUS_REPAIR_REQUIRED;
     } else if (result == SCENE_SAVE_UNREPRESENTABLE_MATERIAL) {
         editor->status = EDITOR_STATUS_UNSAVABLE_MATERIAL_ID;
     } else {
@@ -533,6 +756,23 @@ SceneSaveResult unified_editor_save(UnifiedEditorState *editor) {
     }
 
     /* Save failure must not discard history or edits. */
+    return result;
+}
+
+SceneSaveResult unified_editor_save_as(UnifiedEditorState *editor,
+                                       const char *path, const char *name) {
+    SceneDiagnostic diagnostic;
+    SceneSaveResult result;
+    if (!editor || !editor->active) return SCENE_SAVE_INVALID_DOCUMENT;
+    result = scene_document_save_as_native(&editor->document, path, name,
+                                           &diagnostic);
+    editor->last_save_result = result;
+    if (result == SCENE_SAVE_OK) editor->status = EDITOR_STATUS_SAVED;
+    else if (result == SCENE_SAVE_OK_DURABILITY_WARNING)
+        editor->status = EDITOR_STATUS_DURABILITY_WARNING;
+    else if (result == SCENE_SAVE_REPAIR_BLOCKED)
+        editor->status = EDITOR_STATUS_REPAIR_REQUIRED;
+    else editor->status = EDITOR_STATUS_SAVE_FAILED;
     return result;
 }
 
@@ -655,9 +895,15 @@ static void editor_return_to_map_chooser(UnifiedEditorState *editor) {
     editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
 }
 
+static bool editor_save_succeeded(SceneSaveResult result) {
+    return result == SCENE_SAVE_OK ||
+           result == SCENE_SAVE_OK_DURABILITY_WARNING;
+}
+
 static void editor_attempt_pending_map_load(UnifiedEditorState *editor) {
     const MapCatalogEntry *entry =
         map_catalog_get(&editor->map_catalog, editor->pending_map_index);
+    SceneLoadResult result;
 
     if (!entry) {
         editor->status = EDITOR_STATUS_LOAD_FAILED;
@@ -665,9 +911,135 @@ static void editor_attempt_pending_map_load(UnifiedEditorState *editor) {
         return;
     }
     editor->modal = EDITOR_MODAL_MAP_CHOOSER;
-    if (unified_editor_load_scene(editor, entry->path) != SCENE_LOAD_OK) {
+    if (editor->chooser_kind == EDITOR_CHOOSER_NATIVE_OPEN) {
+        result = unified_editor_open_native(editor, entry->path);
+    } else if (editor->chooser_kind == EDITOR_CHOOSER_LEGACY_IMPORT) {
+        result = unified_editor_import_legacy(editor, entry->path);
+    } else {
+        result = unified_editor_load_scene(editor, entry->path);
+    }
+    if (result != SCENE_LOAD_OK) {
         editor->modal = EDITOR_MODAL_MAP_CHOOSER;
     }
+}
+
+static void editor_execute_pending_action(UnifiedEditorState *editor) {
+    EditorPendingAction action = editor->pending_action;
+    editor->pending_action = EDITOR_PENDING_NONE;
+    switch (action) {
+        case EDITOR_PENDING_CHOOSER_LOAD:
+            editor_attempt_pending_map_load(editor);
+            break;
+        case EDITOR_PENDING_NEW:
+            (void)unified_editor_new_scene(editor);
+            break;
+        case EDITOR_PENDING_EXIT_TO_MENU:
+            editor->request_exit_to_main_menu = true;
+            editor->modal = EDITOR_MODAL_NONE;
+            break;
+        case EDITOR_PENDING_WINDOW_CLOSE:
+            editor->request_window_close = true;
+            editor->modal = EDITOR_MODAL_NONE;
+            break;
+        case EDITOR_PENDING_NONE:
+        default:
+            editor->modal = EDITOR_MODAL_NONE;
+            break;
+    }
+}
+
+static void editor_request_destructive_action(UnifiedEditorState *editor,
+                                              EditorPendingAction action) {
+    if (!editor || !editor->active) return;
+    editor->pending_action = action;
+    if (unified_editor_has_document(editor) &&
+        scene_document_is_dirty(&editor->document)) {
+        editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
+        editor->modal = EDITOR_MODAL_DIRTY_OPEN_PROMPT;
+        return;
+    }
+    editor_execute_pending_action(editor);
+}
+
+void unified_editor_request_new(UnifiedEditorState *editor) {
+    editor_request_destructive_action(editor, EDITOR_PENDING_NEW);
+}
+
+void unified_editor_request_window_close(UnifiedEditorState *editor) {
+    editor_request_destructive_action(editor, EDITOR_PENDING_WINDOW_CLOSE);
+}
+
+static void editor_begin_save_as(UnifiedEditorState *editor) {
+    editor->save_as_name[0] = '\0';
+    editor->save_as_name_length = 0;
+    editor->save_as_path[0] = '\0';
+    editor->status = EDITOR_STATUS_NONE;
+    editor->modal = EDITOR_MODAL_SAVE_AS;
+}
+
+static bool editor_scene_name_character_valid(char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') || c == '_' || c == '-';
+}
+
+static void editor_append_save_as_text(UnifiedEditorState *editor,
+                                       const char *text) {
+    bool invalid = false;
+    if (!editor || !text) return;
+    while (*text != '\0') {
+        if (!editor_scene_name_character_valid(*text)) {
+            invalid = true;
+        } else if (editor->save_as_name_length < 64U) {
+            editor->save_as_name[editor->save_as_name_length++] = *text;
+            editor->save_as_name[editor->save_as_name_length] = '\0';
+        } else {
+            invalid = true;
+        }
+        text++;
+    }
+    editor->status = invalid ? EDITOR_STATUS_INVALID_SCENE_NAME
+                             : EDITOR_STATUS_NONE;
+}
+
+static bool editor_prepare_save_as_path(UnifiedEditorState *editor) {
+    const char *root = editor->scene_root ? editor->scene_root : "assets/scenes";
+    int written;
+    if (editor->save_as_name_length == 0U) {
+        editor->status = EDITOR_STATUS_INVALID_SCENE_NAME;
+        return false;
+    }
+    written = snprintf(editor->save_as_path, sizeof(editor->save_as_path),
+                       "%s/%s.tscene", root, editor->save_as_name);
+    if (written < 0 || (size_t)written >= sizeof(editor->save_as_path)) {
+        editor->save_as_path[0] = '\0';
+        editor->status = EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    return true;
+}
+
+static void editor_finish_save_as(UnifiedEditorState *editor) {
+    SceneSaveResult result = unified_editor_save_as(
+        editor, editor->save_as_path, editor->save_as_name);
+    if (editor_save_succeeded(result)) {
+        if (editor->pending_action != EDITOR_PENDING_NONE) {
+            editor_execute_pending_action(editor);
+        } else {
+            editor->modal = EDITOR_MODAL_NONE;
+        }
+    } else {
+        editor->modal = EDITOR_MODAL_SAVE_AS;
+    }
+}
+
+static void editor_confirm_save_as(UnifiedEditorState *editor) {
+    struct stat metadata;
+    if (!editor_prepare_save_as_path(editor)) return;
+    if (stat(editor->save_as_path, &metadata) == 0) {
+        editor->modal = EDITOR_MODAL_OVERWRITE_PROMPT;
+        return;
+    }
+    editor_finish_save_as(editor);
 }
 
 static void editor_handle_map_chooser_confirm(UnifiedEditorState *editor) {
@@ -676,13 +1048,7 @@ static void editor_handle_map_chooser_confirm(UnifiedEditorState *editor) {
         return;
     }
     editor->pending_map_index = editor->map_chooser_index;
-    if (unified_editor_has_document(editor) &&
-        scene_document_is_dirty(&editor->document)) {
-        editor->dirty_open_choice = EDITOR_DIRTY_OPEN_CANCEL;
-        editor->modal = EDITOR_MODAL_DIRTY_OPEN_PROMPT;
-        return;
-    }
-    editor_attempt_pending_map_load(editor);
+    editor_request_destructive_action(editor, EDITOR_PENDING_CHOOSER_LOAD);
 }
 
 static void editor_handle_dirty_open_prev(UnifiedEditorState *editor) {
@@ -703,17 +1069,24 @@ static void editor_handle_dirty_open_next(UnifiedEditorState *editor) {
 static void editor_handle_dirty_open_confirm(UnifiedEditorState *editor) {
     switch (editor->dirty_open_choice) {
         case EDITOR_DIRTY_OPEN_CANCEL:
-            editor_return_to_map_chooser(editor);
+            if (editor->pending_action == EDITOR_PENDING_CHOOSER_LOAD) {
+                editor_return_to_map_chooser(editor);
+            } else {
+                editor->modal = EDITOR_MODAL_NONE;
+            }
+            editor->pending_action = EDITOR_PENDING_NONE;
             break;
         case EDITOR_DIRTY_OPEN_SAVE:
-            if (unified_editor_save(editor) == SCENE_SAVE_OK) {
-                editor_attempt_pending_map_load(editor);
+            if (!editor->document.path) {
+                editor_begin_save_as(editor);
+            } else if (editor_save_succeeded(unified_editor_save(editor))) {
+                editor_execute_pending_action(editor);
             } else {
                 editor->modal = EDITOR_MODAL_DIRTY_OPEN_PROMPT;
             }
             break;
         case EDITOR_DIRTY_OPEN_DISCARD:
-            editor_attempt_pending_map_load(editor);
+            editor_execute_pending_action(editor);
             break;
         default:
             editor_return_to_map_chooser(editor);
@@ -793,6 +1166,16 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
         return;
     }
 
+    if (editor->modal == EDITOR_MODAL_SAVE_AS) {
+        editor_confirm_save_as(editor);
+        return;
+    }
+
+    if (editor->modal == EDITOR_MODAL_OVERWRITE_PROMPT) {
+        editor_finish_save_as(editor);
+        return;
+    }
+
     editor->modal = EDITOR_MODAL_NONE;
 }
 
@@ -838,6 +1221,11 @@ EditorInputConsumption unified_editor_update(
             } else if (input->editor_confirm_pressed) {
                 editor_handle_modal_confirm(editor);
                 editor_mark_keyboard(&consumed);
+            } else if ((editor->modal == EDITOR_MODAL_SAVE_AS ||
+                        editor->modal == EDITOR_MODAL_OVERWRITE_PROMPT) &&
+                       input->text_input_len > 0) {
+                editor_append_save_as_text(editor, input->text_input);
+                editor_mark_keyboard(&consumed);
             } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER &&
                        input->editor_previous_pressed) {
                 editor_handle_map_chooser_prev(editor);
@@ -867,7 +1255,10 @@ EditorInputConsumption unified_editor_update(
                        input->editor_undo_pressed ||
                        input->editor_redo_pressed ||
                        input->editor_save_pressed ||
+                       input->editor_save_as_pressed ||
                        input->editor_open_pressed ||
+                       input->editor_import_pressed ||
+                       input->editor_new_pressed ||
                        input->editor_reload_pressed ||
                        input->editor_previous_pressed ||
                        input->editor_next_pressed) {
@@ -936,8 +1327,17 @@ EditorInputConsumption unified_editor_update(
         } else if (input->editor_save_pressed) {
             (void)unified_editor_save(editor);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_save_as_pressed) {
+            editor_begin_save_as(editor);
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_open_pressed) {
             (void)unified_editor_begin_map_open(editor, NULL);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_import_pressed) {
+            (void)unified_editor_begin_legacy_import(editor, NULL);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_new_pressed) {
+            unified_editor_request_new(editor);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_reload_pressed) {
             editor_handle_reload_request(editor);

@@ -31,12 +31,15 @@ static char *catalog_duplicate(const char *text) {
     return copy;
 }
 
-static bool catalog_name_is_txt(const char *name) {
+static bool catalog_name_has_extension(const char *name, const char *extension) {
     size_t len;
+    size_t extension_len;
 
-    if (!name) return false;
+    if (!name || !extension || extension[0] != '.') return false;
     len = strlen(name);
-    return len > 4 && strcmp(name + len - 4, ".txt") == 0;
+    extension_len = strlen(extension);
+    return len > extension_len &&
+           strcmp(name + len - extension_len, extension) == 0;
 }
 
 static MapCatalogResult catalog_join_path(
@@ -125,14 +128,17 @@ void map_catalog_clear(MapCatalog *catalog) {
     map_catalog_init(catalog);
 }
 
-MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path) {
+MapCatalogResult map_catalog_refresh_extension(MapCatalog *catalog,
+                                               const char *root_path,
+                                               const char *extension) {
     MapCatalog candidate;
     DIR *directory;
     struct dirent *entry;
     MapCatalogResult result = MAP_CATALOG_OK;
     int directory_fd;
 
-    if (!catalog || !root_path || root_path[0] == '\0') {
+    if (!catalog || !root_path || root_path[0] == '\0' || !extension ||
+        extension[0] != '.' || extension[1] == '\0') {
         return MAP_CATALOG_INVALID_ARGUMENT;
     }
 
@@ -149,7 +155,7 @@ MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path)
     while ((entry = readdir(directory)) != NULL) {
         struct stat metadata;
 
-        if (!catalog_name_is_txt(entry->d_name)) continue;
+        if (!catalog_name_has_extension(entry->d_name, extension)) continue;
         if (fstatat(directory_fd, entry->d_name, &metadata,
                     AT_SYMLINK_NOFOLLOW) != 0) {
             result = MAP_CATALOG_METADATA_FAILED;
@@ -178,6 +184,15 @@ MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path)
     map_catalog_clear(catalog);
     *catalog = candidate;
     return MAP_CATALOG_OK;
+}
+
+MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path) {
+    return map_catalog_refresh_extension(catalog, root_path, ".txt");
+}
+
+MapCatalogResult map_catalog_refresh_native(MapCatalog *catalog,
+                                            const char *root_path) {
+    return map_catalog_refresh_extension(catalog, root_path, ".tscene");
 }
 
 const MapCatalogEntry *map_catalog_get(

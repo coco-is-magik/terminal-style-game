@@ -95,6 +95,10 @@ typedef struct {
     Decal         decals[MAX_DECALS];     /* Surface decorations */
     int           num_decals;             /* Number of active decals */
 
+    /* Authored scene ambient, when this runtime view was derived from a scene. */
+    double        ambient_intensity;
+    bool          has_authored_ambient;
+
     /* --- Player spawn point --- */
     Vec2          spawn_pos;              /* Default: (1.5, 1.5) */
     double        spawn_angle;            /* Default: 0.0 (east) */
@@ -172,5 +176,8 @@ WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sp
  * @param decal  The Decal struct to add (copied into the array)
  */
 WorldInsertResult world_add_decal(WorldState *world, Decal decal);
+
+/* Inserts an already world-space runtime decal without legacy migration. */
+WorldInsertResult world_add_resolved_decal(WorldState *world, Decal decal);
 
 #endif /* WORLD_H */

@@ -30,8 +30,12 @@ static void test_frame_reset_preserves_held_and_quit(void **state) {
 static void test_quit_and_headless_filter(void **state) {
     (void)state;
     InputState input = {0};
-    InputEvent key = {INPUT_EVENT_KEY_DOWN, INPUT_KEY_TAB, false, false, 0, 0, 0, NULL};
-    InputEvent quit = {INPUT_EVENT_QUIT, INPUT_KEY_NONE, false, false, 0, 0, 0, NULL};
+    InputEvent key = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_TAB, false, false, false, 0, 0, 0, NULL
+    };
+    InputEvent quit = {
+        INPUT_EVENT_QUIT, INPUT_KEY_NONE, false, false, false, 0, 0, 0, NULL
+    };
     input_apply_event(&input, &key, true);
     assert_false(input.tab);
     input_apply_event(&input, &quit, true);
@@ -41,7 +45,9 @@ static void test_quit_and_headless_filter(void **state) {
 static void test_key_and_editor_shortcuts(void **state) {
     (void)state;
     InputState input = {0};
-    InputEvent event = {INPUT_EVENT_KEY_DOWN, INPUT_KEY_UP, false, false, 0, 0, 0, NULL};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_UP, false, false, false, 0, 0, 0, NULL
+    };
     input_apply_event(&input, &event, false);
     assert_true(input.up);
     assert_true(input.editor_previous_pressed);
@@ -73,7 +79,7 @@ static void test_key_and_editor_shortcuts(void **state) {
 static void test_editor_open_requires_ctrl_and_nonrepeat(void **state) {
     InputState input = {0};
     InputEvent event = {
-        INPUT_EVENT_KEY_DOWN, INPUT_KEY_O, false, false, 0, 0, 0, NULL
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_O, false, false, false, 0, 0, 0, NULL
     };
     (void)state;
 
@@ -88,10 +94,35 @@ static void test_editor_open_requires_ctrl_and_nonrepeat(void **state) {
     assert_true(input.editor_open_pressed);
 }
 
+static void test_r2_editor_shortcuts(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_N, false, true, false, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_new_pressed);
+    event.key = INPUT_KEY_I;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_import_pressed);
+    event.key = INPUT_KEY_S;
+    event.shift = true;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_save_as_pressed);
+    assert_false(input.editor_save_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_new_pressed);
+    assert_false(input.editor_import_pressed);
+    assert_false(input.editor_save_as_pressed);
+}
+
 static void test_text_mouse_buttons_and_wheel(void **state) {
     (void)state;
     InputState input = {0};
-    InputEvent event = {INPUT_EVENT_TEXT, INPUT_KEY_NONE, false, false, 0, 0, 0, "abc"};
+    InputEvent event = {
+        INPUT_EVENT_TEXT, INPUT_KEY_NONE, false, false, false, 0, 0, 0, "abc"
+    };
     input_apply_event(&input, &event, false);
     assert_string_equal(input.text_input, "abc");
     event.type = INPUT_EVENT_MOUSE_MOTION; event.x = 2.5f; event.y = -1.0f;
@@ -112,7 +143,7 @@ static void test_text_mouse_buttons_and_wheel(void **state) {
 static void test_ui_scale_shortcuts_are_global_nonrepeat_edges(void **state) {
     InputState input = {0};
     InputEvent event = {
-        INPUT_EVENT_KEY_DOWN, INPUT_KEY_EQUALS, false, true, 0, 0, 0, NULL
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_EQUALS, false, true, false, 0, 0, 0, NULL
     };
     (void)state;
     input_apply_event(&input, &event, false);
@@ -145,6 +176,7 @@ int main(void) {
         cmocka_unit_test(test_quit_and_headless_filter),
         cmocka_unit_test(test_key_and_editor_shortcuts),
         cmocka_unit_test(test_editor_open_requires_ctrl_and_nonrepeat),
+        cmocka_unit_test(test_r2_editor_shortcuts),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
     };

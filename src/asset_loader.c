@@ -449,6 +449,18 @@ static bool load_decal(WorldState *world, const char *filepath) {
     return result == WORLD_INSERT_OK;
 }
 
+static bool load_decal_pattern(AssetRegistry *reg, int id,
+                               const char *filepath) {
+    Decal *decal = decal_load_from_file(filepath);
+    bool stored;
+    if (!decal) return false;
+    stored = asset_registry_set_decal_pattern(reg, id, decal->pattern_cols,
+                                               decal->pattern_rows,
+                                               decal->pattern);
+    decal_free(decal);
+    return stored;
+}
+
 /* ===================================================================
  *  Light loading
  * =================================================================== */
@@ -765,6 +777,14 @@ void asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
     for (int i = 1; i < 256; i++) {
         snprintf(filepath, sizeof(filepath), "%s/sprites/%d.txt", base_path, i);
         if (!load_sprite(reg, i, filepath)) {
+            if (i > 10) break;
+        }
+    }
+
+    /* ---- Load reusable decal patterns without their legacy placement ---- */
+    for (int i = 1; i < 256; i++) {
+        snprintf(filepath, sizeof(filepath), "%s/decals/%d.txt", base_path, i);
+        if (!load_decal_pattern(reg, i, filepath)) {
             if (i > 10) break;
         }
     }

@@ -22,6 +22,7 @@
  */
 
 #include "assets.h"        /* AssetRegistry, Palette, Material, SpriteAsset, PatternCell */
+#include "checked_size.h"
 #include <stdlib.h>
 #include <string.h>        /* memset(), strlen(), strcmp() */
 
@@ -45,6 +46,8 @@ void asset_registry_clear(AssetRegistry *reg) {
     for (int id = 0; id < 256; id++) {
         free(reg->sprites[id].pattern);
         reg->sprites[id].pattern = NULL;
+        free(reg->decal_patterns[id].pattern);
+        reg->decal_patterns[id].pattern = NULL;
     }
     asset_registry_init(reg);
 }
@@ -188,4 +191,45 @@ const char *material_name_by_id(const AssetRegistry *reg, int id) {
 bool material_id_is_loaded(const AssetRegistry *reg, int id) {
     if (!reg || id < 1 || id > 255) return false;
     return reg->material_names[id][0] != '\0';
+}
+
+bool asset_registry_set_decal_pattern(AssetRegistry *reg, int id, int cols,
+                                      int rows, const PatternCell *pattern) {
+    size_t cells;
+    size_t bytes;
+    PatternCell *copy;
+    if (!reg || id < 1 || id > 255 || cols <= 0 ||
+        cols > DECAL_PATTERN_ASSET_MAX_COLS || rows <= 0 ||
+        rows > DECAL_PATTERN_ASSET_MAX_ROWS || !pattern) {
+        return false;
+    }
+    if (!checked_size_2d(cols, rows, &cells) ||
+        !checked_size_bytes(cells, sizeof(*copy), &bytes)) {
+        return false;
+    }
+    copy = malloc(bytes);
+    if (!copy) return false;
+    memcpy(copy, pattern, bytes);
+    free(reg->decal_patterns[id].pattern);
+    reg->decal_patterns[id].cols = cols;
+    reg->decal_patterns[id].rows = rows;
+    reg->decal_patterns[id].pattern = copy;
+    return true;
+}
+
+const DecalPatternAsset *asset_registry_get_decal_pattern(
+    const AssetRegistry *reg, int id) {
+    if (!reg || id < 1 || id > 255 || !reg->decal_patterns[id].pattern) {
+        return NULL;
+    }
+    return &reg->decal_patterns[id];
+}
+
+const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void) {
+    static PatternCell cells[4] = {
+        {(uint8_t)'!', UINT8_C(1)}, {(uint8_t)'#', UINT8_C(2)},
+        {(uint8_t)'#', UINT8_C(2)}, {(uint8_t)'!', UINT8_C(1)}
+    };
+    static DecalPatternAsset fallback = {2, 2, cells};
+    return &fallback;
 }

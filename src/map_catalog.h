@@ -35,6 +35,11 @@ void map_catalog_init(MapCatalog *catalog);
 void map_catalog_clear(MapCatalog *catalog);
 
 MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path);
+MapCatalogResult map_catalog_refresh_extension(MapCatalog *catalog,
+                                               const char *root_path,
+                                               const char *extension);
+MapCatalogResult map_catalog_refresh_native(MapCatalog *catalog,
+                                            const char *root_path);
 
 const MapCatalogEntry *map_catalog_get(
     const MapCatalog *catalog,

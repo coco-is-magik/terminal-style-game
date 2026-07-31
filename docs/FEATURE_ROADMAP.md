@@ -217,7 +217,7 @@ Do not create empty review directories or placeholder review files.
 |---|---|---|---|---|
 | R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Verified |
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
-| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Ready to plan |
+| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Active |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Proposed |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Proposed |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
@@ -388,7 +388,7 @@ boundaries.
 
 ## R2 — Versioned scene and data foundation
 
-**Status:** Ready to plan
+**Status:** Active
 
 **Purpose:** Implement the minimum versioned, transactional scene model selected
 in R1 without duplicating authored state.
@@ -422,6 +422,10 @@ malformed input and save failures preserve prior state/destination; Q1–Q3 pass
 
 **Review checkpoint:** Review C, focused on ownership, migration, failure
 atomicity, runtime adapters, and duplicate state.
+
+**Detailed plan:**
+`R2_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-07-31.md` and
+`R2_NATIVE_SCENE_V1_SPEC_2026-07-31.md`.
 
 ## R3 — Generalized editor domain foundation
 
@@ -864,10 +868,7 @@ until that evidence exists.
 
 ## Next action
 
-**R1 is verified.** The next action is one scoped R2 requirements and implementation
-plan for the minimum versioned scene/document foundation. It must resolve the exact
-v1 grammar and limits, legacy import mapping, native path policy, `SceneDocument` and
-`WorldState` transition, typed diagnostic API and logging owner, fallback/repair
-workflow, atomic-save durability, deterministic serialization, and incremental tests
-required by `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`. No persistence code
-begins until that R2 plan passes Q1.
+**R1 is verified and R2 is Active.** Implement the approved increments in
+`R2_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-07-31.md` in order, record Q2 evidence
+continuously in `R2_IMPLEMENTATION_RECORD_2026-07-31.md`, and do not mark R2
+Verified until Q3 and Review C pass.

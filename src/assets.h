@@ -7,7 +7,8 @@
  *   Material      — Associates a palette with up to 4 glyphs (one per distance band)
  *   PatternCell   — A single glyph + material_id (used by decals and sprites)
  *   SpriteAsset   — A 2D sprite pattern definition (pattern grid + dimensions)
- *   AssetRegistry — Top-level container (256 palettes + 256 materials + 256 sprites)
+ *   DecalPatternAsset — Reusable pattern-only decal definition
+ *   AssetRegistry — Top-level container for reusable visual definitions
  *
  * All assets are indexed by ID (0–255).  ID 0 is typically unused / default.
  * Assets are loaded from disk by asset_loader.c.
@@ -19,6 +20,9 @@
 #include <SDL3/SDL.h>    /* SDL_Color */
 #include <stdint.h>       /* uint8_t */
 #include <stdbool.h>      /* bool */
+
+#define DECAL_PATTERN_ASSET_MAX_COLS 255
+#define DECAL_PATTERN_ASSET_MAX_ROWS 64
 
 /**
  * Palette — Three-colour distance-based shading palette
@@ -74,6 +78,13 @@ typedef struct {
     PatternCell *pattern;    /* Dynamically allocated pattern array (cols × rows) */
 } SpriteAsset;
 
+/** Reusable decal appearance. Placement remains authored by SceneDocument. */
+typedef struct {
+    int cols;
+    int rows;
+    PatternCell *pattern;
+} DecalPatternAsset;
+
 /**
  * AssetRegistry — Top-level container for all visual assets
  *
@@ -90,6 +101,7 @@ typedef struct {
     Palette      palettes[256];           /* Distance-based colour palettes */
     Material     materials[256];          /* Surface materials (palette ref + glyphs) */
     SpriteAsset  sprites[256];            /* 2D sprite pattern definitions */
+    DecalPatternAsset decal_patterns[256]; /* Reusable decal glyph grids */
     char         material_names[256][64]; /* Filename-derived name per material ID */
     int          material_count;          /* Number of successfully loaded material slots */
 } AssetRegistry;
@@ -187,5 +199,23 @@ const char *material_name_by_id(const AssetRegistry *reg, int id);
  * @return     true if loaded, false otherwise
  */
 bool material_id_is_loaded(const AssetRegistry *reg, int id);
+
+/** Copy a reusable decal pattern into a registry-owned ID slot. */
+bool asset_registry_set_decal_pattern(
+    AssetRegistry *reg,
+    int id,
+    int cols,
+    int rows,
+    const PatternCell *pattern
+);
+
+/** Return a borrowed loaded definition, or NULL for an invalid/unloaded ID. */
+const DecalPatternAsset *asset_registry_get_decal_pattern(
+    const AssetRegistry *reg,
+    int id
+);
+
+/** Return the process-lifetime built-in checker/! missing-reference pattern. */
+const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void);
 
 #endif /* ASSETS_H */

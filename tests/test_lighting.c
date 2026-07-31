@@ -64,11 +64,26 @@ static void test_invalid_structures_are_unchanged(void **state) {
     map_destroy(map);
 }
 
+static void test_authored_runtime_ambient_overrides_config(void **state) {
+    Map *map = map_create(2, 2);
+    WorldState world;
+    (void)state;
+    assert_non_null(map);
+    world_init(&world);
+    world.has_authored_ambient = true;
+    world.ambient_intensity = 0.73;
+    lighting_update(map, &world);
+    for (size_t i = 0U; i < 4U; i++) assert_true(map->light_map[i] == 0.73);
+    world_clear(&world);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ambient_and_null_inputs),
         cmocka_unit_test(test_positive_and_negative_lights_accumulate),
         cmocka_unit_test(test_invalid_structures_are_unchanged),
+        cmocka_unit_test(test_authored_runtime_ambient_overrides_config),
     };
     config_init_defaults();
     return cmocka_run_group_tests(tests, NULL, NULL);

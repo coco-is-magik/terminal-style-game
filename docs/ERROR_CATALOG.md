@@ -78,6 +78,7 @@ different meaning.
 | `TSG-SCENE-ENV-0004` | Serialization write, flush, sync if promised, or close fails | Remove/retain temp per documented recovery; preserve destination and dirty state |
 | `TSG-SCENE-ENV-0005` | Atomic destination replacement fails | Preserve old destination and dirty state; report temp-file recovery action |
 | `TSG-SCENE-ENV-0006` | Instance ID namespace is exhausted during creation | Reject command without mutation; preserve `next_instance_id` and history |
+| `TSG-SCENE-ENV-0007` | Destination rename committed, but parent-directory sync failed | Save is committed and document identity becomes clean; warn that crash durability is uncertain and advise retry |
 
 ### Scene internal invariant failures
 

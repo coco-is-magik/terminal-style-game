@@ -43,7 +43,9 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_select_pressed); RESET_FIELD(editor_confirm_pressed);
     RESET_FIELD(editor_cancel_pressed); RESET_FIELD(editor_undo_pressed);
     RESET_FIELD(editor_redo_pressed); RESET_FIELD(editor_save_pressed);
-    RESET_FIELD(editor_open_pressed); RESET_FIELD(editor_reload_pressed);
+    RESET_FIELD(editor_save_as_pressed); RESET_FIELD(editor_open_pressed);
+    RESET_FIELD(editor_import_pressed); RESET_FIELD(editor_new_pressed);
+    RESET_FIELD(editor_reload_pressed);
     RESET_FIELD(editor_previous_pressed);
     RESET_FIELD(editor_next_pressed);
     RESET_FIELD(ui_scale_increase_pressed);
@@ -125,8 +127,13 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_E: input->editor_select_pressed = true; break;
         case INPUT_KEY_Z: if (event->ctrl) input->editor_undo_pressed = true; break;
         case INPUT_KEY_Y: if (event->ctrl) input->editor_redo_pressed = true; break;
-        case INPUT_KEY_S: if (event->ctrl) input->editor_save_pressed = true; break;
+        case INPUT_KEY_S:
+            if (event->ctrl && event->shift) input->editor_save_as_pressed = true;
+            else if (event->ctrl) input->editor_save_pressed = true;
+            break;
         case INPUT_KEY_O: if (event->ctrl) input->editor_open_pressed = true; break;
+        case INPUT_KEY_N: if (event->ctrl) input->editor_new_pressed = true; break;
+        case INPUT_KEY_I: if (event->ctrl) input->editor_import_pressed = true; break;
         case INPUT_KEY_EQUALS:
         case INPUT_KEY_MINUS:
         case INPUT_KEY_ZERO:
@@ -146,6 +153,7 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_TAB: return INPUT_KEY_TAB; case SDLK_E: return INPUT_KEY_E;
         case SDLK_Z: return INPUT_KEY_Z; case SDLK_Y: return INPUT_KEY_Y;
         case SDLK_S: return INPUT_KEY_S; case SDLK_O: return INPUT_KEY_O;
+        case SDLK_N: return INPUT_KEY_N; case SDLK_I: return INPUT_KEY_I;
         case SDLK_EQUALS: return INPUT_KEY_EQUALS; case SDLK_MINUS: return INPUT_KEY_MINUS;
         case SDLK_0: return INPUT_KEY_ZERO;
         default: return INPUT_KEY_NONE;
@@ -195,6 +203,7 @@ void input_process(InputState *input, bool headless_mode) {
             event.key = translate_key(e.key.key);
             event.repeat = e.key.repeat;
             event.ctrl = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
+            event.shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
         } else if (e.type == SDL_EVENT_TEXT_INPUT) {
             event.type = INPUT_EVENT_TEXT; event.text = e.text.text;
         } else if (e.type == SDL_EVENT_MOUSE_MOTION) {

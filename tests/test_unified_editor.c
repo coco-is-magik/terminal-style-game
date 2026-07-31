@@ -82,6 +82,12 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "b_target.txt");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "r2_legacy.txt");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "r2_native.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "r2_saved.tscene");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -97,6 +103,13 @@ static const char *VALID_MAP =
 static const char *SECOND_MAP =
     "22\n"
     "22\n";
+
+static const char *NATIVE_SCENE =
+    "scene_type = terminal_scene\nscene_version = 1\nname = \"workflow\"\n"
+    "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 1\nambient_intensity = 0.25\n"
+    "spawn = 1.5,1.5,0\n\n[cells]\n"
+    "001 001 001\n001 000 001\n001 001 001\n";
 
 static AssetRegistry g_assets;
 
@@ -290,6 +303,48 @@ static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
     unified_editor_destroy(&ed);
     remove(first);
     remove(second);
+}
+
+static void test_r2_typed_workflows_transactional(void **state) {
+    UnifiedEditorState ed;
+    char legacy[512];
+    char native[512];
+    char saved[512];
+    MapCell *old_cells;
+    (void)state;
+    path_in_tmpdir(legacy, sizeof(legacy), "r2_legacy.txt");
+    path_in_tmpdir(native, sizeof(native), "r2_native.tscene");
+    path_in_tmpdir(saved, sizeof(saved), "r2_saved.tscene");
+    assert_int_equal(write_text_file(legacy, "11\n10\n"), 0);
+    assert_int_equal(write_text_file(native, NATIVE_SCENE), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    assert_true(unified_editor_has_document(&ed));
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.document.map.width, 10);
+    assert_int_equal(ed.runtime_world.num_lights, 0);
+    old_cells = ed.document.map.cells;
+    assert_int_not_equal(unified_editor_open_native(&ed, legacy), SCENE_LOAD_OK);
+    assert_ptr_equal(ed.document.map.cells, old_cells);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(unified_editor_import_legacy(&ed, legacy), SCENE_LOAD_OK);
+    assert_true(unified_editor_has_document(&ed));
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_null(ed.document.path);
+    assert_string_equal(ed.document.legacy_source_path, legacy);
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_NO_PATH);
+    assert_int_equal(unified_editor_save_as(&ed, saved, "converted"),
+                     SCENE_SAVE_OK);
+    assert_string_equal(ed.document.path, saved);
+    assert_string_equal(ed.document.name, "converted");
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_int_equal(unified_editor_open_native(&ed, native), SCENE_LOAD_OK);
+    assert_string_equal(ed.document.name, "workflow");
+    assert_false(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
 }
 
 static void test_clean_switch_and_failed_load_preserve(void **state) {
@@ -1357,6 +1412,7 @@ int main(void) {
         /* R0 current-map open/switch workflow */
         cmocka_unit_test(test_initial_chooser_load_and_escape),
         cmocka_unit_test(test_ctrl_o_and_catalog_failure_preserve_document),
+        cmocka_unit_test(test_r2_typed_workflows_transactional),
         cmocka_unit_test(test_clean_switch_and_failed_load_preserve),
         cmocka_unit_test(test_dirty_switch_cancel_discard_and_failure),
         cmocka_unit_test(test_dirty_save_success_then_switch_and_save_failure),

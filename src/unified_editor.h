@@ -32,8 +32,24 @@ typedef enum {
     EDITOR_MODAL_EXIT_PROMPT,
     EDITOR_MODAL_RELOAD_PROMPT,
     EDITOR_MODAL_MAP_CHOOSER,
-    EDITOR_MODAL_DIRTY_OPEN_PROMPT
+    EDITOR_MODAL_DIRTY_OPEN_PROMPT,
+    EDITOR_MODAL_SAVE_AS,
+    EDITOR_MODAL_OVERWRITE_PROMPT
 } EditorModal;
+
+typedef enum {
+    EDITOR_CHOOSER_LEGACY_CURRENT = 0,
+    EDITOR_CHOOSER_NATIVE_OPEN,
+    EDITOR_CHOOSER_LEGACY_IMPORT
+} EditorChooserKind;
+
+typedef enum {
+    EDITOR_PENDING_NONE = 0,
+    EDITOR_PENDING_CHOOSER_LOAD,
+    EDITOR_PENDING_NEW,
+    EDITOR_PENDING_EXIT_TO_MENU,
+    EDITOR_PENDING_WINDOW_CLOSE
+} EditorPendingAction;
 
 /* Exit-prompt choices (plan §9). Resume and Cancel both dismiss without exit. */
 typedef enum {
@@ -62,7 +78,10 @@ typedef enum {
     EDITOR_STATUS_OUT_OF_MEMORY,
     EDITOR_STATUS_STATE_ID_EXHAUSTED,
     EDITOR_STATUS_LOAD_FAILED,
-    EDITOR_STATUS_CATALOG_FAILED
+    EDITOR_STATUS_CATALOG_FAILED,
+    EDITOR_STATUS_REPAIR_REQUIRED,
+    EDITOR_STATUS_DURABILITY_WARNING,
+    EDITOR_STATUS_INVALID_SCENE_NAME
 } EditorStatus;
 
 typedef struct {
@@ -76,11 +95,18 @@ typedef struct {
     EditorStatus status;
 
     SceneDocument document;
+    WorldState runtime_world;
     CommandHistory history;
     MapCatalog map_catalog;
     char *map_root;
+    char *scene_root;
     size_t map_chooser_index;
     size_t pending_map_index;
+    EditorChooserKind chooser_kind;
+    EditorPendingAction pending_action;
+    char save_as_name[65];
+    size_t save_as_name_length;
+    char save_as_path[1024];
 
     SelectionTarget selection;
     EditorHit hover;
@@ -97,6 +123,7 @@ typedef struct {
     MapCatalogResult last_catalog_result;
 
     bool request_exit_to_main_menu;
+    bool request_window_close;
     bool active;
 
     /* Valid while modal == EDITOR_MODAL_EXIT_PROMPT. */
@@ -118,6 +145,12 @@ MapCatalogResult unified_editor_begin_map_open(
     UnifiedEditorState *editor,
     const char *map_root
 );
+MapCatalogResult unified_editor_begin_native_open(UnifiedEditorState *editor,
+                                                  const char *scene_root);
+MapCatalogResult unified_editor_begin_legacy_import(UnifiedEditorState *editor,
+                                                    const char *map_root);
+void unified_editor_request_new(UnifiedEditorState *editor);
+void unified_editor_request_window_close(UnifiedEditorState *editor);
 
 bool unified_editor_has_document(const UnifiedEditorState *editor);
 
@@ -125,6 +158,12 @@ SceneLoadResult unified_editor_load_scene(
     UnifiedEditorState *editor,
     const char *path
 );
+
+SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
+                                           const char *path);
+SceneLoadResult unified_editor_import_legacy(UnifiedEditorState *editor,
+                                             const char *path);
+SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor);
 
 EditorInputConsumption unified_editor_update(
     UnifiedEditorState *editor,
@@ -152,5 +191,7 @@ CommandResult unified_editor_set_wall_material(
 CommandResult unified_editor_undo(UnifiedEditorState *editor);
 CommandResult unified_editor_redo(UnifiedEditorState *editor);
 SceneSaveResult unified_editor_save(UnifiedEditorState *editor);
+SceneSaveResult unified_editor_save_as(UnifiedEditorState *editor,
+                                       const char *path, const char *name);
 
 #endif /* UNIFIED_EDITOR_H */

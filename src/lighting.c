@@ -117,7 +117,9 @@ void lighting_update(Map *map, WorldState *world) {
     /* Every tile starts at the ambient light level (e.g. 0.2 = 20% brightness).
      * This ensures no tile is ever completely black. */
     for (size_t i = 0; i < cell_count; i++) {
-        map->light_map[i] = config_get()->ambient_light;
+        map->light_map[i] = world->has_authored_ambient
+            ? world->ambient_intensity
+            : config_get()->ambient_light;
     }
 
     /* ---- Step 2: Process each light in the world ---- */
