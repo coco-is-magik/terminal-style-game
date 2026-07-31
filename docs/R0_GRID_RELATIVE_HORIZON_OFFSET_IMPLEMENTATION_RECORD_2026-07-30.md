@@ -2,7 +2,8 @@
 
 ## Status
 
-**Implementation and automated verification complete. Manual acceptance remains.**
+**Verified.** Implementation, automated verification, and manual acceptance are
+complete.
 
 ## Delivered behavior
 
@@ -60,14 +61,13 @@ During verification, the new decal test initially compared the tri-state
 corrected to compare the enum explicitly. The production implementation was not
 changed by that test correction.
 
-## Remaining acceptance
+## Manual acceptance — 2026-07-31
 
-Manual interactive acceptance is still required in both normal gameplay and
+The user confirmed the required interactive checks in both normal gameplay and
 editor walk mode:
 
-1. Move smoothly to both vertical bounds.
-2. Confirm stable walls, floor, ceiling, decals/lights, and editor highlights.
-3. Return to level view and confirm unchanged yaw, movement, crosshair, menus,
-   and UI zoom behavior.
+1. movement reached both vertical bounds smoothly;
+2. walls, floor, ceiling, decals/lights, and editor highlights remained stable;
+3. returning to level view preserved yaw, movement, crosshair, menus, and UI zoom.
 
 True angular pitch remains deferred to R8.

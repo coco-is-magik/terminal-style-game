@@ -68,6 +68,7 @@ struct UiElement {
     SDL_Color fg;
     SDL_Color bg;
     char action[UI_ELE_NAME_MAX];
+    bool focused;
 };
 
 typedef struct {
@@ -243,6 +244,14 @@ void ui_layout_substitute(UiLayout *layout, const char *slot_name, UiElement *el
  * @return             Focused UiElement, or NULL if index is out of range
  */
 UiElement *ui_layout_get_focused(UiLayout *layout, int focus_index);
+
+/**
+ * ui_layout_set_focus() — Mark one button with a non-color-only focus indicator
+ *
+ * Clears focus from every button, then marks the requested focus index when it
+ * exists. Passing an invalid index leaves all buttons unfocused.
+ */
+void ui_layout_set_focus(UiLayout *layout, int focus_index);
 
 /**
  * ui_layout_focusable_count() — Count the focusable elements in a layout

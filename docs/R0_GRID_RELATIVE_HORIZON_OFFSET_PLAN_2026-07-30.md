@@ -2,9 +2,9 @@
 
 ## Status
 
-**Implemented and automatically verified; manual acceptance remains.** This is
-the detailed plan for R0 outcome 5 in `FEATURE_ROADMAP.md`. Verification evidence
-is recorded in
+**Verified 2026-07-31.** Implementation, automated verification, and user-confirmed
+gameplay/editor acceptance are complete. This is the detailed plan for R0 outcome
+5 in `FEATURE_ROADMAP.md`. Verification evidence is recorded in
 `R0_GRID_RELATIVE_HORIZON_OFFSET_IMPLEMENTATION_RECORD_2026-07-30.md`.
 
 ## Goal

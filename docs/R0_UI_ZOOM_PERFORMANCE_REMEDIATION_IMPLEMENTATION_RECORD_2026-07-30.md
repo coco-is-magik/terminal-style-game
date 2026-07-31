@@ -94,9 +94,16 @@ correctness checksums and native performance against the strict unoptimized
 baseline. Do not make optimization the explanation for, or substitute for, the
 algorithmic fixes above.
 
-## Manual-ready checks
+## Manual visual acceptance — 2026-07-31
 
-The executable is ready for a native visual pass covering 100/125/150/200% HUD,
-menu and pause settings, moving/disappearing overlays, editor top/footer UI, and
-crosshair order. Automated framebuffer equivalence, deterministic checksums, and
-all tracker modes passed before this handoff.
+The user confirmed the native visual pass at 100/125/150/200% for the HUD,
+Main/Pause/Settings menus, moving and disappearing overlays, editor top/footer UI,
+and crosshair order. Automated framebuffer equivalence, deterministic checksums,
+and all tracker modes had passed before this acceptance.
+
+Review B then found that keyboard focus was distinguished only by foreground and
+background colors, contrary to the approved non-color-only accessibility contract.
+Focused buttons now render stable `>` and `<` edge markers in addition to the
+existing color treatment. The focused UI-element runner (15/15), strict application
+build, aggregate suite (26 passing groups), ASan/UBSan target, and all eight matrix
+modes passed after the correction.

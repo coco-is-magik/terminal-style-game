@@ -215,9 +215,9 @@ Do not create empty review directories or placeholder review files.
 
 | Phase | Purpose | Depends on | Unlocks | Status |
 |---|---|---|---|---|
-| R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Active |
-| R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Decision-blocked |
-| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Proposed |
+| R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Verified |
+| R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
+| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Ready to plan |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Proposed |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Proposed |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
@@ -238,7 +238,7 @@ Q4 review findings.
 
 ## R0 — Repository health and visible editor wins
 
-**Status:** Active
+**Status:** Verified
 
 The initial Q4 review and its remediation sequence are complete:
 [`REPOSITORY_CODE_REVIEW_2026-07-28.md`](REPOSITORY_CODE_REVIEW_2026-07-28.md).
@@ -297,10 +297,10 @@ contract. The initial review and remediation prerequisites are satisfied.
    geometry with exact layout and all-preset visibility regressions.
 5. Replace the fixed pitch clamp with a documented grid-relative safe range while
    retaining and accurately naming the current 2.5D horizon-offset model.
-   **Implemented and automatically verified 2026-07-30; manual acceptance
-   remains:** the policy clamps the existing horizon offset to `±viewport_rows`,
+   **Verified 2026-07-31:** the policy clamps the existing horizon offset to `±viewport_rows`,
    passed explicitly from the active logical grid. It does not add angular pitch
-   or vertical-world behavior. See
+   or vertical-world behavior. Automated gates and user-confirmed gameplay/editor
+   acceptance passed. See
    `R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md` and
    `R0_GRID_RELATIVE_HORIZON_OFFSET_IMPLEMENTATION_RECORD_2026-07-30.md`.
 6. Add deferred tracker-selection and benchmark-classification regression tests.
@@ -326,9 +326,12 @@ file switching, UI scale, and extreme pitch; Review B below finds no blocker.
 **Review checkpoint:** Review A before feature work and Review B after all R0
 outcomes.
 
+**Review B:** Verified 2026-07-31. No blocker remains before R1 planning. See
+`reviews/2026-07-31-roadmap-r0-review-b.md`.
+
 ## R1 — Resolve world-model and persistence decisions
 
-**Status:** Decision-blocked
+**Status:** Verified
 
 **Purpose:** Lock the minimum decisions required by floor/ceiling data, lights,
 decals, resize, verticality, glass, mirrors, and placed entities.
@@ -338,11 +341,24 @@ decals, resize, verticality, glass, mirrors, and placed entities.
 **Required outcomes:**
 
 1. Decide height-aware 2.5D versus stacked/full 3D requirements.
+   **Verified 2026-07-31:** height-aware 2.5D with one traversable interval per
+   X/Y; no stacked traversable spaces.
 2. Decide versioned scene packaging and compatibility policy.
+   **Verified 2026-07-31:** one versioned text scene, separate referenced reusable
+   assets, and explicit non-destructive legacy import.
 3. Define geometry, collision, visual surface, and optical-property separation.
+   **Verified 2026-07-31:** these are independent typed authored semantics with
+   legacy-preserving defaults.
 4. Define stable ID allocation, persistence, references, and reuse rules.
+   **Verified 2026-07-31:** one persisted scene-wide monotonic `uint64_t` namespace;
+   zero invalid; IDs never reused; undo/redo preserves identity.
 5. Define scene, reusable-asset, runtime-adapter, and derived-cache ownership.
+   **Verified 2026-07-31:** `SceneDocument` owns authored scene state,
+   `AssetRegistry` owns reusable definitions, and runtime views/caches are derived.
 6. Specify initial schemas, migration behavior, and validation boundaries.
+   **Verified 2026-07-31:** representative v1, future height-aware boundary,
+   non-destructive import, strict structural validation, visible missing-asset repair,
+   transactional load/save, and exact diagnostic requirements are documented.
 
 **Data-first opportunities:** This phase defines what is authored data, what is a
 reference, what is derived, and which rules belong in typed schemas.
@@ -359,13 +375,20 @@ reference, what is derived, and which rules belong in typed schemas.
 large compatibility/renderer consequences; representative schemas and migration
 examples are reviewable.
 
+**Exit evidence:** Verified in
+`R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`,
+`R1_SCENE_SCHEMA_SKETCH_2026-07-31.md`, and
+`R1_DECISION_RECORD_2026-07-31.md`. Repository-wide diagnostics are governed by
+`C_STYLE_AND_OWNERSHIP.md` and `ERROR_CATALOG.md`. R1 verification authorizes R2
+planning only; no native scene behavior is implemented yet.
+
 **Review checkpoint:** Findings are reviewed as part of the R2 plan; an
 additional Q4 review is required if decisions materially redirect current module
 boundaries.
 
 ## R2 — Versioned scene and data foundation
 
-**Status:** Proposed
+**Status:** Ready to plan
 
 **Purpose:** Implement the minimum versioned, transactional scene model selected
 in R1 without duplicating authored state.
@@ -841,8 +864,10 @@ until that evidence exists.
 
 ## Next action
 
-**Review A, repository remediation, and R0 outcomes 2, 3, and 4 are verified.**
-R0 outcome 5 is implemented and automatically verified under
-`R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`; manual gameplay/editor
-acceptance remains before Review B. Evidence is in
-`R0_GRID_RELATIVE_HORIZON_OFFSET_IMPLEMENTATION_RECORD_2026-07-30.md`.
+**R1 is verified.** The next action is one scoped R2 requirements and implementation
+plan for the minimum versioned scene/document foundation. It must resolve the exact
+v1 grammar and limits, legacy import mapping, native path policy, `SceneDocument` and
+`WorldState` transition, typed diagnostic API and logging owner, fallback/repair
+workflow, atomic-save durability, deterministic serialization, and incremental tests
+required by `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`. No persistence code
+begins until that R2 plan passes Q1.

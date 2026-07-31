@@ -289,6 +289,7 @@ static const char *menu_layout_name(MenuId menu) {
 
 static void menu_sync_button_colors(UiLayout *layout, int selected) {
     if (!layout) return;
+    ui_layout_set_focus(layout, selected);
     int count = ui_layout_focusable_count(layout);
     for (int i = 0; i < count; i++) {
         UiElement *button = ui_layout_get_focused(layout, i);

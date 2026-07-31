@@ -221,7 +221,35 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 
     assert_null(ui_layout_get_focused(layout, 4));
 
+    ui_layout_set_focus(layout, 1);
+    assert_false(ui_layout_get_focused(layout, 0)->focused);
+    assert_true(ui_layout_get_focused(layout, 1)->focused);
+    assert_false(ui_layout_get_focused(layout, 2)->focused);
+    assert_false(ui_layout_get_focused(layout, 3)->focused);
 
+    Grid *grid = grid_create(260, 160);
+    assert_non_null(grid);
+    SDL_Color fg = {255, 255, 255, 255};
+    SDL_Color bg = {0, 0, 0, 255};
+    Cell cell;
+    grid_clear(grid, bg);
+    ui_layout_render(layout, grid, fg, bg);
+    focused = ui_layout_get_focused(layout, 1);
+    assert_true(grid_get(grid, focused->parent->layout.x + focused->layout.x,
+                         focused->parent->layout.y + focused->layout.y, &cell));
+    assert_int_equal(cell.glyph, '>');
+    assert_true(grid_get(grid,
+                         focused->parent->layout.x + focused->layout.x +
+                             focused->layout.width - 1,
+                         focused->parent->layout.y + focused->layout.y, &cell));
+    assert_int_equal(cell.glyph, '<');
+
+    ui_layout_set_focus(layout, 99);
+    for (int i = 0; i < 4; i++) {
+        assert_false(ui_layout_get_focused(layout, i)->focused);
+    }
+
+    grid_destroy(grid);
     ui_layout_destroy(layout);
     ui_cache_destroy(&cache);
 }

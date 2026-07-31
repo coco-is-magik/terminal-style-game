@@ -408,6 +408,12 @@ void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
         emit_word_wrapped(grid, abs_x, abs_y,
                           element->layout.width, element->layout.height,
                           element->align, element->content, draw_fg, draw_bg);
+        if (element->type == UI_ELE_BUTTON && element->focused &&
+            element->layout.width >= 2) {
+            grid_set(grid, abs_x, abs_y, '>', draw_fg, draw_bg);
+            grid_set(grid, abs_x + element->layout.width - 1, abs_y,
+                     '<', draw_fg, draw_bg);
+        }
         return;
     }
 
@@ -625,6 +631,17 @@ UiElement *ui_layout_get_focused(UiLayout *layout, int focus_index) {
         if (found) return found;
     }
     return NULL;
+}
+
+void ui_layout_set_focus(UiLayout *layout, int focus_index) {
+    int count;
+
+    if (!layout) return;
+    count = ui_layout_focusable_count(layout);
+    for (int i = 0; i < count; i++) {
+        UiElement *button = ui_layout_get_focused(layout, i);
+        if (button) button->focused = i == focus_index;
+    }
 }
 
 int ui_layout_focusable_count(UiLayout *layout) {
