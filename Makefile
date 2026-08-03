@@ -626,6 +626,18 @@ style:
 	@if command -v cppcheck >/dev/null 2>&1; then cppcheck --quiet --error-exitcode=1 --std=c11 src; \
 	else echo "SKIP: cppcheck is not available"; fi
 
+check-legacy-unused:
+	@echo "Checking that deprecated legacy load/save symbols are not called from new production code..."
+	@# These symbols are retained for the second removal pass; any new production
+	@# caller outside the expected deprecated sites is a regression of Item 9.
+	@# Patterns require a real call site (trailing semicolon) so deprecation
+	@# comments like "symbol()" are not counted as callers.
+	@! grep -Rsn "scene_document_load[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
+	@! grep -Rsn "write_map_digits[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
+	@! grep -Rsn "scene_document_save[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
+	@! grep -Rsn "unified_editor_load_scene[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
+	@echo "OK: deprecated legacy symbols have no unexpected production callers"
+
 matrix:
 	@set -e; for mode in \
 		"USE_NO_STATE_TRACKER=1" "USE_DIRTY_CELLS=1" "USE_SMC_STATE_TRACKER=1" \

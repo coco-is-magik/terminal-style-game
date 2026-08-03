@@ -470,6 +470,10 @@ MapCatalogResult unified_editor_begin_legacy_import(UnifiedEditorState *editor,
                                          EDITOR_CHOOSER_LEGACY_IMPORT, false);
 }
 
+/* DEPRECATED — retained for the second removal pass after regression tests are
+   added. The legacy-current open path now routes through
+   unified_editor_import_legacy(), and F5 reload now uses editor_reload_document().
+   This function is no longer reachable. */
 SceneLoadResult unified_editor_load_scene(
     UnifiedEditorState *editor,
     const char *path
@@ -865,14 +869,25 @@ static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
     (void)unified_editor_set_wall_material(editor, editor->highlighted_material);
 }
 
+/* Reload the current document through the correct boundary: native scenes reload
+   natively; anything else (legacy source) re-imports. */
+static void editor_reload_document(UnifiedEditorState *editor, const char *path) {
+    size_t length;
+    if (!editor || !path || path[0] == '\0') return;
+    length = strlen(path);
+    if (length > 7U && strcmp(path + length - 7U, ".tscene") == 0) {
+        (void)unified_editor_open_native(editor, path);
+    } else {
+        (void)unified_editor_import_legacy(editor, path);
+    }
+}
+
 static void editor_handle_reload_request(UnifiedEditorState *editor) {
     if (scene_document_is_dirty(&editor->document)) {
         editor->modal = EDITOR_MODAL_RELOAD_PROMPT;
         return;
     }
-    if (editor->document.path) {
-        (void)unified_editor_load_scene(editor, editor->document.path);
-    }
+    editor_reload_document(editor, editor->document.path);
 }
 
 static void editor_handle_map_chooser_prev(UnifiedEditorState *editor) {
@@ -913,10 +928,11 @@ static void editor_attempt_pending_map_load(UnifiedEditorState *editor) {
     editor->modal = EDITOR_MODAL_MAP_CHOOSER;
     if (editor->chooser_kind == EDITOR_CHOOSER_NATIVE_OPEN) {
         result = unified_editor_open_native(editor, entry->path);
-    } else if (editor->chooser_kind == EDITOR_CHOOSER_LEGACY_IMPORT) {
-        result = unified_editor_import_legacy(editor, entry->path);
     } else {
-        result = unified_editor_load_scene(editor, entry->path);
+        /* EDITOR_CHOOSER_LEGACY_CURRENT and EDITOR_CHOOSER_LEGACY_IMPORT both
+           import through the SceneDocument boundary. Legacy-current open no
+           longer keeps a separate mutable digit-grid document model. */
+        result = unified_editor_import_legacy(editor, entry->path);
     }
     if (result != SCENE_LOAD_OK) {
         editor->modal = EDITOR_MODAL_MAP_CHOOSER;
@@ -1161,7 +1177,7 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
         }
         editor->modal = EDITOR_MODAL_NONE;
         if (path_copy[0] != '\0') {
-            (void)unified_editor_load_scene(editor, path_copy);
+            editor_reload_document(editor, path_copy);
         }
         return;
     }

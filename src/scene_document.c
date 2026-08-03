@@ -201,6 +201,7 @@ static int create_temp_beside(const char *dest_path, char *out_path, size_t out_
     return fd;
 }
 
+/* DEPRECATED — retained for second removal pass. */
 static SceneSaveResult write_map_digits(FILE *fp, const Map *map) {
     for (int y = 0; y < map->height; y++) {
         for (int x = 0; x < map->width; x++) {
@@ -289,6 +290,8 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
  *  Load (transactional)
  * =================================================================== */
 
+/* DEPRECATED — retained for second removal pass.
+   Legacy digit-grid loader that does not capture scene metadata. */
 SceneLoadResult scene_document_load(SceneDocument *document, const char *path) {
     if (!document || !path || path[0] == '\0') {
         return SCENE_LOAD_VALIDATION_FAILED;
@@ -588,6 +591,12 @@ SceneLoadResult scene_document_import_legacy(SceneDocument *document,
 
 /* ===================================================================
  *  Save (atomic)
+ *
+ *  DEPRECATED: scene_document_save() and write_map_digits() below are
+ *  retained for a second removal pass. After unified_editor.c routes
+ *  legacy-current open through scene_document_import_legacy(), no
+ *  document ever carries a non-.tscene path, so this legacy digit-grid
+ *  writer is unreachable. Do not use for new code.
  * =================================================================== */
 
 SceneSaveResult scene_document_validate_for_save(const SceneDocument *document) {
@@ -616,6 +625,9 @@ SceneSaveResult scene_document_validate_for_save_diagnostic(
     return SCENE_SAVE_OK;
 }
 
+/* DEPRECATED — retained for second removal pass.
+   Legacy digit-grid save; unreachable once all documents are native
+   or imported SceneDocuments. */
 SceneSaveResult scene_document_save(SceneDocument *document) {
     SceneSaveResult v = scene_document_validate_for_save(document);
     if (v != SCENE_SAVE_OK) return v;

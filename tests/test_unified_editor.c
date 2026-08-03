@@ -88,6 +88,8 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "r2_saved.tscene");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -111,6 +113,28 @@ static const char *NATIVE_SCENE =
     "spawn = 1.5,1.5,0\n\n[cells]\n"
     "001 001 001\n001 000 001\n001 001 001\n";
 
+static const char *NATIVE_SCENE_WITH_CONTENT =
+    "scene_type = terminal_scene\nscene_version = 1\nname = \"content\"\n"
+    "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 3\nambient_intensity = 0.3\n"
+    "spawn = 1.5,1.5,0\n\n"
+    "[cells]\n"
+    "001 001 001\n001 000 001\n001 001 001\n\n"
+    "[light 1]\n"
+    "position = 1.5,1.5\n"
+    "color = 255,255,255,255\n"
+    "intensity = 1\n"
+    "radius = 4\n\n"
+    "[decal_instance 2]\n"
+    "asset_kind = decal_pattern\n"
+    "asset_id = 6\n"
+    "surface = floor\n"
+    "position = 1.5,1.5,0\n"
+    "size = 0.5,0.5\n"
+    "glyph_step = 0,0\n"
+    "depth = 0.1\n"
+    "rotation = 0\n";
+
 static AssetRegistry g_assets;
 
 static void mark_material_loaded(int id, const char *name) {
@@ -130,6 +154,11 @@ static int group_setup(void **state) {
     mark_material_loaded(2, "mat2");
     mark_material_loaded(12, "mat12");
     g_assets.material_count = 3;
+    {
+        PatternCell cell = {'A', 1};
+        assert_true(asset_registry_set_decal_pattern(&g_assets, 6, 1, 1,
+                                                     &cell));
+    }
     return 0;
 }
 
@@ -147,6 +176,14 @@ static void select_east_wall(UnifiedEditorState *ed) {
     ed->selection.type = SELECTION_WALL_FACE;
     ed->selection.value.wall_face.map_x = 4;
     ed->selection.value.wall_face.map_y = 2;
+    ed->selection.value.wall_face.face = WALL_FACE_WEST;
+    ed->inspector_open = true;
+}
+
+static void select_native_east_wall(UnifiedEditorState *ed) {
+    ed->selection.type = SELECTION_WALL_FACE;
+    ed->selection.value.wall_face.map_x = 2;
+    ed->selection.value.wall_face.map_y = 1;
     ed->selection.value.wall_face.face = WALL_FACE_WEST;
     ed->inspector_open = true;
 }
@@ -238,7 +275,12 @@ static void test_initial_chooser_load_and_escape(void **state) {
     in.editor_confirm_pressed = true;
     assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
     assert_true(unified_editor_has_document(&ed));
-    assert_string_equal(ed.document.path, first);
+    /* Legacy-current chooser now imports through the SceneDocument boundary. */
+    assert_null(ed.document.path);
+    assert_string_equal(scene_document_get_legacy_source_path(&ed.document),
+                        first);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
     assert_float_equal(cam.transform.pos.x, 7.0, 0.0001);
 
@@ -366,7 +408,11 @@ static void test_clean_switch_and_failed_load_preserve(void **state) {
     zero_input(&in);
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
-    assert_string_equal(ed.document.path, second);
+    /* Switching via the legacy-current chooser now imports the target. */
+    assert_null(ed.document.path);
+    assert_string_equal(scene_document_get_legacy_source_path(&ed.document),
+                        second);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
     assert_int_equal(ed.document.map.width, 2);
     assert_int_equal(ed.history.count, 0);
     assert_float_equal(cam.transform.pos.y, 5.0, 0.0001);
@@ -382,8 +428,10 @@ static void test_clean_switch_and_failed_load_preserve(void **state) {
     update_with(&ed, &cam, &in);
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
     assert_int_equal(ed.status, EDITOR_STATUS_LOAD_FAILED);
+    /* The previously loaded first document (legacy load) is preserved. */
     assert_string_equal(ed.document.path, first);
-    assert_memory_equal(&ed.selection, &selection_before, sizeof(selection_before));
+    assert_memory_equal(&ed.selection, &selection_before,
+                        sizeof(selection_before));
     assert_true(ed.inspector_open);
     assert_float_equal(cam.transform.pos.x, 4.0, 0.0001);
 
@@ -433,6 +481,7 @@ static void test_dirty_switch_cancel_discard_and_failure(void **state) {
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
+    /* Load failed; original legacy-loaded first document is preserved. */
     assert_true(scene_document_is_dirty(&ed.document));
     assert_string_equal(ed.document.path, first);
     assert_int_equal(east_wall_mat(&ed), 2);
@@ -450,8 +499,12 @@ static void test_dirty_switch_cancel_discard_and_failure(void **state) {
     zero_input(&in);
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
-    assert_string_equal(ed.document.path, second);
-    assert_false(scene_document_is_dirty(&ed.document));
+    /* Successful switch through legacy-current chooser imports second. */
+    assert_null(ed.document.path);
+    assert_string_equal(scene_document_get_legacy_source_path(&ed.document),
+                        second);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
     assert_int_equal(ed.selection.type, SELECTION_NONE);
     assert_int_equal(ed.history.count, 0);
 
@@ -491,6 +544,7 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     update_with(&ed, &cam, &in);
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
     assert_int_equal(ed.status, EDITOR_STATUS_LOAD_FAILED);
+    /* Original legacy-loaded first document is preserved; save succeeded. */
     assert_string_equal(ed.document.path, first);
     assert_false(scene_document_is_dirty(&ed.document));
     assert_int_equal(east_wall_mat(&ed), 2);
@@ -504,7 +558,11 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     zero_input(&in);
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
-    assert_string_equal(ed.document.path, second);
+    /* Switch imports second through the SceneDocument boundary. */
+    assert_null(ed.document.path);
+    assert_string_equal(scene_document_get_legacy_source_path(&ed.document),
+                        second);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
 
     assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
     select_east_wall(&ed);
@@ -1112,7 +1170,11 @@ static void test_reload_prompt_when_dirty(void **state) {
     c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    assert_false(scene_document_is_dirty(&ed.document));
+    /* Reload of a legacy .txt source re-imports through the SceneDocument
+       boundary, so the document is imported and unsaved. */
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
     assert_int_equal(ed.selection.type, SELECTION_NONE);
 
     unified_editor_destroy(&ed);
@@ -1364,8 +1426,11 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     in.editor_confirm_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    assert_false(scene_document_is_dirty(&ed.document));
-    /* Reloaded file still has material 2 from prior save. */
+    /* Reload of a legacy .txt source re-imports as an unsaved SceneDocument. */
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
+    /* Re-imported file still has material 2 from prior save. */
     ref.map_x = 4;
     ref.map_y = 2;
     assert_true(scene_document_get_wall_material(&ed.document, ref, &mat));
@@ -1405,6 +1470,145 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     assert_non_null(strstr(buf, "2")); /* disk still saved value */
 
     unified_editor_destroy(&ed);
+}
+
+static bool path_ends_with(const char *path, const char *suffix) {
+    size_t plen = path ? strlen(path) : 0;
+    size_t slen = strlen(suffix);
+    return plen >= slen && strcmp(path + plen - slen, suffix) == 0;
+}
+
+static void test_native_reload_preserves_light_decal_ambient(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char path[512];
+
+    path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+
+    assert_string_equal(ed.document.name, "content");
+    assert_non_null(scene_document_get_path(&ed.document));
+    assert_string_equal(scene_document_get_path(&ed.document), path);
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_double_equal(scene_document_get_ambient_intensity(&ed.document),
+                        0.3, 0.0001);
+    assert_int_equal(ed.runtime_world.num_lights, 1);
+    assert_int_equal(ed.runtime_world.num_decals, 1);
+
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    select_native_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    /* F5 reload of a dirty native scene prompts before reloading. */
+    zero_input(&in);
+    in.editor_reload_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_RELOAD_PROMPT);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+
+    /* Native reload must keep the .tscene path and all authored content.
+       The old buggy path ran through the legacy digit-grid loader and would
+       drop lights, decals, ambient, and name. */
+    assert_string_equal(scene_document_get_path(&ed.document), path);
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_string_equal(ed.document.name, "content");
+    assert_double_equal(scene_document_get_ambient_intensity(&ed.document),
+                        0.3, 0.0001);
+    assert_int_equal(ed.runtime_world.num_lights, 1);
+    assert_int_equal(ed.runtime_world.num_decals, 1);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_native_reload_clean_preserves_content(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char path[512];
+
+    path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+
+    assert_string_equal(ed.document.name, "content");
+    assert_int_equal(ed.runtime_world.num_lights, 1);
+    assert_int_equal(ed.runtime_world.num_decals, 1);
+
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+
+    /* Clean F5 reload happens immediately without a prompt. */
+    zero_input(&in);
+    in.editor_reload_pressed = true;
+    EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_string_equal(scene_document_get_path(&ed.document), path);
+    assert_string_equal(ed.document.name, "content");
+    assert_int_equal(ed.runtime_world.num_lights, 1);
+    assert_int_equal(ed.runtime_world.num_decals, 1);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_editor_documents_never_hold_legacy_save_path(void **state) {
+    (void)state;
+    UnifiedEditorState ed;
+    char legacy[512];
+    char saved[512];
+
+    path_in_tmpdir(legacy, sizeof(legacy), "r2_legacy.txt");
+    path_in_tmpdir(saved, sizeof(saved), "r2_saved.tscene");
+    assert_int_equal(write_text_file(legacy, "11\n10\n"), 0);
+
+    /* New scene has no path. */
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
+
+    /* Legacy import has provenance but no native path; Save is routed to Save As. */
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_import_legacy(&ed, legacy), SCENE_LOAD_OK);
+    assert_null(ed.document.path);
+    assert_non_null(scene_document_get_legacy_source_path(&ed.document));
+    assert_true(scene_document_is_imported_unsaved(&ed.document));
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_NO_PATH);
+    assert_int_equal(unified_editor_save_as(&ed, saved, "converted"),
+                     SCENE_SAVE_OK);
+    assert_true(path_ends_with(ed.document.path, ".tscene"));
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
+
+    /* Native open keeps a .tscene path and is not imported/unsaved. */
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, saved), SCENE_LOAD_OK);
+    assert_true(path_ends_with(ed.document.path, ".tscene"));
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
+
+    remove(legacy);
+    remove(saved);
 }
 
 int main(void) {
@@ -1447,6 +1651,10 @@ int main(void) {
         cmocka_unit_test(test_exit_discard_and_exit_does_not_write),
         cmocka_unit_test(test_exit_save_failure_blocks_exit),
         cmocka_unit_test(test_phase6_vertical_slice_acceptance),
+        /* Increment 9 regression guards */
+        cmocka_unit_test(test_native_reload_preserves_light_decal_ambient),
+        cmocka_unit_test(test_native_reload_clean_preserves_content),
+        cmocka_unit_test(test_editor_documents_never_hold_legacy_save_path),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

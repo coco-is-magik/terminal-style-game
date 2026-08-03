@@ -192,6 +192,35 @@ unified-editor 32/32, and the full application build passed. Combined
 AddressSanitizer and UndefinedBehaviorSanitizer with leak detection passed both the
 28/28 scene-document and 4/4 lighting suites.
 
+### Increment 7 — Durable Save
+
+**Work:** Added durable atomic Save to `SceneDocument`. Canonical bytes are written
+to a same-directory temporary file created via `mkstemp`, then flushed, mode
+preserved, file-synced, closed, atomically renamed over the destination, and the
+parent directory synced. Pre-rename failures preserve the destination, path
+identity, and dirty state. Rename failure retains the completed temporary file and
+reports its path. Post-rename directory-sync failure is a committed Save with
+uncertain crash durability, returning `SCENE_SAVE_OK_DURABILITY_WARNING`. Existing
+destination permissions are preserved; a new file retains the owner-only `0600`
+mode created by `mkstemp`. Structured fault injection
+(`SCENE_SAVE_FAULT_TEMP_CREATE`, `WRITE`, `FLUSH`, `FILE_SYNC`, `CLOSE`, `MODE`,
+`RENAME`) exercises each failure seam.
+
+**Tests:** Expanded `test-scene-document` to 32 tests. New coverage verifies each of
+the seven injected save faults preserves the destination, path identity, and dirty
+state, and that the directory-sync failure path returns the committed-with-
+durability-warning result.
+
+**Review and recovery:** The durable-save behavior was checked against the plan's
+required failure semantics: pre-rename failures preserve destination/identity/dirty
+state, rename failure retains the completed temporary file, and directory-sync
+failure is a committed Save with a durability warning. The fault-injection tests
+cover every injected failure seam.
+
+**Verification:** Strict scene-document tests passed 32/32 (re-verified live
+2026-08-03). The durable-save fault-injection and directory-sync durability-warning
+paths are covered.
+
 ## Verification ledger
 
 | Increment | Strict build | Focused tests | Failure tests | Documentation | Result |
@@ -202,8 +231,10 @@ AddressSanitizer and UndefinedBehaviorSanitizer with leak detection passed both 
 | 4 — import/document transactions | pass | 22/22 + 11/11 + 17/17 + 32/32; sanitized 22/22 | load/import rollback and byte bounds pass | updated | Pass |
 | 5 — asset repair/fallback | pass | 26/26 + 11/11 + 17/17 + 32/32; sanitized 26/26 | missing refs, rollback, cap, Save block pass | updated | Pass |
 | 6 — derived runtime | pass | 28/28 + lighting 4/4 + unified editor 32/32; sanitized 28/28 + 4/4 | runtime rebuild rollback and compatibility pass | updated | Pass |
+| 7 — durable save | pass | 32/32 | injected create/write/flush/file-sync/close/mode/rename and directory-sync warning pass | updated | Pass |
 | 8A — typed editor workflows | pass | 32/32 + 33/33 + 11/11 + 17/17; sanitized scene document 32/32 | New/Open/Import/Save As rollback and identity pass | updated | Pass |
 | 8B — chooser, Save As, close seam | pass | 33/33 + 5/5 + 7/7 + 17/17; sanitized 33/33 + 32/32 | native/legacy chooser, Save As, overwrite, dirty close, input labels pass | updated | Pass |
+| 9 — duplicate-state retirement | pass | 36/36 + 32/32 + 11/11 + 17/17; ASan+UBSan on changed suites; `make check-legacy-unused` | legacy-current open and reload route through import; retired code marked deprecated; native `.tscene` F5 reload preserves lights/decals/ambient | updated | Pass |
 
 ## Failures and recovery notes
 
@@ -242,3 +273,28 @@ AddressSanitizer and UndefinedBehaviorSanitizer with leak detection passed both 
   menu action. The first Save As implementation also left helper functions unused
   under strict warnings; wiring them into modal confirm and text-input paths fixed
   the build.
+- Increment 9 retired the legacy direct-open document model. The first plan proposed
+  a borrowed-cells "derived Map" runtime view, which conflicted with the repo's
+  ownership discipline (one authoritative owner, no partial ownership/aliasing) and
+  the plan's own "no second editable map" rule. The accepted approach routes the
+  legacy-current chooser and F5 reload through `scene_document_import_legacy()`,
+  leaving `scene_document_load()`/`scene_document_save()`/`write_map_digits()` and
+  `unified_editor_load_scene()` as deprecated dead code for removal in a second pass.
+  This exposed a latent reload bug: F5 reload of a native `.tscene` previously ran
+  through the legacy digit-grid loader and would have dropped lights/decals/ambient;
+  reload now dispatches native paths to `unified_editor_open_native()` and legacy
+  paths to `unified_editor_import_legacy()`.
+- Increment 9 coverage review added three focused regression tests to
+  `test_unified_editor.c`: `test_native_reload_preserves_light_decal_ambient`
+  (dirty reload of a native `.tscene` keeps path, name, ambient, one light, and one
+  decal), `test_native_reload_clean_preserves_content` (clean F5 reload is immediate
+  and preserves the same authored content), and
+  `test_editor_documents_never_hold_legacy_save_path` (every reachable load/import/new
+  path leaves `document.path` either NULL or ending in `.tscene`, so the legacy
+  digit-grid save writer is unreachable-by-invariant). A new `make check-legacy-unused`
+  target scans `src/` and fails if the deprecated symbols gain unexpected production
+  callers before the second removal pass. The guard allows the expected cross-calls
+  between the two deprecated files (`src/scene_document.c` and `src/unified_editor.c`)
+  and uses semicolon-terminated patterns so deprecation comments like `symbol()` are
+  not mistaken for call sites. 33 original tests plus the 3 new tests pass (36/36);
+  sanitizer runs on the changed suites are clean.
