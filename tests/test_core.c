@@ -287,6 +287,7 @@ static void test_asset_loader(void **state) {
     
     world_clear(&world);
     map_destroy(map);
+    asset_registry_clear(&assets);
 }
 
 static void test_config_parsing(void **state) {
@@ -664,6 +665,7 @@ static void test_material_name_storage(void **state) {
     /* Filename-derived names: "assets/materials/1.txt" -> "1", etc. */
     assert_string_equal(assets.material_names[1], "1");
     assert_string_equal(assets.material_names[2], "2");
+    asset_registry_clear(&assets);
 }
 
 static void test_material_find_by_name(void **state) {
@@ -674,6 +676,7 @@ static void test_material_find_by_name(void **state) {
 
     assert_int_equal(material_find_by_name(&assets, "1"), 1);
     assert_int_equal(material_find_by_name(&assets, "nonexistent"), -1);
+    asset_registry_clear(&assets);
 }
 
 static void test_material_name_by_id(void **state) {
@@ -686,6 +689,7 @@ static void test_material_name_by_id(void **state) {
     assert_string_equal(material_name_by_id(&assets, 0), "UNKNOWN");
     /* ID 999 is out of range */
     assert_string_equal(material_name_by_id(&assets, 999), "UNKNOWN");
+    asset_registry_clear(&assets);
 }
 
 static void test_material_id_is_loaded(void **state) {
@@ -697,6 +701,7 @@ static void test_material_id_is_loaded(void **state) {
     assert_true(material_id_is_loaded(&assets, 1));
     /* ID 255 is not expected to be loaded */
     assert_false(material_id_is_loaded(&assets, 255));
+    asset_registry_clear(&assets);
 }
 
 static void test_material_count(void **state) {
@@ -707,6 +712,7 @@ static void test_material_count(void **state) {
 
     /* At least 4 material files exist in assets/materials/ */
     assert_true(assets.material_count >= 4);
+    asset_registry_clear(&assets);
 }
 
 /* ===================================================================
@@ -826,6 +832,7 @@ static void test_numeric_material_regression(void **state) {
     assert_string_equal(material_name_by_id(&assets, 1), "1");
     assert_string_equal(material_name_by_id(&assets, 2), "2");
     assert_true(assets.material_count >= 4);
+    asset_registry_clear(&assets);
 }
 
 int main(void) {

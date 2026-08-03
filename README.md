@@ -176,12 +176,17 @@ Maintainer references:
 ## Editors
 
 The main menu exposes one **Editor**. Entering it opens an in-game chooser for
-regular lowercase `.txt` map files directly under `assets/maps/`; walking,
-selection, material preview, and rendering then share one camera and one
-authoritative map. The chooser is deliberately limited to the current digit-grid
-map workflow, not a general file dialog or final scene system. Handled menu input
-is consumed before the new editor state updates, so the Enter used to choose
-**Editor** does not also select a map.
+scene and map files; walking, selection, material preview, and rendering then
+share one camera and one authoritative `SceneDocument`. Handled menu input is
+consumed before the new editor state updates, so the Enter used to choose
+**Editor** does not also select a file.
+
+The editor works on **native `.tscene` scenes** (the versioned v1 format) and can
+**import** legacy lowercase `.txt` digit-grid maps. A legacy import is a
+non-destructive conversion: the source bytes are never changed, the document is
+dirty and unsaved, and Save routes to Save As. The chooser lists native scenes
+first and exposes legacy `.txt` files through a separate **Import legacy map…**
+action.
 
 In edit mode, an adaptive center `+` marks the aim point. The hovered wall face
 uses a dashed outline; pressing `E` opens the inspector and gives the selected
@@ -197,15 +202,18 @@ face a solid outline. Closing the inspector clears that persistent selection.
 | `Up` / `Down` | Move through loaded materials or modal choices |
 | `Enter` | Apply the highlighted material or confirm a modal choice |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
-| `Ctrl+S` | Save the current map |
+| `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
+| `Ctrl+S` | Save the current scene |
+| `Ctrl+Shift+S` | Save As (writes `assets/scenes/<name>.tscene`) |
 | `Ctrl+O` | Reopen the current-map chooser |
+| `Ctrl+I` | Open the legacy import chooser |
 | `F5` | Reload; dirty documents require confirmation |
 | `Escape` | Close inspector, then open the editor exit prompt |
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.
 
-Selecting another map while the document is dirty opens a separate
+Selecting another scene while the document is dirty opens a separate
 Save/Discard/Cancel prompt. Failed save or target load keeps the current document
 loaded and leaves the workflow open with a visible error. Escape returns one
 level: dirty prompt to chooser, in-editor chooser to the current document, and
@@ -215,18 +223,21 @@ the initial no-document chooser to the main menu.
 
 - The map format stores **one material ID per cell**, so selecting any wall
   face and applying a material changes the entire wall cell, not one face.
-- Map persistence stores one decimal character per cell. Only IDs `0..9` can
-  be saved (`0` is empty/passable; positive IDs are walls).
+- Native `.tscene` cells store three-digit material IDs `000..255`; legacy
+  digit-grid maps store one decimal character per cell, so only IDs `0..9`
+  persist through the legacy writer.
 - Loaded material IDs above `9` may be applied for immediate live preview, but
   the inspector marks them unsaveable and saving is rejected until all cells
-  return to `0..9`. The prior map file is preserved on failure.
-- Ragged map rows are accepted on load and padded on the right with empty
-  material-`0` cells to the longest row.
+  return to `0..9`. The prior file is preserved on failure.
+- Ragged legacy map rows are accepted on import and padded on the right with
+  empty material-`0` cells to the longest row.
 - If a selected wall references an unloaded material, its numeric ID is shown
   with `(missing)` and may be replaced by a loaded material.
+- A scene whose decal references a missing reusable pattern commits in visible
+  repair mode: the authored reference is preserved, a conspicuous fallback is
+  shown, and normal Save is blocked until the reference is explicitly replaced.
 - Map discovery is non-recursive and does not follow symlinks. Native dialogs,
-  editable paths, recent files, New, and Save As are not part of the current-map
-  workflow.
+  editable paths, and recent files are not part of the current workflow.
 
 Deferred work includes map-cell construction/deletion, per-face materials,
 floor and ceiling editing, material authoring, integrated painter UI, decal and

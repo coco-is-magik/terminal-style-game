@@ -221,6 +221,24 @@ cover every injected failure seam.
 2026-08-03). The durable-save fault-injection and directory-sync durability-warning
 paths are covered.
 
+### Increment 10 — Q3 and Review C (headless portion)
+
+**Work:** Ran the headless Q3 gates and performed Review C. Fixed a pre-existing
+test-fixture leak in `tests/test_core.c` where `asset_loader_load_registry`
+allocations were never freed; added `asset_registry_clear(&assets)` to the seven
+affected tests. Updated `README.md` to describe the R2 scene workflow (native
+`.tscene`, legacy import, New/Save/Save As/Reload, repair mode) instead of the
+stale digit-grid-only editor description. Wrote `docs/reviews/2026-08-03-roadmap-r2.md`.
+
+**Verification:** Strict build passed; aggregate suite passed 27 suites with 0
+failures; build/run feature matrix passed 8/8 modes; full-suite ASan passed with
+0 failures and 0 leak summaries; full-suite UBSan passed with 0 failures and 0
+runtime errors; `make check-legacy-unused` passed. Review C found no blockers.
+
+**Remaining (video-gated):** Interactive acceptance and benchmark/stability runs
+require a video/SDL environment and are recorded as manual steps in Review C. R2
+remains Active until those are recorded.
+
 ## Verification ledger
 
 | Increment | Strict build | Focused tests | Failure tests | Documentation | Result |
@@ -235,6 +253,7 @@ paths are covered.
 | 8A — typed editor workflows | pass | 32/32 + 33/33 + 11/11 + 17/17; sanitized scene document 32/32 | New/Open/Import/Save As rollback and identity pass | updated | Pass |
 | 8B — chooser, Save As, close seam | pass | 33/33 + 5/5 + 7/7 + 17/17; sanitized 33/33 + 32/32 | native/legacy chooser, Save As, overwrite, dirty close, input labels pass | updated | Pass |
 | 9 — duplicate-state retirement | pass | 36/36 + 32/32 + 11/11 + 17/17; ASan+UBSan on changed suites; `make check-legacy-unused` | legacy-current open and reload route through import; retired code marked deprecated; native `.tscene` F5 reload preserves lights/decals/ambient | updated | Pass |
+| 10 — Q3 + Review C (headless) | pass | aggregate 27 suites 0 failures; matrix 8/8; full ASan 0 leaks; full UBSan 0 errors; `make check-legacy-unused` | test-fixture leak fixed; README updated; Review C no blockers | updated | Pass (interactive acceptance pending) |
 
 ## Failures and recovery notes
 
