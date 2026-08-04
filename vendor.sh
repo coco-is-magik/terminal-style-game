@@ -11,7 +11,7 @@ cd vendor/src
 [ -d SDL_mixer ] || git clone https://github.com/libsdl-org/SDL_mixer.git
 [ -d enet ] || git clone https://github.com/lsalzman/enet.git
 [ -d cmocka ] || git clone https://gitlab.com/cmocka/cmocka.git
-[ -d smc ] || git clone https://github.com/coco-is-magik/self-modifying-calculator.git
+[ -d smc ] || git clone https://github.com/coco-is-magik/self-modifying-calculator.git smc
 
 build_dep () {
     NAME=$1
