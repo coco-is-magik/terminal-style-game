@@ -68,7 +68,7 @@ legacy-symbol guard passed.
 **Implemented:** Added a headless `editor_domain` seam with typed wall-material and
 point-light adapters. Target dispatch selects the applicable inspector; the wall
 adapter constructs the established whole-cell material command request; and the
-light adapter exposes eight typed fields (`x`, `y`, RGBA, intensity, radius), labels,
+light adapter exposes seven typed fields (`x`, `y`, RGB, intensity, radius), labels,
 bounded ranges, steps, formatting, and stable-ID replacement requests. There is no
 untyped property dictionary or generic string mutation API.
 
@@ -85,7 +85,8 @@ borrows `SceneDocument`/`Map` values and returns metadata, formatted values, or 
 owned `EditorMutationRequest`; it has no SDL, renderer, grid, filesystem, runtime
 world, controller-state, or command-history dependency. `unified_editor` adapts
 explicit input edges and renders the existing terminal interface. It never writes a
-light or wall material directly.
+light or wall material directly. Alpha remains preserved by scene and command values but
+is intentionally absent from the inspector because it has no visible renderer behavior.
 
 **Focused verification:** Dedicated adapter runner passed 6/6, input passed 10/10,
 and unified editor passed 47/47 under strict warnings. Coverage includes typed
@@ -95,7 +96,7 @@ rejection, held Left/Right repeat, inline numeric replacement, visible light
 inspector, command history/dirty state, derived
 runtime synchronization, undo/redo, failed-load state preservation, and native
 Save/Open persistence. The aggregate suite passed 28/28 runners; focused ASan and
-UBSan passed adapter 4/4 and unified editor 45/45 without diagnostics; the strict
+UBSan passed the focused adapter and unified-editor suites without diagnostics; the strict
 application build and deprecated legacy-symbol guard passed.
 
 ## Increment D — Highlight providers
@@ -134,13 +135,13 @@ benchmark/stability remains part of Increment E's Q3 closeout.
 **Implemented:** Added one shared typed inspector presentation descriptor proven by
 both concrete domains. It supplies inspector title, controls, optional note, field
 count, field label, and typed choice/numeric field shape. Wall remains a one-field
-material choice with Up/Down/Enter. Light remains eight bounded numeric fields with
+material choice with Up/Down/Enter. Light uses seven bounded numeric fields with
 Up/Down/Left/Right. Domain-specific value rendering and mutation stay specialized;
 there is no universal property dictionary, string-to-value mutation, generic widget
 framework, or direct UI write into authored state.
 
-**Focused verification:** Strict editor-domain runner passed 5/5, unified-editor
-runner passed 45/45, and highlight runner passed 14/14. Tests assert the shared
+**Focused verification:** Strict editor-domain runner passed 6/6, unified-editor
+runner passed 47/47, and highlight runner passed 14/14. Tests assert the shared
 presentation descriptor for both domains and the rendered title/control/note text,
 while preserving command-only edits, native Save/Open, wall controls, and typed
 highlight behavior.

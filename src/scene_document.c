@@ -1115,6 +1115,16 @@ SceneRuntimeBuildResult scene_document_build_runtime_world(
         decal.glyph_step_u = source->glyph_step_u;
         decal.glyph_step_v = source->glyph_step_v;
         decal.depth = source->depth; decal.rotation = source->rotation;
+        if (source->surface == SCENE_DECAL_SURFACE_WALL) {
+            decal.z = source->v + source->height * 0.5;
+            if (source->side == 0) {
+                decal.x = source->map_x + 1.0;
+                decal.y = source->map_y + source->u + source->width * 0.5;
+            } else {
+                decal.x = source->map_x + source->u + source->width * 0.5;
+                decal.y = source->map_y + 1.0;
+            }
+        }
         if (world_add_resolved_decal(&temporary, decal) != WORLD_INSERT_OK) {
             free(decal.pattern);
             world_clear(&temporary);

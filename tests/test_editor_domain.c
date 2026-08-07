@@ -85,6 +85,7 @@ static void test_light_metadata_and_formatting(void **state) {
     assert_true(editor_domain_light_field_metadata(
         EDITOR_LIGHT_FIELD_RED, &document.map, &metadata));
     assert_true(metadata.minimum == 0.0 && metadata.maximum == 255.0);
+    assert_int_equal(EDITOR_LIGHT_FIELD_COUNT, 7);
     assert_false(editor_domain_light_field_metadata(
         EDITOR_LIGHT_FIELD_COUNT, &document.map, &metadata));
     assert_false(editor_domain_light_field_metadata(

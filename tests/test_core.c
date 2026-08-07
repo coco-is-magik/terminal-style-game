@@ -290,21 +290,68 @@ static void test_asset_loader(void **state) {
     asset_registry_clear(&assets);
 }
 
-static void test_lit_palette_color_is_camera_distance_independent(void **state) {
-    Palette palette = {
-        {200, 100, 50, 255}, {20, 40, 60, 255}, {1, 2, 3, 255}
-    };
-    SDL_Color near_legacy;
-    SDL_Color far_legacy;
-    SDL_Color lit;
+static unsigned long grid_region_luminance(const Grid *grid, int y0, int y1) {
+    unsigned long total = 0UL;
+    for (int y = y0; y < y1; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            const Cell *cell = &grid->cells[y * grid->width + x];
+            total += cell->fg.r + cell->fg.g + cell->fg.b;
+            total += cell->bg.r + cell->bg.g + cell->bg.b;
+        }
+    }
+    return total;
+}
+
+static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **state) {
+    Grid *ambient_grid = grid_create(41, 25);
+    Grid *lit_grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    SDL_Color black = {0, 0, 0, 255};
+    unsigned long ambient_top, ambient_middle, ambient_bottom;
     (void)state;
-    near_legacy = palette_sample(&palette, 1.0, 0.5);
-    far_legacy = palette_sample(&palette, 9.0, 0.5);
-    assert_int_not_equal(near_legacy.r, far_legacy.r);
-    lit = palette_sample_lit(&palette, 0.5);
-    assert_int_equal(lit.r, 100);
-    assert_int_equal(lit.g, 50);
-    assert_int_equal(lit.b, 25);
+
+    assert_non_null(ambient_grid);
+    assert_non_null(lit_grid);
+    assert_non_null(map);
+    for (int x = 0; x < 7; x++) {
+        map_set(map, x, 0, 1);
+        map_set(map, x, 6, 1);
+    }
+    for (int y = 0; y < 7; y++) {
+        map_set(map, 0, y, 1);
+        map_set(map, 6, y, 1);
+    }
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    asset_registry_init(&assets);
+    asset_registry_set_palette(&assets, 1,
+        (SDL_Color){255, 255, 255, 255},
+        (SDL_Color){150, 150, 150, 255},
+        (SDL_Color){50, 50, 50, 255});
+    asset_registry_set_material(&assets, 1, 1, "#x-.");
+    world_init(&world);
+    world.has_authored_ambient = true;
+    world.ambient_intensity = 0.05;
+
+    lighting_update(map, &world);
+    raycast_render(ambient_grid, map, &camera, &assets, &world);
+    ambient_top = grid_region_luminance(ambient_grid, 0, 8);
+    ambient_middle = grid_region_luminance(ambient_grid, 8, 17);
+    ambient_bottom = grid_region_luminance(ambient_grid, 17, 25);
+
+    assert_int_equal(world_add_light(
+        &world, 4.5, 3.5, black, 1.0, 4.0), WORLD_INSERT_OK);
+    lighting_update(map, &world);
+    raycast_render(lit_grid, map, &camera, &assets, &world);
+    assert_true(grid_region_luminance(lit_grid, 0, 8) > ambient_top);
+    assert_true(grid_region_luminance(lit_grid, 8, 17) > ambient_middle);
+    assert_true(grid_region_luminance(lit_grid, 17, 25) > ambient_bottom);
+
+    map_destroy(map);
+    grid_destroy(ambient_grid);
+    grid_destroy(lit_grid);
 }
 
 static void test_config_parsing(void **state) {
@@ -875,7 +922,7 @@ int main(void) {
         cmocka_unit_test(test_renderer_preflight_boundaries),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
         cmocka_unit_test(test_asset_loader),
-        cmocka_unit_test(test_lit_palette_color_is_camera_distance_independent),
+        cmocka_unit_test(test_rendered_point_light_affects_ceiling_walls_and_floor),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_config_transactional_valid_override),
         cmocka_unit_test(test_config_invalid_file_rolls_back),

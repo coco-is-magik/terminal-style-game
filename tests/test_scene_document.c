@@ -1253,6 +1253,32 @@ static void test_create_new_exact_defaults(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_native_load_allocates_light_map(void **state) {
+    SceneDocument doc;
+    SceneDiagnostic diagnostic;
+    AssetRegistry assets;
+    PatternCell cell = {(uint8_t)'D', UINT8_C(1)};
+    (void)state;
+
+    scene_document_init(&doc);
+    asset_registry_init(&assets);
+    assert_true(asset_registry_set_decal_pattern(&assets, 1, 1, 1, &cell));
+    assert_true(asset_registry_set_decal_pattern(&assets, 2, 1, 1, &cell));
+    assert_true(asset_registry_set_decal_pattern(&assets, 3, 1, 1, &cell));
+    assert_true(asset_registry_set_decal_pattern(&assets, 4, 1, 1, &cell));
+    assert_true(asset_registry_set_decal_pattern(&assets, 5, 1, 1, &cell));
+    assert_true(asset_registry_set_decal_pattern(&assets, 6, 1, 1, &cell));
+
+    assert_int_equal(scene_document_load_native_with_assets(
+        &doc, "assets/scenes/testscene.tscene", &assets, &diagnostic),
+        SCENE_LOAD_OK);
+    assert_non_null(doc.map.cells);
+    assert_non_null(doc.map.light_map);
+
+    scene_document_destroy(&doc);
+    asset_registry_clear(&assets);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1292,6 +1318,7 @@ int main(void) {
         cmocka_unit_test(test_get_wall_material_oob),
         cmocka_unit_test(test_accessors_null_safe),
         cmocka_unit_test(test_create_new_exact_defaults),
+        cmocka_unit_test(test_native_load_allocates_light_map),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

@@ -16,14 +16,15 @@ workflow and one concrete stable-ID scene domain: authored point lights.
 1. The two proof domains are wall faces and `SceneLight` point lights.
 2. Light selection stores `SceneInstanceId`, never a collection index or pointer.
 3. R3 supports selecting, inspecting, and editing bounded light fields: position,
-   RGBA color, intensity, and radius.
+   RGB marker color, intensity, and radius. Alpha remains serialized compatibility
+   data but is not exposed as a control because no current renderer behavior uses it.
 4. Light create/place/move/delete remains deferred to R6.
 5. Shared inspector metadata remains typed and is introduced only where both
    concrete domains prove the need. There is no universal property bag.
 6. UI invokes document commands. It never mutates authored scene fields directly.
 7. Light picking, target validation, commands, and metadata remain deterministic
    and headless. SDL, rendering, and input adaptation remain outside those seams.
-8. Point-light propagation remains scalar in R3. RGBA controls the visible source
+8. Point-light propagation remains scalar in R3. RGB controls the visible source
    marker; colored surface illumination requires a future multi-channel light-map
    contract and is not represented as though it already exists.
 
@@ -41,8 +42,8 @@ workflow and one concrete stable-ID scene domain: authored point lights.
   remain green.
 - Point-light numeric fields support held Left/Right repeat and inline typed replacement
   through the same typed command boundary.
-- Authored ambient/intensity/radius changes remain visually distinguishable from
-  camera-distance wall/decal material presentation.
+- The checked-in native acceptance fixture matches the legacy play fixture's ambient,
+  point light, and six placed decal instances so comparisons use equivalent content.
 
 ## Forbidden shortcuts
 
@@ -109,8 +110,8 @@ runners; strict application build; aggregate suite; ASan/UBSan on changed seams.
   state-ID exhaustion.
 - Inspector adapters: correct typed fields/ranges and command-only mutation.
 - Highlights: wall regression and light projection/occlusion.
-- Lighting: exact authored ambient, intensity/radius falloff, saturation, and stable
-  wall color independent of camera-distance palette bands.
+- Lighting: exact authored ambient, intensity/radius falloff, saturation, and rendered
+  point-light effects on ceiling, wall, and floor regions.
 - Full Save/Open/reload round-trip after light edits.
 
 ## Exit gate

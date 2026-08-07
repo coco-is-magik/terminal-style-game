@@ -163,8 +163,6 @@ void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const c
  * @return             The final shaded SDL_Color
  */
 SDL_Color palette_sample(const Palette *p, double distance, double light_level);
-/** Samples the stable near palette colour using only authored light level. */
-SDL_Color palette_sample_lit(const Palette *p, double light_level);
 
 /**
  * material_find_by_name() — Look up a material ID by its filename-derived name

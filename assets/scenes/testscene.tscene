@@ -5,8 +5,8 @@ width = 10
 height = 6
 origin_x = 0
 origin_y = 0
-next_instance_id = 2
-ambient_intensity = 0.01000000000000001
+next_instance_id = 8
+ambient_intensity = 0.20000000000000001
 spawn = 1.5,1.5,0
 legacy_source_path = "assets/maps/1.txt"
 
@@ -23,3 +23,65 @@ position = 4.5,2.5
 color = 255,255,255,255
 intensity = 1
 radius = 4
+
+[decal_instance 2]
+asset_kind = decal_pattern
+asset_id = 1
+surface = wall
+anchor = 2,2,0
+uv = 0.2,0.4
+size = 0.6,0.2
+glyph_step = 0,0
+depth = 0.1
+rotation = 0
+
+[decal_instance 3]
+asset_kind = decal_pattern
+asset_id = 2
+surface = floor
+position = 5,3,0
+size = 2,0.5
+glyph_step = 0.015,0.03
+depth = 0.1
+rotation = 0
+
+[decal_instance 4]
+asset_kind = decal_pattern
+asset_id = 3
+surface = ceiling
+position = 5,2,1
+size = 2,0.5
+glyph_step = 0,0
+depth = 0.1
+rotation = 0
+
+[decal_instance 5]
+asset_kind = decal_pattern
+asset_id = 4
+surface = wall
+anchor = 3,2,0
+uv = 0,0
+size = 0.8,0.8
+glyph_step = 0.002,0.004
+depth = 0.1
+rotation = 0
+
+[decal_instance 6]
+asset_kind = decal_pattern
+asset_id = 5
+surface = floor
+position = 5,1.5,0
+size = 1,1
+glyph_step = 0,0
+depth = 0.1
+rotation = 0
+
+[decal_instance 7]
+asset_kind = decal_pattern
+asset_id = 6
+surface = ceiling
+position = 7,1.5,1
+size = 1,1
+glyph_step = 0,0
+depth = 0.1
+rotation = 0

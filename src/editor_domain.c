@@ -109,9 +109,6 @@ bool editor_domain_light_field_metadata(
         case EDITOR_LIGHT_FIELD_BLUE:
             metadata = (EditorLightFieldMetadata){field, "Blue", 0.0, 255.0, 1.0, 0U};
             break;
-        case EDITOR_LIGHT_FIELD_ALPHA:
-            metadata = (EditorLightFieldMetadata){field, "Alpha", 0.0, 255.0, 1.0, 0U};
-            break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             metadata = (EditorLightFieldMetadata){
                 field, "Intensity", EDITOR_LIGHT_INTENSITY_MIN,
@@ -152,7 +149,6 @@ bool editor_domain_format_light_field(
         case EDITOR_LIGHT_FIELD_RED: written = snprintf(out_text, out_size, "%u", light->red); break;
         case EDITOR_LIGHT_FIELD_GREEN: written = snprintf(out_text, out_size, "%u", light->green); break;
         case EDITOR_LIGHT_FIELD_BLUE: written = snprintf(out_text, out_size, "%u", light->blue); break;
-        case EDITOR_LIGHT_FIELD_ALPHA: written = snprintf(out_text, out_size, "%u", light->alpha); break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             written = snprintf(out_text, out_size, "%.2f", light->intensity);
             break;
@@ -202,10 +198,6 @@ bool editor_domain_make_light_step_request(
         case EDITOR_LIGHT_FIELD_BLUE:
             next = clamp_step(value.blue, &metadata, direction);
             value.blue = (uint8_t)next;
-            break;
-        case EDITOR_LIGHT_FIELD_ALPHA:
-            next = clamp_step(value.alpha, &metadata, direction);
-            value.alpha = (uint8_t)next;
             break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             value.intensity = clamp_step(value.intensity, &metadata, direction);
@@ -258,10 +250,6 @@ bool editor_domain_make_light_value_request(
         case EDITOR_LIGHT_FIELD_BLUE:
             if (numeric_value != (double)(uint8_t)numeric_value) return false;
             value.blue = (uint8_t)numeric_value;
-            break;
-        case EDITOR_LIGHT_FIELD_ALPHA:
-            if (numeric_value != (double)(uint8_t)numeric_value) return false;
-            value.alpha = (uint8_t)numeric_value;
             break;
         case EDITOR_LIGHT_FIELD_INTENSITY: value.intensity = numeric_value; break;
         case EDITOR_LIGHT_FIELD_RADIUS: value.radius = numeric_value; break;

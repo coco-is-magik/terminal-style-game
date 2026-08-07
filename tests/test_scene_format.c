@@ -122,7 +122,7 @@ static void test_parse_and_canonical_round_trip(void **state) {
                      SCENE_FORMAT_OK);
     assert_int_equal(first.map.width, 4);
     assert_int_equal(first.map.height, 3);
-    assert_null(first.map.light_map);
+    assert_non_null(first.map.light_map);
     assert_int_equal(first.light_count, 1);
     assert_int_equal(first.decal_count, 1);
     assert_int_equal(first.lights[0].id, 3);

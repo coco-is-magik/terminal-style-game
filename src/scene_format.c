@@ -474,6 +474,8 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
                       NULL, "invalid dimensions", 0U, 0U);
     candidate->map.cells = calloc(count, sizeof(*candidate->map.cells));
     if (!candidate->map.cells) goto allocation_failed;
+    candidate->map.light_map = calloc(count, sizeof(*candidate->map.light_map));
+    if (!candidate->map.light_map) goto allocation_failed;
     if (lights) {
         candidate->lights = calloc(lights, sizeof(*candidate->lights));
         if (!candidate->lights) goto allocation_failed;

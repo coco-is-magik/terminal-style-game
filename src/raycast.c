@@ -175,8 +175,8 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 Material *d_mat = &assets->materials[pc.material_id];
                 double light_level = decal_light_level(map, d, world_x, world_y,
                                                        basis.normal[1]);
-                SDL_Color fg = palette_sample_lit(
-                    &assets->palettes[d_mat->palette_id], light_level);
+                SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
+                                               depth, light_level);
                 grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
                 decal_depth[cell_index] = depth;
                 decal_order[cell_index] = source_order;
@@ -430,8 +430,8 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             if (ray.side == 1) light_level *= config_get()->side_shadow_attenuation;
 
             /* Sample the wall colour from the material's palette */
-            SDL_Color wall_color = palette_sample_lit(
-                &assets->palettes[mat->palette_id], light_level);
+            SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id],
+                                                   ray.distance, light_level);
 
             /* ---- Draw each pixel of the wall slice ---- */
             for (int y = draw_start; y <= draw_end; y++) {
