@@ -179,6 +179,113 @@ static void test_boundary_coordinates_safe(void **state) {
     map_destroy(m);
 }
 
+
+static EditorHit no_wall_hit(void) {
+    EditorHit hit = {0};
+    hit.target.type = SELECTION_NONE;
+    return hit;
+}
+
+static void test_light_pick_nearest_and_stable_tie(void **state) {
+    SceneLight lights[3] = {0};
+    Camera cam;
+    EditorHit hit;
+    (void)state;
+
+    camera_init(&cam, 1.0, 1.0, 0.0, PI / 2.0);
+    lights[0].id = 9; lights[0].x = 3.0; lights[0].y = 1.1;
+    lights[1].id = 7; lights[1].x = 3.0; lights[1].y = 1.1;
+    lights[2].id = 5; lights[2].x = 4.0; lights[2].y = 1.0;
+
+    hit = editor_pick_light_selection(&cam, lights, 3U, no_wall_hit(),
+                                      20.0, 0.25);
+    assert_true(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_LIGHT);
+    assert_int_equal(hit.target.value.light.id, 7);
+    assert_float_equal(hit.distance, 2.0, DOUBLE_EPSILON);
+}
+
+static void test_light_pick_rejects_invalid_geometry(void **state) {
+    SceneLight lights[5] = {0};
+    Camera cam;
+    EditorHit hit;
+    (void)state;
+
+    camera_init(&cam, 1.0, 1.0, 0.0, PI / 2.0);
+    lights[0].id = 1; lights[0].x = 0.0; lights[0].y = 1.0; /* behind */
+    lights[1].id = 2; lights[1].x = 3.0; lights[1].y = 2.0; /* off ray */
+    lights[2].id = 3; lights[2].x = 30.0; lights[2].y = 1.0; /* range */
+    lights[3].id = 0; lights[3].x = 2.0; lights[3].y = 1.0; /* invalid ID */
+    lights[4].id = 4; lights[4].x = NAN; lights[4].y = 1.0; /* non-finite */
+
+    hit = editor_pick_light_selection(&cam, lights, 5U, no_wall_hit(),
+                                      20.0, 0.25);
+    assert_false(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_NONE);
+}
+
+static void test_light_pick_respects_wall_occlusion_and_fallback(void **state) {
+    SceneLight light = {0};
+    Camera cam;
+    EditorHit wall = no_wall_hit();
+    EditorHit hit;
+    (void)state;
+
+    camera_init(&cam, 1.0, 1.0, 0.0, PI / 2.0);
+    wall.valid = true;
+    wall.distance = 2.0;
+    wall.target = wall_selection(3, 1, WALL_FACE_WEST);
+    light.id = 8;
+    light.x = 4.0;
+    light.y = 1.0;
+
+    hit = editor_pick_light_selection(&cam, &light, 1U, wall, 20.0, 0.25);
+    assert_true(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_WALL_FACE);
+    assert_int_equal(hit.target.value.wall_face.map_x, 3);
+
+    light.x = 2.0;
+    hit = editor_pick_light_selection(&cam, &light, 1U, wall, 20.0, 0.25);
+    assert_int_equal(hit.target.type, SELECTION_LIGHT);
+    assert_int_equal(hit.target.value.light.id, 8);
+}
+
+static void test_light_pick_invalid_arguments_preserve_wall(void **state) {
+    EditorHit wall = no_wall_hit();
+    Camera cam;
+    (void)state;
+
+    camera_init(&cam, 1.0, 1.0, 0.0, PI / 2.0);
+    wall.valid = true;
+    wall.distance = 2.0;
+    wall.target = wall_selection(3, 1, WALL_FACE_WEST);
+
+    assert_int_equal(editor_pick_light_selection(NULL, NULL, 0U, wall,
+                                                 20.0, 0.25).target.type,
+                     SELECTION_WALL_FACE);
+    assert_int_equal(editor_pick_light_selection(&cam, NULL, 1U, wall,
+                                                 20.0, 0.25).target.type,
+                     SELECTION_WALL_FACE);
+    assert_int_equal(editor_pick_light_selection(&cam, NULL, 0U, wall,
+                                                 20.0, 0.0).target.type,
+                     SELECTION_WALL_FACE);
+}
+
+static void test_light_pick_accepts_expanded_editor_tolerance(void **state) {
+    SceneLight light = {.id = 8U, .x = 3.0, .y = 1.45};
+    Camera cam;
+    EditorHit hit;
+    (void)state;
+    camera_init(&cam, 1.0, 1.0, 0.0, PI / 2.0);
+    hit = editor_pick_light_selection(&cam, &light, 1U, no_wall_hit(),
+                                      20.0, 0.50);
+    assert_true(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_LIGHT);
+    hit = editor_pick_light_selection(&cam, &light, 1U, no_wall_hit(),
+                                      20.0, 0.25);
+    assert_false(hit.valid);
+}
+
 /* ===================================================================
  *  Conversion and validation
  * =================================================================== */
@@ -237,6 +344,11 @@ int main(void) {
         cmocka_unit_test(test_ray_south_hits_north_face),
         cmocka_unit_test(test_ray_north_hits_south_face),
         cmocka_unit_test(test_boundary_coordinates_safe),
+        cmocka_unit_test(test_light_pick_nearest_and_stable_tie),
+        cmocka_unit_test(test_light_pick_rejects_invalid_geometry),
+        cmocka_unit_test(test_light_pick_respects_wall_occlusion_and_fallback),
+        cmocka_unit_test(test_light_pick_invalid_arguments_preserve_wall),
+        cmocka_unit_test(test_light_pick_accepts_expanded_editor_tolerance),
         cmocka_unit_test(test_face_to_material_ref_drops_face),
         cmocka_unit_test(test_selection_validation_rejects_oob_and_empty),
     };

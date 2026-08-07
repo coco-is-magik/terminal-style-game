@@ -12,6 +12,7 @@
 #include "assets.h"
 #include "camera.h"
 #include "command_system.h"
+#include "editor_domain.h"
 #include "editor_selection.h"
 #include "editor_types.h"
 #include "grid.h"
@@ -92,7 +93,8 @@ typedef enum {
     EDITOR_STATUS_CATALOG_FAILED,
     EDITOR_STATUS_REPAIR_REQUIRED,
     EDITOR_STATUS_DURABILITY_WARNING,
-    EDITOR_STATUS_INVALID_SCENE_NAME
+    EDITOR_STATUS_INVALID_SCENE_NAME,
+    EDITOR_STATUS_INVALID_NUMERIC_VALUE
 } EditorStatus;
 
 typedef struct {
@@ -129,8 +131,15 @@ typedef struct {
     AssetRegistry *assets;
 
     bool inspector_open;
+    EditorInspectorKind inspector_kind;
     size_t material_picker_index;
     MaterialId highlighted_material;
+    EditorLightField light_field;
+    char light_value_text[32];
+    size_t light_value_text_length;
+    bool light_value_editing;
+    int light_repeat_direction;
+    double light_repeat_elapsed;
 
     CommandResult last_command_result;
     SceneLoadResult last_load_result;
@@ -202,6 +211,16 @@ bool unified_editor_crosshair_visible(const UnifiedEditorState *editor);
 CommandResult unified_editor_set_wall_material(
     UnifiedEditorState *editor,
     MaterialId material
+);
+CommandResult unified_editor_step_light_field(
+    UnifiedEditorState *editor,
+    EditorLightField field,
+    int direction
+);
+CommandResult unified_editor_set_light_field_value(
+    UnifiedEditorState *editor,
+    EditorLightField field,
+    double value
 );
 
 CommandResult unified_editor_undo(UnifiedEditorState *editor);

@@ -24,6 +24,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1003,6 +1004,21 @@ const SceneLight *scene_document_get_lights(
     return document ? document->lights : NULL;
 }
 
+const SceneLight *scene_document_find_light(
+    const SceneDocument *document,
+    SceneInstanceId instance_id
+) {
+    size_t i;
+
+    if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (i = 0U; i < document->light_count; i++) {
+        if (document->lights[i].id == instance_id) {
+            return &document->lights[i];
+        }
+    }
+    return NULL;
+}
+
 const SceneDecalInstance *scene_document_get_decals(
     const SceneDocument *document,
     size_t *out_count
@@ -1131,6 +1147,40 @@ bool scene_document_internal_set_wall_material(
     map_set(&document->map, ref.map_x, ref.map_y, material);
     return true;
 }
+
+bool scene_document_internal_light_value_is_valid(
+    const SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneLight *value
+) {
+    if (!document || !value || instance_id == SCENE_INSTANCE_ID_INVALID ||
+        value->id != instance_id || !isfinite(value->x) || !isfinite(value->y) ||
+        !isfinite(value->intensity) || !isfinite(value->radius) ||
+        value->x < 0.0 || value->y < 0.0 || value->x >= document->map.width ||
+        value->y >= document->map.height || value->radius <= 0.0) {
+        return false;
+    }
+    return scene_document_find_light(document, instance_id) != NULL;
+}
+
+bool scene_document_internal_set_light(
+    SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneLight *value
+) {
+    size_t i;
+
+    if (!scene_document_internal_light_value_is_valid(
+            document, instance_id, value)) return false;
+    for (i = 0U; i < document->light_count; i++) {
+        if (document->lights[i].id == instance_id) {
+            document->lights[i] = *value;
+            return true;
+        }
+    }
+    return false;
+}
+
 
 void scene_document_internal_set_current_state(
     SceneDocument *document,

@@ -106,6 +106,29 @@ static MaterialId read_mat(const SceneDocument *doc, int x, int y) {
     return m;
 }
 
+static void add_two_lights(SceneDocument *doc) {
+    doc->lights = calloc(2U, sizeof(*doc->lights));
+    assert_non_null(doc->lights);
+    doc->light_count = 2U;
+    doc->light_capacity = 2U;
+    doc->lights[0] = (SceneLight){
+        .id = 11U, .x = 0.5, .y = 0.5,
+        .red = 10U, .green = 20U, .blue = 30U, .alpha = 255U,
+        .intensity = 1.0, .radius = 2.0
+    };
+    doc->lights[1] = (SceneLight){
+        .id = 12U, .x = 1.5, .y = 0.5,
+        .red = 40U, .green = 50U, .blue = 60U, .alpha = 255U,
+        .intensity = 2.0, .radius = 3.0
+    };
+}
+
+static SceneLight read_light(const SceneDocument *doc, SceneInstanceId id) {
+    const SceneLight *light = scene_document_find_light(doc, id);
+    assert_non_null(light);
+    return *light;
+}
+
 /* ===================================================================
  *  Failing allocator
  * =================================================================== */
@@ -158,8 +181,8 @@ static void test_first_command_states(void **state) {
     assert_int_equal(h.cursor, 1);
     assert_int_equal(h.commands[0].before_state, 1);
     assert_int_equal(h.commands[0].after_state, 2);
-    assert_int_equal(h.commands[0].data.set_wall_material.old_material, 1);
-    assert_int_equal(h.commands[0].data.set_wall_material.new_material, 5);
+    assert_int_equal(h.commands[0].mutations[0].data.wall_material.before, 1);
+    assert_int_equal(h.commands[0].mutations[0].data.wall_material.after, 5);
     assert_int_equal(doc.current_state, 2);
     assert_int_equal(read_mat(&doc, 0, 0), 5);
     assert_int_equal(h.next_state_id, 3);
@@ -572,6 +595,201 @@ static void test_multiple_undo_redo_chain(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_light_command_undo_redo_and_no_change(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneLight before;
+    SceneLight after;
+    (void)state;
+
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    before = read_light(&doc, 11U);
+    after = before;
+    after.x = 1.25;
+    after.red = 200U;
+    after.intensity = -0.5;
+    after.radius = 4.5;
+
+    assert_int_equal(command_history_set_light(&h, &doc, 11U, &after), CMD_RESULT_OK);
+    assert_true(read_light(&doc, 11U).x == 1.25);
+    assert_int_equal(read_light(&doc, 11U).red, 200U);
+    assert_true(read_light(&doc, 11U).intensity == -0.5);
+    assert_int_equal(h.count, 1U);
+    assert_int_equal(h.commands[0].mutation_count, 1U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_true(read_light(&doc, 11U).x == before.x);
+    assert_int_equal(read_light(&doc, 11U).red, before.red);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_true(read_light(&doc, 11U).radius == 4.5);
+    assert_int_equal(command_history_set_light(&h, &doc, 11U, &after),
+                     CMD_RESULT_NO_CHANGE);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_group_is_one_atomic_undo_step(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    SceneLight first_before;
+    SceneLight second_before;
+    (void)state;
+
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    first_before = read_light(&doc, 11U);
+    second_before = read_light(&doc, 12U);
+    requests[0].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[0].data.light.id = 11U;
+    requests[0].data.light.value = first_before;
+    requests[0].data.light.value.intensity = 3.5;
+    requests[0].data.light.value.radius = 5.0;
+    requests[1].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[1].data.light.id = 12U;
+    requests[1].data.light.value = second_before;
+    requests[1].data.light.value.green = 220U;
+    requests[1].data.light.value.radius = 6.0;
+
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_OK);
+    assert_int_equal(h.count, 1U);
+    assert_int_equal(h.commands[0].mutation_count, 2U);
+    assert_true(read_light(&doc, 11U).intensity == 3.5);
+    assert_int_equal(read_light(&doc, 12U).green, 220U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_true(read_light(&doc, 11U).intensity == first_before.intensity);
+    assert_int_equal(read_light(&doc, 12U).green, second_before.green);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_NOTHING_TO_UNDO);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_true(read_light(&doc, 11U).radius == 5.0);
+    assert_true(read_light(&doc, 12U).radius == 6.0);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_group_validation_and_oom_leave_state_unchanged(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    SceneLight before;
+    (void)state;
+
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    before = read_light(&doc, 11U);
+    requests[0].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[0].data.light.id = 11U;
+    requests[0].data.light.value = before;
+    requests[0].data.light.value.radius = 4.0;
+    requests[1] = requests[0];
+    requests[1].data.light.value.radius = 5.0;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_INVALID_TARGET);
+    assert_true(read_light(&doc, 11U).radius == before.radius);
+    assert_int_equal(h.count, 0U);
+
+    requests[1].data.light.id = 12U;
+    requests[1].data.light.value = read_light(&doc, 12U);
+    requests[1].data.light.value.radius = 0.0;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_INVALID_TARGET);
+    assert_true(read_light(&doc, 11U).radius == before.radius);
+    assert_int_equal(h.count, 0U);
+
+    requests[1].data.light.value.radius = 5.0;
+    g_fail_realloc = 1;
+    command_history_set_allocator_for_test(
+        passthrough_alloc, failing_realloc, passthrough_free);
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_OUT_OF_MEMORY);
+    assert_true(read_light(&doc, 11U).radius == before.radius);
+    assert_true(read_light(&doc, 12U).radius == 3.0);
+    assert_int_equal(h.count, 0U);
+    assert_int_equal(doc.current_state, 1U);
+    g_fail_realloc = 0;
+    command_history_reset_allocator_for_test();
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_undo_failure_rolls_back_partial_group(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    SceneLight first;
+    SceneLight second;
+    (void)state;
+
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    first = read_light(&doc, 11U);
+    second = read_light(&doc, 12U);
+    requests[0].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[0].data.light.id = 12U;
+    requests[0].data.light.value = second;
+    requests[0].data.light.value.radius = 7.0;
+    requests[1].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[1].data.light.id = 11U;
+    requests[1].data.light.value = first;
+    requests[1].data.light.value.radius = 6.0;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_OK);
+
+    doc.light_count = 1U;
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_INVALID_TARGET);
+    assert_true(read_light(&doc, 11U).radius == 6.0);
+    assert_int_equal(h.cursor, 1U);
+    assert_int_equal(doc.current_state, 2U);
+    doc.light_count = 2U;
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_redo_failure_rolls_back_partial_group(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    SceneLight first;
+    SceneLight second;
+    (void)state;
+
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    first = read_light(&doc, 11U);
+    second = read_light(&doc, 12U);
+    requests[0].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[0].data.light.id = 11U;
+    requests[0].data.light.value = first;
+    requests[0].data.light.value.radius = 6.0;
+    requests[1].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[1].data.light.id = 12U;
+    requests[1].data.light.value = second;
+    requests[1].data.light.value.radius = 7.0;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_OK);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+
+    doc.light_count = 1U;
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_INVALID_TARGET);
+    assert_true(read_light(&doc, 11U).radius == first.radius);
+    assert_int_equal(h.cursor, 0U);
+    assert_int_equal(doc.current_state, 1U);
+    doc.light_count = 2U;
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -595,6 +813,11 @@ int main(void) {
         cmocka_unit_test(test_allocation_failure_unchanged),
         cmocka_unit_test(test_state_id_exhaustion),
         cmocka_unit_test(test_multiple_undo_redo_chain),
+        cmocka_unit_test(test_light_command_undo_redo_and_no_change),
+        cmocka_unit_test(test_group_is_one_atomic_undo_step),
+        cmocka_unit_test(test_group_validation_and_oom_leave_state_unchanged),
+        cmocka_unit_test(test_undo_failure_rolls_back_partial_group),
+        cmocka_unit_test(test_redo_failure_rolls_back_partial_group),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

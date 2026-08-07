@@ -76,7 +76,7 @@ void world_clear(WorldState *world) {
  * @param world     WorldState to add to (NULL-safe)
  * @param x         World X position of the light source
  * @param y         World Y position of the light source
- * @param col       Colour of the light (affects wall tinting)
+ * @param col       Colour of the light billboard/marker
  * @param intensity Brightness (>0) or darkness (<0 for anti-light zones)
  * @param radius    Maximum distance the light reaches (grid cells)
  */

@@ -153,6 +153,17 @@ SDL_Color palette_sample(const Palette *p, double distance, double light_level) 
     return base;
 }
 
+SDL_Color palette_sample_lit(const Palette *p, double light_level) {
+    SDL_Color base = p ? p->near_color : (SDL_Color){0, 0, 0, 255};
+    if (light_level < 0.0) light_level = 0.0;
+    if (light_level > 1.0) light_level = 1.0;
+    base.r = (uint8_t)(base.r * light_level);
+    base.g = (uint8_t)(base.g * light_level);
+    base.b = (uint8_t)(base.b * light_level);
+    base.a = 255;
+    return base;
+}
+
 /**
  * material_find_by_name() — Look up a material ID by its filename-derived name
  *

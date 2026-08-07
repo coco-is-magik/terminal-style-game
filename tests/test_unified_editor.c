@@ -90,6 +90,8 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "light_pick.tscene");
+    remove(path);
     path_in_tmpdir(path, sizeof(path), "new_interactive.tscene");
     remove(path);
     path_in_tmpdir(path, sizeof(path), "import_interactive.tscene");
@@ -128,6 +130,20 @@ static const char *NATIVE_SCENE =
     "next_instance_id = 1\nambient_intensity = 0.25\n"
     "spawn = 1.5,1.5,0\n\n[cells]\n"
     "001 001 001\n001 000 001\n001 001 001\n";
+
+
+static const char *NATIVE_SCENE_WITH_PICKABLE_LIGHT =
+    "scene_type = terminal_scene\nscene_version = 1\nname = \"light_pick\"\n"
+    "width = 5\nheight = 5\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 12\nambient_intensity = 0.2\n"
+    "spawn = 1.5,2.5,0\n\n[cells]\n"
+    "001 001 001 001 001\n"
+    "001 000 000 000 001\n"
+    "001 000 000 000 001\n"
+    "001 000 000 000 001\n"
+    "001 001 001 001 001\n\n"
+    "[light 11]\nposition = 2.5,2.5\n"
+    "color = 255,255,255,255\nintensity = 1\nradius = 3\n";
 
 static const char *NATIVE_SCENE_WITH_CONTENT =
     "scene_type = terminal_scene\nscene_version = 1\nname = \"content\"\n"
@@ -194,6 +210,7 @@ static void select_east_wall(UnifiedEditorState *ed) {
     ed->selection.value.wall_face.map_y = 2;
     ed->selection.value.wall_face.face = WALL_FACE_WEST;
     ed->inspector_open = true;
+    ed->inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
 }
 
 static void select_native_east_wall(UnifiedEditorState *ed) {
@@ -202,6 +219,7 @@ static void select_native_east_wall(UnifiedEditorState *ed) {
     ed->selection.value.wall_face.map_y = 1;
     ed->selection.value.wall_face.face = WALL_FACE_WEST;
     ed->inspector_open = true;
+    ed->inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
 }
 
 static MaterialId wall_mat(const UnifiedEditorState *ed) {
@@ -747,6 +765,209 @@ static void test_pathless_ctrl_s_routes_to_interactive_save_as(void **state) {
     unified_editor_destroy(&ed);
 }
 
+
+static void test_light_hover_selection_uses_stable_id(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    char path[512];
+    (void)state;
+
+    path_in_tmpdir(path, sizeof(path), "light_pick.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    camera_init(&cam, 1.5, 2.5, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.hover.valid);
+    assert_int_equal(ed.hover.target.type, SELECTION_LIGHT);
+    assert_int_equal(ed.hover.target.value.light.id, 11U);
+
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    assert_true(unified_editor_update(&ed, &in, &cam, 0.016)
+                    .keyboard_consumed);
+    assert_int_equal(ed.selection.type, SELECTION_LIGHT);
+    assert_int_equal(ed.selection.value.light.id, 11U);
+    assert_true(ed.inspector_open);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_LIGHT);
+    assert_int_equal(ed.light_field, EDITOR_LIGHT_FIELD_X);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Select light:11"));
+    assert_true(grid_contains_text(grid, "Inspector: point light"));
+    assert_true(grid_contains_text(grid, "> X"));
+    grid_destroy(grid);
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.selection.type, SELECTION_NONE);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_light_inspector_edits_through_history_and_runtime(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    const SceneLight *light;
+    char path[512];
+    (void)state;
+
+    path_in_tmpdir(path, sizeof(path), "light_pick.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    camera_init(&cam, 1.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in);
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+
+    zero_input(&in);
+    in.editor_increase_pressed = true;
+    assert_true(unified_editor_update(&ed, &in, &cam, 0.016)
+                    .keyboard_consumed);
+    light = scene_document_find_light(&ed.document, 11U);
+    assert_non_null(light);
+    assert_true(light->x == 2.75);
+    assert_true(ed.runtime_world.lights[0].pos.x == 2.75);
+    assert_int_equal(ed.history.count, 1U);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.light_field, EDITOR_LIGHT_FIELD_Y);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.light_field, EDITOR_LIGHT_FIELD_RED);
+    zero_input(&in);
+    in.editor_decrease_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    light = scene_document_find_light(&ed.document, 11U);
+    assert_int_equal(light->red, 254U);
+    assert_int_equal(ed.runtime_world.lights[0].color.r, 254U);
+    assert_int_equal(ed.history.count, 2U);
+
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_light(&ed.document, 11U)->red, 255U);
+    assert_int_equal(ed.runtime_world.lights[0].color.r, 255U);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_true(scene_document_find_light(&ed.document, 11U)->x == 2.5);
+    assert_true(ed.runtime_world.lights[0].pos.x == 2.5);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_true(ed.runtime_world.lights[0].pos.x == 2.75);
+
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_false(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
+
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    light = scene_document_find_light(&ed.document, 11U);
+    assert_non_null(light);
+    assert_true(light->x == 2.75);
+    assert_int_equal(light->red, 255U);
+    assert_true(ed.runtime_world.lights[0].pos.x == 2.75);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void open_pickable_light(UnifiedEditorState *ed, Camera *cam,
+                                const char *path) {
+    InputState in;
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
+    assert_true(unified_editor_init(ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(ed, path), SCENE_LOAD_OK);
+    camera_init(cam, 1.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in);
+    unified_editor_update(ed, &in, cam, 0.016);
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    unified_editor_update(ed, &in, cam, 0.016);
+}
+
+static void test_light_inspector_numeric_entry_commit_cancel_and_validation(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char path[512];
+    Grid *grid;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "light_numeric.tscene");
+    open_pickable_light(&ed, &cam, path);
+    ed.light_field = EDITOR_LIGHT_FIELD_INTENSITY;
+
+    zero_input(&in);
+    strcpy(in.text_input, "2.5"); in.text_input_len = 3;
+    assert_true(unified_editor_update(&ed, &in, &cam, 0.016)
+                    .keyboard_consumed);
+    assert_true(ed.light_value_editing);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "[2.5_]"));
+    assert_true(grid_contains_text(grid, "illumination is scalar"));
+    grid_destroy(grid);
+
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_false(ed.light_value_editing);
+    assert_true(scene_document_find_light(&ed.document, 11U)->intensity == 2.5);
+    assert_true(ed.runtime_world.lights[0].intensity == 2.5);
+
+    zero_input(&in); strcpy(in.text_input, "999"); in.text_input_len = 3;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.light_value_editing);
+    assert_int_equal(ed.status, EDITOR_STATUS_INVALID_NUMERIC_VALUE);
+    zero_input(&in); in.editor_cancel_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_false(ed.light_value_editing);
+    assert_true(ed.inspector_open);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_light_inspector_held_arrow_repeats_after_delay(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char path[512];
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "light_repeat.tscene");
+    open_pickable_light(&ed, &cam, path);
+
+    zero_input(&in);
+    in.editor_increase_pressed = true;
+    in.held_arrow_right = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(scene_document_find_light(&ed.document, 11U)->x == 2.75);
+    zero_input(&in); in.held_arrow_right = true;
+    unified_editor_update(&ed, &in, &cam, 0.20);
+    assert_true(scene_document_find_light(&ed.document, 11U)->x == 2.75);
+    zero_input(&in); in.held_arrow_right = true;
+    unified_editor_update(&ed, &in, &cam, 0.16);
+    assert_true(scene_document_find_light(&ed.document, 11U)->x == 3.0);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
 static void test_overlay_includes_new_scene_shortcut(void **state) {
     UnifiedEditorState ed;
     Grid *grid;
@@ -1064,6 +1285,7 @@ static void test_load_success_resets_history_and_selection(void **state) {
     ed.selection.value.wall_face.map_y = 2;
     ed.selection.value.wall_face.face = WALL_FACE_WEST;
     ed.inspector_open = true;
+    ed.inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
     ed.hover.valid = true;
     ed.mode = EDITOR_MODE_EDIT;
     ed.history.count = 3;
@@ -1073,6 +1295,7 @@ static void test_load_success_resets_history_and_selection(void **state) {
     assert_int_equal(ed.selection.type, SELECTION_NONE);
     assert_false(ed.hover.valid);
     assert_false(ed.inspector_open);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_NONE);
     assert_int_equal(ed.history.count, 0);
     assert_int_equal(ed.history.cursor, 0);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
@@ -1099,6 +1322,7 @@ static void test_load_failure_preserves_state(void **state) {
     ed.selection.value.wall_face.map_y = 2;
     ed.selection.value.wall_face.face = WALL_FACE_WEST;
     ed.inspector_open = true;
+    ed.inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
     ed.mode = EDITOR_MODE_EDIT;
     DocumentStateId cur = ed.document.current_state;
     DocumentStateId saved = ed.document.saved_state;
@@ -1111,6 +1335,7 @@ static void test_load_failure_preserves_state(void **state) {
     assert_int_equal(ed.selection.type, SELECTION_WALL_FACE);
     assert_int_equal(ed.selection.value.wall_face.map_x, 4);
     assert_true(ed.inspector_open);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_WALL_MATERIAL);
     assert_int_equal(ed.mode, EDITOR_MODE_EDIT);
     assert_int_equal(ed.document.current_state, cur);
     assert_int_equal(ed.document.saved_state, saved);
@@ -1452,6 +1677,7 @@ static void test_save_success_clears_dirty(void **state) {
 static void test_picker_next_prev_and_confirm(void **state) {
     (void)state;
     UnifiedEditorState ed;
+    Grid *grid;
     assert_int_equal(load_editor(&ed, "map.txt"), 0);
 
     Camera cam;
@@ -1466,6 +1692,14 @@ static void test_picker_next_prev_and_confirm(void **state) {
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(ed.inspector_open);
     assert_int_equal(ed.highlighted_material, 1);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Inspector: materials"));
+    assert_true(grid_contains_text(grid, "Up/Down  Enter=apply"));
+    assert_true(grid_contains_text(
+        grid, "NOTE: material applies to entire wall cell"));
+    grid_destroy(grid);
 
     /* Next → material 2 */
     zero_input(&in);
@@ -2042,6 +2276,10 @@ int main(void) {
         cmocka_unit_test(test_dirty_import_save_then_new_continues),
         cmocka_unit_test(test_save_menu_overwrite_and_cancel_are_visible),
         cmocka_unit_test(test_native_ctrl_s_menu_saves_existing_destination),
+        cmocka_unit_test(test_light_hover_selection_uses_stable_id),
+        cmocka_unit_test(test_light_inspector_edits_through_history_and_runtime),
+        cmocka_unit_test(test_light_inspector_numeric_entry_commit_cancel_and_validation),
+        cmocka_unit_test(test_light_inspector_held_arrow_repeats_after_delay),
         cmocka_unit_test(test_overlay_includes_new_scene_shortcut),
         cmocka_unit_test(test_clean_switch_and_failed_load_preserve),
         cmocka_unit_test(test_dirty_switch_cancel_discard_and_failure),

@@ -188,6 +188,31 @@ static void test_authored_queries_empty_and_null_safe(void **state) {
     scene_document_destroy(&doc);
 }
 
+
+static void test_find_light_by_stable_id(void **state) {
+    SceneDocument doc;
+    const SceneLight *found;
+    (void)state;
+
+    scene_document_init(&doc);
+    doc.lights = calloc(2U, sizeof(*doc.lights));
+    assert_non_null(doc.lights);
+    doc.light_count = 2U;
+    doc.light_capacity = 2U;
+    doc.lights[0].id = 41U;
+    doc.lights[0].x = 1.25;
+    doc.lights[1].id = 7U;
+    doc.lights[1].x = 3.5;
+
+    found = scene_document_find_light(&doc, 7U);
+    assert_ptr_equal(found, &doc.lights[1]);
+    assert_true(found->x == 3.5);
+    assert_null(scene_document_find_light(&doc, 99U));
+    assert_null(scene_document_find_light(&doc, SCENE_INSTANCE_ID_INVALID));
+    assert_null(scene_document_find_light(NULL, 7U));
+    scene_document_destroy(&doc);
+}
+
 static void test_instance_id_allocation_monotonic_and_exhaustion(void **state) {
     (void)state;
     SceneDocument doc;
@@ -1236,6 +1261,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_init_destroy_empty),
         cmocka_unit_test(test_authored_queries_empty_and_null_safe),
+        cmocka_unit_test(test_find_light_by_stable_id),
         cmocka_unit_test(test_instance_id_allocation_monotonic_and_exhaustion),
         cmocka_unit_test(test_structured_diagnostic_is_bounded),
         cmocka_unit_test(test_load_valid_fixture),

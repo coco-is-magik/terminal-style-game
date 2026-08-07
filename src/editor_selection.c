@@ -1,5 +1,5 @@
 /**
- * editor_selection.c — Wall face selection from center-camera ray
+ * editor_selection.c — Typed selection from the center-camera ray
  *
  * Coordinate convention (confirmed against camera/raycast):
  *   angle 0 = +X/east, PI/2 = +Y/south (Y increases south).
@@ -16,6 +16,7 @@
 #include "raycast.h"
 
 #include <math.h>
+#include <stddef.h>
 
 WallFace editor_calculate_wall_face(
     int side,
@@ -96,4 +97,74 @@ EditorHit editor_raycast_selection(
     hit.target.value.wall_face.map_y = res.map_y;
     hit.target.value.wall_face.face = face;
     return hit;
+}
+
+
+EditorHit editor_pick_light_selection(
+    const Camera *camera,
+    const SceneLight *lights,
+    size_t light_count,
+    EditorHit wall_hit,
+    double max_distance,
+    double pick_radius
+) {
+    EditorHit result = wall_hit;
+    double limit;
+    double radius_squared;
+    double dir_x;
+    double dir_y;
+    double best_forward = 0.0;
+    SceneInstanceId best_id = SCENE_INSTANCE_ID_INVALID;
+    size_t i;
+
+    if (!camera || (!lights && light_count > 0U) ||
+        !isfinite(max_distance) || max_distance <= 0.0 ||
+        !isfinite(pick_radius) || pick_radius <= 0.0) {
+        return result;
+    }
+
+    limit = wall_hit.valid ? wall_hit.distance : max_distance;
+    if (!isfinite(limit) || limit <= 0.0 || limit > max_distance) {
+        limit = max_distance;
+    }
+    radius_squared = pick_radius * pick_radius;
+    dir_x = cos(camera->transform.angle);
+    dir_y = sin(camera->transform.angle);
+
+    for (i = 0U; i < light_count; i++) {
+        const SceneLight *light = &lights[i];
+        double offset_x;
+        double offset_y;
+        double forward;
+        double perpendicular;
+        double perpendicular_squared;
+
+        if (light->id == SCENE_INSTANCE_ID_INVALID ||
+            !isfinite(light->x) || !isfinite(light->y)) {
+            continue;
+        }
+        offset_x = light->x - camera->transform.pos.x;
+        offset_y = light->y - camera->transform.pos.y;
+        forward = offset_x * dir_x + offset_y * dir_y;
+        if (forward <= 0.0 || forward > limit) continue;
+
+        perpendicular = offset_x * dir_y - offset_y * dir_x;
+        perpendicular_squared = perpendicular * perpendicular;
+        if (perpendicular_squared > radius_squared) continue;
+
+        if (best_id == SCENE_INSTANCE_ID_INVALID ||
+            forward < best_forward ||
+            (forward == best_forward && light->id < best_id)) {
+            best_forward = forward;
+            best_id = light->id;
+        }
+    }
+
+    if (best_id != SCENE_INSTANCE_ID_INVALID) {
+        result.valid = true;
+        result.distance = best_forward;
+        result.target.type = SELECTION_LIGHT;
+        result.target.value.light.id = best_id;
+    }
+    return result;
 }

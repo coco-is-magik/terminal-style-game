@@ -16,6 +16,18 @@ bool scene_document_internal_set_wall_material(
     MaterialId material
 );
 
+bool scene_document_internal_set_light(
+    SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneLight *value
+);
+
+bool scene_document_internal_light_value_is_valid(
+    const SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneLight *value
+);
+
 void scene_document_internal_set_current_state(
     SceneDocument *document,
     DocumentStateId state

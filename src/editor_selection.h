@@ -1,8 +1,8 @@
 /**
- * editor_selection.h — First-person wall selection helpers
+ * editor_selection.h — First-person typed selection helpers
  *
- * Converts center-camera ray hits into EditorHit / WallFaceRef using the
- * existing raycast DDA path. No floor/ceiling/entity selection in MVP.
+ * Preserves center-ray wall DDA selection and composes deterministic point-light
+ * picking over borrowed authored values. It owns no document or runtime state.
  */
 
 #ifndef EDITOR_SELECTION_H
@@ -11,10 +11,20 @@
 #include "camera.h"
 #include "editor_types.h"
 #include "map.h"
+#include "scene_types.h"
 
 EditorHit editor_raycast_selection(
     const Camera *camera,
     const Map *map
+);
+
+EditorHit editor_pick_light_selection(
+    const Camera *camera,
+    const SceneLight *lights,
+    size_t light_count,
+    EditorHit wall_hit,
+    double max_distance,
+    double pick_radius
 );
 
 WallFace editor_calculate_wall_face(

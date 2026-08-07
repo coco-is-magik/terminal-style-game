@@ -66,9 +66,24 @@ See `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`.
   consumes both generic and editor-specific Enter edges before a newly entered
   application state updates in the same frame.
 - `raycast`: ray intersection and scene raster orchestration.
-- `editor_highlight`: allocation-free editor-only world visualization. It borrows
-  the authoritative map, camera, hover, and selection data and mutates only the
-  current `Grid` framebuffer after world rendering.
+- `editor_selection`: allocation-free typed target geometry. Wall faces retain
+  the established DDA result; point lights are picked from borrowed authored
+  values and identified only by stable `SceneInstanceId`. `SceneDocument` remains
+  the resolver and owner; the picker stores no document pointers or indices.
+- `editor_domain`: headless typed inspector adapters. Wall and point-light adapters
+  dispatch typed targets, expose shared typed presentation descriptors plus bounded
+  light field metadata/formatting, and build command requests without mutating
+  authored or runtime state. The shared descriptor covers titles, controls, notes,
+  field labels, and choice/numeric field kinds; it is not an untyped property bag.
+  `unified_editor`
+  owns input/navigation and rendering; `command_system` remains the sole authored
+  mutation boundary. Successful light commands and history traversal rebuild the
+  disposable `WorldState` view from `SceneDocument`.
+- `editor_highlight`: allocation-free editor-only typed-target visualization. Its
+  wall provider preserves projected face outlines; its point-light provider resolves
+  borrowed authored lights by stable ID, projects a marker with the world renderer's
+  camera convention, and rejects markers hidden behind the nearest wall. Provider
+  dispatch mutates only the current `Grid` framebuffer after world rendering.
 - `decal_projection`: one surface-local normal/tangent/bitangent model shared by
   wall, floor, and ceiling glyph placement.
 - `renderer`: SDL/software presentation resources only. The backend accepts fixed

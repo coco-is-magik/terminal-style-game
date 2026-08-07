@@ -104,6 +104,8 @@ typedef struct {
     bool editor_text_backspace_pressed; /* Backspace — edit active text field */
     bool editor_previous_pressed;    /* Up — picker previous */
     bool editor_next_pressed;        /* Down — picker next */
+    bool editor_decrease_pressed;    /* Left — decrease inspector field */
+    bool editor_increase_pressed;    /* Right — increase inspector field */
 
   /* Held state — physically depressed this frame.
 

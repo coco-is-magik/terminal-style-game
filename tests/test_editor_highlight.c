@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <cmocka.h>
 
+#include <math.h>
+
 #include "../src/config.h"
 #include "../src/editor_highlight.h"
 #include "../src/math.h"
@@ -24,6 +26,13 @@ static SelectionTarget wall_target(int x, int y, WallFace face) {
     target.value.wall_face.map_x = x;
     target.value.wall_face.map_y = y;
     target.value.wall_face.face = face;
+    return target;
+}
+
+static SelectionTarget light_target(SceneInstanceId id) {
+    SelectionTarget target = {0};
+    target.type = SELECTION_LIGHT;
+    target.value.light.id = id;
     return target;
 }
 
@@ -94,7 +103,7 @@ static void render_cardinal_case(double camera_x, double camera_y,
     camera_init(&camera, camera_x, camera_y, angle, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, selection, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, selection, hover);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_true(count_glyph(grid, 'w') > 0);
 
@@ -126,12 +135,12 @@ static void test_hover_is_dashed_and_selection_wins_same_target(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, none, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, none, hover);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH), 0);
 
@@ -155,7 +164,7 @@ static void test_nearer_wall_occludes_target(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     map_destroy(map);
@@ -178,8 +187,8 @@ static void test_wrong_face_and_invalid_target_draw_nothing(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, wrong_face, hover);
-    editor_highlight_render(grid, map, &camera, empty, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wrong_face, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, empty, hover);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     map_destroy(map);
@@ -203,13 +212,13 @@ static void test_contrast_adapts_to_dark_and_bright_cells(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
     cell = first_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     assert_int_equal(cell.fg.r, 255);
     assert_int_equal(cell.bg.r, 0);
 
     fill_grid(grid, 'w', bright, bright);
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
     cell = first_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     assert_int_equal(cell.fg.r, 0);
     assert_int_equal(cell.bg.r, 255);
@@ -237,7 +246,7 @@ static void test_render_does_not_mutate_map_or_interior(void **state) {
     assert_true(grid_get(grid, grid->width / 2, grid->height / 2,
                          &center_before));
 
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
 
     assert_int_equal(map_get(map, 5, 3)->material_id, 7);
     assert_true(grid_get(grid, grid->width / 2, grid->height / 2,
@@ -282,7 +291,7 @@ static void test_wide_grid_has_no_fixed_width_cutoff(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
     for (y = 0; y < grid->height; y++) {
         for (x = grid->width / 2; x < grid->width; x++) {
             if (grid->cells[y * grid->width + x].glyph ==
@@ -313,11 +322,134 @@ static void test_extreme_horizon_offsets_clip_safely(void **state) {
 
     fill_grid(grid, 'w', dark, dark);
     camera.pitch = (double)grid->height;
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
 
     fill_grid(grid, 'w', dark, dark);
     camera.pitch = -(double)grid->height;
-    editor_highlight_render(grid, map, &camera, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_light_marker_resolves_stable_id_and_projects(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SceneLight lights[2] = {
+        {.id = 90U, .x = 4.5, .y = 4.5, .radius = 1.0},
+        {.id = 11U, .x = 4.5, .y = 3.5, .red = 30U, .green = 80U,
+         .blue = 160U, .radius = 1.0}
+    };
+    SceneLight before[2];
+    SelectionTarget selection = light_target(11U);
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    Cell marker;
+    (void)state;
+
+    assert_non_null(grid);
+    assert_non_null(map);
+    memcpy(before, lights, sizeof(lights));
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, lights, 2U,
+                            selection, hover);
+    assert_int_equal(count_glyph(
+        grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 3);
+    assert_true(grid_get(grid, grid->width / 2, grid->height / 2, &marker));
+    assert_int_equal(marker.glyph, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH);
+    assert_int_equal(marker.fg.r, 30U);
+    assert_int_equal(marker.fg.g, 80U);
+    assert_int_equal(marker.fg.b, 160U);
+    assert_memory_equal(lights, before, sizeof(lights));
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_light_hover_and_selection_precedence(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SceneLight light = {.id = 11U, .x = 4.5, .y = 3.5, .radius = 1.0};
+    SelectionTarget none = {0};
+    SelectionTarget target = light_target(11U);
+    EditorHit hover = hover_hit(target);
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, &light, 1U, none, hover);
+    assert_int_equal(count_glyph(grid, EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH), 3);
+
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover);
+    assert_int_equal(count_glyph(
+        grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 3);
+    assert_int_equal(count_glyph(grid, EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH), 0);
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_light_marker_obeys_wall_occlusion(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SceneLight light = {.id = 11U, .x = 4.5, .y = 3.5, .radius = 1.0};
+    SelectionTarget target = light_target(11U);
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+
+    assert_non_null(grid);
+    assert_non_null(map);
+    map_set(map, 3, 3, 1);
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover);
+    assert_int_equal(count_glyph(
+        grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_light_marker_rejects_invalid_or_invisible_targets(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SceneLight lights[2] = {
+        {.id = 11U, .x = 0.5, .y = 3.5, .radius = 1.0},
+        {.id = 12U, .x = NAN, .y = 3.5, .radius = 1.0}
+    };
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, lights, 2U,
+                            light_target(99U), hover);
+    editor_highlight_render(grid, map, &camera, lights, 2U,
+                            light_target(11U), hover);
+    editor_highlight_render(grid, map, &camera, lights, 2U,
+                            light_target(12U), hover);
+    assert_int_equal(count_glyph(
+        grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
+
+    camera.pitch = (double)grid->height;
+    lights[0].x = 4.5;
+    editor_highlight_render(grid, map, &camera, lights, 2U,
+                            light_target(11U), hover);
+    assert_int_equal(count_glyph(
+        grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     map_destroy(map);
     grid_destroy(grid);
@@ -328,7 +460,7 @@ static void test_null_inputs_are_safe(void **state) {
     EditorHit hover = {0};
 
     (void)state;
-    editor_highlight_render(NULL, NULL, NULL, none, hover);
+    editor_highlight_render(NULL, NULL, NULL, NULL, 0U, none, hover);
     editor_crosshair_render(NULL);
 }
 
@@ -343,6 +475,10 @@ int main(void) {
         cmocka_unit_test(test_crosshair_is_centered_and_adaptive),
         cmocka_unit_test(test_wide_grid_has_no_fixed_width_cutoff),
         cmocka_unit_test(test_extreme_horizon_offsets_clip_safely),
+        cmocka_unit_test(test_light_marker_resolves_stable_id_and_projects),
+        cmocka_unit_test(test_light_hover_and_selection_precedence),
+        cmocka_unit_test(test_light_marker_obeys_wall_occlusion),
+        cmocka_unit_test(test_light_marker_rejects_invalid_or_invisible_targets),
         cmocka_unit_test(test_null_inputs_are_safe),
     };
 

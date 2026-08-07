@@ -2,12 +2,14 @@
  * editor_types.h — Shared types for the unified in-world editor
  *
  * Header-only foundation used by SceneDocument, command history,
- * selection, and the unified editor controller. No floor/ceiling/
- * entity-ID types until a later phase needs them.
+ * selection, and the unified editor controller. Scene instances are addressed
+ * only by stable SceneInstanceId values; no runtime pointers are stored here.
  */
 
 #ifndef EDITOR_TYPES_H
 #define EDITOR_TYPES_H
+
+#include "scene_types.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,15 +35,21 @@ typedef struct {
     WallFace face;
 } WallFaceRef;
 
+typedef struct {
+    SceneInstanceId id;
+} LightSelectionRef;
+
 typedef enum {
     SELECTION_NONE = 0,
-    SELECTION_WALL_FACE
+    SELECTION_WALL_FACE,
+    SELECTION_LIGHT
 } SelectionType;
 
 typedef struct {
     SelectionType type;
     union {
         WallFaceRef wall_face;
+        LightSelectionRef light;
     } value;
 } SelectionTarget;
 

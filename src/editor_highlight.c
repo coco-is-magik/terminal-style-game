@@ -28,9 +28,14 @@ static bool wall_faces_equal(WallFaceRef a, WallFaceRef b) {
 }
 
 static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
-    return a.type == SELECTION_WALL_FACE &&
-           b.type == SELECTION_WALL_FACE &&
-           wall_faces_equal(a.value.wall_face, b.value.wall_face);
+    if (a.type != b.type) return false;
+    if (a.type == SELECTION_WALL_FACE) {
+        return wall_faces_equal(a.value.wall_face, b.value.wall_face);
+    }
+    if (a.type == SELECTION_LIGHT) {
+        return a.value.light.id == b.value.light.id;
+    }
+    return false;
 }
 
 static bool valid_wall_target(SelectionTarget target, const Map *map) {
@@ -199,7 +204,97 @@ static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
     }
 }
 
+static const SceneLight *find_light(const SceneLight *lights, size_t light_count,
+                                    SceneInstanceId id) {
+    size_t i;
+    if (!lights || id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (i = 0U; i < light_count; i++) {
+        if (lights[i].id == id) return &lights[i];
+    }
+    return NULL;
+}
+
+static void render_light_marker(Grid *grid, Map *map, Camera *camera,
+                                const SceneLight *lights, size_t light_count,
+                                SelectionTarget target, HighlightStyle style) {
+    const SceneLight *light;
+    double dx;
+    double dy;
+    double distance;
+    double angle;
+    double angle_diff;
+    double normalized_x;
+    double perpendicular;
+    double max_distance;
+    int screen_x;
+    int screen_y;
+    RayResult wall;
+    Cell under;
+    SDL_Color foreground;
+    SDL_Color background;
+    uint8_t glyph;
+
+    if (target.type != SELECTION_LIGHT) return;
+    light = find_light(lights, light_count, target.value.light.id);
+    if (!light || !isfinite(light->x) || !isfinite(light->y) ||
+        !isfinite(camera->transform.pos.x) ||
+        !isfinite(camera->transform.pos.y) ||
+        !isfinite(camera->transform.angle) || !isfinite(camera->fov) ||
+        camera->fov <= 0.0 || camera->fov >= PI) return;
+
+    dx = light->x - camera->transform.pos.x;
+    dy = light->y - camera->transform.pos.y;
+    distance = sqrt(dx * dx + dy * dy);
+    if (!isfinite(distance) || distance <= 0.001) return;
+    angle = atan2(dy, dx);
+    angle_diff = angle - camera->transform.angle;
+    while (angle_diff > PI) angle_diff -= 2.0 * PI;
+    while (angle_diff < -PI) angle_diff += 2.0 * PI;
+    if (fabs(angle_diff) > camera->fov / 2.0 || cos(angle_diff) <= 0.0) return;
+
+    normalized_x = tan(angle_diff) / tan(camera->fov / 2.0);
+    screen_x = (int)((grid->width / 2.0) * (1.0 + normalized_x));
+    screen_y = grid->height / 2 + (int)camera->pitch;
+    if (screen_x < 0 || screen_x >= grid->width ||
+        screen_y < 0 || screen_y >= grid->height) return;
+
+    max_distance = config_get()->raycast_max_distance;
+    if (max_distance < distance) max_distance = distance + 0.001;
+    wall = raycast_fire(map, camera, angle, max_distance);
+    perpendicular = distance * cos(angle_diff);
+    if (wall.hit && wall.distance * cos(angle_diff) < perpendicular - 0.001)
+        return;
+
+    if (!grid_get(grid, screen_x, screen_y, &under)) return;
+    contrasting_colors(&under, &foreground, &background);
+    foreground = (SDL_Color){light->red, light->green, light->blue, 255};
+    if ((unsigned int)foreground.r + foreground.g + foreground.b < 96U) {
+        background = (SDL_Color){255, 255, 255, 255};
+    } else {
+        background = (SDL_Color){0, 0, 0, 255};
+    }
+    glyph = style == HIGHLIGHT_STYLE_SELECTED
+        ? EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH
+        : EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH;
+    (void)grid_set(grid, screen_x, screen_y, glyph, foreground, background);
+    if (screen_x > 0)
+        (void)grid_set(grid, screen_x - 1, screen_y, glyph, foreground, background);
+    if (screen_x + 1 < grid->width)
+        (void)grid_set(grid, screen_x + 1, screen_y, glyph, foreground, background);
+}
+
+static void render_target(Grid *grid, Map *map, Camera *camera,
+                          const SceneLight *lights, size_t light_count,
+                          SelectionTarget target, HighlightStyle style) {
+    if (target.type == SELECTION_WALL_FACE) {
+        render_wall_outline(grid, map, camera, target, style);
+    } else if (target.type == SELECTION_LIGHT) {
+        render_light_marker(grid, map, camera, lights, light_count, target, style);
+    }
+}
+
 void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
+                             const SceneLight *lights, size_t light_count,
                              SelectionTarget selection, EditorHit hover) {
     bool hover_matches_selection;
 
@@ -210,11 +305,11 @@ void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
     hover_matches_selection = hover.valid &&
         selection_targets_equal(selection, hover.target);
     if (hover.valid && !hover_matches_selection) {
-        render_wall_outline(grid, map, camera, hover.target,
-                            HIGHLIGHT_STYLE_HOVER);
+        render_target(grid, map, camera, lights, light_count, hover.target,
+                      HIGHLIGHT_STYLE_HOVER);
     }
-    render_wall_outline(grid, map, camera, selection,
-                        HIGHLIGHT_STYLE_SELECTED);
+    render_target(grid, map, camera, lights, light_count, selection,
+                  HIGHLIGHT_STYLE_SELECTED);
 }
 
 void editor_crosshair_render(Grid *grid) {

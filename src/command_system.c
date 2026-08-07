@@ -1,19 +1,4 @@
-/**
- * command_system.c — CommandHistory for undoable SceneDocument mutations
- *
- * Transaction order for set_wall_material (plan Phase 2):
- *   1. Validate target and read old material
- *   2. NO_CHANGE if values match
- *   3. Check state-ID availability
- *   4. Reserve capacity (overflow-checked)
- *   5. Discard redo range [cursor, count) without changing next_state_id
- *   6. Build command (before/after states)
- *   7. Apply internal document mutation
- *   8. Append, advance cursor/count/next_state_id, set document current_state
- *
- * Failures before mutation leave history and document unchanged.
- */
-
+/** command_system.c — bounded grouped authored-document transactions */
 #include "command_system.h"
 #include "scene_document_internal.h"
 
@@ -21,235 +6,222 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ===================================================================
- *  Allocator hook (tests may override to force OOM)
- * =================================================================== */
-
-typedef void *(*CmdAllocFn)(size_t size);
 typedef void *(*CmdReallocFn)(void *ptr, size_t size);
 typedef void (*CmdFreeFn)(void *ptr);
-
-static void *cmd_default_alloc(size_t size) { return malloc(size); }
 static void *cmd_default_realloc(void *ptr, size_t size) { return realloc(ptr, size); }
 static void cmd_default_free(void *ptr) { free(ptr); }
-
-static CmdAllocFn g_cmd_alloc = cmd_default_alloc;
 static CmdReallocFn g_cmd_realloc = cmd_default_realloc;
 static CmdFreeFn g_cmd_free = cmd_default_free;
 
-/* Test-only: declared in command_system.c; tests extern these. */
 void command_history_set_allocator_for_test(
-    void *(*alloc_fn)(size_t),
-    void *(*realloc_fn)(void *, size_t),
-    void (*free_fn)(void *)
-) {
-    g_cmd_alloc = alloc_fn ? alloc_fn : cmd_default_alloc;
+    void *(*alloc_fn)(size_t), void *(*realloc_fn)(void *, size_t),
+    void (*free_fn)(void *)) {
+    (void)alloc_fn;
     g_cmd_realloc = realloc_fn ? realloc_fn : cmd_default_realloc;
     g_cmd_free = free_fn ? free_fn : cmd_default_free;
 }
-
 void command_history_reset_allocator_for_test(void) {
-    g_cmd_alloc = cmd_default_alloc;
     g_cmd_realloc = cmd_default_realloc;
     g_cmd_free = cmd_default_free;
 }
 
-/* ===================================================================
- *  Capacity
- * =================================================================== */
-
-static const size_t CMD_INITIAL_CAPACITY = 8;
-
-/*
- * Ensure capacity for at least one more command at cursor (after discard,
- * count will become cursor + 1). Returns false on OOM or size overflow.
- */
 static bool history_reserve_one(CommandHistory *history) {
-    if (history->cursor < history->capacity) {
-        return true;
-    }
-
-    size_t new_cap;
-    if (history->capacity == 0) {
-        new_cap = CMD_INITIAL_CAPACITY;
-    } else {
-        if (history->capacity > SIZE_MAX / 2) {
-            return false;
-        }
-        new_cap = history->capacity * 2;
-    }
-
-    if (new_cap > SIZE_MAX / sizeof(EditorCommand)) {
-        return false;
-    }
-
-    size_t bytes = new_cap * sizeof(EditorCommand);
-    EditorCommand *grown = (EditorCommand *)g_cmd_realloc(history->commands, bytes);
-    if (!grown) {
-        return false;
-    }
-
+    size_t new_capacity;
+    EditorCommand *grown;
+    if (history->cursor < history->capacity) return true;
+    new_capacity = history->capacity ? history->capacity * 2U : 8U;
+    if (new_capacity < history->capacity ||
+        new_capacity > SIZE_MAX / sizeof(*history->commands)) return false;
+    grown = g_cmd_realloc(history->commands,
+                          new_capacity * sizeof(*history->commands));
+    if (!grown) return false;
     history->commands = grown;
-    history->capacity = new_cap;
+    history->capacity = new_capacity;
     return true;
 }
 
-/* ===================================================================
- *  Lifecycle
- * =================================================================== */
-
-void command_history_init(
-    CommandHistory *history,
-    DocumentStateId initial_state
-) {
+void command_history_init(CommandHistory *history, DocumentStateId initial_state) {
     if (!history) return;
-    history->commands = NULL;
-    history->count = 0;
-    history->cursor = 0;
-    history->capacity = 0;
-    /* next_state_id = initial_state + 1; if initial is UINT64_MAX, stay max
-     * so the next mutating command reports STATE_ID_EXHAUSTED. */
-    if (initial_state == UINT64_MAX) {
-        history->next_state_id = UINT64_MAX;
-    } else {
-        history->next_state_id = initial_state + 1;
-    }
+    memset(history, 0, sizeof(*history));
+    history->next_state_id = initial_state == UINT64_MAX
+        ? UINT64_MAX : initial_state + 1U;
 }
-
 void command_history_destroy(CommandHistory *history) {
     if (!history) return;
     g_cmd_free(history->commands);
-    history->commands = NULL;
-    history->count = 0;
-    history->cursor = 0;
-    history->capacity = 0;
-    history->next_state_id = 0;
+    memset(history, 0, sizeof(*history));
 }
 
-/* ===================================================================
- *  Mutating command
- * =================================================================== */
+static bool lights_equal(const SceneLight *a, const SceneLight *b) {
+    return a->id == b->id && a->x == b->x && a->y == b->y &&
+        a->red == b->red && a->green == b->green && a->blue == b->blue &&
+        a->alpha == b->alpha && a->intensity == b->intensity &&
+        a->radius == b->radius;
+}
 
-CommandResult command_history_set_wall_material(
-    CommandHistory *history,
-    SceneDocument *document,
-    WallMaterialRef ref,
-    MaterialId new_material
+static bool mutations_target_same_object(
+    const EditorMutation *a,
+    const EditorMutation *b
 ) {
-    if (!history || !document) {
-        return CMD_RESULT_INVALID_TARGET;
+    if (a->type != b->type) return false;
+    if (a->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
+        return a->data.wall_material.wall.map_x == b->data.wall_material.wall.map_x &&
+            a->data.wall_material.wall.map_y == b->data.wall_material.wall.map_y;
     }
-
-    MaterialId old_material = 0;
-    if (!scene_document_get_wall_material(document, ref, &old_material)) {
-        return CMD_RESULT_INVALID_TARGET;
+    if (a->type == EDITOR_MUTATION_SET_LIGHT) {
+        return a->data.light.id == b->data.light.id;
     }
+    return false;
+}
 
-    /* Wall-material commands may only retheme existing wall geometry. */
-    if (old_material <= 0) {
-        return CMD_RESULT_INVALID_TARGET;
+static bool prepare_mutation(SceneDocument *document,
+                             const EditorMutationRequest *request,
+                             EditorMutation *mutation, bool *changed) {
+    memset(mutation, 0, sizeof(*mutation));
+    mutation->type = request->type;
+    if (request->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
+        MaterialId before;
+        if (!scene_document_get_wall_material(document,
+                request->data.wall_material.wall, &before) || before <= 0)
+            return false;
+        mutation->data.wall_material.wall = request->data.wall_material.wall;
+        mutation->data.wall_material.before = before;
+        mutation->data.wall_material.after = request->data.wall_material.material;
+        *changed = before != request->data.wall_material.material;
+        return true;
     }
-
-    if (old_material == new_material) {
-        return CMD_RESULT_NO_CHANGE;
+    if (request->type == EDITOR_MUTATION_SET_LIGHT) {
+        const SceneLight *before = scene_document_find_light(
+            document, request->data.light.id);
+        if (!before || !scene_document_internal_light_value_is_valid(
+                document, request->data.light.id, &request->data.light.value))
+            return false;
+        mutation->data.light.id = request->data.light.id;
+        mutation->data.light.before = *before;
+        mutation->data.light.after = request->data.light.value;
+        *changed = !lights_equal(before, &request->data.light.value);
+        return true;
     }
+    return false;
+}
 
-    if (history->next_state_id == UINT64_MAX) {
-        return CMD_RESULT_STATE_ID_EXHAUSTED;
+static bool apply_mutation(SceneDocument *document,
+                           const EditorMutation *mutation, bool after) {
+    if (mutation->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
+        return scene_document_internal_set_wall_material(
+            document, mutation->data.wall_material.wall,
+            after ? mutation->data.wall_material.after
+                  : mutation->data.wall_material.before);
     }
-
-    /* Reserve before discarding redo so a failed grow leaves redo intact. */
-    if (!history_reserve_one(history)) {
-        return CMD_RESULT_OUT_OF_MEMORY;
+    if (mutation->type == EDITOR_MUTATION_SET_LIGHT) {
+        return scene_document_internal_set_light(
+            document, mutation->data.light.id,
+            after ? &mutation->data.light.after : &mutation->data.light.before);
     }
+    return false;
+}
 
-    /* Discard redo branch [cursor, count). State IDs are not reused. */
+CommandResult command_history_execute_group(
+    CommandHistory *history, SceneDocument *document,
+    const EditorMutationRequest *requests, size_t request_count) {
+    EditorCommand command;
+    size_t i;
+    if (!history || !document || !requests || request_count == 0U ||
+        request_count > EDITOR_COMMAND_MAX_MUTATIONS) return CMD_RESULT_INVALID_TARGET;
+    memset(&command, 0, sizeof(command));
+    for (i = 0U; i < request_count; i++) {
+        EditorMutation mutation;
+        bool changed = false;
+        size_t j;
+        if (!prepare_mutation(document, &requests[i], &mutation, &changed))
+            return CMD_RESULT_INVALID_TARGET;
+        if (!changed) continue;
+        for (j = 0U; j < command.mutation_count; j++) {
+            if (mutations_target_same_object(&command.mutations[j], &mutation))
+                return CMD_RESULT_INVALID_TARGET;
+        }
+        command.mutations[command.mutation_count++] = mutation;
+    }
+    if (command.mutation_count == 0U) return CMD_RESULT_NO_CHANGE;
+    if (history->next_state_id == UINT64_MAX) return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (!history_reserve_one(history)) return CMD_RESULT_OUT_OF_MEMORY;
+
+    command.before_state = document->current_state;
+    command.after_state = history->next_state_id;
+    for (i = 0U; i < command.mutation_count; i++) {
+        if (!apply_mutation(document, &command.mutations[i], true)) {
+            while (i > 0U) {
+                i--;
+                (void)apply_mutation(document, &command.mutations[i], false);
+            }
+            return CMD_RESULT_INVALID_TARGET;
+        }
+    }
     history->count = history->cursor;
-
-    DocumentStateId before = document->current_state;
-    DocumentStateId after = history->next_state_id;
-
-    EditorCommand cmd;
-    memset(&cmd, 0, sizeof(cmd));
-    cmd.type = CMD_SET_WALL_MATERIAL;
-    cmd.before_state = before;
-    cmd.after_state = after;
-    cmd.data.set_wall_material.wall = ref;
-    cmd.data.set_wall_material.old_material = old_material;
-    cmd.data.set_wall_material.new_material = new_material;
-
-    if (!scene_document_internal_set_wall_material(document, ref, new_material)) {
-        /* Target was valid at read time; map_set should not fail. Treat as
-         * invalid and leave history unchanged (redo already discarded only
-         * after reserve succeeded — document still has old material). */
-        return CMD_RESULT_INVALID_TARGET;
-    }
-
-    history->commands[history->cursor] = cmd;
-    history->cursor += 1;
+    history->commands[history->cursor++] = command;
     history->count = history->cursor;
-    history->next_state_id = after + 1;
-    scene_document_internal_set_current_state(document, after);
-
+    history->next_state_id = command.after_state + 1U;
+    scene_document_internal_set_current_state(document, command.after_state);
     return CMD_RESULT_OK;
 }
 
-/* ===================================================================
- *  Undo / Redo
- * =================================================================== */
-
-CommandResult command_history_undo(
-    CommandHistory *history,
-    SceneDocument *document
-) {
-    if (!history || !document) {
-        return CMD_RESULT_INVALID_TARGET;
-    }
-    if (history->cursor == 0) {
-        return CMD_RESULT_NOTHING_TO_UNDO;
-    }
-
-    EditorCommand *cmd = &history->commands[history->cursor - 1];
-    switch (cmd->type) {
-        case CMD_SET_WALL_MATERIAL:
-            if (!scene_document_internal_set_wall_material(
-                    document,
-                    cmd->data.set_wall_material.wall,
-                    cmd->data.set_wall_material.old_material)) {
-                return CMD_RESULT_INVALID_TARGET;
-            }
-            scene_document_internal_set_current_state(document, cmd->before_state);
-            history->cursor -= 1;
-            return CMD_RESULT_OK;
-        default:
-            return CMD_RESULT_INVALID_TARGET;
-    }
+CommandResult command_history_set_wall_material(
+    CommandHistory *history, SceneDocument *document,
+    WallMaterialRef ref, MaterialId material) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_SET_WALL_MATERIAL;
+    request.data.wall_material.wall = ref;
+    request.data.wall_material.material = material;
+    return command_history_execute_group(history, document, &request, 1U);
 }
 
-CommandResult command_history_redo(
-    CommandHistory *history,
-    SceneDocument *document
-) {
-    if (!history || !document) {
-        return CMD_RESULT_INVALID_TARGET;
-    }
-    if (history->cursor >= history->count) {
-        return CMD_RESULT_NOTHING_TO_REDO;
-    }
+CommandResult command_history_set_light(
+    CommandHistory *history, SceneDocument *document,
+    SceneInstanceId id, const SceneLight *value) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_LIGHT;
+    request.data.light.id = id;
+    request.data.light.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
 
-    EditorCommand *cmd = &history->commands[history->cursor];
-    switch (cmd->type) {
-        case CMD_SET_WALL_MATERIAL:
-            if (!scene_document_internal_set_wall_material(
-                    document,
-                    cmd->data.set_wall_material.wall,
-                    cmd->data.set_wall_material.new_material)) {
-                return CMD_RESULT_INVALID_TARGET;
+CommandResult command_history_undo(CommandHistory *history, SceneDocument *document) {
+    EditorCommand *command;
+    size_t i;
+    if (!history || !document) return CMD_RESULT_INVALID_TARGET;
+    if (history->cursor == 0U) return CMD_RESULT_NOTHING_TO_UNDO;
+    command = &history->commands[history->cursor - 1U];
+    for (i = command->mutation_count; i > 0U; i--) {
+        if (!apply_mutation(document, &command->mutations[i - 1U], false)) {
+            size_t rollback;
+            for (rollback = i; rollback < command->mutation_count; rollback++) {
+                (void)apply_mutation(document, &command->mutations[rollback], true);
             }
-            scene_document_internal_set_current_state(document, cmd->after_state);
-            history->cursor += 1;
-            return CMD_RESULT_OK;
-        default:
             return CMD_RESULT_INVALID_TARGET;
+        }
     }
+    scene_document_internal_set_current_state(document, command->before_state);
+    history->cursor--;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_redo(CommandHistory *history, SceneDocument *document) {
+    EditorCommand *command;
+    size_t i;
+    if (!history || !document) return CMD_RESULT_INVALID_TARGET;
+    if (history->cursor >= history->count) return CMD_RESULT_NOTHING_TO_REDO;
+    command = &history->commands[history->cursor];
+    for (i = 0U; i < command->mutation_count; i++) {
+        if (!apply_mutation(document, &command->mutations[i], true)) {
+            while (i > 0U) {
+                i--;
+                (void)apply_mutation(document, &command->mutations[i], false);
+            }
+            return CMD_RESULT_INVALID_TARGET;
+        }
+    }
+    scene_document_internal_set_current_state(document, command->after_state);
+    history->cursor++;
+    return CMD_RESULT_OK;
 }

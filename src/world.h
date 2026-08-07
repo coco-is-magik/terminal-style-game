@@ -48,7 +48,7 @@ typedef enum {
  */
 typedef struct {
     Vec2 pos;               /* World position (fractional grid coordinates) */
-    SDL_Color color;        /* Colour of the light (affects wall tint) */
+    SDL_Color color;        /* Billboard/marker colour; illumination is scalar */
     double intensity;       /* Brightness multiplier (>0 = light, <0 = anti-light) */
     double radius;          /* Maximum distance the light reaches (grid cells) */
 } Light;

@@ -290,6 +290,23 @@ static void test_asset_loader(void **state) {
     asset_registry_clear(&assets);
 }
 
+static void test_lit_palette_color_is_camera_distance_independent(void **state) {
+    Palette palette = {
+        {200, 100, 50, 255}, {20, 40, 60, 255}, {1, 2, 3, 255}
+    };
+    SDL_Color near_legacy;
+    SDL_Color far_legacy;
+    SDL_Color lit;
+    (void)state;
+    near_legacy = palette_sample(&palette, 1.0, 0.5);
+    far_legacy = palette_sample(&palette, 9.0, 0.5);
+    assert_int_not_equal(near_legacy.r, far_legacy.r);
+    lit = palette_sample_lit(&palette, 0.5);
+    assert_int_equal(lit.r, 100);
+    assert_int_equal(lit.g, 50);
+    assert_int_equal(lit.b, 25);
+}
+
 static void test_config_parsing(void **state) {
     (void)state;
     // We already called config_init_defaults() in main()
@@ -858,6 +875,7 @@ int main(void) {
         cmocka_unit_test(test_renderer_preflight_boundaries),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
         cmocka_unit_test(test_asset_loader),
+        cmocka_unit_test(test_lit_palette_color_is_camera_distance_independent),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_config_transactional_valid_override),
         cmocka_unit_test(test_config_invalid_file_rolls_back),

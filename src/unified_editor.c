@@ -6,10 +6,14 @@
  */
 
 #include "unified_editor.h"
+#include "editor_domain.h"
 #include "editor_highlight.h"
 
 #include "camera.h"
+#include "config.h"
 
+#include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +21,12 @@
 
 #define EDITOR_PICKER_VISIBLE 6
 #define EDITOR_MAP_CHOOSER_VISIBLE 10
+#define EDITOR_LIGHT_PICK_RADIUS 0.50
+#define EDITOR_LIGHT_REPEAT_DELAY_SECONDS 0.35
+#define EDITOR_LIGHT_REPEAT_INTERVAL_SECONDS 0.08
+#define EDITOR_LIGHT_REPEAT_MAX_STEPS_PER_FRAME 8
 
+static void editor_cancel_light_value_edit(UnifiedEditorState *editor);
 
 static void editor_clear_selection(UnifiedEditorState *editor) {
     editor->selection.type = SELECTION_NONE;
@@ -33,8 +42,15 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->modal = EDITOR_MODAL_NONE;
     editor->status = EDITOR_STATUS_NONE;
     editor->inspector_open = false;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
     editor->material_picker_index = 0;
     editor->highlighted_material = 0;
+    editor->light_field = EDITOR_LIGHT_FIELD_X;
+    editor->light_value_text[0] = '\0';
+    editor->light_value_text_length = 0U;
+    editor->light_value_editing = false;
+    editor->light_repeat_direction = 0;
+    editor->light_repeat_elapsed = 0.0;
     editor->last_command_result = CMD_RESULT_OK;
     editor->last_save_result = SCENE_SAVE_OK;
     scene_diagnostic_reset(&editor->last_scene_diagnostic);
@@ -130,6 +146,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_REPAIR_REQUIRED:       return "Repair required before Save";
         case EDITOR_STATUS_DURABILITY_WARNING:    return "Saved; durability warning";
         case EDITOR_STATUS_INVALID_SCENE_NAME:    return "Invalid scene name";
+        case EDITOR_STATUS_INVALID_NUMERIC_VALUE: return "Invalid or out-of-range number";
         case EDITOR_STATUS_NONE:
         default:                                  return "";
     }
@@ -310,22 +327,55 @@ static void editor_map_command_result(
     editor_refresh_unsaveable_status(editor);
 }
 
+static bool editor_selection_is_valid(
+    const UnifiedEditorState *editor,
+    SelectionTarget selection
+) {
+    if (!editor || selection.type == SELECTION_NONE) return false;
+    if (selection.type == SELECTION_WALL_FACE) {
+        return editor_selection_is_valid_for_map(
+            selection, scene_document_get_map(&editor->document));
+    }
+    if (selection.type == SELECTION_LIGHT) {
+        return scene_document_find_light(
+            &editor->document, selection.value.light.id) != NULL;
+    }
+    return false;
+}
+
 static void editor_revalidate_selection(UnifiedEditorState *editor) {
-    const Map *map;
-
-    if (!editor) {
-        return;
-    }
-    if (editor->selection.type == SELECTION_NONE) {
-        return;
-    }
-
-    map = scene_document_get_map(&editor->document);
-    if (!editor_selection_is_valid_for_map(editor->selection, map)) {
+    if (!editor || editor->selection.type == SELECTION_NONE) return;
+    if (!editor_selection_is_valid(editor, editor->selection)) {
         editor_clear_selection(editor);
         editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
         editor->status = EDITOR_STATUS_INVALID_SELECTION;
     }
+}
+
+static bool editor_command_contains_light(const EditorCommand *command) {
+    size_t i;
+    if (!command) return false;
+    for (i = 0U; i < command->mutation_count; i++) {
+        if (command->mutations[i].type == EDITOR_MUTATION_SET_LIGHT) return true;
+    }
+    return false;
+}
+
+static bool editor_refresh_runtime(UnifiedEditorState *editor) {
+    WorldState candidate;
+    if (!editor) return false;
+    world_init(&candidate);
+    if (scene_document_build_runtime_world(
+            &editor->document, editor->assets, &candidate) !=
+        SCENE_RUNTIME_BUILD_OK) {
+        world_clear(&candidate);
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        return false;
+    }
+    world_clear(&editor->runtime_world);
+    editor->runtime_world = candidate;
+    return true;
 }
 
 /* ---- Public lifecycle ------------------------------------------------ */
@@ -510,6 +560,8 @@ SceneLoadResult unified_editor_load_scene(
     EditorHit prev_hover = editor->hover;
     EditorMode prev_mode = editor->mode;
     bool prev_inspector = editor->inspector_open;
+    EditorInspectorKind prev_inspector_kind = editor->inspector_kind;
+    EditorLightField prev_light_field = editor->light_field;
     EditorModal prev_modal = editor->modal;
 
     scene_document_init(&candidate_document);
@@ -525,6 +577,8 @@ SceneLoadResult unified_editor_load_scene(
         editor->hover = prev_hover;
         editor->mode = prev_mode;
         editor->inspector_open = prev_inspector;
+        editor->inspector_kind = prev_inspector_kind;
+        editor->light_field = prev_light_field;
         editor->modal = prev_modal;
         return result;
     }
@@ -547,6 +601,8 @@ SceneLoadResult unified_editor_load_scene(
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
     editor->inspector_open = false;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
     editor->modal = EDITOR_MODAL_NONE;
     editor->status = EDITOR_STATUS_NONE;
     editor->request_exit_to_main_menu = false;
@@ -591,6 +647,7 @@ static SceneLoadResult editor_replace_document(UnifiedEditorState *editor,
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
     editor->inspector_open = false;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
     editor->modal = EDITOR_MODAL_NONE;
     editor->status = scene_document_is_repair_required(&editor->document)
                          ? EDITOR_STATUS_REPAIR_REQUIRED : EDITOR_STATUS_NONE;
@@ -626,6 +683,7 @@ SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
     editor->inspector_open = false;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
     editor->modal = EDITOR_MODAL_NONE;
     editor->last_load_result = SCENE_LOAD_OK;
     editor->status = scene_document_is_repair_required(&editor->document)
@@ -675,7 +733,7 @@ CommandResult unified_editor_set_wall_material(
     UnifiedEditorState *editor,
     MaterialId material
 ) {
-    WallMaterialRef ref;
+    EditorMutationRequest request;
     CommandResult result;
 
     if (!editor || !editor->active || !editor->assets) {
@@ -703,13 +761,14 @@ CommandResult unified_editor_set_wall_material(
         }
     }
 
-    ref = editor_wall_face_to_material_ref(editor->selection.value.wall_face);
-    result = command_history_set_wall_material(
-        &editor->history,
-        &editor->document,
-        ref,
-        material
-    );
+    if (!editor_domain_make_wall_material_request(
+            editor->selection, material, &request)) {
+        editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
 
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
@@ -724,29 +783,91 @@ CommandResult unified_editor_set_wall_material(
     return result;
 }
 
+CommandResult unified_editor_step_light_field(
+    UnifiedEditorState *editor,
+    EditorLightField field,
+    int direction
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    if (!editor || !editor->active ||
+        !editor_domain_make_light_step_request(
+            &editor->document, editor->selection, field, direction, &request)) {
+        if (editor) {
+            editor->status = EDITOR_STATUS_INVALID_SELECTION;
+            editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        }
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK) (void)editor_refresh_runtime(editor);
+    return result;
+}
+
+CommandResult unified_editor_set_light_field_value(
+    UnifiedEditorState *editor,
+    EditorLightField field,
+    double value
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    if (!editor || !editor->active ||
+        !editor_domain_make_light_value_request(
+            &editor->document, editor->selection, field, value, &request)) {
+        if (editor) {
+            editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+            editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        }
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK) (void)editor_refresh_runtime(editor);
+    return result;
+}
+
 CommandResult unified_editor_undo(UnifiedEditorState *editor) {
     CommandResult result;
+    bool refresh_runtime = false;
 
     if (!editor || !editor->active) {
         return CMD_RESULT_NOTHING_TO_UNDO;
     }
 
+    if (editor->history.cursor > 0U) {
+        refresh_runtime = editor_command_contains_light(
+            &editor->history.commands[editor->history.cursor - 1U]);
+    }
     result = command_history_undo(&editor->history, &editor->document);
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && refresh_runtime)
+        (void)editor_refresh_runtime(editor);
     return result;
 }
 
 CommandResult unified_editor_redo(UnifiedEditorState *editor) {
     CommandResult result;
+    bool refresh_runtime = false;
 
     if (!editor || !editor->active) {
         return CMD_RESULT_NOTHING_TO_REDO;
     }
 
+    if (editor->history.cursor < editor->history.count) {
+        refresh_runtime = editor_command_contains_light(
+            &editor->history.commands[editor->history.cursor]);
+    }
     result = command_history_redo(&editor->history, &editor->document);
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && refresh_runtime)
+        (void)editor_refresh_runtime(editor);
     return result;
 }
 
@@ -817,6 +938,13 @@ static void editor_handle_escape(
 
     if (editor->inspector_open) {
         editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+        editor_clear_selection(editor);
+        editor_mark_keyboard(consumed);
+        return;
+    }
+
+    if (editor->selection.type != SELECTION_NONE) {
         editor_clear_selection(editor);
         editor_mark_keyboard(consumed);
         return;
@@ -836,24 +964,23 @@ static void editor_handle_select(
     editor_mark_keyboard(consumed);
 
     if (!editor->hover.valid ||
-        editor->hover.target.type != SELECTION_WALL_FACE) {
+        !editor_selection_is_valid(editor, editor->hover.target)) {
         editor->status = EDITOR_STATUS_INVALID_SELECTION;
         return;
     }
 
-    {
-        const Map *map = scene_document_get_map(&editor->document);
-        if (!editor_selection_is_valid_for_map(editor->hover.target, map)) {
-            editor->status = EDITOR_STATUS_INVALID_SELECTION;
-            return;
-        }
-    }
-
     editor->selection = editor->hover.target;
-    editor->inspector_open = true;
+    editor->inspector_kind = editor_domain_inspector_kind(editor->selection);
+    editor->inspector_open = editor->inspector_kind != EDITOR_INSPECTOR_NONE;
+    editor->light_field = EDITOR_LIGHT_FIELD_X;
+    editor_cancel_light_value_edit(editor);
+    editor->light_repeat_direction = 0;
+    editor->light_repeat_elapsed = 0.0;
     editor->status = EDITOR_STATUS_NONE;
-    editor_rebuild_picker_for_selection(editor);
-    editor_refresh_unsaveable_status(editor);
+    if (editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
+        editor_rebuild_picker_for_selection(editor);
+        editor_refresh_unsaveable_status(editor);
+    }
 }
 
 static void editor_handle_picker_prev(UnifiedEditorState *editor) {
@@ -882,7 +1009,8 @@ static void editor_handle_picker_next(UnifiedEditorState *editor) {
 }
 
 static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
-    if (!editor->inspector_open) {
+    if (!editor->inspector_open ||
+        editor->inspector_kind != EDITOR_INSPECTOR_WALL_MATERIAL) {
         return;
     }
     if (editor->highlighted_material == 0) {
@@ -890,6 +1018,103 @@ static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
         return;
     }
     (void)unified_editor_set_wall_material(editor, editor->highlighted_material);
+}
+
+static void editor_handle_light_field_prev(UnifiedEditorState *editor) {
+    editor->light_value_editing = false;
+    editor->light_value_text_length = 0U;
+    editor->light_value_text[0] = '\0';
+    if (editor->light_field == EDITOR_LIGHT_FIELD_X)
+        editor->light_field = EDITOR_LIGHT_FIELD_RADIUS;
+    else editor->light_field = (EditorLightField)(editor->light_field - 1);
+}
+
+static void editor_handle_light_field_next(UnifiedEditorState *editor) {
+    editor->light_value_editing = false;
+    editor->light_value_text_length = 0U;
+    editor->light_value_text[0] = '\0';
+    editor->light_field = (EditorLightField)(editor->light_field + 1);
+    if (editor->light_field >= EDITOR_LIGHT_FIELD_COUNT)
+        editor->light_field = EDITOR_LIGHT_FIELD_X;
+}
+
+static void editor_cancel_light_value_edit(UnifiedEditorState *editor) {
+    if (!editor) return;
+    editor->light_value_editing = false;
+    editor->light_value_text_length = 0U;
+    editor->light_value_text[0] = '\0';
+}
+
+static void editor_append_light_value_text(UnifiedEditorState *editor,
+                                           const char *text) {
+    const char *cursor;
+    if (!editor || !text) return;
+    for (cursor = text; *cursor; cursor++) {
+        char ch = *cursor;
+        bool allowed = ch >= '0' && ch <= '9';
+        if (ch == '.' && strchr(editor->light_value_text, '.') == NULL) allowed = true;
+        if (ch == '-' && editor->light_value_text_length == 0U) allowed = true;
+        if (!allowed ||
+            editor->light_value_text_length + 1U >= sizeof(editor->light_value_text)) {
+            continue;
+        }
+        editor->light_value_text[editor->light_value_text_length++] = ch;
+        editor->light_value_text[editor->light_value_text_length] = '\0';
+        editor->light_value_editing = true;
+    }
+}
+
+static void editor_backspace_light_value(UnifiedEditorState *editor) {
+    if (!editor || !editor->light_value_editing ||
+        editor->light_value_text_length == 0U) return;
+    editor->light_value_text[--editor->light_value_text_length] = '\0';
+}
+
+static bool editor_commit_light_value(UnifiedEditorState *editor) {
+    char *end = NULL;
+    double value;
+    if (!editor || !editor->light_value_editing ||
+        editor->light_value_text_length == 0U) return false;
+    value = strtod(editor->light_value_text, &end);
+    if (!end || *end != '\0' ||
+        unified_editor_set_light_field_value(editor, editor->light_field, value) ==
+            CMD_RESULT_INVALID_TARGET) {
+        editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+        return true;
+    }
+    editor_cancel_light_value_edit(editor);
+    return true;
+}
+
+static int editor_light_repeat_steps(UnifiedEditorState *editor,
+                                     const InputState *input,
+                                     double delta_seconds) {
+    int direction = input->held_arrow_left ? -1 :
+                    input->held_arrow_right ? 1 : 0;
+    int steps = 0;
+    if (direction == 0 || input->editor_decrease_pressed ||
+        input->editor_increase_pressed) {
+        editor->light_repeat_direction = direction;
+        editor->light_repeat_elapsed = direction == 0 ? 0.0 :
+            EDITOR_LIGHT_REPEAT_DELAY_SECONDS;
+        return 0;
+    }
+    if (direction != editor->light_repeat_direction) {
+        editor->light_repeat_direction = direction;
+        editor->light_repeat_elapsed = EDITOR_LIGHT_REPEAT_DELAY_SECONDS;
+        return 0;
+    }
+    if (!isfinite(delta_seconds) || delta_seconds <= 0.0) return 0;
+    editor->light_repeat_elapsed -= delta_seconds;
+    while (editor->light_repeat_elapsed <= 0.0 &&
+           steps < EDITOR_LIGHT_REPEAT_MAX_STEPS_PER_FRAME) {
+        editor->light_repeat_elapsed += EDITOR_LIGHT_REPEAT_INTERVAL_SECONDS;
+        steps++;
+    }
+    if (editor->light_repeat_elapsed <= 0.0) {
+        editor->light_repeat_elapsed = EDITOR_LIGHT_REPEAT_INTERVAL_SECONDS;
+    }
+    return steps * direction;
 }
 
 /* Reload the current document through the correct boundary: native scenes reload
@@ -1298,8 +1523,6 @@ EditorInputConsumption unified_editor_update(
         return consumed;
     }
 
-    (void)delta_seconds;
-
     /* 1. Invalidate hover every frame before raycast. */
     editor->hover.valid = false;
     editor->hover.distance = 0.0;
@@ -1397,15 +1620,22 @@ EditorInputConsumption unified_editor_update(
                        input->editor_reload_pressed ||
                        input->editor_text_backspace_pressed ||
                        input->editor_previous_pressed ||
-                       input->editor_next_pressed) {
+                       input->editor_next_pressed ||
+                       input->editor_decrease_pressed ||
+                       input->editor_increase_pressed) {
                 editor_mark_keyboard(&consumed);
             }
             return consumed;
         }
 
 
-        /* 3. Escape hierarchy: inspector close before exit prompt. */
+        /* 3. Inline numeric entry precedes the normal escape hierarchy. */
         if (input->editor_cancel_pressed) {
+            if (editor->light_value_editing) {
+                editor_cancel_light_value_edit(editor);
+                editor_mark_keyboard(&consumed);
+                return consumed;
+            }
             editor_handle_escape(editor, &consumed);
             return consumed;
         }
@@ -1429,7 +1659,14 @@ EditorInputConsumption unified_editor_update(
         /* 6. Hover ray every frame (both modes; aim freezes in edit). */
         if (unified_editor_has_document(editor) && cmap) {
             EditorHit hit = editor_raycast_selection(camera, cmap);
-            editor->hover = hit;
+            size_t light_count = 0U;
+            const SceneLight *lights = scene_document_get_lights(
+                &editor->document, &light_count);
+            double max_distance = config_get()->raycast_max_distance;
+            if (max_distance <= 0.0) max_distance = 20.0;
+            editor->hover = editor_pick_light_selection(
+                camera, lights, light_count, hit, max_distance,
+                EDITOR_LIGHT_PICK_RADIUS);
         }
     }
 
@@ -1438,17 +1675,67 @@ EditorInputConsumption unified_editor_update(
         editor_handle_select(editor, &consumed);
     }
 
-    /* 8. Inspector picker navigation (only while open). */
+    /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (input->editor_previous_pressed) {
+        if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+            editor->light_value_editing && input->editor_confirm_pressed) {
+            (void)editor_commit_light_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+                   editor->light_value_editing &&
+                   input->editor_text_backspace_pressed) {
+            editor_backspace_light_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+                   input->text_input_len > 0) {
+            editor_append_light_value_text(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+            editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
             editor_handle_picker_prev(editor);
             editor_mark_keyboard(&consumed);
-        } else if (input->editor_next_pressed) {
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
             editor_handle_picker_next(editor);
             editor_mark_keyboard(&consumed);
-        } else if (input->editor_confirm_pressed) {
+        } else if (input->editor_confirm_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
             editor_handle_confirm_apply(editor);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
+            editor_handle_light_field_prev(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
+            editor_handle_light_field_next(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_decrease_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
+            (void)unified_editor_step_light_field(
+                editor, editor->light_field, -1);
+            editor->light_repeat_direction = input->held_arrow_left ? -1 : 0;
+            editor->light_repeat_elapsed = input->held_arrow_left
+                ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_increase_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
+            (void)unified_editor_step_light_field(
+                editor, editor->light_field, 1);
+            editor->light_repeat_direction = input->held_arrow_right ? 1 : 0;
+            editor->light_repeat_elapsed = input->held_arrow_right
+                ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+                   !editor->light_value_editing) {
+            int repeat = editor_light_repeat_steps(editor, input, delta_seconds);
+            int direction = repeat < 0 ? -1 : 1;
+            int count = repeat < 0 ? -repeat : repeat;
+            while (count-- > 0) {
+                (void)unified_editor_step_light_field(
+                    editor, editor->light_field, direction);
+            }
+            if (repeat != 0) editor_mark_keyboard(&consumed);
         }
     }
 
@@ -1480,7 +1767,9 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
-                   input->editor_confirm_pressed) {
+                   input->editor_confirm_pressed ||
+                   input->editor_decrease_pressed ||
+                   input->editor_increase_pressed) {
             /* Recognized but no-op outside inspector; still consume. */
             editor_mark_keyboard(&consumed);
         }
@@ -1521,6 +1810,15 @@ void unified_editor_render_text_overlay(
                      "Hover  (%d,%d) face:%s dist:%.2f mat:%d",
                      wf->map_x, wf->map_y, editor_face_label(wf->face),
                      editor->hover.distance, mat);
+        } else if (editor->hover.valid &&
+                   editor->hover.target.type == SELECTION_LIGHT) {
+            const SceneLight *light = scene_document_find_light(
+                &editor->document, editor->hover.target.value.light.id);
+            snprintf(line, sizeof(line),
+                     "Hover  light:%" PRIu64 " pos:(%.2f,%.2f) dist:%.2f",
+                     editor->hover.target.value.light.id,
+                     light ? light->x : 0.0, light ? light->y : 0.0,
+                     editor->hover.distance);
         } else {
             snprintf(line, sizeof(line), "Hover  (none)");
         }
@@ -1536,21 +1834,35 @@ void unified_editor_render_text_overlay(
                      wf->map_x, wf->map_y, editor_face_label(wf->face), mat,
                      material_id_is_loaded(editor->assets, (int)mat)
                          ? "" : " (missing)");
+        } else if (editor->selection.type == SELECTION_LIGHT) {
+            const SceneLight *light = scene_document_find_light(
+                &editor->document, editor->selection.value.light.id);
+            snprintf(line, sizeof(line),
+                     "Select light:%" PRIu64 " pos:(%.2f,%.2f)",
+                     editor->selection.value.light.id,
+                     light ? light->x : 0.0, light ? light->y : 0.0);
         } else {
             snprintf(line, sizeof(line), "Select (none)");
         }
         grid_print(grid, 1, 3, line, fg, bg);
 
         row = 5;
-        if (editor->inspector_open) {
+        if (editor->inspector_open &&
+            editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
+            EditorInspectorPresentation presentation;
             size_t count = editor_count_loaded_materials(editor->assets);
             size_t start;
             size_t i;
 
-            grid_print(grid, 1, row++,
-                       "Inspector: materials  Up/Down  Enter=apply", fg, bg);
-            grid_print(grid, 1, row++,
-                       "NOTE: material applies to entire wall cell", warn, bg);
+            if (editor_domain_inspector_presentation(
+                    editor->inspector_kind, &presentation)) {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+                if (presentation.note) {
+                    grid_print(grid, 1, row++, presentation.note, warn, bg);
+                }
+            }
 
             if (count == 0) {
                 grid_print(grid, 1, row++,
@@ -1585,6 +1897,44 @@ void unified_editor_render_text_overlay(
                                idx == editor->material_picker_index ? hi : dim,
                                bg);
                 }
+            }
+        } else if (editor->inspector_open &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
+            EditorInspectorPresentation presentation;
+            const SceneLight *light = scene_document_find_light(
+                &editor->document, editor->selection.value.light.id);
+            size_t field;
+            if (!editor_domain_inspector_presentation(
+                    editor->inspector_kind, &presentation)) {
+                presentation = (EditorInspectorPresentation){0};
+            } else {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+            }
+            for (field = 0; field < presentation.field_count; field++) {
+                EditorInspectorFieldPresentation field_presentation;
+                char value[32];
+                bool selected = field == (size_t)editor->light_field;
+                if (!light || !editor_domain_inspector_field_presentation(
+                        editor->inspector_kind, field,
+                        scene_document_get_map(&editor->document),
+                        &field_presentation) ||
+                    !editor_domain_format_light_field(
+                        light, (EditorLightField)field, value, sizeof(value))) {
+                    continue;
+                }
+                if (selected && editor->light_value_editing) {
+                    snprintf(line, sizeof(line), " > %-10s [%s_]",
+                             field_presentation.label, editor->light_value_text);
+                } else {
+                    snprintf(line, sizeof(line), " %s %-10s %s",
+                             selected ? ">" : " ", field_presentation.label, value);
+                }
+                grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
+            }
+            if (presentation.note) {
+                grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
         }
 

@@ -78,12 +78,42 @@ static void test_authored_runtime_ambient_overrides_config(void **state) {
     map_destroy(map);
 }
 
+static void test_intensity_radius_and_saturation_are_quantified(void **state) {
+    Map *map = map_create(10, 6);
+    WorldState world;
+    SDL_Color white = {255, 255, 255, 255};
+    (void)state;
+    assert_non_null(map);
+    world_init(&world);
+    world.has_authored_ambient = true;
+    world.ambient_intensity = 0.01;
+    assert_int_equal(world_add_light(
+        &world, 4.5, 2.5, white, 1.0, 4.0), WORLD_INSERT_OK);
+
+    lighting_update(map, &world);
+    assert_float_equal(map->light_map[2 * 10 + 4], 1.01, 0.000001);
+    assert_float_equal(map->light_map[2 * 10 + 6], 0.51, 0.000001);
+    assert_float_equal(map->light_map[2 * 10 + 8], 0.01, 0.000001);
+    assert_true(map->light_map[2 * 10 + 4] > 1.0); /* Renderer clamps saturation. */
+
+    world.lights[0].intensity = 0.5;
+    lighting_update(map, &world);
+    assert_float_equal(map->light_map[2 * 10 + 4], 0.51, 0.000001);
+    assert_float_equal(map->light_map[2 * 10 + 6], 0.26, 0.000001);
+
+    world.lights[0].radius = 2.0;
+    lighting_update(map, &world);
+    assert_float_equal(map->light_map[2 * 10 + 6], 0.01, 0.000001);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ambient_and_null_inputs),
         cmocka_unit_test(test_positive_and_negative_lights_accumulate),
         cmocka_unit_test(test_invalid_structures_are_unchanged),
         cmocka_unit_test(test_authored_runtime_ambient_overrides_config),
+        cmocka_unit_test(test_intensity_radius_and_saturation_are_quantified),
     };
     config_init_defaults();
     return cmocka_run_group_tests(tests, NULL, NULL);

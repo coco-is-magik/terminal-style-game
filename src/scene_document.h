@@ -145,6 +145,10 @@ const SceneLight *scene_document_get_lights(
     const SceneDocument *document,
     size_t *out_count
 );
+const SceneLight *scene_document_find_light(
+    const SceneDocument *document,
+    SceneInstanceId instance_id
+);
 const SceneDecalInstance *scene_document_get_decals(
     const SceneDocument *document,
     size_t *out_count

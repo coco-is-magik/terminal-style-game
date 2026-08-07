@@ -1,11 +1,9 @@
 /**
  * command_system.h — Undoable authored-document command history
  *
- * Sole caller of scene_document_internal_* mutations. UI and controller
- * never construct completed EditorCommand values; they call the history
- * wrappers below.
+ * Sole caller of scene_document_internal_* mutations. UI and controller submit
+ * typed mutation requests; one bounded group commits as one undo/redo state.
  */
-
 #ifndef COMMAND_SYSTEM_H
 #define COMMAND_SYSTEM_H
 
@@ -14,9 +12,42 @@
 
 #include <stddef.h>
 
+#define EDITOR_COMMAND_MAX_MUTATIONS 8U
+
 typedef enum {
-    CMD_SET_WALL_MATERIAL = 0
-} EditorCommandType;
+    EDITOR_MUTATION_SET_WALL_MATERIAL = 0,
+    EDITOR_MUTATION_SET_LIGHT
+} EditorMutationType;
+
+typedef struct {
+    EditorMutationType type;
+    union {
+        struct {
+            WallMaterialRef wall;
+            MaterialId material;
+        } wall_material;
+        struct {
+            SceneInstanceId id;
+            SceneLight value;
+        } light;
+    } data;
+} EditorMutationRequest;
+
+typedef struct {
+    EditorMutationType type;
+    union {
+        struct {
+            WallMaterialRef wall;
+            MaterialId before;
+            MaterialId after;
+        } wall_material;
+        struct {
+            SceneInstanceId id;
+            SceneLight before;
+            SceneLight after;
+        } light;
+    } data;
+} EditorMutation;
 
 typedef enum {
     CMD_RESULT_OK = 0,
@@ -29,16 +60,10 @@ typedef enum {
 } CommandResult;
 
 typedef struct {
-    EditorCommandType type;
     DocumentStateId before_state;
     DocumentStateId after_state;
-    union {
-        struct {
-            WallMaterialRef wall;
-            MaterialId old_material;
-            MaterialId new_material;
-        } set_wall_material;
-    } data;
+    size_t mutation_count;
+    EditorMutation mutations[EDITOR_COMMAND_MAX_MUTATIONS];
 } EditorCommand;
 
 typedef struct {
@@ -49,12 +74,15 @@ typedef struct {
     DocumentStateId next_state_id;
 } CommandHistory;
 
-void command_history_init(
-    CommandHistory *history,
-    DocumentStateId initial_state
-);
-
+void command_history_init(CommandHistory *history, DocumentStateId initial_state);
 void command_history_destroy(CommandHistory *history);
+
+CommandResult command_history_execute_group(
+    CommandHistory *history,
+    SceneDocument *document,
+    const EditorMutationRequest *requests,
+    size_t request_count
+);
 
 CommandResult command_history_set_wall_material(
     CommandHistory *history,
@@ -63,14 +91,14 @@ CommandResult command_history_set_wall_material(
     MaterialId new_material
 );
 
-CommandResult command_history_undo(
+CommandResult command_history_set_light(
     CommandHistory *history,
-    SceneDocument *document
+    SceneDocument *document,
+    SceneInstanceId id,
+    const SceneLight *value
 );
 
-CommandResult command_history_redo(
-    CommandHistory *history,
-    SceneDocument *document
-);
+CommandResult command_history_undo(CommandHistory *history, SceneDocument *document);
+CommandResult command_history_redo(CommandHistory *history, SceneDocument *document);
 
 #endif /* COMMAND_SYSTEM_H */

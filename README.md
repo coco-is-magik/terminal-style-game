@@ -188,9 +188,15 @@ dirty and unsaved, and Save routes to Save As. The chooser lists native scenes
 first and exposes legacy `.txt` files through a separate **Import legacy map…**
 action.
 
-In edit mode, an adaptive center `+` marks the aim point. The hovered wall face
-uses a dashed outline; pressing `E` opens the inspector and gives the selected
-face a solid outline. Closing the inspector clears that persistent selection.
+Developer checks for the editor-only typed highlight path are available as
+`make benchmark-editor-highlight` and `make stability-editor-highlight`. They run
+headlessly and do not replace visual/input acceptance.
+
+In edit mode, an adaptive center `+` marks the aim point. Hovered wall faces use a
+dashed outline and selected faces use a solid outline. Existing point lights are
+also selectable: hovered lights use an `o` marker and selected lights use `@`.
+Pressing `E` opens the inspector for the aimed typed target. Closing the inspector
+clears that persistent selection.
 
 ### Unified editor controls
 
@@ -198,9 +204,10 @@ face a solid outline. Closing the inspector clears that persistent selection.
 |---|---|
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
-| `E` | Select the wall under the center crosshair and open the inspector |
-| `Up` / `Down` | Move through loaded materials or editor-menu choices |
-| `Enter` | Apply the highlighted material or confirm an editor-menu choice |
+| `E` | Select the aimed wall face or point light and open its inspector |
+| `Up` / `Down` | Move through materials, light fields, or editor-menu choices |
+| `Left` / `Right` | Decrease/increase the selected point-light field |
+| `Enter` | Apply the highlighted wall material or confirm an editor-menu choice |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
 | `Ctrl+S` | Open the Save menu for the current scene |
@@ -238,6 +245,9 @@ the initial no-document chooser to the main menu.
   empty material-`0` cells to the longest row.
 - If a selected wall references an unloaded material, its numeric ID is shown
   with `(missing)` and may be replaced by a loaded material.
+- Existing point lights can be selected and inspected by stable scene ID. Position,
+  RGBA channels, intensity, and radius are edited in bounded steps through the same
+  undo/redo history as wall materials. Native Save/Open persists those changes.
 - A scene whose decal references a missing reusable pattern commits in visible
   repair mode: the authored reference is preserved, a conspicuous fallback is
   shown, and normal Save is blocked until the reference is explicitly replaced.
@@ -246,6 +256,6 @@ the initial no-document chooser to the main menu.
 
 Deferred work includes map-cell construction/deletion, per-face materials,
 floor and ceiling editing, material authoring, integrated painter UI, decal and
-sprite placement, animation, objects, lights, triggers, spawn editing, and
-stable entity IDs. Reusable decal persistence (`decal_io`) and headless pattern
+sprite placement, animation, objects, point-light creation/deletion and placement
+tools, triggers, and spawn editing. Reusable decal persistence (`decal_io`) and headless pattern
 painting (`decal_painter`) remain available and tested for later integration.

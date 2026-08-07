@@ -337,8 +337,10 @@ static void sync_editor_text_input(Renderer *renderer,
 
     if (!renderer || !renderer->window) return;
     should_be_active = app_state == APP_STATE_EDITOR && editor && editor->active &&
-        editor->modal == EDITOR_MENU_SAVE &&
-        editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME;
+        ((editor->modal == EDITOR_MENU_SAVE &&
+          editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME) ||
+         (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
+          editor->inspector_kind == EDITOR_INSPECTOR_LIGHT));
     if (should_be_active && !SDL_TextInputActive(renderer->window)) {
         if (!SDL_StartTextInput(renderer->window)) {
             fprintf(stderr, "Failed to start editor text input: %s\n", SDL_GetError());
@@ -860,9 +862,13 @@ int app_main(int argc, char* argv[]) {
                     ? scene_document_get_map_for_runtime(&ued.document)
                     : NULL;
                 if (ed_map && ed_map->cells && ed_map->width > 0 && ed_map->height > 0) {
+                    size_t editor_light_count = 0U;
+                    const SceneLight *editor_lights = scene_document_get_lights(
+                        &ued.document, &editor_light_count);
                     lighting_update(ed_map, &ued.runtime_world);
                     raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world);
                     editor_highlight_render(grid, ed_map, &cam,
+                                            editor_lights, editor_light_count,
                                             ued.selection, ued.hover);
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};
