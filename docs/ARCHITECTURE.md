@@ -47,15 +47,19 @@ See `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`.
   observable; decal ownership transfers only on success.
 - `scene_document` / `command_system`: authoritative editable map and transactional
   mutation history. Rendering borrows the runtime map view.
-- `map_catalog`: owns a sorted snapshot of regular lowercase `.txt` direct children
-  under a caller-supplied map root. Refresh builds a candidate snapshot first;
-  symlinks, subdirectories, and non-`.txt` entries are excluded. Failed refresh
+- `map_catalog`: owns a sorted, extension-filtered snapshot of regular direct
+  children under a caller-supplied root. Native Open filters lowercase `.tscene`;
+  legacy Import filters lowercase `.txt`. Refresh builds a candidate snapshot
+  first; symlinks, subdirectories, and other entries are excluded. Failed refresh
   preserves the previous catalog.
 - `unified_editor`: owns the current `MapCatalog`, remembered map-root string, and
   chooser/dirty-confirmation state. A successful catalog refresh commits a newly
   supplied root; discovery failure preserves the prior root, catalog, document,
   history, selection, and camera. Successful target load resets document-dependent
   state through the existing `SceneDocument` transaction; failed load does not.
+  Dynamic editor workflows, including Save naming and overwrite confirmation, use
+  one controller-rendered menu state. Shortcuts dispatch the same menu actions;
+  SDL text-input and pointer-capture policy remain application adapters.
 - `frame_dispatch`: deterministic benchmark scenario mutations.
 - `menu_controller` / `menu_state`: pure action decoding and menu stack state;
   `app.c` performs side effects such as editor startup. A handled menu confirm

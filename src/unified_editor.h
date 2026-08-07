@@ -33,9 +33,20 @@ typedef enum {
     EDITOR_MODAL_RELOAD_PROMPT,
     EDITOR_MODAL_MAP_CHOOSER,
     EDITOR_MODAL_DIRTY_OPEN_PROMPT,
-    EDITOR_MODAL_SAVE_AS,
-    EDITOR_MODAL_OVERWRITE_PROMPT
+    EDITOR_MENU_SAVE
 } EditorModal;
+
+typedef enum {
+    EDITOR_SAVE_MENU_EDIT_NAME = 0,
+    EDITOR_SAVE_MENU_CONFIRM_OVERWRITE
+} EditorSaveMenuStage;
+
+typedef enum {
+    EDITOR_SAVE_OVERWRITE = 0,
+    EDITOR_SAVE_EDIT_NAME,
+    EDITOR_SAVE_CANCEL,
+    EDITOR_SAVE_CHOICE_COUNT
+} EditorSaveChoice;
 
 typedef enum {
     EDITOR_CHOOSER_LEGACY_CURRENT = 0,
@@ -107,6 +118,10 @@ typedef struct {
     char save_as_name[65];
     size_t save_as_name_length;
     char save_as_path[1024];
+    EditorSaveMenuStage save_menu_stage;
+    EditorSaveChoice save_choice;
+    EditorModal save_return_menu;
+    bool save_force_new_path;
 
     SelectionTarget selection;
     EditorHit hover;
@@ -120,6 +135,7 @@ typedef struct {
     CommandResult last_command_result;
     SceneLoadResult last_load_result;
     SceneSaveResult last_save_result;
+    SceneDiagnostic last_scene_diagnostic;
     MapCatalogResult last_catalog_result;
 
     bool request_exit_to_main_menu;

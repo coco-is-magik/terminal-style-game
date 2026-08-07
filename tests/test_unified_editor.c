@@ -90,6 +90,22 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "new_interactive.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "import_interactive.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "dirty_saved.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "shortcut_saved.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "exit_saved.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "phase6_saved.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "open_a.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "open_b.tscene");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -246,6 +262,26 @@ static EditorInputConsumption update_with(
     return unified_editor_update(ed, in, cam, 0.016);
 }
 
+static void set_scene_root(UnifiedEditorState *ed, const char *root) {
+    free(ed->scene_root);
+    ed->scene_root = strdup(root);
+    assert_non_null(ed->scene_root);
+}
+
+static void enter_save_name_and_confirm(UnifiedEditorState *ed, Camera *cam,
+                                        const char *name) {
+    InputState in;
+
+    assert_int_equal(ed->modal, EDITOR_MENU_SAVE);
+    zero_input(&in);
+    snprintf(in.text_input, sizeof(in.text_input), "%s", name);
+    in.text_input_len = (int)strlen(in.text_input);
+    update_with(ed, cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(ed, cam, &in);
+}
+
 static int prepare_catalog_maps(char *first, size_t first_size,
                                 char *second, size_t second_size) {
     path_in_tmpdir(first, first_size, "a_current.txt");
@@ -303,6 +339,8 @@ static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
     InputState in;
     char first[512];
     char second[512];
+    char native_first[512];
+    char native_second[512];
     char missing_root[512];
     char *root_before;
     SelectionTarget selection_before;
@@ -310,9 +348,14 @@ static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
 
     assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
                                           sizeof(second)), 0);
+    path_in_tmpdir(native_first, sizeof(native_first), "open_a.tscene");
+    path_in_tmpdir(native_second, sizeof(native_second), "open_b.tscene");
+    assert_int_equal(write_text_file(native_first, NATIVE_SCENE), 0);
+    assert_int_equal(write_text_file(native_second, NATIVE_SCENE), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
-    assert_int_equal(unified_editor_begin_map_open(&ed, g_tmpdir), MAP_CATALOG_OK);
+    assert_int_equal(unified_editor_begin_native_open(&ed, g_tmpdir),
+                     MAP_CATALOG_OK);
     zero_input(&in);
     in.editor_cancel_pressed = true;
     camera_init(&cam, 4.0, 5.0, 0.5, PI / 2.0);
@@ -326,15 +369,17 @@ static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
     assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
     assert_int_equal(ed.map_catalog.count, 2);
+    assert_int_equal(ed.chooser_kind, EDITOR_CHOOSER_NATIVE_OPEN);
+    assert_string_equal(ed.map_catalog.entries[0].name, "open_a.tscene");
 
-    root_before = ed.map_root;
+    root_before = ed.scene_root;
     path_in_tmpdir(missing_root, sizeof(missing_root), "missing-directory");
-    assert_int_equal(unified_editor_begin_map_open(&ed, missing_root),
+    assert_int_equal(unified_editor_begin_native_open(&ed, missing_root),
                      MAP_CATALOG_OPEN_FAILED);
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
     assert_int_equal(ed.status, EDITOR_STATUS_CATALOG_FAILED);
-    assert_ptr_equal(ed.map_root, root_before);
-    assert_string_equal(ed.map_root, g_tmpdir);
+    assert_ptr_equal(ed.scene_root, root_before);
+    assert_string_equal(ed.scene_root, g_tmpdir);
     assert_int_equal(ed.map_catalog.count, 2);
     assert_string_equal(ed.document.path, first);
     assert_memory_equal(&ed.selection, &selection_before,
@@ -345,6 +390,58 @@ static void test_ctrl_o_and_catalog_failure_preserve_document(void **state) {
     unified_editor_destroy(&ed);
     remove(first);
     remove(second);
+    remove(native_first);
+    remove(native_second);
+}
+
+static void test_native_open_and_legacy_import_chooser_switch(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    char legacy[512];
+    char native[512];
+    (void)state;
+
+    path_in_tmpdir(legacy, sizeof(legacy), "a_current.txt");
+    path_in_tmpdir(native, sizeof(native), "open_a.tscene");
+    assert_int_equal(write_text_file(legacy, VALID_MAP), 0);
+    assert_int_equal(write_text_file(native, NATIVE_SCENE), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_begin_legacy_import(&ed, g_tmpdir),
+                     MAP_CATALOG_OK);
+    assert_int_equal(unified_editor_begin_native_open(&ed, g_tmpdir),
+                     MAP_CATALOG_OK);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "OPEN SCENE"));
+    assert_true(grid_contains_text(grid, "open_a.tscene"));
+    grid_destroy(grid);
+
+    zero_input(&in);
+    in.editor_import_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.chooser_kind, EDITOR_CHOOSER_LEGACY_IMPORT);
+    assert_int_equal(ed.map_catalog.count, 1);
+    assert_string_equal(ed.map_catalog.entries[0].name, "a_current.txt");
+
+    zero_input(&in);
+    in.editor_open_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.chooser_kind, EDITOR_CHOOSER_NATIVE_OPEN);
+    assert_int_equal(ed.map_catalog.count, 1);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(scene_document_get_path(&ed.document), native);
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+
+    unified_editor_destroy(&ed);
+    remove(legacy);
+    remove(native);
 }
 
 static void test_r2_typed_workflows_transactional(void **state) {
@@ -386,6 +483,282 @@ static void test_r2_typed_workflows_transactional(void **state) {
     assert_int_equal(unified_editor_open_native(&ed, native), SCENE_LOAD_OK);
     assert_string_equal(ed.document.name, "workflow");
     assert_false(scene_document_is_dirty(&ed.document));
+    unified_editor_destroy(&ed);
+}
+
+static void save_pathless_document_through_shortcut(UnifiedEditorState *ed,
+                                                    Camera *cam,
+                                                    const char *name,
+                                                    const char *expected_path) {
+    InputState in;
+    Grid *grid;
+
+    free(ed->scene_root);
+    ed->scene_root = strdup(g_tmpdir);
+    assert_non_null(ed->scene_root);
+
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    assert_true(update_with(ed, cam, &in).keyboard_consumed);
+    assert_int_equal(ed->modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed->save_menu_stage, EDITOR_SAVE_MENU_EDIT_NAME);
+    assert_true(scene_document_is_dirty(&ed->document));
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(ed, grid);
+    assert_true(grid_contains_text(grid, "SAVE SCENE"));
+    assert_true(grid_contains_text(grid, "Backspace=delete"));
+    grid_destroy(grid);
+
+    zero_input(&in);
+    snprintf(in.text_input, sizeof(in.text_input), "%s", name);
+    in.text_input_len = (int)strlen(in.text_input);
+    assert_true(update_with(ed, cam, &in).keyboard_consumed);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    assert_true(update_with(ed, cam, &in).keyboard_consumed);
+    assert_int_equal(ed->modal, EDITOR_MODAL_NONE);
+    assert_int_equal(ed->status, EDITOR_STATUS_SAVED);
+    assert_false(scene_document_is_dirty(&ed->document));
+    assert_string_equal(scene_document_get_path(&ed->document), expected_path);
+    assert_int_equal(access(expected_path, F_OK), 0);
+}
+
+static void test_save_menu_backspace_and_empty_name_feedback(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    (void)state;
+
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    memcpy(in.text_input, "ab", 3U);
+    in.text_input_len = 2;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.save_as_name, "ab");
+    zero_input(&in);
+    in.editor_text_backspace_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.save_as_name, "a");
+    zero_input(&in);
+    in.editor_text_backspace_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed.status, EDITOR_STATUS_INVALID_SCENE_NAME);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Status: Invalid scene name"));
+    grid_destroy(grid);
+    unified_editor_destroy(&ed);
+}
+
+static void test_dirty_import_save_then_new_continues(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char legacy[512];
+    char saved[512];
+    char source_before[64];
+    char source_after[64];
+    (void)state;
+
+    path_in_tmpdir(legacy, sizeof(legacy), "r2_legacy.txt");
+    path_in_tmpdir(saved, sizeof(saved), "new_interactive.tscene");
+    remove(saved);
+    assert_int_equal(write_text_file(legacy, "11\n10\n"), 0);
+    assert_int_equal(read_text_file(legacy, source_before,
+                                    sizeof(source_before)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_import_legacy(&ed, legacy), SCENE_LOAD_OK);
+    free(ed.scene_root);
+    ed.scene_root = strdup(g_tmpdir);
+    assert_non_null(ed.scene_root);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_new_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_DIRTY_OPEN_PROMPT);
+    assert_int_equal(ed.pending_action, EDITOR_PENDING_NEW);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.dirty_open_choice, EDITOR_DIRTY_OPEN_SAVE);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed.save_return_menu, EDITOR_MODAL_DIRTY_OPEN_PROMPT);
+
+    zero_input(&in);
+    memcpy(in.text_input, "new_interactive", sizeof("new_interactive"));
+    in.text_input_len = (int)strlen(in.text_input);
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+
+    assert_int_equal(access(saved, F_OK), 0);
+    assert_int_equal(read_text_file(legacy, source_after,
+                                    sizeof(source_after)), 0);
+    assert_string_equal(source_after, source_before);
+    assert_int_equal(ed.pending_action, EDITOR_PENDING_NONE);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.document.map.width, 10);
+    assert_int_equal(ed.document.map.height, 6);
+    unified_editor_destroy(&ed);
+}
+
+static void test_save_menu_overwrite_and_cancel_are_visible(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    char existing[512];
+    (void)state;
+
+    path_in_tmpdir(existing, sizeof(existing), "overwrite_target.tscene");
+    remove(existing);
+    assert_int_equal(write_text_file(existing, "existing"), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    set_scene_root(&ed, g_tmpdir);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    memcpy(in.text_input, "overwrite_target", sizeof("overwrite_target"));
+    in.text_input_len = (int)strlen(in.text_input);
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed.save_menu_stage,
+                     EDITOR_SAVE_MENU_CONFIRM_OVERWRITE);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "File exists:"));
+    assert_true(grid_contains_text(grid, "> Overwrite"));
+    grid_destroy(grid);
+
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.save_choice, EDITOR_SAVE_EDIT_NAME);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.save_menu_stage, EDITOR_SAVE_MENU_EDIT_NAME);
+    assert_string_equal(ed.save_as_name, "overwrite_target");
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(ed.pending_action, EDITOR_PENDING_NONE);
+    assert_true(scene_document_is_dirty(&ed.document));
+
+    unified_editor_destroy(&ed);
+    remove(existing);
+}
+
+static void test_native_ctrl_s_menu_saves_existing_destination(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char native[512];
+    char contents[2048];
+    (void)state;
+
+    path_in_tmpdir(native, sizeof(native), "r2_native.tscene");
+    assert_int_equal(write_text_file(native, NATIVE_SCENE), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, native), SCENE_LOAD_OK);
+    select_native_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 12), CMD_RESULT_OK);
+    assert_int_not_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_string_equal(ed.save_as_name, "workflow");
+    assert_false(ed.save_force_new_path);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_false(scene_document_is_dirty(&ed.document));
+    assert_string_equal(scene_document_get_path(&ed.document), native);
+    assert_int_equal(read_text_file(native, contents, sizeof(contents)), 0);
+    assert_non_null(strstr(contents, "012"));
+    unified_editor_destroy(&ed);
+    remove(native);
+}
+
+static void test_pathless_ctrl_s_routes_to_interactive_save_as(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    char legacy[512];
+    char new_saved[512];
+    char imported_saved[512];
+    (void)state;
+
+    path_in_tmpdir(legacy, sizeof(legacy), "r2_legacy.txt");
+    path_in_tmpdir(new_saved, sizeof(new_saved), "new_interactive.tscene");
+    path_in_tmpdir(imported_saved, sizeof(imported_saved),
+                   "import_interactive.tscene");
+    assert_int_equal(write_text_file(legacy, "11\n10\n"), 0);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    save_pathless_document_through_shortcut(&ed, &cam, "new_interactive",
+                                            new_saved);
+    unified_editor_destroy(&ed);
+
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_import_legacy(&ed, legacy), SCENE_LOAD_OK);
+    save_pathless_document_through_shortcut(&ed, &cam, "import_interactive",
+                                            imported_saved);
+    unified_editor_destroy(&ed);
+}
+
+static void test_overlay_includes_new_scene_shortcut(void **state) {
+    UnifiedEditorState ed;
+    Grid *grid;
+    (void)state;
+
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    grid = grid_create(260, 20);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Ctrl+N=new"));
+    grid_destroy(grid);
     unified_editor_destroy(&ed);
 }
 
@@ -520,11 +893,15 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     char first[512];
     char second[512];
     char saved[256];
+    char native_saved[512];
     (void)state;
 
     assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
                                           sizeof(second)), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
+    set_scene_root(&ed, g_tmpdir);
+    path_in_tmpdir(native_saved, sizeof(native_saved), "dirty_saved.tscene");
+    remove(native_saved);
     assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
     select_east_wall(&ed);
     assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
@@ -542,15 +919,16 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     zero_input(&in);
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
+    enter_save_name_and_confirm(&ed, &cam, "dirty_saved");
     assert_int_equal(ed.modal, EDITOR_MODAL_MAP_CHOOSER);
     assert_int_equal(ed.status, EDITOR_STATUS_LOAD_FAILED);
     /* Original legacy-loaded first document is preserved; save succeeded. */
-    assert_string_equal(ed.document.path, first);
+    assert_string_equal(ed.document.path, native_saved);
     assert_false(scene_document_is_dirty(&ed.document));
     assert_int_equal(east_wall_mat(&ed), 2);
     assert_int_equal(ed.history.count, 1);
-    assert_int_equal(read_text_file(first, saved, sizeof(saved)), 0);
-    assert_non_null(strstr(saved, "2"));
+    assert_int_equal(read_text_file(native_saved, saved, sizeof(saved)), 0);
+    assert_non_null(strstr(saved, "002"));
 
     assert_int_equal(write_text_file(second, SECOND_MAP), 0);
     assert_int_equal(unified_editor_begin_map_open(&ed, NULL), MAP_CATALOG_OK);
@@ -567,6 +945,11 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     assert_int_equal(unified_editor_load_scene(&ed, first), SCENE_LOAD_OK);
     select_east_wall(&ed);
     assert_int_equal(unified_editor_set_wall_material(&ed, 12), CMD_RESULT_OK);
+    {
+        char missing_root[512];
+        path_in_tmpdir(missing_root, sizeof(missing_root), "missing-save-root");
+        set_scene_root(&ed, missing_root);
+    }
     assert_int_equal(unified_editor_begin_map_open(&ed, NULL), MAP_CATALOG_OK);
     ed.map_chooser_index = 1;
     zero_input(&in);
@@ -578,14 +961,16 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     zero_input(&in);
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
-    assert_int_equal(ed.modal, EDITOR_MODAL_DIRTY_OPEN_PROMPT);
-    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    enter_save_name_and_confirm(&ed, &cam, "cannot_save");
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVE_FAILED);
     assert_string_equal(ed.document.path, first);
     assert_true(scene_document_is_dirty(&ed.document));
     assert_int_equal(east_wall_mat(&ed), 12);
     assert_int_equal(ed.history.count, 1);
 
     unified_editor_destroy(&ed);
+    remove(native_saved);
     remove(first);
     remove(second);
 }
@@ -1122,6 +1507,9 @@ static void test_input_undo_redo_save_shortcuts(void **state) {
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
     InputState in;
+    char saved[512];
+    set_scene_root(&ed, g_tmpdir);
+    path_in_tmpdir(saved, sizeof(saved), "shortcut_saved.tscene");
 
     zero_input(&in);
     in.editor_undo_pressed = true;
@@ -1139,10 +1527,13 @@ static void test_input_undo_redo_save_shortcuts(void **state) {
     in.editor_save_pressed = true;
     c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    enter_save_name_and_confirm(&ed, &cam, "shortcut_saved");
     assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
     assert_false(scene_document_is_dirty(&ed.document));
 
     unified_editor_destroy(&ed);
+    remove(saved);
 }
 
 static void test_reload_prompt_when_dirty(void **state) {
@@ -1223,10 +1614,13 @@ static void test_exit_save_and_exit_persists(void **state) {
     UnifiedEditorState ed;
     char path[512];
     char buf[256];
+    char saved[512];
 
     path_in_tmpdir(path, sizeof(path), "map_saved.txt");
     assert_int_equal(write_text_file(path, VALID_MAP), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
+    set_scene_root(&ed, g_tmpdir);
+    path_in_tmpdir(saved, sizeof(saved), "exit_saved.tscene");
     assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
     select_east_wall(&ed);
     assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
@@ -1253,15 +1647,18 @@ static void test_exit_save_and_exit_persists(void **state) {
     in.editor_confirm_pressed = true;
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    enter_save_name_and_confirm(&ed, &cam, "exit_saved");
     assert_true(ed.request_exit_to_main_menu);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
     assert_false(scene_document_is_dirty(&ed.document));
     assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
 
-    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
-    assert_non_null(strstr(buf, "2"));
+    assert_int_equal(read_text_file(saved, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "002"));
 
     unified_editor_destroy(&ed);
+    remove(saved);
 }
 
 static void test_exit_discard_and_exit_does_not_write(void **state) {
@@ -1322,6 +1719,10 @@ static void test_exit_save_failure_blocks_exit(void **state) {
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
     InputState in;
+    Grid *grid;
+    char missing_root[512];
+    path_in_tmpdir(missing_root, sizeof(missing_root), "missing-save-root");
+    set_scene_root(&ed, missing_root);
 
     zero_input(&in);
     in.editor_cancel_pressed = true;
@@ -1339,11 +1740,22 @@ static void test_exit_save_failure_blocks_exit(void **state) {
     in.editor_confirm_pressed = true;
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    enter_save_name_and_confirm(&ed, &cam, "cannot_save");
     assert_false(ed.request_exit_to_main_menu);
-    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    assert_int_equal(ed.status, EDITOR_STATUS_UNSAVABLE_MATERIAL_ID);
+    assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
+    assert_int_equal(ed.status, EDITOR_STATUS_SAVE_FAILED);
+    assert_int_equal(ed.last_scene_diagnostic.code,
+                     SCENE_DIAGNOSTIC_ENV_TEMP_CREATE);
     assert_true(scene_document_is_dirty(&ed.document));
     assert_int_equal(east_wall_mat(&ed), 12);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "TSG-SCENE-ENV-0003"));
+    assert_true(grid_contains_text(grid, "temporary file creation failed"));
+    grid_destroy(grid);
 
     unified_editor_destroy(&ed);
 }
@@ -1371,6 +1783,9 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     Camera cam;
     camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
     InputState in;
+    char native_saved[512];
+    set_scene_root(&ed, g_tmpdir);
+    path_in_tmpdir(native_saved, sizeof(native_saved), "phase6_saved.tscene");
 
     /* Hover + select wall under crosshair. */
     zero_input(&in);
@@ -1410,10 +1825,11 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     zero_input(&in);
     in.editor_save_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
+    enter_save_name_and_confirm(&ed, &cam, "phase6_saved");
     assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
     assert_false(scene_document_is_dirty(&ed.document));
-    assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
-    assert_non_null(strstr(buf, "2"));
+    assert_int_equal(read_text_file(native_saved, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "002"));
 
     /* Dirty again, then reload prompt discards. */
     assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
@@ -1426,11 +1842,11 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     in.editor_confirm_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    /* Reload of a legacy .txt source re-imports as an unsaved SceneDocument. */
-    assert_null(ed.document.path);
-    assert_true(scene_document_is_imported_unsaved(&ed.document));
-    assert_true(scene_document_is_dirty(&ed.document));
-    /* Re-imported file still has material 2 from prior save. */
+    /* Reload uses the native destination established by Save. */
+    assert_string_equal(ed.document.path, native_saved);
+    assert_false(scene_document_is_imported_unsaved(&ed.document));
+    assert_false(scene_document_is_dirty(&ed.document));
+    /* Native file still has material 2 from prior save. */
     ref.map_x = 4;
     ref.map_y = 2;
     assert_true(scene_document_get_wall_material(&ed.document, ref, &mat));
@@ -1467,9 +1883,12 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(ed.request_exit_to_main_menu);
     assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
-    assert_non_null(strstr(buf, "2")); /* disk still saved value */
+    assert_null(strstr(buf, "2")); /* legacy source is never overwritten */
+    assert_int_equal(read_text_file(native_saved, buf, sizeof(buf)), 0);
+    assert_non_null(strstr(buf, "002")); /* native destination retains Save */
 
     unified_editor_destroy(&ed);
+    remove(native_saved);
 }
 
 static bool path_ends_with(const char *path, const char *suffix) {
@@ -1616,7 +2035,14 @@ int main(void) {
         /* R0 current-map open/switch workflow */
         cmocka_unit_test(test_initial_chooser_load_and_escape),
         cmocka_unit_test(test_ctrl_o_and_catalog_failure_preserve_document),
+        cmocka_unit_test(test_native_open_and_legacy_import_chooser_switch),
         cmocka_unit_test(test_r2_typed_workflows_transactional),
+        cmocka_unit_test(test_pathless_ctrl_s_routes_to_interactive_save_as),
+        cmocka_unit_test(test_save_menu_backspace_and_empty_name_feedback),
+        cmocka_unit_test(test_dirty_import_save_then_new_continues),
+        cmocka_unit_test(test_save_menu_overwrite_and_cancel_are_visible),
+        cmocka_unit_test(test_native_ctrl_s_menu_saves_existing_destination),
+        cmocka_unit_test(test_overlay_includes_new_scene_shortcut),
         cmocka_unit_test(test_clean_switch_and_failed_load_preserve),
         cmocka_unit_test(test_dirty_switch_cancel_discard_and_failure),
         cmocka_unit_test(test_dirty_save_success_then_switch_and_save_failure),

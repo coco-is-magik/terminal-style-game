@@ -199,19 +199,25 @@ face a solid outline. Closing the inspector clears that persistent selection.
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
 | `E` | Select the wall under the center crosshair and open the inspector |
-| `Up` / `Down` | Move through loaded materials or modal choices |
-| `Enter` | Apply the highlighted material or confirm a modal choice |
+| `Up` / `Down` | Move through loaded materials or editor-menu choices |
+| `Enter` | Apply the highlighted material or confirm an editor-menu choice |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
-| `Ctrl+S` | Save the current scene |
-| `Ctrl+Shift+S` | Save As (writes `assets/scenes/<name>.tscene`) |
-| `Ctrl+O` | Reopen the current-map chooser |
+| `Ctrl+S` | Open the Save menu for the current scene |
+| `Ctrl+Shift+S` | Open the Save menu with a new native destination |
+| `Ctrl+O` | Open the native `.tscene` scene chooser |
 | `Ctrl+I` | Open the legacy import chooser |
 | `F5` | Reload; dirty documents require confirmation |
 | `Escape` | Close inspector, then open the editor exit prompt |
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.
+
+Save naming and replacement use the same visible in-editor menu convention as
+the scene chooser and dirty-document choices. New scenes and legacy imports write
+`assets/scenes/<name>.tscene`; legacy `.txt` source files are never overwritten.
+Entering the editor and pressing `Ctrl+O` list native scenes from `assets/scenes`.
+Press `Ctrl+I` to switch to the separate legacy-map import list from `assets/maps`.
 
 Selecting another scene while the document is dirty opens a separate
 Save/Discard/Cancel prompt. Failed save or target load keeps the current document
@@ -226,9 +232,8 @@ the initial no-document chooser to the main menu.
 - Native `.tscene` cells store three-digit material IDs `000..255`; legacy
   digit-grid maps store one decimal character per cell, so only IDs `0..9`
   persist through the legacy writer.
-- Loaded material IDs above `9` may be applied for immediate live preview, but
-  the inspector marks them unsaveable and saving is rejected until all cells
-  return to `0..9`. The prior file is preserved on failure.
+- Native scenes persist material IDs through `255`. Only the deprecated legacy
+  digit-grid writer is limited to IDs `0..9`; editor Save writes native scenes.
 - Ragged legacy map rows are accepted on import and padded on the right with
   empty material-`0` cells to the longest row.
 - If a selected wall references an unloaded material, its numeric ID is shown

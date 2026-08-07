@@ -46,6 +46,7 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_save_as_pressed); RESET_FIELD(editor_open_pressed);
     RESET_FIELD(editor_import_pressed); RESET_FIELD(editor_new_pressed);
     RESET_FIELD(editor_reload_pressed);
+    RESET_FIELD(editor_text_backspace_pressed);
     RESET_FIELD(editor_previous_pressed);
     RESET_FIELD(editor_next_pressed);
     RESET_FIELD(ui_scale_increase_pressed);
@@ -117,7 +118,10 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_LEFT: if (event->ctrl) input->ctrl_left = true; else input->arrow_left = true; break;
         case INPUT_KEY_RIGHT: if (event->ctrl) input->ctrl_right = true; else input->arrow_right = true; break;
         case INPUT_KEY_SPACE: input->place = true; break;
-        case INPUT_KEY_BACKSPACE: input->erase = true; break;
+        case INPUT_KEY_BACKSPACE:
+            input->erase = true;
+            input->editor_text_backspace_pressed = true;
+            break;
         case INPUT_KEY_F5: input->save = true; input->editor_reload_pressed = true; break;
         case INPUT_KEY_F9: input->load = true; break;
         case INPUT_KEY_LEFTBRACKET: input->prev_glyph = true; break;
@@ -158,6 +162,15 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_0: return INPUT_KEY_ZERO;
         default: return INPUT_KEY_NONE;
     }
+}
+
+void input_apply_movement_state(InputState *input, bool forward, bool backward,
+                                bool left, bool right, bool ctrl_held) {
+    if (!input) return;
+    input->forward = forward && !ctrl_held;
+    input->backward = backward && !ctrl_held;
+    input->left = left && !ctrl_held;
+    input->right = right && !ctrl_held;
 }
 
 /**
@@ -224,12 +237,18 @@ void input_process(InputState *input, bool headless_mode) {
          * need the numkeys output.  This is a snapshot — it reflects which
          * keys are *currently* held down, NOT key press/release events. */
         const bool *state = SDL_GetKeyboardState(NULL);
+        const bool ctrl_held = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
 
-        /* WASD movement keys */
-        input->forward  = state[SDL_SCANCODE_W];
-        input->backward = state[SDL_SCANCODE_S];
-        input->left     = state[SDL_SCANCODE_A];
-        input->right    = state[SDL_SCANCODE_D];
+        /* Ctrl-modified letters are shortcuts, not simultaneous movement. */
+        input_apply_movement_state(input,
+                                   state[SDL_SCANCODE_W],
+                                   state[SDL_SCANCODE_S],
+                                   state[SDL_SCANCODE_A],
+                                   state[SDL_SCANCODE_D],
+                                   ctrl_held);
+        if (input->editor_save_pressed || input->editor_save_as_pressed) {
+            input->backward = false;
+        }
 
         /* Held state for designer auto-repeat and paint-while-moving */
         input->held_up          = state[SDL_SCANCODE_UP];

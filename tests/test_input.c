@@ -117,6 +117,37 @@ static void test_r2_editor_shortcuts(void **state) {
     assert_false(input.editor_save_as_pressed);
 }
 
+static void test_ctrl_shortcut_suppresses_movement(void **state) {
+    InputState input = {0};
+    (void)state;
+
+    input_apply_movement_state(&input, true, true, true, true, false);
+    assert_true(input.forward);
+    assert_true(input.backward);
+    assert_true(input.left);
+    assert_true(input.right);
+
+    input_apply_movement_state(&input, true, true, true, true, true);
+    assert_false(input.forward);
+    assert_false(input.backward);
+    assert_false(input.left);
+    assert_false(input.right);
+}
+
+static void test_editor_backspace_is_an_edge(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_BACKSPACE,
+        false, false, false, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_text_backspace_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_text_backspace_pressed);
+}
+
 static void test_text_mouse_buttons_and_wheel(void **state) {
     (void)state;
     InputState input = {0};
@@ -177,6 +208,8 @@ int main(void) {
         cmocka_unit_test(test_key_and_editor_shortcuts),
         cmocka_unit_test(test_editor_open_requires_ctrl_and_nonrepeat),
         cmocka_unit_test(test_r2_editor_shortcuts),
+        cmocka_unit_test(test_ctrl_shortcut_suppresses_movement),
+        cmocka_unit_test(test_editor_backspace_is_an_edge),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
     };

@@ -322,11 +322,30 @@ static bool enter_unified_editor(UnifiedEditorState *ued,
         fprintf(stderr, "unified_editor_init failed\n");
         return false;
     }
-    (void)unified_editor_begin_map_open(ued, "assets/maps");
+    (void)unified_editor_begin_legacy_import(ued, "assets/maps");
+    (void)unified_editor_begin_native_open(ued, "assets/scenes");
     camera_init(cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
     menu_stack_clear(ms);
     *app_state = APP_STATE_EDITOR;
     return true;
+}
+
+static void sync_editor_text_input(Renderer *renderer,
+                                   AppState app_state,
+                                   const UnifiedEditorState *editor) {
+    bool should_be_active;
+
+    if (!renderer || !renderer->window) return;
+    should_be_active = app_state == APP_STATE_EDITOR && editor && editor->active &&
+        editor->modal == EDITOR_MENU_SAVE &&
+        editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME;
+    if (should_be_active && !SDL_TextInputActive(renderer->window)) {
+        if (!SDL_StartTextInput(renderer->window)) {
+            fprintf(stderr, "Failed to start editor text input: %s\n", SDL_GetError());
+        }
+    } else if (!should_be_active && SDL_TextInputActive(renderer->window)) {
+        SDL_StopTextInput(renderer->window);
+    }
 }
 
 static bool dispatch_menu_action(const char *action,
@@ -636,6 +655,7 @@ int app_main(int argc, char* argv[]) {
         double delta_time_ms = (double)((start_time - last_time) * 1000) / SDL_GetPerformanceFrequency();
         last_time = start_time;
 
+        sync_editor_text_input(ren, app_state, &ued);
         input_process(&input, mode != RUN_MODE_NORMAL);
         if (input.quit && app_state == APP_STATE_EDITOR && ued.active) {
             input.quit = false;
@@ -739,6 +759,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_import_pressed = false;
                 input.editor_new_pressed = false;
                 input.editor_reload_pressed = false;
+                input.editor_text_backspace_pressed = false;
                 input.editor_previous_pressed = false;
                 input.editor_next_pressed = false;
             }
