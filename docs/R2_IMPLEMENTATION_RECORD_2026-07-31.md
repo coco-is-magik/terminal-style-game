@@ -235,9 +235,9 @@ failures; build/run feature matrix passed 8/8 modes; full-suite ASan passed with
 0 failures and 0 leak summaries; full-suite UBSan passed with 0 failures and 0
 runtime errors; `make check-legacy-unused` passed. Review C found no blockers.
 
-**Remaining (video-gated):** Interactive acceptance and benchmark/stability runs
-require a video/SDL environment and are recorded as manual steps in Review C. R2
-remains Active until those are recorded.
+**Remaining (video-gated):** None. Interactive acceptance and benchmark/stability
+runs were completed in a video/SDL environment on 2026-08-07 and are recorded in
+Review C. This completes the R2 exit gate; R2 is Verified.
 
 ## Verification ledger
 
@@ -253,7 +253,8 @@ remains Active until those are recorded.
 | 8A — typed editor workflows | pass | 32/32 + 33/33 + 11/11 + 17/17; sanitized scene document 32/32 | New/Open/Import/Save As rollback and identity pass | updated | Pass |
 | 8B — chooser, Save As, close seam | pass | 33/33 + 5/5 + 7/7 + 17/17; sanitized 33/33 + 32/32 | native/legacy chooser, Save As, overwrite, dirty close, input labels pass | updated | Pass |
 | 9 — duplicate-state retirement | pass | 36/36 + 32/32 + 11/11 + 17/17; ASan+UBSan on changed suites; `make check-legacy-unused` | legacy-current open and reload route through import; retired code marked deprecated; native `.tscene` F5 reload preserves lights/decals/ambient | updated | Pass |
-| 10 — Q3 + Review C (headless) | pass | aggregate 27 suites 0 failures; matrix 8/8; full ASan 0 leaks; full UBSan 0 errors; `make check-legacy-unused` | test-fixture leak fixed; README updated; Review C no blockers | updated | Pass (interactive acceptance pending) |
+| 10 — Q3 + Review C (headless) | pass | aggregate 27 suites 0 failures; matrix 8/8; full ASan 0 leaks; full UBSan 0 errors; `make check-legacy-unused` | test-fixture leak fixed; README updated; Review C no blockers | updated | Pass |
+| 11 — interactive acceptance + benchmark/stability closeout | pass | interactive acceptance items 1–7 pass; benchmark/stability pass (ideal <= 4 ms, pass_minimum <= 6 ms) | closeout recorded in Review C; R2 Verified | updated | Pass |
 
 ## Failures and recovery notes
 

@@ -217,7 +217,7 @@ Do not create empty review directories or placeholder review files.
 |---|---|---|---|---|
 | R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Verified |
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
-| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Active |
+| R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Verified |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Proposed |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Proposed |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
@@ -388,7 +388,7 @@ boundaries.
 
 ## R2 — Versioned scene and data foundation
 
-**Status:** Active
+**Status:** Verified
 
 **Purpose:** Implement the minimum versioned, transactional scene model selected
 in R1 without duplicating authored state.
@@ -868,7 +868,7 @@ until that evidence exists.
 
 ## Next action
 
-**R1 is verified and R2 is Active.** Implement the approved increments in
-`R2_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-07-31.md` in order, record Q2 evidence
-continuously in `R2_IMPLEMENTATION_RECORD_2026-07-31.md`, and do not mark R2
-Verified until Q3 and Review C pass.
+**R1 and R2 are Verified.** R2 exit evidence is recorded in
+`R2_IMPLEMENTATION_RECORD_2026-07-31.md` and Review C, including the interactive
+acceptance and benchmark/stability runs. Plan R3 next in `docs/FEATURE_ROADMAP.md`
+before any implementation work begins.
