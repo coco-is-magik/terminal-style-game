@@ -26,6 +26,7 @@
 #include "../src/scene_document_internal.h"
 #include "../src/scene_format.h"
 #include "../src/config.h"
+#include "../src/lighting.h"
 
 /* ===================================================================
  *  Temp directory helpers
@@ -1279,6 +1280,45 @@ static void test_native_load_allocates_light_map(void **state) {
     asset_registry_clear(&assets);
 }
 
+static void test_native_load_light_map_is_populated_by_lighting_update(void **state) {
+    SceneDocument doc;
+    SceneDiagnostic diagnostic;
+    AssetRegistry assets;
+    WorldState runtime;
+    PatternCell cell = {(uint8_t)'D', UINT8_C(1)};
+    size_t i;
+    double ambient;
+    bool has_above_ambient = false;
+    (void)state;
+
+    scene_document_init(&doc);
+    asset_registry_init(&assets);
+    world_init(&runtime);
+    for (int id = 1; id <= 6; id++)
+        assert_true(asset_registry_set_decal_pattern(&assets, id, 1, 1, &cell));
+
+    assert_int_equal(scene_document_load_native_with_assets(
+        &doc, "assets/scenes/testscene.tscene", &assets, &diagnostic),
+        SCENE_LOAD_OK);
+    assert_int_equal(scene_document_build_runtime_world(
+        &doc, &assets, &runtime), SCENE_RUNTIME_BUILD_OK);
+    assert_non_null(doc.map.light_map);
+
+    lighting_update(&doc.map, &runtime);
+    ambient = runtime.ambient_intensity;
+    for (i = 0U; i < (size_t)(doc.map.width * doc.map.height); i++) {
+        if (doc.map.light_map[i] > ambient + 0.001) {
+            has_above_ambient = true;
+            break;
+        }
+    }
+    assert_true(has_above_ambient);
+
+    world_clear(&runtime);
+    scene_document_destroy(&doc);
+    asset_registry_clear(&assets);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1319,6 +1359,7 @@ int main(void) {
         cmocka_unit_test(test_accessors_null_safe),
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
+        cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

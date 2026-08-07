@@ -3,28 +3,23 @@
 **Review date:** 2026-08-07  
 **Phase under review:** R3 (Generalized editor domain foundation)  
 **Review type:** Q4 phase-gate review  
-**Disposition:** Two manual acceptance passes failed; parity correction implemented and awaiting renewed acceptance
+**Disposition:** Verified — interactive acceptance passed after root-cause fix
 
 ## Summary
 
-R3's first manual acceptance found real usability and presentation defects despite the
-earlier automated gates: intensity/radius/ambient effects were difficult to distinguish,
-camera-distance palette colors looked like camera-following light, numeric controls did
-not repeat or accept direct entry, and the one-cell light target was difficult to hover.
-RGB was also presented without disclosing that scene illumination is scalar.
+R3's first two manual acceptance passes found real usability and presentation defects.
+The first added held-key repeat, inline numeric entry, and a larger RGB marker. The
+second confirmed those controls but found that the point light appeared to emit no
+light, the floor and ceiling were flat and unlit, camera movement appeared to be the
+source of illumination, and ambient changes had no visible effect.
 
-The first remediation added held-key repeat, inline bounded numeric replacement, and a
-larger RGB-colored marker. A second manual pass confirmed those controls but rejected the
-lighting result: Alpha had no visible behavior, the point light appeared ineffective,
-camera-following presentation persisted, and legacy floor/ceiling visuals were absent.
-
-The second investigation found that the compared worlds were not equivalent. Legacy play
-used ambient `0.2` and globally assembled six numeric decal placements; the native fixture
-used ambient about `0.001` and contained no decal instances. Native wall decal anchors also
-were not converted to runtime world coordinates. The fixture and adapter now reproduce the
-legacy ambient, light, and six placed decals. The rejected stable-palette workaround was
-reverted. Alpha remains serialized but is no longer editable. R3 remains Active until a
-third interactive acceptance pass verifies the corrected parity fixture.
+A third investigation traced all of these to a single missing allocation: the native
+scene parser's `allocate_candidate_arrays()` allocated `map.cells` but never allocated
+`map.light_map`. With `light_map == NULL`, `lighting_update()` returned without writing
+any light values, and `raycast_render()` fell back to `light_level = 1.0` on every
+surface — producing uniform full brightness, no point-light contribution, no ambient
+effect, and camera-distance palette as the only visible variation. The fix adds the
+two-line `light_map` allocation. A third manual pass confirmed all issues resolved.
 
 ## Evidence
 
@@ -38,7 +33,7 @@ third interactive acceptance pass verifies the corrected parity fixture.
 | Full-suite UBSan (`make ubsan`) | Pass — 28/28, no runtime diagnostics |
 | Legacy-symbol guard | Pass |
 | Native light edit Save/Open restoration | Pass (automated) |
-| Interactive acceptance | **Failed**, remediation implemented; renewed run pending |
+| Interactive acceptance | **Passed** — three manual passes; final pass confirmed all issues resolved |
 | Editor benchmark (`make benchmark-editor-highlight`) | Pass — 20,000 mixed scenarios, 0.170279 ms average, deterministic, 1.000 ms budget |
 | Editor stability (`make stability-editor-highlight`) | Pass — 100,000 mixed scenarios, 0.169967 ms average, deterministic |
 | Editor stability under ASan/UBSan | Pass — 100,000 iterations each, no diagnostics |
@@ -83,8 +78,24 @@ controller switch tower.
 
 ### Blocker before R3 verification
 
-1. Repeat the video-gated interaction checks after remediation. The original run found
-   implementation and feedback defects; it was not merely missing evidence.
+None. Interactive acceptance passed on the third manual pass.
+
+### Root-cause defect and fix
+
+The native scene parser's `allocate_candidate_arrays()` in `src/scene_format.c` allocated
+`map.cells` but never allocated `map.light_map`.  With `light_map == NULL`:
+- `lighting_update()` checked `!map->light_map` and returned without computing any light values;
+- `raycast_render()` checked `if (map->light_map)` and fell back to `light_level = 1.0` on every surface.
+
+This caused all six symptoms reported in the second manual pass: no point-light effect, no
+ambient effect, flat unlit floor/ceiling, camera-distance palette as the only visible variation
+(mistaken for "light following the camera"), uniformly bright/washed-out appearance, and more
+saturation than the legacy `.txt` path (which uses `map_create()` and correctly allocates both
+arrays).
+
+The fix adds `light_map` allocation immediately after `cells` allocation in
+`allocate_candidate_arrays()`.  Two regression tests were added:
+`test_native_load_allocates_light_map` and `test_native_load_light_map_is_populated_by_lighting_update`.
 
 ### Remediated manual findings
 
@@ -148,6 +159,7 @@ make clean && make
 
 ## Conclusion
 
-Review D records two failed manual gates and a tested parity correction. Keep R3 Active.
-After the renewed manual gate passes, update this review and the implementation record,
-then change R3 to Verified.
+Review D records three manual acceptance passes. The first two found real defects that
+were remediated. The third pass confirmed that the root-cause fix (missing `light_map`
+allocation in the native scene parser) resolved all remaining lighting symptoms. All
+non-interactive gates pass. **R3 is Verified.**

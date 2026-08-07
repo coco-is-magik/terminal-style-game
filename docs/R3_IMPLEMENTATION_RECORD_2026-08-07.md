@@ -1,7 +1,7 @@
 # R3 Implementation Record — Generalized Editor Domain Foundation
 
 **Started:** 2026-08-07  
-**Status:** Active — implementation/automated Q3 complete; manual Q3 pending  
+**Status:** Verified — interactive acceptance passed after root-cause fix  
 **Plan:** `R3_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-07.md`
 
 ## Increment A — Typed selection and stable references
@@ -165,10 +165,11 @@ provider alone. Final strict runs passed: 20,000 benchmark iterations averaged
 deterministic under a `1.000 ms` budget. Sustained 100,000-iteration ASan and UBSan
 runs also passed without diagnostics.
 
-**Closeout disposition:** All implementation and non-interactive Q3 items pass. R3
-remains **Active**, not Verified, only because relevant interactive acceptance has
-not yet been recorded. Review D contains the exact checklist. The unrelated
-normal-mode benchmark result remains recorded under Increment D.
+**Closeout disposition:** All implementation and non-interactive Q3 items pass. Interactive
+acceptance passed on the third manual pass after a root-cause fix: the native scene parser's
+`allocate_candidate_arrays()` had been allocating `map.cells` but not `map.light_map`, causing
+`lighting_update()` to no-op and `raycast_render()` to fall back to full-brightness on every
+surface. The two-line fix plus two regression tests close the issue. R3 is **Verified**.
 
 ## Verification ledger
 

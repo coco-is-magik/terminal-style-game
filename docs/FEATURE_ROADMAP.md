@@ -218,7 +218,7 @@ Do not create empty review directories or placeholder review files.
 | R0 | Health baseline and visible editor wins | Completed editor foundation | Better usability and evidence for architectural work | Verified |
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
 | R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Verified |
-| R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Active |
+| R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Verified |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Proposed |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Proposed |
@@ -429,10 +429,7 @@ atomicity, runtime adapters, and duplicate state.
 
 ## R3 — Generalized editor domain foundation
 
-**Status:** Active
-
-**Purpose:** Support multiple typed authored domains without turning the unified
-editor controller into a monolith.
+**Status:** Verified
 
 **Prerequisites:** R2 scene ownership and stable IDs.
 
@@ -871,7 +868,5 @@ until that evidence exists.
 
 ## Next action
 
-**R1 and R2 are Verified; R3 implementation and all non-interactive Review D gates
-are complete, but R3 remains Active.** Run and record only the interactive acceptance
-in `reviews/2026-08-07-roadmap-r3-review-d.md`. Mark R3 Verified after that Q3 item
-passes; do not repeat implementation merely to fill the evidence gap.
+**R1, R2, and R3 are Verified.** The next priority is R4 (Surface data and basic world
+construction), which depends on R2 scene format and R3 typed editor domains.
