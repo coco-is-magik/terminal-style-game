@@ -36,6 +36,13 @@ static SelectionTarget light_target(SceneInstanceId id) {
     return target;
 }
 
+static SelectionTarget surface_target(SelectionType type, int x, int y) {
+    SelectionTarget target = {0};
+    target.type = type;
+    target.value.horizontal = (HorizontalSurfaceRef){x, y};
+    return target;
+}
+
 static void test_dispatch_and_wall_request(void **state) {
     SelectionTarget target = {0};
     EditorMutationRequest request;
@@ -178,10 +185,11 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
     init_document(&document);
     assert_true(editor_domain_inspector_presentation(
         EDITOR_INSPECTOR_WALL_MATERIAL, &inspector));
-    assert_string_equal(inspector.title, "materials");
-    assert_string_equal(inspector.controls, "Up/Down  Enter=apply");
+    assert_string_equal(inspector.title, "wall surface");
+    assert_string_equal(inspector.controls,
+                        "Up/Down=field  Left/Right=edit  Enter=apply");
     assert_non_null(inspector.note);
-    assert_int_equal(inspector.field_count, 1U);
+    assert_int_equal(inspector.field_count, EDITOR_SURFACE_FIELD_COUNT);
     assert_true(editor_domain_inspector_field_presentation(
         EDITOR_INSPECTOR_WALL_MATERIAL, 0U, &document.map, &field));
     assert_string_equal(field.label, "Material");
@@ -204,10 +212,87 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
     assert_false(editor_domain_inspector_presentation(
         EDITOR_INSPECTOR_NONE, &inspector));
     assert_false(editor_domain_inspector_field_presentation(
-        EDITOR_INSPECTOR_WALL_MATERIAL, 1U, &document.map, &field));
+        EDITOR_INSPECTOR_WALL_MATERIAL, EDITOR_SURFACE_FIELD_COUNT,
+        &document.map, &field));
     assert_false(editor_domain_inspector_field_presentation(
         EDITOR_INSPECTOR_LIGHT, EDITOR_LIGHT_FIELD_COUNT,
         &document.map, &field));
+    scene_document_destroy(&document);
+}
+
+static void test_surface_dispatch_metadata_and_requests(void **state) {
+    SelectionTarget floor = surface_target(SELECTION_FLOOR, 2, 3);
+    SelectionTarget ceiling = surface_target(SELECTION_CEILING, 1, 2);
+    SelectionTarget wall = {0};
+    EditorInspectorPresentation inspector;
+    EditorInspectorFieldPresentation field;
+    EditorMutationRequest request;
+    (void)state;
+    wall.type = SELECTION_WALL_FACE;
+    wall.value.wall_face = (WallFaceRef){4, 1, WALL_FACE_WEST};
+
+    assert_int_equal(editor_domain_inspector_kind(floor),
+                     EDITOR_INSPECTOR_FLOOR_SURFACE);
+    assert_int_equal(editor_domain_inspector_kind(ceiling),
+                     EDITOR_INSPECTOR_CEILING_SURFACE);
+    assert_true(editor_domain_inspector_presentation(
+        EDITOR_INSPECTOR_FLOOR_SURFACE, &inspector));
+    assert_string_equal(inspector.title, "floor surface");
+    assert_int_equal(inspector.field_count, EDITOR_SURFACE_FIELD_COUNT);
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_FLOOR_SURFACE, EDITOR_SURFACE_FIELD_MATERIAL,
+        NULL, &field));
+    assert_int_equal(field.kind, EDITOR_INSPECTOR_FIELD_CHOICE);
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_WALL_MATERIAL, EDITOR_SURFACE_FIELD_CONSTRUCTION,
+        NULL, &field));
+    assert_string_equal(field.label, "Remove Wall");
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_CEILING_SURFACE, EDITOR_SURFACE_FIELD_AMBIENT,
+        NULL, &field));
+    assert_true(field.minimum == 0.0 && field.maximum == 1.0 && field.step == 0.05);
+
+    assert_true(editor_domain_make_surface_material_request(floor, 12, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_FLOOR_MATERIAL);
+    assert_int_equal(request.data.surface_material.map_x, 2);
+    assert_true(editor_domain_make_surface_material_request(ceiling, 7, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_CEILING_MATERIAL);
+    assert_true(editor_domain_make_surface_material_request(wall, 3, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_WALL_MATERIAL);
+    assert_false(editor_domain_make_surface_material_request(floor, 0, &request));
+
+    assert_true(editor_domain_make_construction_request(floor, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_PLACE_WALL);
+    assert_true(editor_domain_make_construction_request(wall, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_REMOVE_WALL);
+    assert_false(editor_domain_make_construction_request(light_target(11U), &request));
+}
+
+static void test_ambient_metadata_format_step_and_value(void **state) {
+    SceneDocument document;
+    EditorAmbientMetadata metadata;
+    EditorMutationRequest request;
+    char text[16];
+    (void)state;
+    init_document(&document);
+    document.ambient_intensity = 0.50;
+    assert_true(editor_domain_ambient_metadata(&metadata));
+    assert_true(metadata.minimum == 0.0 && metadata.maximum == 1.0);
+    assert_true(metadata.step == 0.05);
+    assert_int_equal(metadata.decimal_places, 2U);
+    assert_true(editor_domain_format_ambient(0.5, text, sizeof(text)));
+    assert_string_equal(text, "0.50");
+    assert_false(editor_domain_format_ambient(NAN, text, sizeof(text)));
+    assert_true(editor_domain_make_ambient_step_request(&document, 1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_AMBIENT_INTENSITY);
+    assert_true(request.data.ambient.intensity == 0.55);
+    document.ambient_intensity = 0.99;
+    assert_true(editor_domain_make_ambient_step_request(&document, 1, &request));
+    assert_true(request.data.ambient.intensity == 1.0);
+    assert_true(editor_domain_make_ambient_value_request(0.25, &request));
+    assert_true(request.data.ambient.intensity == 0.25);
+    assert_false(editor_domain_make_ambient_value_request(1.1, &request));
+    assert_false(editor_domain_make_ambient_step_request(&document, 0, &request));
     scene_document_destroy(&document);
 }
 
@@ -219,6 +304,8 @@ int main(void) {
         cmocka_unit_test(test_light_request_rejects_invalid_inputs),
         cmocka_unit_test(test_light_value_requests_are_typed_and_bounded),
         cmocka_unit_test(test_shared_inspector_presentation_is_typed),
+        cmocka_unit_test(test_surface_dispatch_metadata_and_requests),
+        cmocka_unit_test(test_ambient_metadata_format_step_and_value),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

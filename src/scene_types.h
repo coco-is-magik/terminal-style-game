@@ -11,7 +11,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SCENE_VERSION 1
+#define SCENE_VERSION_V1 1U
+#define SCENE_VERSION_V2 2U
+/* Canonical writes use v2; v1 remains accepted through explicit migration. */
+#define SCENE_VERSION SCENE_VERSION_V2
 #define SCENE_FILE_MAX_BYTES (2U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -23,6 +26,24 @@
 #define SCENE_MAX_REPAIR_DIAGNOSTICS 256U
 
 typedef uint64_t SceneInstanceId;
+
+typedef enum {
+    SCENE_CELL_OCCUPANCY_EMPTY = 0,
+    SCENE_CELL_OCCUPANCY_WALL
+} SceneCellOccupancy;
+
+typedef struct {
+    SceneCellOccupancy occupancy;
+    uint8_t wall_material;
+    uint8_t floor_material;
+    uint8_t ceiling_material;
+} SceneAuthoredCell;
+
+typedef enum {
+    SCENE_SURFACE_WALL = 0,
+    SCENE_SURFACE_FLOOR,
+    SCENE_SURFACE_CEILING
+} SceneSurfaceKind;
 
 #define SCENE_INSTANCE_ID_INVALID UINT64_C(0)
 #define SCENE_INSTANCE_ID_EXHAUSTED UINT64_MAX

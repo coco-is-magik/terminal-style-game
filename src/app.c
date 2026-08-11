@@ -833,7 +833,7 @@ int app_main(int argc, char* argv[]) {
                 frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
                 camera_update(&cam, map, &input, delta_time_sec, grid->height);
                 lighting_update(map, &world);
-                raycast_render(grid, map, &cam, &assets, &world);
+                raycast_render(grid, map, &cam, &assets, &world, NULL);
             } else if (visual_mode == VISUAL_STRESS) {
                 draw_stress_pattern(grid, frame_count);
             } else {
@@ -862,11 +862,16 @@ int app_main(int argc, char* argv[]) {
                     ? scene_document_get_map_for_runtime(&ued.document)
                     : NULL;
                 if (ed_map && ed_map->cells && ed_map->width > 0 && ed_map->height > 0) {
+                    SceneSurfaceView surface_view;
+                    const SceneSurfaceView *surfaces =
+                        scene_document_get_surface_view(&ued.document, &surface_view)
+                            ? &surface_view : NULL;
                     size_t editor_light_count = 0U;
                     const SceneLight *editor_lights = scene_document_get_lights(
                         &ued.document, &editor_light_count);
                     lighting_update(ed_map, &ued.runtime_world);
-                    raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world);
+                    raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world,
+                                   surfaces);
                     editor_highlight_render(grid, ed_map, &cam,
                                             editor_lights, editor_light_count,
                                             ued.selection, ued.hover);

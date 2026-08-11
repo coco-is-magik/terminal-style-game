@@ -328,6 +328,120 @@ static void test_selection_validation_rejects_oob_and_empty(void **state) {
     map_destroy(m);
 }
 
+static void test_horizontal_pick_floor_ceiling_and_cardinal_directions(void **state) {
+    Map *map = map_create(12, 12);
+    const double angles[] = {0.0, PI / 2.0, PI, -PI / 2.0};
+    const int floor_x[] = {7, 5, 3, 5};
+    const int floor_y[] = {5, 7, 5, 3};
+    Camera camera;
+    EditorHit hit;
+    size_t i;
+    (void)state;
+    assert_non_null(map);
+    for (i = 0U; i < 4U; i++) {
+        camera_init(&camera, 5.5, 5.5, angles[i], PI / 2.0);
+        camera.pitch = -10.0;
+        hit = editor_pick_horizontal_surface_selection(
+            &camera, map, no_wall_hit(), 40, 20.0);
+        assert_true(hit.valid);
+        assert_int_equal(hit.target.type, SELECTION_FLOOR);
+        assert_int_equal(hit.target.value.horizontal.map_x, floor_x[i]);
+        assert_int_equal(hit.target.value.horizontal.map_y, floor_y[i]);
+        camera.pitch = 10.0;
+        hit = editor_pick_horizontal_surface_selection(
+            &camera, map, no_wall_hit(), 40, 20.0);
+        assert_true(hit.valid);
+        assert_int_equal(hit.target.type, SELECTION_CEILING);
+        assert_int_equal(hit.target.value.horizontal.map_x, floor_x[i]);
+        assert_int_equal(hit.target.value.horizontal.map_y, floor_y[i]);
+    }
+    map_destroy(map);
+}
+
+static void test_horizontal_pick_horizon_bounds_range_and_invalid(void **state) {
+    Map *map = map_create(5, 5);
+    Camera camera;
+    EditorHit existing = no_wall_hit();
+    EditorHit hit;
+    (void)state;
+    assert_non_null(map);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    camera.pitch = 0.0;
+    assert_false(editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 25, 20.0).valid);
+    camera.pitch = -0.0000001;
+    assert_false(editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 25, 20.0).valid);
+    camera.pitch = -1.0;
+    assert_false(editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 25, 2.0).valid);
+    camera.pitch = -10.0;
+    camera.transform.pos.x = 4.8;
+    assert_false(editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 40, 20.0).valid);
+    hit = editor_pick_horizontal_surface_selection(NULL, map, existing, 40, 20.0);
+    assert_false(hit.valid);
+    hit = editor_pick_horizontal_surface_selection(&camera, NULL, existing, 40, 20.0);
+    assert_false(hit.valid);
+    hit = editor_pick_horizontal_surface_selection(&camera, map, existing, 0, 20.0);
+    assert_false(hit.valid);
+    camera.transform.pos.x = NAN;
+    hit = editor_pick_horizontal_surface_selection(&camera, map, existing, 40, 20.0);
+    assert_false(hit.valid);
+    map_destroy(map);
+}
+
+static void test_horizontal_pick_occlusion_and_precedence(void **state) {
+    Map *map = map_create(10, 5);
+    Camera camera;
+    EditorHit existing = no_wall_hit();
+    EditorHit hit;
+    (void)state;
+    assert_non_null(map);
+    camera_init(&camera, 1.5, 2.5, 0.0, PI / 2.0);
+    camera.pitch = -10.0;
+    hit = editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 40, 20.0);
+    assert_true(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_FLOOR);
+    assert_float_equal(hit.distance, 2.0, DOUBLE_EPSILON);
+
+    map_set(map, 3, 2, 1);
+    existing = editor_raycast_selection(&camera, map);
+    hit = editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 40, 20.0);
+    assert_int_equal(hit.target.type, SELECTION_WALL_FACE);
+
+    existing = no_wall_hit();
+    existing.valid = true;
+    existing.distance = 1.0;
+    existing.target.type = SELECTION_LIGHT;
+    existing.target.value.light.id = 7U;
+    hit = editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 40, 20.0);
+    assert_int_equal(hit.target.type, SELECTION_LIGHT);
+    existing.distance = 3.0;
+    hit = editor_pick_horizontal_surface_selection(
+        &camera, map, existing, 40, 20.0);
+    assert_int_equal(hit.target.type, SELECTION_FLOOR);
+    map_destroy(map);
+}
+
+static void test_horizontal_selection_validation(void **state) {
+    Map *map = map_create(3, 3);
+    SelectionTarget target = {0};
+    (void)state;
+    assert_non_null(map);
+    target.type = SELECTION_FLOOR;
+    target.value.horizontal = (HorizontalSurfaceRef){1, 2};
+    assert_true(editor_selection_is_valid_for_map(target, map));
+    target.type = SELECTION_CEILING;
+    assert_true(editor_selection_is_valid_for_map(target, map));
+    target.value.horizontal.map_x = 3;
+    assert_false(editor_selection_is_valid_for_map(target, map));
+    map_destroy(map);
+}
+
 /* ===================================================================
  *  Runner
  * =================================================================== */
@@ -351,6 +465,10 @@ int main(void) {
         cmocka_unit_test(test_light_pick_accepts_expanded_editor_tolerance),
         cmocka_unit_test(test_face_to_material_ref_drops_face),
         cmocka_unit_test(test_selection_validation_rejects_oob_and_empty),
+        cmocka_unit_test(test_horizontal_pick_floor_ceiling_and_cardinal_directions),
+        cmocka_unit_test(test_horizontal_pick_horizon_bounds_range_and_invalid),
+        cmocka_unit_test(test_horizontal_pick_occlusion_and_precedence),
+        cmocka_unit_test(test_horizontal_selection_validation),
     };
 
     return cmocka_run_group_tests(tests, group_setup, NULL);

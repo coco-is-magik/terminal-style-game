@@ -94,7 +94,10 @@ typedef enum {
     EDITOR_STATUS_REPAIR_REQUIRED,
     EDITOR_STATUS_DURABILITY_WARNING,
     EDITOR_STATUS_INVALID_SCENE_NAME,
-    EDITOR_STATUS_INVALID_NUMERIC_VALUE
+    EDITOR_STATUS_INVALID_NUMERIC_VALUE,
+    EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED,
+    EDITOR_STATUS_SPAWN_BLOCKED,
+    EDITOR_STATUS_PLAYER_BLOCKED
 } EditorStatus;
 
 typedef struct {
@@ -129,11 +132,15 @@ typedef struct {
     EditorHit hover;
 
     AssetRegistry *assets;
+    bool has_player_cell;
+    int player_map_x;
+    int player_map_y;
 
     bool inspector_open;
     EditorInspectorKind inspector_kind;
     size_t material_picker_index;
     MaterialId highlighted_material;
+    EditorSurfaceField surface_field;
     EditorLightField light_field;
     char light_value_text[32];
     size_t light_value_text_length;
@@ -157,6 +164,8 @@ typedef struct {
     /* Valid while modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT. */
     EditorDirtyOpenChoice dirty_open_choice;
 } UnifiedEditorState;
+
+void unified_editor_set_runtime_build_failure_for_test(bool fail);
 
 
 bool unified_editor_init(
@@ -211,6 +220,27 @@ bool unified_editor_crosshair_visible(const UnifiedEditorState *editor);
 CommandResult unified_editor_set_wall_material(
     UnifiedEditorState *editor,
     MaterialId material
+);
+CommandResult unified_editor_set_surface_material(
+    UnifiedEditorState *editor,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId material
+);
+CommandResult unified_editor_set_ambient_intensity(
+    UnifiedEditorState *editor,
+    double intensity
+);
+CommandResult unified_editor_place_wall(
+    UnifiedEditorState *editor,
+    int map_x,
+    int map_y
+);
+CommandResult unified_editor_remove_wall(
+    UnifiedEditorState *editor,
+    int map_x,
+    int map_y
 );
 CommandResult unified_editor_step_light_field(
     UnifiedEditorState *editor,

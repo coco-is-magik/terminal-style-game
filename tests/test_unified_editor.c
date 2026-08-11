@@ -121,37 +121,46 @@ static const char *VALID_MAP =
     "00000\n";
 
 static const char *SECOND_MAP =
-    "22\n"
-    "22\n";
+    "222\n"
+    "202\n"
+    "222\n";
 
 static const char *NATIVE_SCENE =
-    "scene_type = terminal_scene\nscene_version = 1\nname = \"workflow\"\n"
+    "scene_type = terminal_scene\nscene_version = 2\nname = \"workflow\"\n"
     "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 1\nambient_intensity = 0.25\n"
-    "spawn = 1.5,1.5,0\n\n[cells]\n"
-    "001 001 001\n001 000 001\n001 001 001\n";
+    "spawn = 1.5,1.5,0\n\n"
+    "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
+    "[wall_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[floor_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[ceiling_materials]\n001 001 001\n001 001 001\n001 001 001\n";
 
 
 static const char *NATIVE_SCENE_WITH_PICKABLE_LIGHT =
-    "scene_type = terminal_scene\nscene_version = 1\nname = \"light_pick\"\n"
+    "scene_type = terminal_scene\nscene_version = 2\nname = \"light_pick\"\n"
     "width = 5\nheight = 5\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 12\nambient_intensity = 0.2\n"
-    "spawn = 1.5,2.5,0\n\n[cells]\n"
-    "001 001 001 001 001\n"
-    "001 000 000 000 001\n"
-    "001 000 000 000 001\n"
-    "001 000 000 000 001\n"
-    "001 001 001 001 001\n\n"
+    "spawn = 1.5,2.5,0\n\n"
+    "[occupancy]\n1 1 1 1 1\n1 0 0 0 1\n1 0 0 0 1\n"
+    "1 0 0 0 1\n1 1 1 1 1\n\n"
+    "[wall_materials]\n001 001 001 001 001\n001 001 001 001 001\n"
+    "001 001 001 001 001\n001 001 001 001 001\n001 001 001 001 001\n\n"
+    "[floor_materials]\n001 001 001 001 001\n001 001 001 001 001\n"
+    "001 001 001 001 001\n001 001 001 001 001\n001 001 001 001 001\n\n"
+    "[ceiling_materials]\n001 001 001 001 001\n001 001 001 001 001\n"
+    "001 001 001 001 001\n001 001 001 001 001\n001 001 001 001 001\n\n"
     "[light 11]\nposition = 2.5,2.5\n"
     "color = 255,255,255,255\nintensity = 1\nradius = 3\n";
 
 static const char *NATIVE_SCENE_WITH_CONTENT =
-    "scene_type = terminal_scene\nscene_version = 1\nname = \"content\"\n"
+    "scene_type = terminal_scene\nscene_version = 2\nname = \"content\"\n"
     "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 3\nambient_intensity = 0.3\n"
     "spawn = 1.5,1.5,0\n\n"
-    "[cells]\n"
-    "001 001 001\n001 000 001\n001 001 001\n\n"
+    "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
+    "[wall_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[floor_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[ceiling_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
     "[light 1]\n"
     "position = 1.5,1.5\n"
     "color = 255,255,255,255\n"
@@ -1007,7 +1016,7 @@ static void test_clean_switch_and_failed_load_preserve(void **state) {
     assert_string_equal(scene_document_get_legacy_source_path(&ed.document),
                         second);
     assert_true(scene_document_is_imported_unsaved(&ed.document));
-    assert_int_equal(ed.document.map.width, 2);
+    assert_int_equal(ed.document.map.width, 3);
     assert_int_equal(ed.history.count, 0);
     assert_float_equal(cam.transform.pos.y, 5.0, 0.0001);
 
@@ -1113,7 +1122,7 @@ static void test_dirty_save_success_then_switch_and_save_failure(void **state) {
     InputState in;
     char first[512];
     char second[512];
-    char saved[256];
+    char saved[4096];
     char native_saved[512];
     (void)state;
 
@@ -1231,7 +1240,7 @@ static void test_overlay_marks_unloaded_selected_material_missing(void **state) 
     Grid *grid;
 
     path_in_tmpdir(path, sizeof(path), "map.txt");
-    assert_int_equal(write_text_file(path, "3\n"), 0);
+    assert_int_equal(write_text_file(path, "333\n303\n333\n"), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
     ed.selection.type = SELECTION_WALL_FACE;
@@ -1653,7 +1662,7 @@ static void test_save_success_clears_dirty(void **state) {
     (void)state;
     UnifiedEditorState ed;
     char path[512];
-    char buf[256];
+    char buf[4096];
 
     path_in_tmpdir(path, sizeof(path), "map_saved.txt");
     assert_int_equal(write_text_file(path, VALID_MAP), 0);
@@ -1695,28 +1704,26 @@ static void test_picker_next_prev_and_confirm(void **state) {
     grid = grid_create(260, 30);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
-    assert_true(grid_contains_text(grid, "Inspector: materials"));
-    assert_true(grid_contains_text(grid, "Up/Down  Enter=apply"));
-    assert_true(grid_contains_text(
-        grid, "NOTE: material applies to entire wall cell"));
+    assert_true(grid_contains_text(grid, "Inspector: wall surface"));
+    assert_true(grid_contains_text(grid, "Up/Down=field"));
     grid_destroy(grid);
 
     /* Next → material 2 */
     zero_input(&in);
-    in.editor_next_pressed = true;
+    in.editor_increase_pressed = true;
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.highlighted_material, 2);
 
     /* Next → material 12 */
     zero_input(&in);
-    in.editor_next_pressed = true;
+    in.editor_increase_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 12);
 
     /* Prev → material 2 */
     zero_input(&in);
-    in.editor_previous_pressed = true;
+    in.editor_decrease_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 2);
 
@@ -1847,7 +1854,7 @@ static void test_exit_save_and_exit_persists(void **state) {
     (void)state;
     UnifiedEditorState ed;
     char path[512];
-    char buf[256];
+    char buf[4096];
     char saved[512];
 
     path_in_tmpdir(path, sizeof(path), "map_saved.txt");
@@ -1899,7 +1906,7 @@ static void test_exit_discard_and_exit_does_not_write(void **state) {
     (void)state;
     UnifiedEditorState ed;
     char path[512];
-    char buf[256];
+    char buf[4096];
 
     path_in_tmpdir(path, sizeof(path), "map_saved.txt");
     assert_int_equal(write_text_file(path, VALID_MAP), 0);
@@ -2004,7 +2011,7 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
      */
     UnifiedEditorState ed;
     char path[512];
-    char buf[256];
+    char buf[4096];
     MaterialId mat = 0;
     WallMaterialRef ref;
 
@@ -2034,7 +2041,7 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
 
     /* Apply material 2 via picker. */
     zero_input(&in);
-    in.editor_next_pressed = true;
+    in.editor_increase_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 2);
     zero_input(&in);
@@ -2264,6 +2271,431 @@ static void test_editor_documents_never_hold_legacy_save_path(void **state) {
     remove(saved);
 }
 
+static void test_r4_increment_b_controller_commands_and_safety(void **state) {
+    UnifiedEditorState ed;
+    Camera camera;
+    InputState input;
+    char path[512];
+    MaterialId material = 0;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "r4_b_controller.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    zero_input(&input);
+    update_with(&ed, &camera, &input);
+    assert_true(ed.has_player_cell);
+    assert_int_equal(ed.player_map_x, 1);
+    assert_int_equal(ed.player_map_y, 1);
+    assert_int_equal(unified_editor_place_wall(&ed, 1, 1),
+                     CMD_RESULT_SPAWN_BLOCKED);
+    assert_int_equal(ed.status, EDITOR_STATUS_SPAWN_BLOCKED);
+
+    ed.document.spawn_x = 0.5;
+    ed.document.spawn_y = 0.5;
+    assert_int_equal(unified_editor_place_wall(&ed, 1, 1),
+                     CMD_RESULT_PLAYER_BLOCKED);
+    assert_int_equal(ed.status, EDITOR_STATUS_PLAYER_BLOCKED);
+    camera.transform.pos.x = 0.5;
+    camera.transform.pos.y = 0.5;
+    update_with(&ed, &camera, &input);
+    assert_int_equal(unified_editor_place_wall(&ed, 1, 1), CMD_RESULT_OK);
+    assert_int_equal(ed.document.map.cells[4].material_id, 1);
+    assert_int_equal(unified_editor_set_surface_material(
+        &ed, 1, 1, SCENE_SURFACE_WALL, 2), CMD_RESULT_OK);
+    assert_true(scene_document_get_surface_material(
+        &ed.document, 1, 1, SCENE_SURFACE_WALL, &material));
+    assert_int_equal(material, 2);
+    assert_int_equal(ed.document.map.cells[4].material_id, 2);
+    assert_int_equal(unified_editor_remove_wall(&ed, 1, 1), CMD_RESULT_OK);
+    assert_int_equal(ed.document.map.cells[4].material_id, 0);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.map.cells[4].material_id, 2);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.map.cells[4].material_id, 0);
+
+    assert_int_equal(unified_editor_set_ambient_intensity(&ed, 0.8), CMD_RESULT_OK);
+    assert_true(ed.document.ambient_intensity == 0.8);
+    assert_true(ed.runtime_world.ambient_intensity == 0.8);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_true(ed.document.ambient_intensity == 0.25);
+    assert_true(ed.runtime_world.ambient_intensity == 0.25);
+    assert_int_equal(unified_editor_set_surface_material(
+        &ed, 1, 1, SCENE_SURFACE_FLOOR, 9),
+        CMD_RESULT_MATERIAL_NOT_LOADED);
+    assert_int_equal(ed.status, EDITOR_STATUS_INVALID_MATERIAL);
+
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_r4_increment_c_horizontal_hover_and_selection(void **state) {
+    UnifiedEditorState ed;
+    Camera camera;
+    InputState input;
+    char path[512];
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "r4_c_selection.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    camera.pitch = -70.0;
+    zero_input(&input);
+    update_with(&ed, &camera, &input);
+    assert_true(ed.hover.valid);
+    assert_int_equal(ed.hover.target.type, SELECTION_FLOOR);
+    assert_true(editor_selection_is_valid_for_map(
+        ed.hover.target, scene_document_get_map(&ed.document)));
+
+    zero_input(&input);
+    input.editor_select_pressed = true;
+    update_with(&ed, &camera, &input);
+    assert_int_equal(ed.selection.type, SELECTION_FLOOR);
+    assert_true(ed.inspector_open);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_FLOOR_SURFACE);
+
+    camera.pitch = 70.0;
+    zero_input(&input);
+    update_with(&ed, &camera, &input);
+    assert_true(ed.hover.valid);
+    assert_int_equal(ed.hover.target.type, SELECTION_CEILING);
+    zero_input(&input);
+    input.editor_select_pressed = true;
+    update_with(&ed, &camera, &input);
+    assert_int_equal(ed.selection.type, SELECTION_CEILING);
+    assert_true(ed.inspector_open);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_CEILING_SURFACE);
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void open_horizontal_inspector(
+    UnifiedEditorState *editor,
+    Camera *camera,
+    const char *path,
+    const char *scene_text,
+    double pitch
+) {
+    InputState input;
+    assert_int_equal(write_text_file(path, scene_text), 0);
+    assert_true(unified_editor_init(editor, &g_assets));
+    assert_int_equal(unified_editor_open_native(editor, path), SCENE_LOAD_OK);
+    camera_init(camera, 1.5, 1.5, 0.0, PI / 2.0);
+    camera->pitch = pitch;
+    zero_input(&input);
+    update_with(editor, camera, &input);
+    assert_true(editor->hover.valid);
+    zero_input(&input);
+    input.editor_select_pressed = true;
+    update_with(editor, camera, &input);
+    assert_true(editor->inspector_open);
+}
+
+static void test_r4_increment_d_surface_material_and_construction_ui(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    char path[512];
+    MaterialId material = 0;
+    DocumentStateId state_before;
+    size_t history_before;
+    int x;
+    int y;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "r4_d_surface.tscene");
+    open_horizontal_inspector(
+        &editor, &camera, path, NATIVE_SCENE_WITH_PICKABLE_LIGHT, -70.0);
+    editor.selection.type = SELECTION_FLOOR;
+    editor.selection.value.horizontal = (HorizontalSurfaceRef){2, 1};
+    editor.inspector_kind = EDITOR_INSPECTOR_FLOOR_SURFACE;
+    editor.surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
+    assert_int_equal(editor.inspector_kind, EDITOR_INSPECTOR_FLOOR_SURFACE);
+    x = editor.selection.value.horizontal.map_x;
+    y = editor.selection.value.horizontal.map_y;
+    assert_true(scene_document_get_surface_material(
+        &editor.document, x, y, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 1);
+
+    zero_input(&input); input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.highlighted_material, 2);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(scene_document_get_surface_material(
+        &editor.document, x, y, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 2);
+
+    /* The same UI command must reject the authored spawn cell atomically. */
+    history_before = editor.history.count;
+    editor.selection.value.horizontal = (HorizontalSurfaceRef){1, 2};
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.surface_field, EDITOR_SURFACE_FIELD_CONSTRUCTION);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.last_command_result, CMD_RESULT_SPAWN_BLOCKED);
+    assert_int_equal(editor.status, EDITOR_STATUS_SPAWN_BLOCKED);
+    assert_int_equal(editor.document.map.cells[2 * editor.document.map.width + 1].material_id,
+                     0);
+    assert_int_equal(editor.history.count, history_before);
+    assert_true(editor.inspector_open);
+    assert_int_equal(editor.selection.type, SELECTION_FLOOR);
+
+    /* A distinct empty, non-spawn, non-player cell succeeds through history. */
+    editor.selection.value.horizontal = (HorizontalSurfaceRef){x, y};
+    state_before = editor.document.current_state;
+    unified_editor_set_runtime_build_failure_for_test(true);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    unified_editor_set_runtime_build_failure_for_test(false);
+    assert_int_equal(editor.last_command_result, CMD_RESULT_OUT_OF_MEMORY);
+    assert_int_equal(editor.status, EDITOR_STATUS_OUT_OF_MEMORY);
+    assert_int_equal(editor.document.map.cells[y * editor.document.map.width + x].material_id,
+                     0);
+    assert_int_equal(editor.document.current_state, state_before);
+    assert_int_equal(editor.history.count, history_before);
+    assert_true(editor.inspector_open);
+    assert_int_equal(editor.selection.type, SELECTION_FLOOR);
+
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.last_command_result, CMD_RESULT_OK);
+    assert_int_equal(editor.document.map.cells[y * editor.document.map.width + x].material_id,
+                     1);
+    assert_int_equal(editor.history.count, history_before + 1U);
+    assert_true(scene_document_is_dirty(&editor.document));
+    assert_false(editor.inspector_open);
+    assert_int_equal(editor.selection.type, SELECTION_NONE);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_int_equal(editor.document.map.cells[y * editor.document.map.width + x].material_id,
+                     0);
+
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    editor.selection.type = SELECTION_FLOOR;
+    editor.selection.value.horizontal = (HorizontalSurfaceRef){x, y};
+    editor.inspector_kind = EDITOR_INSPECTOR_FLOOR_SURFACE;
+    editor.inspector_open = true;
+    editor.surface_field = EDITOR_SURFACE_FIELD_CONSTRUCTION;
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Inspector: floor surface"));
+    assert_true(grid_contains_text(grid, "> Place Wall"));
+    assert_true(grid_contains_text(grid, "Ambient"));
+    grid_destroy(grid);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
+static void test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    char path[512];
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "r4_d_ambient.tscene");
+    open_horizontal_inspector(&editor, &camera, path, NATIVE_SCENE, -70.0);
+    editor.surface_field = EDITOR_SURFACE_FIELD_AMBIENT;
+    zero_input(&input); input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.document.ambient_intensity == 0.30);
+    assert_true(editor.runtime_world.ambient_intensity == 0.30);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(editor.document.ambient_intensity == 0.25);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+    assert_true(editor.document.ambient_intensity == 0.30);
+
+    zero_input(&input); strcpy(input.text_input, "0.80"); input.text_input_len = 4;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.light_value_editing);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.light_value_editing);
+    assert_true(editor.document.ambient_intensity == 0.80);
+    assert_true(editor.runtime_world.ambient_intensity == 0.80);
+
+    zero_input(&input); strcpy(input.text_input, "9"); input.text_input_len = 1;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.light_value_editing);
+    assert_int_equal(editor.status, EDITOR_STATUS_INVALID_NUMERIC_VALUE);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.light_value_editing);
+    assert_true(editor.inspector_open);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
+static void test_r4_increment_d_empty_missing_and_runtime_failure_atomic(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    AssetRegistry empty_assets;
+    Grid *grid;
+    char path[512];
+    DocumentStateId state_before;
+    size_t history_before;
+    double ambient_before;
+    WorldState runtime_before;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "r4_d_failure.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE), 0);
+    asset_registry_init(&empty_assets);
+    assert_true(unified_editor_init(&editor, &empty_assets));
+    assert_int_equal(unified_editor_open_native(&editor, path), SCENE_LOAD_OK);
+    editor.selection.type = SELECTION_FLOOR;
+    editor.selection.value.horizontal = (HorizontalSurfaceRef){1, 1};
+    editor.inspector_kind = EDITOR_INSPECTOR_FLOOR_SURFACE;
+    editor.inspector_open = true;
+    editor.surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Material   1 (missing)"));
+    assert_true(grid_contains_text(grid, "(no loaded materials)"));
+    grid_destroy(grid);
+
+    ambient_before = editor.document.ambient_intensity;
+    runtime_before = editor.runtime_world;
+    state_before = editor.document.current_state;
+    history_before = editor.history.count;
+    unified_editor_set_runtime_build_failure_for_test(true);
+    assert_int_equal(unified_editor_set_ambient_intensity(&editor, 0.75),
+                     CMD_RESULT_OUT_OF_MEMORY);
+    unified_editor_set_runtime_build_failure_for_test(false);
+    assert_true(editor.document.ambient_intensity == ambient_before);
+    assert_memory_equal(&editor.runtime_world, &runtime_before, sizeof(runtime_before));
+    assert_int_equal(editor.document.current_state, state_before);
+    assert_int_equal(editor.history.count, history_before);
+    assert_true(editor.inspector_open);
+    assert_int_equal(editor.selection.type, SELECTION_FLOOR);
+
+    camera_init(&camera, 0.5, 0.5, 0.0, PI / 2.0);
+    zero_input(&input);
+    update_with(&editor, &camera, &input);
+    unified_editor_destroy(&editor);
+    asset_registry_clear(&empty_assets);
+    remove(path);
+}
+
+static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
+    const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
+    UnifiedEditorState editor;
+    UnifiedEditorState reopened;
+    AssetRegistry fixture_assets;
+    Camera camera;
+    InputState input;
+    char saved_path[512];
+    MaterialId material = 0U;
+    SceneCellOccupancy occupancy = SCENE_CELL_OCCUPANCY_WALL;
+    size_t history_before;
+    (void)state;
+
+    path_in_tmpdir(saved_path, sizeof(saved_path), "r4_surface_workflow_saved.tscene");
+    fixture_assets = g_assets;
+    fixture_assets.materials[3].id = 3;
+    fixture_assets.materials[4].id = 4;
+    snprintf(fixture_assets.material_names[3],
+             sizeof(fixture_assets.material_names[3]), "%s", "mat3");
+    snprintf(fixture_assets.material_names[4],
+             sizeof(fixture_assets.material_names[4]), "%s", "mat4");
+    fixture_assets.material_count = 5;
+    assert_true(unified_editor_init(&editor, &fixture_assets));
+    assert_int_equal(unified_editor_open_native(&editor, fixture), SCENE_LOAD_OK);
+    assert_false(scene_document_is_dirty(&editor.document));
+    assert_false(scene_document_is_repair_required(&editor.document));
+    assert_string_equal(scene_document_get_name(&editor.document),
+                        "r4_surface_workflow");
+    assert_int_equal(editor.document.map.width, 6);
+    assert_int_equal(editor.document.map.height, 6);
+    assert_int_equal(editor.runtime_world.num_lights, 1);
+    assert_int_equal(editor.runtime_world.num_decals, 3);
+    assert_true(scene_document_get_surface_material(
+        &editor.document, 4, 2, SCENE_SURFACE_WALL, &material));
+    assert_int_equal(material, 4U);
+    assert_true(scene_document_get_surface_material(
+        &editor.document, 1, 1, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 1U);
+    assert_true(scene_document_get_surface_material(
+        &editor.document, 1, 1, SCENE_SURFACE_CEILING, &material));
+    assert_int_equal(material, 4U);
+
+    editor.selection.type = SELECTION_WALL_FACE;
+    editor.selection.value.wall_face = (WallFaceRef){4, 2, WALL_FACE_WEST};
+    assert_int_equal(unified_editor_set_wall_material(&editor, 2U), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_surface_material(
+        &editor, 1, 1, SCENE_SURFACE_FLOOR, 3U), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_surface_material(
+        &editor, 1, 1, SCENE_SURFACE_CEILING, 2U), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_ambient_intensity(&editor, 0.6),
+                     CMD_RESULT_OK);
+
+    history_before = editor.history.count;
+    assert_int_equal(unified_editor_place_wall(&editor, 2, 2), CMD_RESULT_OK);
+    assert_true(scene_document_get_cell_occupancy(
+        &editor.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(editor.history.count, history_before + 1U);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_get_cell_occupancy(
+        &editor.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_get_cell_occupancy(
+        &editor.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(unified_editor_remove_wall(&editor, 2, 2), CMD_RESULT_OK);
+
+    assert_int_equal(unified_editor_save_as(
+        &editor, saved_path, "r4_surface_workflow_saved"), SCENE_SAVE_OK);
+    assert_false(scene_document_is_dirty(&editor.document));
+    assert_true(scene_document_get_surface_material(
+        &editor.document, 1, 1, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 3U);
+
+    assert_int_equal(unified_editor_set_ambient_intensity(&editor, 0.2),
+                     CMD_RESULT_OK);
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    zero_input(&input);
+    input.editor_reload_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.modal, EDITOR_MODAL_RELOAD_PROMPT);
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.modal, EDITOR_MODAL_NONE);
+    assert_false(scene_document_is_dirty(&editor.document));
+    assert_true(scene_document_get_ambient_intensity(&editor.document) == 0.6);
+
+    assert_true(unified_editor_init(&reopened, &fixture_assets));
+    assert_int_equal(unified_editor_open_native(&reopened, saved_path), SCENE_LOAD_OK);
+    assert_false(scene_document_is_repair_required(&reopened.document));
+    assert_int_equal(reopened.runtime_world.num_lights, 1);
+    assert_int_equal(reopened.runtime_world.num_decals, 3);
+    assert_true(scene_document_get_surface_material(
+        &reopened.document, 4, 2, SCENE_SURFACE_WALL, &material));
+    assert_int_equal(material, 2U);
+    assert_true(scene_document_get_surface_material(
+        &reopened.document, 1, 1, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 3U);
+    assert_true(scene_document_get_surface_material(
+        &reopened.document, 1, 1, SCENE_SURFACE_CEILING, &material));
+    assert_int_equal(material, 2U);
+    assert_true(scene_document_get_cell_occupancy(
+        &reopened.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_true(scene_document_get_ambient_intensity(&reopened.document) == 0.6);
+
+    unified_editor_destroy(&reopened);
+    unified_editor_destroy(&editor);
+    remove(saved_path);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -2319,6 +2751,12 @@ int main(void) {
         cmocka_unit_test(test_native_reload_preserves_light_decal_ambient),
         cmocka_unit_test(test_native_reload_clean_preserves_content),
         cmocka_unit_test(test_editor_documents_never_hold_legacy_save_path),
+        cmocka_unit_test(test_r4_increment_b_controller_commands_and_safety),
+        cmocka_unit_test(test_r4_increment_c_horizontal_hover_and_selection),
+        cmocka_unit_test(test_r4_increment_d_surface_material_and_construction_ui),
+        cmocka_unit_test(test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape),
+        cmocka_unit_test(test_r4_increment_d_empty_missing_and_runtime_failure_atomic),
+        cmocka_unit_test(test_r4_increment_f_checked_in_v2_workflow),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

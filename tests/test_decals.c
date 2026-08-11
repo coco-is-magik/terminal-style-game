@@ -251,7 +251,7 @@ static void test_decal_rendering_wall(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     
     int dx, dy;
     assert_true(find_grid_glyph(g, 'D', &dx, &dy));
@@ -274,9 +274,14 @@ static void test_decal_rendering_floor(void **state) {
     camera_init(&cam, 2.5, 2.5, 0.0, PI/2.0);
     
     AssetRegistry assets;
+    SceneAuthoredCell cells[25] = {0};
+    SceneSurfaceView surfaces = {cells, 25U, 5, 5};
     asset_registry_init(&assets);
     asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
     asset_registry_set_material(&assets, 1, 1, "####");
+    assert_true(snprintf(assets.material_names[1],
+                         sizeof(assets.material_names[1]), "1") > 0);
+    for (size_t i = 0U; i < 25U; i++) cells[i].floor_material = 1U;
 
     WorldState world;
     world_init(&world);
@@ -298,7 +303,7 @@ static void test_decal_rendering_floor(void **state) {
     // Actually our raycast_render uses perp_dist from the wall hit.
     // If no hit, ray.distance is max_dist (20.0).
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, &surfaces);
     
     // Check some floor pixels. 
     // This is a bit tricky to predict exact pixel, but let's check a range.
@@ -353,7 +358,7 @@ static void test_decal_fisheye_correction(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     
     int ax, ay, bx, by, cx, cy, dx, dy, ex, ey;
     assert_unique_glyph(g, 'A', &ax, &ay);
@@ -464,7 +469,7 @@ static void test_decal_floor_continuous_sampling(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -513,7 +518,7 @@ static void test_decal_ceiling_continuous_sampling(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -563,7 +568,7 @@ static void test_decal_floor_glyph_order_2x2(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -615,7 +620,7 @@ static void test_decal_ceiling_glyph_order_2x2(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -666,7 +671,7 @@ static void test_decal_floor_glyph_row_order_4x1(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -718,7 +723,7 @@ static void test_decal_ceiling_glyph_row_order_4x1(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -770,7 +775,7 @@ static void test_decal_wall_glyph_grid_2x3(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -828,7 +833,7 @@ static void test_decal_wall_spacing_adjacent(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -877,7 +882,7 @@ static void test_decal_wall_authoritative_dimensions(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -940,7 +945,7 @@ static void test_decal_wall_backface_rejected(void **state) {
     world_add_decal(&world, front);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     Cell c;
     grid_get(g, 10, 10, &c);
@@ -984,7 +989,7 @@ static void test_decal_wall_orientation(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     
     int t_x = -1, t_y = -1, b_x = -1, b_y = -1;
     for(int y=0; y<g->height; y++) {
@@ -1040,9 +1045,9 @@ static void test_decal_rendering_extreme_horizon_offsets(void **state) {
     lighting_update(m, &world);
 
     cam.pitch = -(double)g->height;
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     cam.pitch = (double)g->height;
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     world_clear(&world);
     map_destroy(m);
@@ -1079,7 +1084,7 @@ static GlyphBounds render_single_wall_decal_bounds(double cam_x, uint8_t glyph) 
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds bounds = assert_glyph_bounds(g, glyph);
 
@@ -1136,7 +1141,7 @@ static void test_decal_floor_perspective_plane(void **state) {
     world_add_decal(&world, far_d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds near_bounds = assert_glyph_bounds(g, 'N');
     GlyphBounds far_bounds = assert_glyph_bounds(g, 'F');
@@ -1187,7 +1192,7 @@ static void test_decal_wall_size_respects_width(void **state) {
     world_add_decal(&world, wide);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds narrow_bounds = assert_glyph_bounds(g, 'N');
     GlyphBounds wide_bounds = assert_glyph_bounds(g, 'W');
@@ -1231,7 +1236,7 @@ static void test_decal_oblique_cell_no_bbox_smear(void **state) {
     world_add_decal(&world, d);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -1293,7 +1298,7 @@ static void test_decal_whitespace_preserved(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     GlyphBounds a = assert_glyph_bounds(g, 'A');
     GlyphBounds b = assert_glyph_bounds(g, 'B');
@@ -1350,7 +1355,7 @@ static void test_decal_default_spacing_no_smear(void **state) {
 
     world_add_decal(&world, d);
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     /* Each glyph must appear exactly once — no smearing or repetition. */
     GlyphBounds a = assert_glyph_bounds(g, 'A');
@@ -1409,7 +1414,7 @@ static void test_decal_default_spacing_explicit_overrides(void **state) {
     dd.pattern[1] = (PatternCell){'B', 1};
     world_add_decal(&world_default, dd);
     lighting_update(m_default, &world_default);
-    raycast_render(g_default, m_default, &cam_default, &assets_default, &world_default);
+    raycast_render(g_default, m_default, &cam_default, &assets_default, &world_default, NULL);
 
     GlyphBounds def_a = assert_glyph_bounds(g_default, 'A');
     GlyphBounds def_b = assert_glyph_bounds(g_default, 'B');
@@ -1449,7 +1454,7 @@ static void test_decal_default_spacing_explicit_overrides(void **state) {
     de.pattern[1] = (PatternCell){'D', 1};
     world_add_decal(&world_explicit, de);
     lighting_update(m_explicit, &world_explicit);
-    raycast_render(g_explicit, m_explicit, &cam_explicit, &assets_explicit, &world_explicit);
+    raycast_render(g_explicit, m_explicit, &cam_explicit, &assets_explicit, &world_explicit, NULL);
 
     GlyphBounds exp_c = assert_glyph_bounds(g_explicit, 'C');
     GlyphBounds exp_d = assert_glyph_bounds(g_explicit, 'D');
@@ -1497,7 +1502,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         d.pattern[1] = (PatternCell){'B', 1};
         world_add_decal(&world, d);
         lighting_update(m, &world);
-        raycast_render(g, m, &cam, &assets, &world);
+        raycast_render(g, m, &cam, &assets, &world, NULL);
         assert_glyph_bounds(g, 'A');
         assert_glyph_bounds(g, 'B');
         world_clear(&world);
@@ -1532,7 +1537,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         d.pattern[1] = (PatternCell){'D', 1};
         world_add_decal(&world, d);
         lighting_update(m, &world);
-        raycast_render(g, m, &cam, &assets, &world);
+        raycast_render(g, m, &cam, &assets, &world, NULL);
         assert_glyph_bounds(g, 'C');
         assert_glyph_bounds(g, 'D');
         world_clear(&world);
@@ -1567,7 +1572,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         d.pattern[1] = (PatternCell){'F', 1};
         world_add_decal(&world, d);
         lighting_update(m, &world);
-        raycast_render(g, m, &cam, &assets, &world);
+        raycast_render(g, m, &cam, &assets, &world, NULL);
         assert_glyph_bounds(g, 'E');
         assert_glyph_bounds(g, 'F');
         world_clear(&world);

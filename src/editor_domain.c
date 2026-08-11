@@ -13,12 +13,15 @@
 #define EDITOR_LIGHT_RADIUS_MIN 0.25
 #define EDITOR_LIGHT_RADIUS_MAX 1024.0
 #define EDITOR_LIGHT_RADIUS_STEP 0.25
+#define EDITOR_AMBIENT_STEP 0.05
 
 EditorInspectorKind editor_domain_inspector_kind(SelectionTarget target) {
     if (target.type == SELECTION_WALL_FACE) {
         return EDITOR_INSPECTOR_WALL_MATERIAL;
     }
     if (target.type == SELECTION_LIGHT) return EDITOR_INSPECTOR_LIGHT;
+    if (target.type == SELECTION_FLOOR) return EDITOR_INSPECTOR_FLOOR_SURFACE;
+    if (target.type == SELECTION_CEILING) return EDITOR_INSPECTOR_CEILING_SURFACE;
     return EDITOR_INSPECTOR_NONE;
 }
 
@@ -27,17 +30,27 @@ bool editor_domain_inspector_presentation(
     EditorInspectorPresentation *out_presentation
 ) {
     if (!out_presentation) return false;
-    if (kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
-        *out_presentation = (EditorInspectorPresentation){
-            "materials", "Up/Down  Enter=apply",
-            "NOTE: material applies to entire wall cell", 1U};
-        return true;
-    }
     if (kind == EDITOR_INSPECTOR_LIGHT) {
         *out_presentation = (EditorInspectorPresentation){
             "point light", "Up/Down  Left/Right=edit  Type+Enter=set",
             "RGB colors marker; scene illumination is scalar",
             EDITOR_LIGHT_FIELD_COUNT};
+        return true;
+    }
+    if (kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
+        kind == EDITOR_INSPECTOR_CEILING_SURFACE) {
+        *out_presentation = (EditorInspectorPresentation){
+            kind == EDITOR_INSPECTOR_FLOOR_SURFACE ? "floor surface" : "ceiling surface",
+            "Up/Down=field  Left/Right=edit  Enter=apply",
+            "Fixed-height surface; construction places one wall cell",
+            EDITOR_SURFACE_FIELD_COUNT};
+        return true;
+    }
+    if (kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
+        *out_presentation = (EditorInspectorPresentation){
+            "wall surface", "Up/Down=field  Left/Right=edit  Enter=apply",
+            "One material applies to the entire wall cell",
+            EDITOR_SURFACE_FIELD_COUNT};
         return true;
     }
     return false;
@@ -51,9 +64,22 @@ bool editor_domain_inspector_field_presentation(
 ) {
     EditorLightFieldMetadata light;
     if (!out_presentation) return false;
-    if (kind == EDITOR_INSPECTOR_WALL_MATERIAL && field_index == 0U) {
-        *out_presentation = (EditorInspectorFieldPresentation){
-            "Material", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+    if ((kind == EDITOR_INSPECTOR_WALL_MATERIAL ||
+         kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
+         kind == EDITOR_INSPECTOR_CEILING_SURFACE) &&
+        field_index < EDITOR_SURFACE_FIELD_COUNT) {
+        if (field_index == EDITOR_SURFACE_FIELD_MATERIAL) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Material", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_CONSTRUCTION) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                kind == EDITOR_INSPECTOR_WALL_MATERIAL ? "Remove Wall" : "Place Wall",
+                EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+        } else {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Ambient", EDITOR_INSPECTOR_FIELD_NUMBER,
+                0.0, 1.0, EDITOR_AMBIENT_STEP, 2U};
+        }
         return true;
     }
     if (kind != EDITOR_INSPECTOR_LIGHT ||
@@ -64,6 +90,82 @@ bool editor_domain_inspector_field_presentation(
         light.label, EDITOR_INSPECTOR_FIELD_NUMBER, light.minimum, light.maximum,
         light.step, light.decimal_places};
     return true;
+}
+
+bool editor_domain_make_surface_material_request(
+    SelectionTarget target, MaterialId material,
+    EditorMutationRequest *out_request
+) {
+    if (!out_request || material < 1 || material > 255) return false;
+    memset(out_request, 0, sizeof(*out_request));
+    if (target.type == SELECTION_WALL_FACE) {
+        out_request->type = EDITOR_MUTATION_SET_WALL_MATERIAL;
+        out_request->data.wall_material.wall.map_x = target.value.wall_face.map_x;
+        out_request->data.wall_material.wall.map_y = target.value.wall_face.map_y;
+        out_request->data.wall_material.material = material;
+    } else if (target.type == SELECTION_FLOOR || target.type == SELECTION_CEILING) {
+        out_request->type = target.type == SELECTION_FLOOR
+            ? EDITOR_MUTATION_SET_FLOOR_MATERIAL
+            : EDITOR_MUTATION_SET_CEILING_MATERIAL;
+        out_request->data.surface_material.map_x = target.value.horizontal.map_x;
+        out_request->data.surface_material.map_y = target.value.horizontal.map_y;
+        out_request->data.surface_material.material = material;
+    } else return false;
+    return true;
+}
+
+bool editor_domain_make_construction_request(
+    SelectionTarget target, EditorMutationRequest *out_request
+) {
+    if (!out_request) return false;
+    memset(out_request, 0, sizeof(*out_request));
+    if (target.type == SELECTION_WALL_FACE) {
+        out_request->type = EDITOR_MUTATION_REMOVE_WALL;
+        out_request->data.occupancy.map_x = target.value.wall_face.map_x;
+        out_request->data.occupancy.map_y = target.value.wall_face.map_y;
+    } else if (target.type == SELECTION_FLOOR || target.type == SELECTION_CEILING) {
+        out_request->type = EDITOR_MUTATION_PLACE_WALL;
+        out_request->data.occupancy.map_x = target.value.horizontal.map_x;
+        out_request->data.occupancy.map_y = target.value.horizontal.map_y;
+    } else return false;
+    return true;
+}
+
+bool editor_domain_ambient_metadata(EditorAmbientMetadata *out_metadata) {
+    if (!out_metadata) return false;
+    *out_metadata = (EditorAmbientMetadata){0.0, 1.0, EDITOR_AMBIENT_STEP, 2U};
+    return true;
+}
+
+bool editor_domain_format_ambient(double ambient, char *out_text, size_t out_size) {
+    int written;
+    if (!out_text || out_size == 0U || !isfinite(ambient) ||
+        ambient < 0.0 || ambient > 1.0) return false;
+    written = snprintf(out_text, out_size, "%.2f", ambient);
+    return written >= 0 && (size_t)written < out_size;
+}
+
+bool editor_domain_make_ambient_value_request(
+    double value, EditorMutationRequest *out_request
+) {
+    if (!out_request || !isfinite(value) || value < 0.0 || value > 1.0) return false;
+    memset(out_request, 0, sizeof(*out_request));
+    out_request->type = EDITOR_MUTATION_SET_AMBIENT_INTENSITY;
+    out_request->data.ambient.intensity = value;
+    return true;
+}
+
+bool editor_domain_make_ambient_step_request(
+    const SceneDocument *document, int direction,
+    EditorMutationRequest *out_request
+) {
+    double value;
+    if (!document || (direction != -1 && direction != 1)) return false;
+    value = scene_document_get_ambient_intensity(document) +
+        direction * EDITOR_AMBIENT_STEP;
+    if (value < 0.0) value = 0.0;
+    if (value > 1.0) value = 1.0;
+    return editor_domain_make_ambient_value_request(value, out_request);
 }
 
 bool editor_domain_make_wall_material_request(

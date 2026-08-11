@@ -1,0 +1,96 @@
+# Targeted Review — R4 Surface Data and Basic World Construction
+
+**Review date:** 2026-08-11  
+**Review type:** Targeted R4 architecture and phase-gate review  
+**Disposition:** No architecture blocker; automated gates pass; interactive acceptance pending
+
+## Summary
+
+R4 Increments A–F are implemented. The representative v2 workflow and all automated
+closeout gates pass. The targeted review found no duplicate authored map, controller
+ownership expansion, or cross-domain format/runtime coupling, so escalation to a full
+Q4 review is not required. R4 remains Active only because its required human-observed
+interactive acceptance has not yet been recorded.
+
+## Architecture findings
+
+### Ownership — pass
+
+`SceneFormatCandidate` temporarily owns parsed/migrated cells before transactional commit.
+Ownership then transfers to `SceneDocument`, which is the sole authoritative owner.
+`Map`, `WorldState`, light maps, and renderer caches are derived. `SceneSurfaceView` is a
+const borrowed pointer/count/dimension view and performs no allocation or ownership.
+
+### Dependency direction — pass
+
+Only `scene_document.c` couples document persistence to `scene_format`. The renderer
+depends on `surface_view.h` and authored value types, not `SceneDocument` or format code.
+The application composes the borrowed view at the render boundary. Format, document,
+runtime adapter, renderer, and controller responsibilities therefore remain directional.
+
+### Mutation boundary — pass
+
+`command_system` remains the sole production caller of `scene_document_internal_*`
+mutations. `editor_domain` creates typed requests; `unified_editor` routes inputs,
+executes history, and transactionally rebuilds runtime state. Construction did not turn
+appearance commands into geometry commands or broaden controller ownership.
+
+### Compatibility and failure atomicity — pass
+
+Native v1 and legacy inputs migrate to complete v2 candidates without source rewrite.
+Missing references remain visible and Save-blocking. Existing malformed input, OOM,
+runtime-build, durable-save, dirty prompt, and failed-switch regressions remain green.
+
+## Findings and disposition
+
+| Severity | Finding | Disposition |
+|---|---|---|
+| Blocker | None in architecture or automated behavior | Closed |
+| Documentation | README deferred list still named completed construction and horizontal surface work | Fixed during Increment F closeout |
+| Acceptance | Human-observed R4 visual/input workflow not yet run | Open; blocks R4 Verified |
+
+## Automated evidence
+
+- Strict aggregate suite: passed.
+- Focused fixture/document suite: 38/38 passed.
+- Focused unified-editor suite: 53/53 passed.
+- ASan and UBSan full suites: passed without diagnostics.
+- Feature matrix: 8/8 passed.
+- Deterministic surface and editor-highlight benchmark/stability gates: passed.
+- Dummy SDL smoke and strict application build: passed.
+- Detailed numbers: `../R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md`.
+
+## Interactive acceptance checklist — required
+
+Run in a real SDL video environment:
+
+```sh
+make clean && make
+./build/ascii-fps
+```
+
+1. Open `r4_surface_workflow.tscene`. Confirm floor and ceiling regions visibly use
+   different materials, ambient and the point light shade them, and wall/floor/ceiling
+   decals remain correctly ordered and occluded.
+2. Select and edit one wall, floor, and ceiling material; edit ambient; place and remove
+   a wall in an empty safe cell. Confirm the authored rendering changes immediately.
+3. Attempt construction on spawn/current-player cells and removal of the decal-bearing
+   wall at `(4,2)`. Confirm each refusal is visible and leaves the scene unchanged.
+4. Undo/redo the edits, Save As, restart, and reopen. Confirm materials, ambient,
+   occupancy, light, decals, and camera-safe spawn persist. Also open a v1 scene and
+   import a legacy map; confirm migration/Save As behavior remains understandable.
+5. Continuously alternate wall, light, floor, and ceiling selection/editing. Exercise
+   Escape, dirty Reload, dirty Open/New, Save/Discard/Cancel, and UI scale presets;
+   confirm no visible corruption, stale inspector, hitch, or interaction degradation.
+
+Record the date, environment, and each item as pass/fail below. Any failure reopens R4.
+
+**Interactive result:** Pending  
+**Environment:** Pending  
+**Findings:** Pending
+
+## Conclusion
+
+The targeted architecture review records no blocker and does not escalate to Q4.
+Increment F implementation and automated closeout are complete. **R4 remains Active
+until the interactive checklist passes.**

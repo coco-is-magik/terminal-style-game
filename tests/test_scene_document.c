@@ -306,13 +306,13 @@ static void test_repeated_load_no_leak(void **state) {
     char path_a[512], path_b[512];
     path_in_tmpdir(path_a, sizeof(path_a), "map_a.txt");
     path_in_tmpdir(path_b, sizeof(path_b), "map_b.txt");
-    assert_int_equal(write_text_file(path_a, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path_a, "111\n101\n111\n"), 0);
     assert_int_equal(write_text_file(path_b, "222\n202\n222\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
     assert_int_equal(scene_document_load(&doc, path_a), SCENE_LOAD_OK);
-    assert_int_equal(doc.map.width, 2);
+    assert_int_equal(doc.map.width, 3);
     assert_int_equal(scene_document_load(&doc, path_b), SCENE_LOAD_OK);
     assert_int_equal(doc.map.width, 3);
     assert_int_equal(doc.map.height, 3);
@@ -333,7 +333,7 @@ static void test_failed_load_preserves_document(void **state) {
     char good[512], missing[512];
     path_in_tmpdir(good, sizeof(good), "keep_me.txt");
     path_in_tmpdir(missing, sizeof(missing), "does_not_exist.txt");
-    assert_int_equal(write_text_file(good, "12\n21\n"), 0);
+    assert_int_equal(write_text_file(good, "111\n101\n121\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -389,6 +389,26 @@ static const char NATIVE_DECAL_FIXTURE[] =
     "surface = ceiling\nposition = 1.5,1.5,0\n"
     "size = 1,1\nglyph_step = 0,0\ndepth = 0\nrotation = 0\n";
 
+static const char NATIVE_V2_FIXTURE[] =
+    "scene_type = terminal_scene\nscene_version = 2\nname = \"surface_room\"\n"
+    "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 1\nambient_intensity = 0.25\n"
+    "spawn = 1.5,1.5,0\n\n"
+    "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
+    "[wall_materials]\n001 001 001\n001 002 001\n001 001 001\n\n"
+    "[floor_materials]\n002 002 002\n002 002 002\n002 002 002\n\n"
+    "[ceiling_materials]\n003 003 003\n003 003 003\n003 003 003\n";
+
+static void mark_material_loaded(AssetRegistry *assets, int id) {
+    char name[16];
+    assert_non_null(assets);
+    assert_true(id >= 1 && id <= 255);
+    asset_registry_set_material(assets, id, 1, "#");
+    assert_true(snprintf(name, sizeof(name), "%d", id) > 0);
+    memcpy(assets->material_names[id], name, strlen(name) + 1U);
+    assets->material_count++;
+}
+
 static void test_asset_registry_decal_patterns_and_fallback(void **state) {
     AssetRegistry assets;
     PatternCell source[2] = {{(uint8_t)'A', UINT8_C(3)},
@@ -435,13 +455,15 @@ static void test_native_asset_resolution_repair_fallback_and_replacement(void **
     path_in_tmpdir(path, sizeof(path), "native_repair.tscene");
     assert_int_equal(write_text_file(path, NATIVE_DECAL_FIXTURE), 0);
     asset_registry_init(&assets);
+    mark_material_loaded(&assets, 1);
     assert_true(asset_registry_set_decal_pattern(&assets, 7, 1, 1, &seven));
     scene_document_init(&doc);
     assert_int_equal(scene_document_load_native_with_assets(
                          &doc, path, &assets, &diagnostic), SCENE_LOAD_OK);
     assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_NONE);
     assert_true(scene_document_is_repair_required(&doc));
-    assert_false(scene_document_is_dirty(&doc));
+    assert_true(scene_document_is_dirty(&doc));
+    assert_true(doc.migration_pending);
     repairs = scene_document_get_repair_diagnostics(&doc, &count);
     assert_non_null(repairs);
     assert_int_equal(count, 1);
@@ -463,7 +485,7 @@ static void test_native_asset_resolution_repair_fallback_and_replacement(void **
     assert_string_equal(scene_diagnostic_id(save_diagnostic.code),
                         "TSG-SCENE-INPUT-0012");
     assert_int_equal(scene_document_save(&doc), SCENE_SAVE_REPAIR_BLOCKED);
-    assert_false(scene_document_is_dirty(&doc));
+    assert_true(scene_document_is_dirty(&doc));
     assert_int_equal(scene_document_internal_replace_decal_asset(
                          &doc, &assets, 3, 9, 2),
                      SCENE_REPAIR_REPLACE_ASSET_NOT_LOADED);
@@ -472,7 +494,7 @@ static void test_native_asset_resolution_repair_fallback_and_replacement(void **
                          &doc, &assets, 3, 9, 2),
                      SCENE_REPAIR_REPLACE_NO_CHANGE);
     assert_false(scene_document_is_repair_required(&doc));
-    assert_false(scene_document_is_dirty(&doc));
+    assert_true(scene_document_is_dirty(&doc));
     assert_int_equal(scene_document_internal_replace_decal_asset(
                          &doc, &assets, 3, 7, 2), SCENE_REPAIR_REPLACE_OK);
     assert_int_equal(doc.decals[1].asset.id, 7);
@@ -502,6 +524,7 @@ static void test_native_all_assets_loaded_and_failed_load_preserves_repair(void 
     assert_int_equal(write_text_file(good, NATIVE_DECAL_FIXTURE), 0);
     assert_int_equal(write_text_file(bad, "scene_type = terminal_scene\n"), 0);
     asset_registry_init(&assets);
+    mark_material_loaded(&assets, 1);
     assert_true(asset_registry_set_decal_pattern(&assets, 7, 1, 1, &cell));
     assert_true(asset_registry_set_decal_pattern(&assets, 9, 1, 1, &cell));
     scene_document_init(&doc);
@@ -513,7 +536,7 @@ static void test_native_all_assets_loaded_and_failed_load_preserves_repair(void 
     assert_int_equal(scene_document_load_native_with_assets(
                          &doc, good, &assets, &diagnostic), SCENE_LOAD_OK);
     assert_true(scene_document_is_repair_required(&doc));
-    assert_int_equal(doc.repair_diagnostic_count, 2);
+    assert_int_equal(doc.repair_diagnostic_count, 29);
     old_repairs = doc.repair_diagnostics;
     old_cells = doc.map.cells;
     assert_int_equal(scene_document_load_native_with_assets(
@@ -522,7 +545,7 @@ static void test_native_all_assets_loaded_and_failed_load_preserves_repair(void 
     assert_ptr_equal(doc.repair_diagnostics, old_repairs);
     assert_ptr_equal(doc.map.cells, old_cells);
     assert_true(scene_document_is_repair_required(&doc));
-    assert_int_equal(doc.repair_diagnostic_count, 2);
+    assert_int_equal(doc.repair_diagnostic_count, 29);
     scene_document_destroy(&doc);
     asset_registry_clear(&assets);
 }
@@ -599,13 +622,16 @@ static void test_native_load_commits_complete_clean_document(void **state) {
     assert_string_equal(scene_document_get_path(&doc), path);
     assert_null(scene_document_get_legacy_source_path(&doc));
     assert_false(scene_document_is_imported_unsaved(&doc));
-    assert_false(scene_document_is_dirty(&doc));
+    assert_true(scene_document_is_dirty(&doc));
+    assert_true(doc.migration_pending);
     assert_true(scene_document_get_ambient_intensity(&doc) == 0.25);
     assert_int_equal(scene_document_get_next_instance_id(&doc), 3);
     assert_non_null(scene_document_get_lights(&doc, &count));
     assert_int_equal(count, 1);
     assert_int_equal(doc.lights[0].id, 2);
     assert_int_equal(doc.map.cells[4].material_id, 0);
+    assert_non_null(doc.authored_cells);
+    assert_int_equal(doc.authored_cell_count, 9U);
     scene_document_destroy(&doc);
 }
 
@@ -619,7 +645,7 @@ static void test_native_rejection_preserves_dirty_document(void **state) {
     (void)state;
     path_in_tmpdir(good, sizeof(good), "native_keep.txt");
     path_in_tmpdir(bad, sizeof(bad), "native_bad.tscene");
-    assert_int_equal(write_text_file(good, "12\n21\n"), 0);
+    assert_int_equal(write_text_file(good, "111\n101\n121\n"), 0);
     assert_int_equal(write_text_file(bad, "scene_type = terminal_scene\n"), 0);
     scene_document_init(&doc);
     assert_int_equal(scene_document_load(&doc, good), SCENE_LOAD_OK);
@@ -657,7 +683,7 @@ static void test_native_embedded_nul_and_oversize_preserve_document(void **state
     path_in_tmpdir(good, sizeof(good), "native_bound_keep.txt");
     path_in_tmpdir(nul_path, sizeof(nul_path), "native_nul.tscene");
     path_in_tmpdir(large_path, sizeof(large_path), "native_large.tscene");
-    assert_int_equal(write_text_file(good, "12\n21\n"), 0);
+    assert_int_equal(write_text_file(good, "111\n101\n121\n"), 0);
     assert_int_equal(write_bytes_file(nul_path, nul_bytes, fixture_size + 2U), 0);
     assert_int_equal(write_bytes_file(large_path, large_bytes,
                                       SCENE_FILE_MAX_BYTES + 1U), 0);
@@ -768,7 +794,7 @@ static void test_save_reload_round_trip(void **state) {
     assert_non_null(doc.path);
     memcpy(doc.path, dst, strlen(dst) + 1);
 
-    scene_document_internal_set_wall_material(&doc, (WallMaterialRef){1, 1}, 3);
+    scene_document_internal_set_wall_material(&doc, (WallMaterialRef){1, 2}, 3);
     scene_document_internal_set_current_state(&doc, 2);
     assert_true(scene_document_is_dirty(&doc));
 
@@ -784,7 +810,7 @@ static void test_save_reload_round_trip(void **state) {
     assert_int_equal(reloaded.map.height, 4);
 
     MaterialId mat = -1;
-    assert_true(scene_document_get_wall_material(&reloaded, (WallMaterialRef){1, 1}, &mat));
+    assert_true(scene_document_get_wall_material(&reloaded, (WallMaterialRef){1, 2}, &mat));
     assert_int_equal(mat, 3);
     assert_true(scene_document_get_wall_material(&reloaded, (WallMaterialRef){2, 2}, &mat));
     assert_int_equal(mat, 2);
@@ -797,7 +823,7 @@ static void test_save_rejects_material_above_nine(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "bad_mat.txt");
-    assert_int_equal(write_text_file(path, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -815,7 +841,7 @@ static void test_save_rejects_material_above_nine(void **state) {
     /* Destination still original content. */
     char *text = read_text_file(path);
     assert_non_null(text);
-    assert_string_equal(text, "11\n11\n");
+    assert_string_equal(text, "111\n101\n111\n");
     free(text);
 
     scene_document_destroy(&doc);
@@ -825,13 +851,12 @@ static void test_save_rejects_material_below_zero(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "neg_mat.txt");
-    assert_int_equal(write_text_file(path, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
     assert_int_equal(scene_document_load(&doc, path), SCENE_LOAD_OK);
-    assert_true(scene_document_internal_set_wall_material(
-        &doc, (WallMaterialRef){1, 0}, -1));
+    doc.map.cells[1].material_id = -1;
 
     assert_int_equal(scene_document_save(&doc), SCENE_SAVE_UNREPRESENTABLE_MATERIAL);
     assert_int_equal(doc.saved_state, 1);
@@ -842,7 +867,7 @@ static void test_successful_save_updates_saved_state(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "save_ok.txt");
-    assert_int_equal(write_text_file(path, "10\n01\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -866,7 +891,7 @@ static void test_save_no_path(void **state) {
     /* Move into document manually via load of a temp then clear path. */
     char path[512];
     path_in_tmpdir(path, sizeof(path), "tmp_for_nopath.txt");
-    assert_int_equal(write_text_file(path, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
     assert_int_equal(scene_document_load(&doc, path), SCENE_LOAD_OK);
     free(doc.path);
     doc.path = NULL;
@@ -887,7 +912,7 @@ static void test_failed_replace_preserves_destination(void **state) {
     path_in_tmpdir(dest_dir, sizeof(dest_dir), "not_a_file");
     path_in_tmpdir(seed, sizeof(seed), "seed_map.txt");
     assert_int_equal(mkdir(dest_dir, 0700), 0);
-    assert_int_equal(write_text_file(seed, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(seed, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -922,7 +947,7 @@ static void test_temp_files_removed_after_unrepresentable(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "cleanup.txt");
-    assert_int_equal(write_text_file(path, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -938,7 +963,7 @@ static void test_light_map_not_serialized(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "light.txt");
-    assert_int_equal(write_text_file(path, "10\n01\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -954,7 +979,7 @@ static void test_light_map_not_serialized(void **state) {
     char *text = read_text_file(path);
     assert_non_null(text);
     /* Exact digit grid only — no floats, no extra tokens. */
-    assert_string_equal(text, "10\n01\n");
+    assert_string_equal(text, "111\n101\n111\n");
     free(text);
 
     /* Reload and confirm light_map starts clean (zeros from map_create). */
@@ -1188,7 +1213,7 @@ static void test_get_wall_material_oob(void **state) {
     (void)state;
     char path[512];
     path_in_tmpdir(path, sizeof(path), "oob.txt");
-    assert_int_equal(write_text_file(path, "11\n11\n"), 0);
+    assert_int_equal(write_text_file(path, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
     scene_document_init(&doc);
@@ -1206,9 +1231,14 @@ static void test_get_wall_material_oob(void **state) {
 }
 
 static void test_accessors_null_safe(void **state) {
+    SceneSurfaceView view;
     (void)state;
     assert_null(scene_document_get_map(NULL));
     assert_null(scene_document_get_map_for_runtime(NULL));
+    assert_false(scene_document_get_surface_view(NULL, &view));
+    assert_null(view.cells);
+    assert_int_equal(view.cell_count, 0U);
+    assert_false(scene_document_get_surface_view(NULL, NULL));
     assert_false(scene_document_is_dirty(NULL));
     assert_int_equal(scene_document_validate_for_save(NULL),
                      SCENE_SAVE_INVALID_DOCUMENT);
@@ -1220,6 +1250,7 @@ static void test_create_new_exact_defaults(void **state) {
     SceneDocument doc;
     const EngineConfig *config = config_get();
     const Map *map;
+    SceneSurfaceView view;
     double x = 0.0;
     double y = 0.0;
     double angle = 1.0;
@@ -1228,6 +1259,11 @@ static void test_create_new_exact_defaults(void **state) {
     assert_int_equal(scene_document_create_new(&doc), SCENE_LOAD_OK);
     map = scene_document_get_map(&doc);
     assert_non_null(map);
+    assert_true(scene_document_get_surface_view(&doc, &view));
+    assert_ptr_equal(view.cells, doc.authored_cells);
+    assert_int_equal(view.cell_count, 60U);
+    assert_int_equal(view.width, 10);
+    assert_int_equal(view.height, 6);
     assert_int_equal(map->width, 10);
     assert_int_equal(map->height, 6);
     for (int row = 0; row < map->height; row++) {
@@ -1319,6 +1355,157 @@ static void test_native_load_light_map_is_populated_by_lighting_update(void **st
     asset_registry_clear(&assets);
 }
 
+static void test_v1_migration_save_emits_v2_and_reopens_clean(void **state) {
+    char source[512];
+    char destination[512];
+    SceneDocument doc;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    const SceneAuthoredCell *cells;
+    size_t count = 0U;
+    char *saved;
+    (void)state;
+
+    path_in_tmpdir(source, sizeof(source), "migrate_v1.tscene");
+    path_in_tmpdir(destination, sizeof(destination), "migrated_v2.tscene");
+    assert_int_equal(write_text_file(source, NATIVE_SCENE_FIXTURE), 0);
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_load_native(&doc, source, &diagnostic),
+                     SCENE_LOAD_OK);
+    assert_true(doc.migration_pending);
+    assert_true(scene_document_is_dirty(&doc));
+    cells = scene_document_get_authored_cells(&doc, &count);
+    assert_non_null(cells);
+    assert_int_equal(count, 9U);
+    assert_int_equal(cells[4].occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+
+    assert_int_equal(scene_document_save_as_native(
+                         &doc, destination, "migrated_room", &diagnostic),
+                     SCENE_SAVE_OK);
+    assert_false(doc.migration_pending);
+    assert_false(scene_document_is_dirty(&doc));
+    saved = read_text_file(destination);
+    assert_non_null(saved);
+    assert_non_null(strstr(saved, "scene_version = 2\n"));
+    assert_non_null(strstr(saved, "[occupancy]\n"));
+    assert_non_null(strstr(saved, "[floor_materials]\n"));
+    assert_null(strstr(saved, "[cells]\n"));
+    free(saved);
+
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_load_native(
+                         &reopened, destination, &diagnostic), SCENE_LOAD_OK);
+    assert_false(reopened.migration_pending);
+    assert_false(scene_document_is_dirty(&reopened));
+    cells = scene_document_get_authored_cells(&reopened, &count);
+    assert_non_null(cells);
+    assert_int_equal(count, 9U);
+    assert_int_equal(cells[4].occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(cells[4].wall_material,
+                     (uint8_t)config_get()->default_material_id);
+    scene_document_destroy(&reopened);
+    scene_document_destroy(&doc);
+}
+
+static void test_v2_surface_missing_repair_and_explicit_replacement(void **state) {
+    char path[512];
+    AssetRegistry assets;
+    SceneDocument doc;
+    SceneDiagnostic diagnostic;
+    size_t count = 0U;
+    const SceneDiagnostic *repairs;
+    (void)state;
+
+    path_in_tmpdir(path, sizeof(path), "surface_repair.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_V2_FIXTURE), 0);
+    asset_registry_init(&assets);
+    mark_material_loaded(&assets, 1);
+    mark_material_loaded(&assets, 2);
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_load_native_with_assets(
+                         &doc, path, &assets, &diagnostic), SCENE_LOAD_OK);
+    assert_false(doc.migration_pending);
+    assert_false(scene_document_is_dirty(&doc));
+    assert_true(scene_document_is_repair_required(&doc));
+    repairs = scene_document_get_repair_diagnostics(&doc, &count);
+    assert_non_null(repairs);
+    assert_int_equal(count, 9U);
+    assert_string_equal(repairs[0].field, "ceiling_material");
+    assert_int_equal(scene_document_validate_for_save(&doc),
+                     SCENE_SAVE_REPAIR_BLOCKED);
+    assert_int_equal(scene_document_internal_replace_surface_material(
+                         &doc, &assets, 0, 0, SCENE_SURFACE_CEILING, 2U, 2U),
+                     SCENE_REPAIR_REPLACE_OK);
+    assert_int_equal(doc.authored_cells[0].ceiling_material, 2U);
+    assert_int_equal(doc.repair_diagnostic_count, 8U);
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            if (x == 0 && y == 0) continue;
+            assert_int_equal(scene_document_internal_replace_surface_material(
+                                 &doc, &assets, x, y,
+                                 SCENE_SURFACE_CEILING, 2U,
+                                 (DocumentStateId)(3 + y * 3 + x)),
+                             SCENE_REPAIR_REPLACE_OK);
+        }
+    }
+    assert_false(scene_document_is_repair_required(&doc));
+    assert_int_equal(scene_document_validate_for_save(&doc), SCENE_SAVE_OK);
+    scene_document_destroy(&doc);
+    asset_registry_clear(&assets);
+}
+
+static void test_checked_in_r4_v2_fixture_is_clean_and_canonical(void **state) {
+    const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
+    char destination[512];
+    char *fixture_text;
+    char *saved_text;
+    AssetRegistry assets;
+    SceneDocument document;
+    SceneDiagnostic diagnostic;
+    PatternCell decal_cell = {(uint8_t)'D', UINT8_C(1)};
+    MaterialId material = 0U;
+    SceneCellOccupancy occupancy = SCENE_CELL_OCCUPANCY_EMPTY;
+    (void)state;
+
+    path_in_tmpdir(destination, sizeof(destination), "r4_fixture_canonical.tscene");
+    asset_registry_init(&assets);
+    for (int id = 1; id <= 4; id++) mark_material_loaded(&assets, id);
+    assert_true(asset_registry_set_decal_pattern(
+        &assets, 6, 1U, 1U, &decal_cell));
+    scene_document_init(&document);
+
+    assert_int_equal(scene_document_load_native_with_assets(
+        &document, fixture, &assets, &diagnostic), SCENE_LOAD_OK);
+    assert_false(document.migration_pending);
+    assert_false(scene_document_is_dirty(&document));
+    assert_false(scene_document_is_repair_required(&document));
+    assert_string_equal(scene_document_get_name(&document), "r4_surface_workflow");
+    assert_int_equal(document.map.width, 6);
+    assert_int_equal(document.map.height, 6);
+    assert_true(scene_document_get_cell_occupancy(
+        &document, 4, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_true(scene_document_get_surface_material(
+        &document, 4, 2, SCENE_SURFACE_WALL, &material));
+    assert_int_equal(material, 4U);
+    assert_int_equal(scene_document_validate_for_save(&document), SCENE_SAVE_OK);
+
+    assert_int_equal(scene_document_save_as_native(
+        &document, destination, "r4_surface_workflow", &diagnostic),
+        SCENE_SAVE_OK);
+    fixture_text = read_text_file(fixture);
+    saved_text = read_text_file(destination);
+    assert_non_null(fixture_text);
+    assert_non_null(saved_text);
+    assert_string_equal(saved_text, fixture_text);
+    free(saved_text);
+    free(fixture_text);
+
+    scene_document_destroy(&document);
+    asset_registry_clear(&assets);
+    remove(destination);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1360,6 +1547,9 @@ int main(void) {
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
         cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
+        cmocka_unit_test(test_v1_migration_save_emits_v2_and_reopens_clean),
+        cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
+        cmocka_unit_test(test_checked_in_r4_v2_fixture_is_clean_and_canonical),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

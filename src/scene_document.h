@@ -15,6 +15,7 @@
 #include "map.h"
 #include "scene_diagnostic.h"
 #include "scene_types.h"
+#include "surface_view.h"
 #include "world.h"
 
 #include <stdbool.h>
@@ -22,6 +23,8 @@
 
 typedef struct {
     Map map;
+    SceneAuthoredCell *authored_cells;
+    size_t authored_cell_count;
     char name[SCENE_NAME_MAX + 1U];
     double ambient_intensity;
     double spawn_x;
@@ -40,6 +43,7 @@ typedef struct {
     size_t repair_diagnostic_capacity;
     bool repair_required;
     bool imported_unsaved;
+    bool migration_pending;
     DocumentStateId current_state;
     DocumentStateId saved_state;
     char *path;
@@ -119,11 +123,37 @@ SceneSaveResult scene_document_save_as_native(
 
 const Map *scene_document_get_map(const SceneDocument *document);
 Map *scene_document_get_map_for_runtime(SceneDocument *document);
+const SceneAuthoredCell *scene_document_get_authored_cells(
+    const SceneDocument *document,
+    size_t *out_count
+);
+bool scene_document_get_surface_view(
+    const SceneDocument *document,
+    SceneSurfaceView *out_view
+);
 
 bool scene_document_get_wall_material(
     const SceneDocument *document,
     WallMaterialRef ref,
     MaterialId *out_material
+);
+bool scene_document_get_surface_material(
+    const SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId *out_material
+);
+bool scene_document_get_cell_occupancy(
+    const SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneCellOccupancy *out_occupancy
+);
+bool scene_document_cell_has_wall_decal(
+    const SceneDocument *document,
+    int map_x,
+    int map_y
 );
 
 bool scene_document_is_dirty(const SceneDocument *document);

@@ -17,8 +17,8 @@ SceneDocument -> CommandHistory -> editor runtime map
 assets/maps direct children -> MapCatalog -> unified-editor open controller
 ```
 
-The lines above describe the implemented R0 architecture. R1 has also verified the
-future scene boundary that R2 must implement:
+The lines above summarize the original R0 composition. R2 and R3 now implement the
+verified authored-scene and typed-editor boundary:
 
 ```text
 versioned scene -> parse/migrate/validate -> SceneDocument (authored owner)
@@ -26,12 +26,49 @@ reusable assets -> parse/validate -> AssetRegistry (definition owner)
 SceneDocument + AssetRegistry -> immutable runtime adapters -> consumers/caches
 ```
 
-R1 selects a height-aware 2.5D grid with one traversable interval per X/Y; stacked
-traversable spaces are not supported. It also requires independent authored
-geometry, collision, appearance, sight, light, and optical semantics, scene-wide
-monotonic 64-bit instance IDs, explicit legacy import, and transactional versioned
-scenes. These are accepted architecture constraints, not implemented R2 behavior.
-See `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`.
+R2 implements transactional native scene v1, explicit legacy import, scene-owned map,
+ambient, spawn, lights, decals, monotonic 64-bit instance IDs, and a derived runtime
+view. R3 implements typed wall/light selection, command, inspector, and highlight
+seams. R4 Increment A adds canonical scene v2 and document-owned authored occupancy
+plus one wall/floor/ceiling material reference per cell. The existing `Map` remains a
+derived compatibility view until later R4 consumers migrate. R1's broader independent
+collision/appearance/optics and height-aware 2.5D constraints remain future work. See
+`R4_NATIVE_SCENE_V2_SPEC_2026-08-10.md`.
+
+R4 Increment B adds typed surface/ambient/occupancy commands, duplicate-field rejection,
+attachment/spawn/player safety across execute/undo/redo, and controller-composed
+player/assets context. Successful occupancy and ambient history transitions rebuild the
+derived runtime view. See `R4_INCREMENT_B_IMPLEMENTATION_RECORD_2026-08-10.md`.
+
+R4 Increment C extends selection identity with typed floor/ceiling cells. The controller
+composes wall DDA, stable-ID lights, and fixed-plane horizontal candidates with strict
+nearest-visible precedence. Horizontal highlights are allocation-free derived Grid
+output and preserve borrowed inputs. See
+`R4_INCREMENT_C_IMPLEMENTATION_RECORD_2026-08-10.md`.
+
+R4 Increment D completes typed surface, construction, and ambient inspector adapters.
+The pure `editor_domain` seam returns presentation metadata and mutation requests; the
+controller owns input routing and command execution. Runtime-affecting edits replace the
+live derived view only after a successful candidate build. A failed build rolls back the
+authored command and history metadata while preserving runtime and UI state. Successful
+construction clears its now-stale selection only after runtime commit. See
+`R4_INCREMENT_D_IMPLEMENTATION_RECORD_2026-08-10.md`.
+
+R4 Increment E adds the zero-copy `SceneSurfaceView` renderer seam. The view borrows
+document-owned authored cells plus exact count/dimensions; `raycast_render` validates
+map agreement and directly samples floor/ceiling material IDs with per-column caches.
+NULL/malformed views and out-of-bounds samples preserve constant compatibility
+backgrounds. Missing references render a light-independent bright-purple background
+with black `.` glyphs. The renderer does not depend on or own `SceneDocument`. See
+`R4_INCREMENT_E_IMPLEMENTATION_RECORD_2026-08-11.md`.
+
+R4 Increment F locks the end-to-end boundary with the canonical checked-in
+`assets/scenes/r4_surface_workflow.tscene`. Document tests require exact canonical
+save bytes; controller tests drive authored surfaces, ambient, construction, history,
+Save As, dirty Reload, and reopen while writing only to temporary storage. The targeted
+review found no duplicate authored ownership or cross-domain renderer/format coupling.
+See `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` and
+`reviews/2026-08-11-roadmap-r4-targeted-review.md`.
 
 ## Responsibilities and ownership
 
@@ -45,8 +82,9 @@ See `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`.
   pattern until successful world insertion.
 - `world`: fixed-capacity runtime objects. `WorldInsertResult` makes rejection
   observable; decal ownership transfers only on success.
-- `scene_document` / `command_system`: authoritative editable map and transactional
-  mutation history. Rendering borrows the runtime map view.
+- `scene_document` / `command_system`: authoritative scene metadata, instances, and
+  v2 authored cells plus transactional mutation history. The current renderer and
+  collision consumers borrow the document's derived compatibility `Map` view.
 - `map_catalog`: owns a sorted, extension-filtered snapshot of regular direct
   children under a caller-supplied root. Native Open filters lowercase `.tscene`;
   legacy Import filters lowercase `.txt`. Refresh builds a candidate snapshot
@@ -93,11 +131,11 @@ See `R1_REQUIREMENTS_AND_DECISION_PLAN_2026-07-31.md`.
 - `config`: validates candidates transactionally. The singleton facade remains a
   compatibility boundary while subsystem settings are migrated incrementally.
 
-R1 ownership direction for future scene work is now fixed: `SceneDocument` will own
-all authored scene state; `AssetRegistry` will own reusable definitions; `WorldState`
-must become a derived runtime view or be split into narrow runtime modules rather
-than remain a second authored owner. Runtime pointers, light maps, spatial indices,
-and renderer caches remain derived and unsaved.
+The verified ownership direction is now implemented for current scene domains:
+`SceneDocument` owns authored scene state, `AssetRegistry` owns reusable definitions,
+and `WorldState` is rebuilt as a derived runtime view. R4 authored surface cells now
+follow that ownership boundary; the compatibility `Map`, runtime pointers, light maps,
+spatial indices, and renderer caches remain derived and unsaved.
 
 ## Invariants
 

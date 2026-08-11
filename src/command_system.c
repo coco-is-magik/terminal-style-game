@@ -2,6 +2,7 @@
 #include "command_system.h"
 #include "scene_document_internal.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,35 +60,102 @@ static bool lights_equal(const SceneLight *a, const SceneLight *b) {
         a->radius == b->radius;
 }
 
-static bool mutations_target_same_object(
-    const EditorMutation *a,
-    const EditorMutation *b
+static bool mutation_is_surface(EditorMutationType type) {
+    return type == EDITOR_MUTATION_SET_WALL_MATERIAL ||
+        type == EDITOR_MUTATION_SET_FLOOR_MATERIAL ||
+        type == EDITOR_MUTATION_SET_CEILING_MATERIAL;
+}
+static SceneSurfaceKind mutation_surface(EditorMutationType type) {
+    if (type == EDITOR_MUTATION_SET_FLOOR_MATERIAL) return SCENE_SURFACE_FLOOR;
+    if (type == EDITOR_MUTATION_SET_CEILING_MATERIAL) return SCENE_SURFACE_CEILING;
+    return SCENE_SURFACE_WALL;
+}
+static bool mutation_is_occupancy(EditorMutationType type) {
+    return type == EDITOR_MUTATION_PLACE_WALL ||
+        type == EDITOR_MUTATION_REMOVE_WALL;
+}
+
+static bool mutations_target_same_field(
+    const EditorMutation *a, const EditorMutation *b
 ) {
-    if (a->type != b->type) return false;
-    if (a->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
-        return a->data.wall_material.wall.map_x == b->data.wall_material.wall.map_x &&
-            a->data.wall_material.wall.map_y == b->data.wall_material.wall.map_y;
+    if (mutation_is_surface(a->type) && mutation_is_surface(b->type)) {
+        return a->type == b->type &&
+            a->data.surface_material.map_x == b->data.surface_material.map_x &&
+            a->data.surface_material.map_y == b->data.surface_material.map_y;
     }
-    if (a->type == EDITOR_MUTATION_SET_LIGHT) {
+    if (mutation_is_occupancy(a->type) && mutation_is_occupancy(b->type)) {
+        return a->data.occupancy.map_x == b->data.occupancy.map_x &&
+            a->data.occupancy.map_y == b->data.occupancy.map_y;
+    }
+    if (a->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY &&
+        b->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY) return true;
+    if (a->type == EDITOR_MUTATION_SET_LIGHT &&
+        b->type == EDITOR_MUTATION_SET_LIGHT)
         return a->data.light.id == b->data.light.id;
-    }
     return false;
 }
 
-static bool prepare_mutation(SceneDocument *document,
-                             const EditorMutationRequest *request,
-                             EditorMutation *mutation, bool *changed) {
+static bool prepare_surface_mutation(
+    SceneDocument *document, const EditorMutationRequest *request,
+    EditorMutation *mutation, bool *changed
+) {
+    int map_x;
+    int map_y;
+    MaterialId material;
+    MaterialId before;
+    SceneSurfaceKind surface = mutation_surface(request->type);
+    SceneCellOccupancy occupancy;
+    if (request->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
+        map_x = request->data.wall_material.wall.map_x;
+        map_y = request->data.wall_material.wall.map_y;
+        material = request->data.wall_material.material;
+    } else {
+        map_x = request->data.surface_material.map_x;
+        map_y = request->data.surface_material.map_y;
+        material = request->data.surface_material.material;
+    }
+    if (material < 1 || material > 255 ||
+        !scene_document_get_surface_material(
+            document, map_x, map_y, surface, &before)) return false;
+    if (surface == SCENE_SURFACE_WALL &&
+        (!scene_document_get_cell_occupancy(document, map_x, map_y, &occupancy) ||
+         occupancy != SCENE_CELL_OCCUPANCY_WALL)) return false;
+    mutation->data.surface_material.map_x = map_x;
+    mutation->data.surface_material.map_y = map_y;
+    mutation->data.surface_material.before = before;
+    mutation->data.surface_material.after = material;
+    *changed = before != material;
+    return true;
+}
+
+static bool prepare_mutation(
+    SceneDocument *document, const EditorMutationRequest *request,
+    EditorMutation *mutation, bool *changed
+) {
     memset(mutation, 0, sizeof(*mutation));
     mutation->type = request->type;
-    if (request->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
-        MaterialId before;
-        if (!scene_document_get_wall_material(document,
-                request->data.wall_material.wall, &before) || before <= 0)
-            return false;
-        mutation->data.wall_material.wall = request->data.wall_material.wall;
-        mutation->data.wall_material.before = before;
-        mutation->data.wall_material.after = request->data.wall_material.material;
-        *changed = before != request->data.wall_material.material;
+    if (mutation_is_surface(request->type))
+        return prepare_surface_mutation(document, request, mutation, changed);
+    if (request->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY) {
+        double after = request->data.ambient.intensity;
+        if (!isfinite(after) || after < 0.0 || after > 1.0) return false;
+        mutation->data.ambient.before = scene_document_get_ambient_intensity(document);
+        mutation->data.ambient.after = after;
+        *changed = mutation->data.ambient.before != after;
+        return true;
+    }
+    if (mutation_is_occupancy(request->type)) {
+        SceneCellOccupancy before;
+        SceneCellOccupancy after = request->type == EDITOR_MUTATION_PLACE_WALL
+            ? SCENE_CELL_OCCUPANCY_WALL : SCENE_CELL_OCCUPANCY_EMPTY;
+        if (!scene_document_get_cell_occupancy(
+                document, request->data.occupancy.map_x,
+                request->data.occupancy.map_y, &before)) return false;
+        mutation->data.occupancy.map_x = request->data.occupancy.map_x;
+        mutation->data.occupancy.map_y = request->data.occupancy.map_y;
+        mutation->data.occupancy.before = before;
+        mutation->data.occupancy.after = after;
+        *changed = before != after;
         return true;
     }
     if (request->type == EDITOR_MUTATION_SET_LIGHT) {
@@ -105,27 +173,89 @@ static bool prepare_mutation(SceneDocument *document,
     return false;
 }
 
-static bool apply_mutation(SceneDocument *document,
-                           const EditorMutation *mutation, bool after) {
-    if (mutation->type == EDITOR_MUTATION_SET_WALL_MATERIAL) {
-        return scene_document_internal_set_wall_material(
-            document, mutation->data.wall_material.wall,
-            after ? mutation->data.wall_material.after
-                  : mutation->data.wall_material.before);
+static CommandResult validate_transition(
+    const SceneDocument *document, const EditorMutation *mutation, bool after,
+    const CommandExecutionContext *context
+) {
+    if (mutation_is_surface(mutation->type)) {
+        MaterialId material = after ? mutation->data.surface_material.after
+                                    : mutation->data.surface_material.before;
+        if (after && context && context->assets &&
+            !material_id_is_loaded(context->assets, material))
+            return CMD_RESULT_MATERIAL_NOT_LOADED;
+        return CMD_RESULT_OK;
     }
-    if (mutation->type == EDITOR_MUTATION_SET_LIGHT) {
+    if (mutation_is_occupancy(mutation->type)) {
+        int map_x = mutation->data.occupancy.map_x;
+        int map_y = mutation->data.occupancy.map_y;
+        SceneCellOccupancy occupancy = after ? mutation->data.occupancy.after
+                                             : mutation->data.occupancy.before;
+        if (occupancy == SCENE_CELL_OCCUPANCY_EMPTY &&
+            scene_document_cell_has_wall_decal(document, map_x, map_y))
+            return CMD_RESULT_WALL_ATTACHMENT_BLOCKED;
+        if (occupancy == SCENE_CELL_OCCUPANCY_WALL) {
+            if (map_x == (int)floor(document->spawn_x) &&
+                map_y == (int)floor(document->spawn_y))
+                return CMD_RESULT_SPAWN_BLOCKED;
+            if (context && context->has_player_cell &&
+                map_x == context->player_map_x && map_y == context->player_map_y)
+                return CMD_RESULT_PLAYER_BLOCKED;
+        }
+    }
+    return CMD_RESULT_OK;
+}
+
+static bool apply_mutation(
+    SceneDocument *document, const EditorMutation *mutation, bool after,
+    const CommandExecutionContext *context
+) {
+    if (mutation_is_surface(mutation->type))
+        return scene_document_internal_set_surface_material(
+            document, mutation->data.surface_material.map_x,
+            mutation->data.surface_material.map_y, mutation_surface(mutation->type),
+            after ? mutation->data.surface_material.after
+                  : mutation->data.surface_material.before,
+            context ? context->assets : NULL);
+    if (mutation->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY)
+        return scene_document_internal_set_ambient_intensity(
+            document, after ? mutation->data.ambient.after
+                            : mutation->data.ambient.before);
+    if (mutation_is_occupancy(mutation->type))
+        return scene_document_internal_set_cell_occupancy(
+            document, mutation->data.occupancy.map_x,
+            mutation->data.occupancy.map_y,
+            after ? mutation->data.occupancy.after
+                  : mutation->data.occupancy.before);
+    if (mutation->type == EDITOR_MUTATION_SET_LIGHT)
         return scene_document_internal_set_light(
             document, mutation->data.light.id,
             after ? &mutation->data.light.after : &mutation->data.light.before);
-    }
     return false;
 }
 
-CommandResult command_history_execute_group(
-    CommandHistory *history, SceneDocument *document,
-    const EditorMutationRequest *requests, size_t request_count) {
-    EditorCommand command;
+static CommandResult preflight_command(
+    const SceneDocument *document, const EditorCommand *command, bool after,
+    const CommandExecutionContext *context
+) {
     size_t i;
+    for (i = 0U; i < command->mutation_count; i++) {
+        CommandResult result = validate_transition(
+            document, &command->mutations[i], after, context);
+        if (result != CMD_RESULT_OK) return result;
+    }
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_execute_group_checked(
+    CommandHistory *history, SceneDocument *document,
+    const EditorMutationRequest *requests, size_t request_count,
+    const CommandExecutionContext *context
+) {
+    EditorCommand command;
+    EditorMutation prepared[EDITOR_COMMAND_MAX_MUTATIONS];
+    size_t prepared_count = 0U;
+    size_t i;
+    CommandResult validation;
     if (!history || !document || !requests || request_count == 0U ||
         request_count > EDITOR_COMMAND_MAX_MUTATIONS) return CMD_RESULT_INVALID_TARGET;
     memset(&command, 0, sizeof(command));
@@ -135,24 +265,25 @@ CommandResult command_history_execute_group(
         size_t j;
         if (!prepare_mutation(document, &requests[i], &mutation, &changed))
             return CMD_RESULT_INVALID_TARGET;
-        if (!changed) continue;
-        for (j = 0U; j < command.mutation_count; j++) {
-            if (mutations_target_same_object(&command.mutations[j], &mutation))
+        for (j = 0U; j < prepared_count; j++)
+            if (mutations_target_same_field(&prepared[j], &mutation))
                 return CMD_RESULT_INVALID_TARGET;
-        }
+        prepared[prepared_count++] = mutation;
+        if (!changed) continue;
         command.mutations[command.mutation_count++] = mutation;
     }
     if (command.mutation_count == 0U) return CMD_RESULT_NO_CHANGE;
+    validation = preflight_command(document, &command, true, context);
+    if (validation != CMD_RESULT_OK) return validation;
     if (history->next_state_id == UINT64_MAX) return CMD_RESULT_STATE_ID_EXHAUSTED;
     if (!history_reserve_one(history)) return CMD_RESULT_OUT_OF_MEMORY;
-
     command.before_state = document->current_state;
     command.after_state = history->next_state_id;
     for (i = 0U; i < command.mutation_count; i++) {
-        if (!apply_mutation(document, &command.mutations[i], true)) {
+        if (!apply_mutation(document, &command.mutations[i], true, context)) {
             while (i > 0U) {
                 i--;
-                (void)apply_mutation(document, &command.mutations[i], false);
+                (void)apply_mutation(document, &command.mutations[i], false, context);
             }
             return CMD_RESULT_INVALID_TARGET;
         }
@@ -165,19 +296,88 @@ CommandResult command_history_execute_group(
     return CMD_RESULT_OK;
 }
 
+CommandResult command_history_execute_group(
+    CommandHistory *history, SceneDocument *document,
+    const EditorMutationRequest *requests, size_t request_count
+) {
+    return command_history_execute_group_checked(
+        history, document, requests, request_count, NULL);
+}
+
+CommandResult command_history_set_surface_material(
+    CommandHistory *history, SceneDocument *document, int map_x, int map_y,
+    SceneSurfaceKind surface, MaterialId material,
+    const CommandExecutionContext *context
+) {
+    EditorMutationRequest request = {0};
+    if (surface < SCENE_SURFACE_WALL || surface > SCENE_SURFACE_CEILING)
+        return CMD_RESULT_INVALID_TARGET;
+    request.type = surface == SCENE_SURFACE_WALL
+        ? EDITOR_MUTATION_SET_WALL_MATERIAL
+        : (surface == SCENE_SURFACE_FLOOR
+            ? EDITOR_MUTATION_SET_FLOOR_MATERIAL
+            : EDITOR_MUTATION_SET_CEILING_MATERIAL);
+    if (surface == SCENE_SURFACE_WALL) {
+        request.data.wall_material.wall = (WallMaterialRef){map_x, map_y};
+        request.data.wall_material.material = material;
+    } else {
+        request.data.surface_material.map_x = map_x;
+        request.data.surface_material.map_y = map_y;
+        request.data.surface_material.material = material;
+    }
+    return command_history_execute_group_checked(
+        history, document, &request, 1U, context);
+}
+
 CommandResult command_history_set_wall_material(
     CommandHistory *history, SceneDocument *document,
-    WallMaterialRef ref, MaterialId material) {
+    WallMaterialRef ref, MaterialId material
+) {
+    return command_history_set_surface_material(
+        history, document, ref.map_x, ref.map_y,
+        SCENE_SURFACE_WALL, material, NULL);
+}
+
+CommandResult command_history_set_ambient_intensity(
+    CommandHistory *history, SceneDocument *document, double intensity
+) {
     EditorMutationRequest request = {0};
-    request.type = EDITOR_MUTATION_SET_WALL_MATERIAL;
-    request.data.wall_material.wall = ref;
-    request.data.wall_material.material = material;
+    request.type = EDITOR_MUTATION_SET_AMBIENT_INTENSITY;
+    request.data.ambient.intensity = intensity;
     return command_history_execute_group(history, document, &request, 1U);
+}
+
+static CommandResult command_history_set_occupancy(
+    CommandHistory *history, SceneDocument *document, int map_x, int map_y,
+    EditorMutationType type, const CommandExecutionContext *context
+) {
+    EditorMutationRequest request = {0};
+    request.type = type;
+    request.data.occupancy.map_x = map_x;
+    request.data.occupancy.map_y = map_y;
+    return command_history_execute_group_checked(
+        history, document, &request, 1U, context);
+}
+
+CommandResult command_history_place_wall(
+    CommandHistory *history, SceneDocument *document, int map_x, int map_y,
+    const CommandExecutionContext *context
+) {
+    return command_history_set_occupancy(
+        history, document, map_x, map_y, EDITOR_MUTATION_PLACE_WALL, context);
+}
+CommandResult command_history_remove_wall(
+    CommandHistory *history, SceneDocument *document, int map_x, int map_y,
+    const CommandExecutionContext *context
+) {
+    return command_history_set_occupancy(
+        history, document, map_x, map_y, EDITOR_MUTATION_REMOVE_WALL, context);
 }
 
 CommandResult command_history_set_light(
     CommandHistory *history, SceneDocument *document,
-    SceneInstanceId id, const SceneLight *value) {
+    SceneInstanceId id, const SceneLight *value
+) {
     EditorMutationRequest request = {0};
     if (!value) return CMD_RESULT_INVALID_TARGET;
     request.type = EDITOR_MUTATION_SET_LIGHT;
@@ -186,18 +386,24 @@ CommandResult command_history_set_light(
     return command_history_execute_group(history, document, &request, 1U);
 }
 
-CommandResult command_history_undo(CommandHistory *history, SceneDocument *document) {
+CommandResult command_history_undo_checked(
+    CommandHistory *history, SceneDocument *document,
+    const CommandExecutionContext *context
+) {
     EditorCommand *command;
     size_t i;
+    CommandResult validation;
     if (!history || !document) return CMD_RESULT_INVALID_TARGET;
     if (history->cursor == 0U) return CMD_RESULT_NOTHING_TO_UNDO;
     command = &history->commands[history->cursor - 1U];
+    validation = preflight_command(document, command, false, context);
+    if (validation != CMD_RESULT_OK) return validation;
     for (i = command->mutation_count; i > 0U; i--) {
-        if (!apply_mutation(document, &command->mutations[i - 1U], false)) {
+        if (!apply_mutation(document, &command->mutations[i - 1U], false, context)) {
             size_t rollback;
-            for (rollback = i; rollback < command->mutation_count; rollback++) {
-                (void)apply_mutation(document, &command->mutations[rollback], true);
-            }
+            for (rollback = i; rollback < command->mutation_count; rollback++)
+                (void)apply_mutation(
+                    document, &command->mutations[rollback], true, context);
             return CMD_RESULT_INVALID_TARGET;
         }
     }
@@ -205,18 +411,27 @@ CommandResult command_history_undo(CommandHistory *history, SceneDocument *docum
     history->cursor--;
     return CMD_RESULT_OK;
 }
+CommandResult command_history_undo(CommandHistory *history, SceneDocument *document) {
+    return command_history_undo_checked(history, document, NULL);
+}
 
-CommandResult command_history_redo(CommandHistory *history, SceneDocument *document) {
+CommandResult command_history_redo_checked(
+    CommandHistory *history, SceneDocument *document,
+    const CommandExecutionContext *context
+) {
     EditorCommand *command;
     size_t i;
+    CommandResult validation;
     if (!history || !document) return CMD_RESULT_INVALID_TARGET;
     if (history->cursor >= history->count) return CMD_RESULT_NOTHING_TO_REDO;
     command = &history->commands[history->cursor];
+    validation = preflight_command(document, command, true, context);
+    if (validation != CMD_RESULT_OK) return validation;
     for (i = 0U; i < command->mutation_count; i++) {
-        if (!apply_mutation(document, &command->mutations[i], true)) {
+        if (!apply_mutation(document, &command->mutations[i], true, context)) {
             while (i > 0U) {
                 i--;
-                (void)apply_mutation(document, &command->mutations[i], false);
+                (void)apply_mutation(document, &command->mutations[i], false, context);
             }
             return CMD_RESULT_INVALID_TARGET;
         }
@@ -224,4 +439,7 @@ CommandResult command_history_redo(CommandHistory *history, SceneDocument *docum
     scene_document_internal_set_current_state(document, command->after_state);
     history->cursor++;
     return CMD_RESULT_OK;
+}
+CommandResult command_history_redo(CommandHistory *history, SceneDocument *document) {
+    return command_history_redo_checked(history, document, NULL);
 }

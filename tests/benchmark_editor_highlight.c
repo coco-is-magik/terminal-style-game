@@ -54,6 +54,13 @@ static SelectionTarget light_target(SceneInstanceId id) {
     return target;
 }
 
+static SelectionTarget horizontal_target(SelectionType type, int x, int y) {
+    SelectionTarget target = {0};
+    target.type = type;
+    target.value.horizontal = (HorizontalSurfaceRef){x, y};
+    return target;
+}
+
 static EditorHit hover_target(SelectionTarget target) {
     EditorHit hover = {0};
     hover.valid = true;
@@ -77,7 +84,8 @@ static bool render_scenario(Grid *grid, Map *map, Camera *camera,
         }
     }
     map_set(map, 3, 4, 0);
-    switch (scenario & 3U) {
+    camera->pitch = 0.0;
+    switch (scenario % 6U) {
         case 0U:
             selection = light_target(11U);
             hover = hover_target(light_target(12U));
@@ -92,6 +100,15 @@ static bool render_scenario(Grid *grid, Map *map, Camera *camera,
         case 3U:
             selection = light_target(11U);
             hover = hover_target(selection);
+            break;
+        case 4U:
+            camera->pitch = -10.0;
+            selection = horizontal_target(SELECTION_FLOOR, 3, 3);
+            hover = hover_target(horizontal_target(SELECTION_FLOOR, 4, 3));
+            break;
+        case 5U:
+            camera->pitch = 10.0;
+            selection = horizontal_target(SELECTION_CEILING, 3, 3);
             break;
     }
     editor_highlight_render(grid, map, camera, lights, light_count,
@@ -110,7 +127,7 @@ int main(int argc, char **argv) {
         {.id = 12U, .x = 4.5, .y = 2.5, .radius = 1.0},
         {.id = 13U, .x = 4.5, .y = 4.5, .radius = 1.0}
     };
-    uint64_t expected[4] = {0U, 0U, 0U, 0U};
+    uint64_t expected[6] = {0U, 0U, 0U, 0U, 0U, 0U};
     uint64_t i;
     double start;
     double elapsed;
@@ -129,7 +146,7 @@ int main(int argc, char **argv) {
     map_set(map, 5, 3, 1);
     camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
 
-    for (i = 0U; i < 4U; i++) {
+    for (i = 0U; i < 6U; i++) {
         if (!render_scenario(grid, map, &camera, lights, 3U, (unsigned int)i))
             goto cleanup;
         expected[i] = grid_checksum(grid);
@@ -137,7 +154,7 @@ int main(int argc, char **argv) {
     start = now_ms();
     if (start < 0.0) goto cleanup;
     for (i = 0U; i < iterations; i++) {
-        unsigned int scenario = (unsigned int)(i & 3U);
+        unsigned int scenario = (unsigned int)(i % 6U);
         if (!render_scenario(grid, map, &camera, lights, 3U, scenario))
             goto cleanup;
         if (grid_checksum(grid) != expected[scenario]) {

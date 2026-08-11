@@ -26,6 +26,12 @@
 #define EDITOR_LIGHT_REPEAT_INTERVAL_SECONDS 0.08
 #define EDITOR_LIGHT_REPEAT_MAX_STEPS_PER_FRAME 8
 
+static bool g_fail_runtime_build_for_test = false;
+
+void unified_editor_set_runtime_build_failure_for_test(bool fail) {
+    g_fail_runtime_build_for_test = fail;
+}
+
 static void editor_cancel_light_value_edit(UnifiedEditorState *editor);
 
 static void editor_clear_selection(UnifiedEditorState *editor) {
@@ -45,6 +51,7 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->inspector_kind = EDITOR_INSPECTOR_NONE;
     editor->material_picker_index = 0;
     editor->highlighted_material = 0;
+    editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
@@ -147,6 +154,9 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_DURABILITY_WARNING:    return "Saved; durability warning";
         case EDITOR_STATUS_INVALID_SCENE_NAME:    return "Invalid scene name";
         case EDITOR_STATUS_INVALID_NUMERIC_VALUE: return "Invalid or out-of-range number";
+        case EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED: return "Remove attached wall decal first";
+        case EDITOR_STATUS_SPAWN_BLOCKED:          return "Cannot place wall at spawn";
+        case EDITOR_STATUS_PLAYER_BLOCKED:         return "Leave cell before placing wall";
         case EDITOR_STATUS_NONE:
         default:                                  return "";
     }
@@ -265,6 +275,18 @@ static void editor_rebuild_picker_for_selection(UnifiedEditorState *editor) {
                 editor->assets, current, &idx)) {
             editor->material_picker_index = idx;
         }
+    } else if (editor->selection.type == SELECTION_FLOOR ||
+               editor->selection.type == SELECTION_CEILING) {
+        SceneSurfaceKind surface = editor->selection.type == SELECTION_FLOOR
+            ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING;
+        if (scene_document_get_surface_material(
+                &editor->document,
+                editor->selection.value.horizontal.map_x,
+                editor->selection.value.horizontal.map_y,
+                surface, &current) &&
+            editor_find_picker_index_for_material(editor->assets, current, &idx)) {
+            editor->material_picker_index = idx;
+        }
     }
 
     editor_sync_highlighted_from_picker(editor);
@@ -314,6 +336,18 @@ static void editor_map_command_result(
         case CMD_RESULT_INVALID_TARGET:
             editor->status = EDITOR_STATUS_INVALID_SELECTION;
             break;
+        case CMD_RESULT_MATERIAL_NOT_LOADED:
+            editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+            break;
+        case CMD_RESULT_WALL_ATTACHMENT_BLOCKED:
+            editor->status = EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED;
+            break;
+        case CMD_RESULT_SPAWN_BLOCKED:
+            editor->status = EDITOR_STATUS_SPAWN_BLOCKED;
+            break;
+        case CMD_RESULT_PLAYER_BLOCKED:
+            editor->status = EDITOR_STATUS_PLAYER_BLOCKED;
+            break;
         case CMD_RESULT_OUT_OF_MEMORY:
             editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
             break;
@@ -340,6 +374,11 @@ static bool editor_selection_is_valid(
         return scene_document_find_light(
             &editor->document, selection.value.light.id) != NULL;
     }
+    if (selection.type == SELECTION_FLOOR ||
+        selection.type == SELECTION_CEILING) {
+        return editor_selection_is_valid_for_map(
+            selection, scene_document_get_map(&editor->document));
+    }
     return false;
 }
 
@@ -353,20 +392,36 @@ static void editor_revalidate_selection(UnifiedEditorState *editor) {
     }
 }
 
-static bool editor_command_contains_light(const EditorCommand *command) {
+static bool editor_command_requires_runtime_refresh(const EditorCommand *command) {
     size_t i;
     if (!command) return false;
     for (i = 0U; i < command->mutation_count; i++) {
-        if (command->mutations[i].type == EDITOR_MUTATION_SET_LIGHT) return true;
+        EditorMutationType type = command->mutations[i].type;
+        if (type == EDITOR_MUTATION_SET_LIGHT ||
+            type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY ||
+            type == EDITOR_MUTATION_PLACE_WALL ||
+            type == EDITOR_MUTATION_REMOVE_WALL) return true;
     }
     return false;
+}
+
+static CommandExecutionContext editor_command_context(
+    const UnifiedEditorState *editor
+) {
+    CommandExecutionContext context = {0};
+    if (!editor) return context;
+    context.assets = editor->assets;
+    context.has_player_cell = editor->has_player_cell;
+    context.player_map_x = editor->player_map_x;
+    context.player_map_y = editor->player_map_y;
+    return context;
 }
 
 static bool editor_refresh_runtime(UnifiedEditorState *editor) {
     WorldState candidate;
     if (!editor) return false;
     world_init(&candidate);
-    if (scene_document_build_runtime_world(
+    if (g_fail_runtime_build_for_test || scene_document_build_runtime_world(
             &editor->document, editor->assets, &candidate) !=
         SCENE_RUNTIME_BUILD_OK) {
         world_clear(&candidate);
@@ -376,6 +431,27 @@ static bool editor_refresh_runtime(UnifiedEditorState *editor) {
     world_clear(&editor->runtime_world);
     editor->runtime_world = candidate;
     return true;
+}
+
+static bool editor_command_commit_runtime(
+    UnifiedEditorState *editor,
+    CommandResult result,
+    size_t old_count,
+    size_t old_cursor,
+    DocumentStateId old_next_state
+) {
+    CommandExecutionContext context;
+    if (result != CMD_RESULT_OK) return result == CMD_RESULT_NO_CHANGE;
+    if (editor_refresh_runtime(editor)) return true;
+    context = editor_command_context(editor);
+    context.has_player_cell = false;
+    (void)command_history_undo_checked(&editor->history, &editor->document, &context);
+    editor->history.count = old_count;
+    editor->history.cursor = old_cursor;
+    editor->history.next_state_id = old_next_state;
+    editor->last_command_result = CMD_RESULT_OUT_OF_MEMORY;
+    editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    return false;
 }
 
 /* ---- Public lifecycle ------------------------------------------------ */
@@ -767,8 +843,11 @@ CommandResult unified_editor_set_wall_material(
         editor->last_command_result = CMD_RESULT_INVALID_TARGET;
         return CMD_RESULT_INVALID_TARGET;
     }
-    result = command_history_execute_group(
-        &editor->history, &editor->document, &request, 1U);
+    {
+        CommandExecutionContext context = editor_command_context(editor);
+        result = command_history_execute_group_checked(
+            &editor->history, &editor->document, &request, 1U, &context);
+    }
 
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
@@ -781,6 +860,90 @@ CommandResult unified_editor_set_wall_material(
     }
 
     return result;
+}
+
+CommandResult unified_editor_set_surface_material(
+    UnifiedEditorState *editor,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId material
+) {
+    CommandExecutionContext context;
+    CommandResult result;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    context = editor_command_context(editor);
+    result = command_history_set_surface_material(
+        &editor->history, &editor->document, map_x, map_y,
+        surface, material, &context);
+    editor_map_command_result(editor, result);
+    return result;
+}
+
+CommandResult unified_editor_set_ambient_intensity(
+    UnifiedEditorState *editor,
+    double intensity
+) {
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_set_ambient_intensity(
+        &editor->history, &editor->document, intensity);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+static CommandResult editor_set_wall_occupancy(
+    UnifiedEditorState *editor,
+    int map_x,
+    int map_y,
+    bool occupied
+) {
+    CommandExecutionContext context;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    context = editor_command_context(editor);
+    result = occupied
+        ? command_history_place_wall(
+            &editor->history, &editor->document, map_x, map_y, &context)
+        : command_history_remove_wall(
+            &editor->history, &editor->document, map_x, map_y, &context);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    }
+    return result;
+}
+
+CommandResult unified_editor_place_wall(
+    UnifiedEditorState *editor, int map_x, int map_y
+) {
+    return editor_set_wall_occupancy(editor, map_x, map_y, true);
+}
+
+CommandResult unified_editor_remove_wall(
+    UnifiedEditorState *editor, int map_x, int map_y
+) {
+    return editor_set_wall_occupancy(editor, map_x, map_y, false);
 }
 
 CommandResult unified_editor_step_light_field(
@@ -840,10 +1003,14 @@ CommandResult unified_editor_undo(UnifiedEditorState *editor) {
     }
 
     if (editor->history.cursor > 0U) {
-        refresh_runtime = editor_command_contains_light(
+        refresh_runtime = editor_command_requires_runtime_refresh(
             &editor->history.commands[editor->history.cursor - 1U]);
     }
-    result = command_history_undo(&editor->history, &editor->document);
+    {
+        CommandExecutionContext context = editor_command_context(editor);
+        result = command_history_undo_checked(
+            &editor->history, &editor->document, &context);
+    }
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
     if (result == CMD_RESULT_OK && refresh_runtime)
@@ -860,10 +1027,14 @@ CommandResult unified_editor_redo(UnifiedEditorState *editor) {
     }
 
     if (editor->history.cursor < editor->history.count) {
-        refresh_runtime = editor_command_contains_light(
+        refresh_runtime = editor_command_requires_runtime_refresh(
             &editor->history.commands[editor->history.cursor]);
     }
-    result = command_history_redo(&editor->history, &editor->document);
+    {
+        CommandExecutionContext context = editor_command_context(editor);
+        result = command_history_redo_checked(
+            &editor->history, &editor->document, &context);
+    }
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
     if (result == CMD_RESULT_OK && refresh_runtime)
@@ -973,11 +1144,14 @@ static void editor_handle_select(
     editor->inspector_kind = editor_domain_inspector_kind(editor->selection);
     editor->inspector_open = editor->inspector_kind != EDITOR_INSPECTOR_NONE;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
+    editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor_cancel_light_value_edit(editor);
     editor->light_repeat_direction = 0;
     editor->light_repeat_elapsed = 0.0;
     editor->status = EDITOR_STATUS_NONE;
-    if (editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
+    if (editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL ||
+        editor->inspector_kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
+        editor->inspector_kind == EDITOR_INSPECTOR_CEILING_SURFACE) {
         editor_rebuild_picker_for_selection(editor);
         editor_refresh_unsaveable_status(editor);
     }
@@ -1009,15 +1183,33 @@ static void editor_handle_picker_next(UnifiedEditorState *editor) {
 }
 
 static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
-    if (!editor->inspector_open ||
-        editor->inspector_kind != EDITOR_INSPECTOR_WALL_MATERIAL) {
+    if (!editor->inspector_open) return;
+    if (editor->surface_field == EDITOR_SURFACE_FIELD_CONSTRUCTION) {
+        if (editor->selection.type == SELECTION_WALL_FACE)
+            (void)unified_editor_remove_wall(
+                editor, editor->selection.value.wall_face.map_x,
+                editor->selection.value.wall_face.map_y);
+        else if (editor->selection.type == SELECTION_FLOOR ||
+                 editor->selection.type == SELECTION_CEILING)
+            (void)unified_editor_place_wall(
+                editor, editor->selection.value.horizontal.map_x,
+                editor->selection.value.horizontal.map_y);
         return;
     }
+    if (editor->surface_field != EDITOR_SURFACE_FIELD_MATERIAL) return;
     if (editor->highlighted_material == 0) {
         editor->status = EDITOR_STATUS_INVALID_MATERIAL;
         return;
     }
-    (void)unified_editor_set_wall_material(editor, editor->highlighted_material);
+    if (editor->selection.type == SELECTION_WALL_FACE)
+        (void)unified_editor_set_wall_material(editor, editor->highlighted_material);
+    else
+        (void)unified_editor_set_surface_material(
+            editor, editor->selection.value.horizontal.map_x,
+            editor->selection.value.horizontal.map_y,
+            editor->selection.type == SELECTION_FLOOR
+                ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING,
+            editor->highlighted_material);
 }
 
 static void editor_handle_light_field_prev(UnifiedEditorState *editor) {
@@ -1084,6 +1276,35 @@ static bool editor_commit_light_value(UnifiedEditorState *editor) {
     }
     editor_cancel_light_value_edit(editor);
     return true;
+}
+
+static bool editor_commit_ambient_value(UnifiedEditorState *editor) {
+    char *end = NULL;
+    double value;
+    if (!editor || !editor->light_value_editing ||
+        editor->light_value_text_length == 0U) return false;
+    value = strtod(editor->light_value_text, &end);
+    if (!end || *end != '\0' || !isfinite(value) || value < 0.0 || value > 1.0 ||
+        unified_editor_set_ambient_intensity(editor, value) != CMD_RESULT_OK) {
+        editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+        return true;
+    }
+    editor_cancel_light_value_edit(editor);
+    return true;
+}
+
+static bool editor_is_surface_inspector(const UnifiedEditorState *editor) {
+    return editor && (editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL ||
+        editor->inspector_kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
+        editor->inspector_kind == EDITOR_INSPECTOR_CEILING_SURFACE);
+}
+
+static void editor_step_ambient(UnifiedEditorState *editor, int direction) {
+    EditorMutationRequest request;
+    if (editor_domain_make_ambient_step_request(
+            &editor->document, direction, &request))
+        (void)unified_editor_set_ambient_intensity(
+            editor, request.data.ambient.intensity);
 }
 
 static int editor_light_repeat_steps(UnifiedEditorState *editor,
@@ -1519,8 +1740,14 @@ EditorInputConsumption unified_editor_update(
 ) {
     EditorInputConsumption consumed = {false, false};
 
-    if (!editor || !editor->active || !input || !camera) {
-        return consumed;
+    if (!editor || !editor->active || !input) return consumed;
+    if (camera && isfinite(camera->transform.pos.x) &&
+        isfinite(camera->transform.pos.y)) {
+        editor->has_player_cell = true;
+        editor->player_map_x = (int)floor(camera->transform.pos.x);
+        editor->player_map_y = (int)floor(camera->transform.pos.y);
+    } else {
+        editor->has_player_cell = false;
     }
 
     /* 1. Invalidate hover every frame before raycast. */
@@ -1667,6 +1894,8 @@ EditorInputConsumption unified_editor_update(
             editor->hover = editor_pick_light_selection(
                 camera, lights, light_count, hit, max_distance,
                 EDITOR_LIGHT_PICK_RADIUS);
+            editor->hover = editor_pick_horizontal_surface_selection(
+                camera, cmap, editor->hover, viewport_rows, max_distance);
         }
     }
 
@@ -1677,7 +1906,46 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+        if (editor_is_surface_inspector(editor) &&
+            editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
+            editor->light_value_editing && input->editor_confirm_pressed) {
+            (void)editor_commit_ambient_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+            editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
+            input->text_input_len > 0) {
+            editor_append_light_value_text(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && input->editor_previous_pressed) {
+            editor->surface_field = editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL
+                ? (EditorSurfaceField)(EDITOR_SURFACE_FIELD_COUNT - 1)
+                : (EditorSurfaceField)(editor->surface_field - 1);
+            editor_cancel_light_value_edit(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && input->editor_next_pressed) {
+            editor->surface_field = (EditorSurfaceField)(
+                (editor->surface_field + 1) % EDITOR_SURFACE_FIELD_COUNT);
+            editor_cancel_light_value_edit(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL &&
+                   input->editor_decrease_pressed) {
+            editor_handle_picker_prev(editor); editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL &&
+                   input->editor_increase_pressed) {
+            editor_handle_picker_next(editor); editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
+                   input->editor_decrease_pressed) {
+            editor_step_ambient(editor, -1); editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
+                   input->editor_increase_pressed) {
+            editor_step_ambient(editor, 1); editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && input->editor_confirm_pressed) {
+            editor_handle_confirm_apply(editor); editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
             editor->light_value_editing && input->editor_confirm_pressed) {
             (void)editor_commit_light_value(editor);
             editor_mark_keyboard(&consumed);
@@ -1847,27 +2115,44 @@ void unified_editor_render_text_overlay(
         grid_print(grid, 1, 3, line, fg, bg);
 
         row = 5;
-        if (editor->inspector_open &&
-            editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
+        if (editor->inspector_open && editor_is_surface_inspector(editor)) {
             EditorInspectorPresentation presentation;
             size_t count = editor_count_loaded_materials(editor->assets);
             size_t start;
             size_t i;
+            MaterialId current = 0;
+            bool current_loaded;
 
             if (editor_domain_inspector_presentation(
                     editor->inspector_kind, &presentation)) {
                 snprintf(line, sizeof(line), "Inspector: %s  %s",
                          presentation.title, presentation.controls);
                 grid_print(grid, 1, row++, line, fg, bg);
-                if (presentation.note) {
-                    grid_print(grid, 1, row++, presentation.note, warn, bg);
-                }
             }
-
-            if (count == 0) {
-                grid_print(grid, 1, row++,
-                           "  (no loaded materials)", dim, bg);
+            if (editor->selection.type == SELECTION_WALL_FACE) {
+                WallMaterialRef ref = editor_wall_face_to_material_ref(
+                    editor->selection.value.wall_face);
+                (void)scene_document_get_wall_material(
+                    &editor->document, ref, &current);
             } else {
+                (void)scene_document_get_surface_material(
+                    &editor->document,
+                    editor->selection.value.horizontal.map_x,
+                    editor->selection.value.horizontal.map_y,
+                    editor->selection.type == SELECTION_FLOOR
+                        ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING,
+                    &current);
+            }
+            current_loaded = material_id_is_loaded(editor->assets, current);
+            snprintf(line, sizeof(line), " %s Material   %d%s",
+                     editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL ? ">" : " ",
+                     current, current_loaded ? "" : " (missing)");
+            grid_print(grid, 1, row++, line,
+                       editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL ? hi : dim,
+                       bg);
+            if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL && count == 0) {
+                grid_print(grid, 1, row++, "  (no loaded materials)", dim, bg);
+            } else if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL) {
                 if (editor->material_picker_index >= EDITOR_PICKER_VISIBLE) {
                     start = editor->material_picker_index -
                             (EDITOR_PICKER_VISIBLE - 1);
@@ -1898,6 +2183,30 @@ void unified_editor_render_text_overlay(
                                bg);
                 }
             }
+            snprintf(line, sizeof(line), " %s %s  Enter=apply",
+                     editor->surface_field == EDITOR_SURFACE_FIELD_CONSTRUCTION ? ">" : " ",
+                     editor->inspector_kind == EDITOR_INSPECTOR_WALL_MATERIAL
+                         ? "Remove Wall" : "Place Wall");
+            grid_print(grid, 1, row++, line,
+                       editor->surface_field == EDITOR_SURFACE_FIELD_CONSTRUCTION ? hi : dim,
+                       bg);
+            if (editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
+                editor->light_value_editing) {
+                snprintf(line, sizeof(line), " > Ambient    [%s_]",
+                         editor->light_value_text);
+            } else {
+                char ambient[16] = "?";
+                (void)editor_domain_format_ambient(
+                    scene_document_get_ambient_intensity(&editor->document),
+                    ambient, sizeof(ambient));
+                snprintf(line, sizeof(line), " %s Ambient    %s",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT ? ">" : " ",
+                         ambient);
+            }
+            grid_print(grid, 1, row++, line,
+                       editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT ? hi : dim,
+                       bg);
+            if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             EditorInspectorPresentation presentation;

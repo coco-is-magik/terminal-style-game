@@ -16,6 +16,27 @@ bool scene_document_internal_set_wall_material(
     MaterialId material
 );
 
+bool scene_document_internal_set_surface_material(
+    SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId material,
+    const AssetRegistry *assets
+);
+
+bool scene_document_internal_set_cell_occupancy(
+    SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneCellOccupancy occupancy
+);
+
+bool scene_document_internal_set_ambient_intensity(
+    SceneDocument *document,
+    double intensity
+);
+
 bool scene_document_internal_set_light(
     SceneDocument *document,
     SceneInstanceId instance_id,
@@ -69,6 +90,16 @@ SceneRepairReplaceResult scene_document_internal_replace_decal_asset(
     const AssetRegistry *assets,
     SceneInstanceId instance_id,
     uint16_t replacement_asset_id,
+    DocumentStateId resulting_state
+);
+
+SceneRepairReplaceResult scene_document_internal_replace_surface_material(
+    SceneDocument *document,
+    const AssetRegistry *assets,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    uint8_t replacement_material_id,
     DocumentStateId resulting_state
 );
 

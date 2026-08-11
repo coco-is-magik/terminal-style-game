@@ -29,6 +29,10 @@ typedef struct {
 typedef enum {
     SECTION_NONE = 0,
     SECTION_CELLS,
+    SECTION_OCCUPANCY,
+    SECTION_WALL_MATERIALS,
+    SECTION_FLOOR_MATERIALS,
+    SECTION_CEILING_MATERIALS,
     SECTION_LIGHT,
     SECTION_DECAL
 } SectionKind;
@@ -43,6 +47,19 @@ typedef struct {
     size_t size;
     size_t capacity;
 } TextWriter;
+
+typedef void *(*SceneCallocFn)(size_t count, size_t size);
+static SceneCallocFn g_scene_calloc = calloc;
+
+void scene_format_set_allocator_for_test(
+    void *(*calloc_fn)(size_t count, size_t size)
+) {
+    g_scene_calloc = calloc_fn ? calloc_fn : calloc;
+}
+
+void scene_format_reset_allocator_for_test(void) {
+    g_scene_calloc = calloc;
+}
 
 enum {
     META_SCENE_TYPE = 1U << 0,
@@ -92,6 +109,7 @@ void scene_format_candidate_destroy(SceneFormatCandidate *candidate) {
     if (!candidate) return;
     free(candidate->map.cells);
     free(candidate->map.light_map);
+    free(candidate->authored_cells);
     free(candidate->lights);
     free(candidate->decals);
     free(candidate->legacy_source_path);
@@ -297,6 +315,26 @@ static bool parse_header(char *text, SectionHeader *header) {
         header->id = 0U;
         return true;
     }
+    if (strcmp(inside, "occupancy") == 0) {
+        header->kind = SECTION_OCCUPANCY;
+        header->id = 0U;
+        return true;
+    }
+    if (strcmp(inside, "wall_materials") == 0) {
+        header->kind = SECTION_WALL_MATERIALS;
+        header->id = 0U;
+        return true;
+    }
+    if (strcmp(inside, "floor_materials") == 0) {
+        header->kind = SECTION_FLOOR_MATERIALS;
+        header->id = 0U;
+        return true;
+    }
+    if (strcmp(inside, "ceiling_materials") == 0) {
+        header->kind = SECTION_CEILING_MATERIALS;
+        header->id = 0U;
+        return true;
+    }
     space = strchr(inside, ' ');
     if (!space || strchr(space + 1, ' ')) return false;
     *space++ = '\0';
@@ -317,6 +355,11 @@ static bool passable_spawn(const SceneFormatCandidate *candidate) {
     x = (int)candidate->spawn_x;
     y = (int)candidate->spawn_y;
     index = (size_t)y * (size_t)candidate->map.width + (size_t)x;
+    if (candidate->source_version == SCENE_VERSION_V2 &&
+        candidate->authored_cells && index < candidate->authored_cell_count) {
+        return candidate->authored_cells[index].occupancy ==
+               SCENE_CELL_OCCUPANCY_EMPTY;
+    }
     return candidate->map.cells[index].material_id == 0;
 }
 
@@ -330,6 +373,61 @@ static bool candidate_has_id(const SceneFormatCandidate *candidate,
         if (candidate->decals[i].id == id) return true;
     }
     return false;
+}
+
+SceneFormatResult scene_format_migrate_v1_to_v2(
+    SceneFormatCandidate *candidate,
+    unsigned int default_material,
+    SceneDiagnostic *diagnostic
+) {
+    SceneAuthoredCell *cells;
+    size_t count;
+    size_t bytes;
+    size_t i;
+    SceneFormatResult result;
+
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate) return SCENE_FORMAT_INVALID_ARGUMENT;
+    if (candidate->source_version != SCENE_VERSION_V1 ||
+        candidate->authored_cells || candidate->authored_cell_count != 0U) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
+                      NULL, NULL, "scene_version",
+                      "candidate is not an unmigrated v1 scene", 0U, 0U);
+    }
+    if (default_material < 1U || default_material > 255U) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, NULL, NULL,
+                      "default_material", "default material outside 1..255",
+                      0U, 0U);
+    }
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    if (!checked_size_2d(candidate->map.width, candidate->map.height, &count) ||
+        !checked_size_bytes(count, sizeof(*cells), &bytes)) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, NULL, NULL,
+                      NULL, "invalid authored-cell allocation size", 0U, 0U);
+    }
+    (void)bytes;
+    cells = g_scene_calloc(count, sizeof(*cells));
+    if (!cells) {
+        set_error(diagnostic, SCENE_DIAGNOSTIC_ENV_ALLOCATION, NULL, NULL, NULL,
+                  "authored-cell migration allocation failed", 0U, 0U);
+        return SCENE_FORMAT_OUT_OF_MEMORY;
+    }
+    for (i = 0U; i < count; i++) {
+        int material = candidate->map.cells[i].material_id;
+        cells[i].occupancy = material == 0
+            ? SCENE_CELL_OCCUPANCY_EMPTY
+            : SCENE_CELL_OCCUPANCY_WALL;
+        cells[i].wall_material = (uint8_t)(material == 0
+            ? default_material
+            : (unsigned int)material);
+        cells[i].floor_material = (uint8_t)default_material;
+        cells[i].ceiling_material = (uint8_t)default_material;
+    }
+    candidate->authored_cells = cells;
+    candidate->authored_cell_count = count;
+    candidate->source_version = SCENE_VERSION_V2;
+    return SCENE_FORMAT_OK;
 }
 
 SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
@@ -355,6 +453,23 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
             candidate->map.cells[i].material_id > 255) {
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                           "cells", NULL, "material ID outside 000..255", 0U, 0U);
+        }
+    }
+    if (candidate->source_version == SCENE_VERSION_V2) {
+        if (!candidate->authored_cells || candidate->authored_cell_count != count) {
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                          NULL, NULL, "invalid v2 authored-cell count", 0U, 0U);
+        }
+        for (i = 0U; i < count; i++) {
+            const SceneAuthoredCell *cell = &candidate->authored_cells[i];
+            if ((cell->occupancy != SCENE_CELL_OCCUPANCY_EMPTY &&
+                 cell->occupancy != SCENE_CELL_OCCUPANCY_WALL) ||
+                cell->wall_material == 0U || cell->floor_material == 0U ||
+                cell->ceiling_material == 0U) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                              "authored_cells", NULL,
+                              "invalid v2 occupancy or material reference", 0U, 0U);
+            }
         }
     }
     if (candidate->ambient_intensity != candidate->ambient_intensity ||
@@ -481,6 +596,11 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
      * or ambient effect. */
     candidate->map.light_map = calloc(count, sizeof(*candidate->map.light_map));
     if (!candidate->map.light_map) goto allocation_failed;
+    if (candidate->source_version == SCENE_VERSION_V2) {
+        candidate->authored_cells = calloc(count, sizeof(*candidate->authored_cells));
+        if (!candidate->authored_cells) goto allocation_failed;
+        candidate->authored_cell_count = count;
+    }
     if (lights) {
         candidate->lights = calloc(lights, sizeof(*candidate->lights));
         if (!candidate->lights) goto allocation_failed;
@@ -542,10 +662,12 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
                               path, NULL, "scene_type", "unsupported scene type", line, 0U);
             break;
         case META_VERSION:
-            if (!parse_uint_range(value, UINT_MAX, &parsed) || parsed != SCENE_VERSION)
+            if (!parse_uint_range(value, UINT_MAX, &parsed) ||
+                (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
+            candidate->source_version = parsed;
             break;
         case META_NAME:
             if (!parse_quoted(value, candidate->name, sizeof(candidate->name)) ||
@@ -636,6 +758,67 @@ static SceneFormatResult parse_cells_row(SceneFormatCandidate *candidate, char *
     if (column != (size_t)candidate->map.width)
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, "cells",
                       NULL, "wrong cell count in row", line, 0U);
+    return SCENE_FORMAT_OK;
+}
+
+static SceneFormatResult parse_v2_row(SceneFormatCandidate *candidate,
+                                      SectionKind section, char *text, size_t row,
+                                      const char *path, size_t line,
+                                      SceneDiagnostic *diagnostic) {
+    size_t column = 0U;
+    char *cursor = text;
+    while (*cursor) {
+        unsigned value;
+        char token[4];
+        size_t index;
+        while (*cursor == ' ' || *cursor == '\t') cursor++;
+        if (*cursor == '\0') break;
+        if (section == SECTION_OCCUPANCY) {
+            if ((cursor[0] != '0' && cursor[0] != '1') ||
+                (cursor[1] != '\0' && cursor[1] != ' ' && cursor[1] != '\t')) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                              "occupancy", NULL, "occupancy requires 0 or 1 tokens",
+                              line, 0U);
+            }
+            value = (unsigned)(cursor[0] - '0');
+            cursor += 1;
+        } else {
+            if (strlen(cursor) < 3U || cursor[0] < '0' || cursor[0] > '9' ||
+                cursor[1] < '0' || cursor[1] > '9' || cursor[2] < '0' ||
+                cursor[2] > '9' ||
+                (cursor[3] != '\0' && cursor[3] != ' ' && cursor[3] != '\t')) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                              section == SECTION_WALL_MATERIALS ? "wall_materials" :
+                              section == SECTION_FLOOR_MATERIALS ? "floor_materials" :
+                              "ceiling_materials", NULL,
+                              "material grids require three-digit tokens", line, 0U);
+            }
+            memcpy(token, cursor, 3U);
+            token[3] = '\0';
+            if (!parse_uint_range(token, 255U, &value) || value == 0U) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                              NULL, NULL, "v2 material outside 001..255", line, 0U);
+            }
+            cursor += 3;
+        }
+        if (column >= (size_t)candidate->map.width) {
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                          NULL, NULL, "too many v2 grid cells in row", line, 0U);
+        }
+        index = row * (size_t)candidate->map.width + column++;
+        if (section == SECTION_OCCUPANCY)
+            candidate->authored_cells[index].occupancy = (SceneCellOccupancy)value;
+        else if (section == SECTION_WALL_MATERIALS)
+            candidate->authored_cells[index].wall_material = (uint8_t)value;
+        else if (section == SECTION_FLOOR_MATERIALS)
+            candidate->authored_cells[index].floor_material = (uint8_t)value;
+        else
+            candidate->authored_cells[index].ceiling_material = (uint8_t)value;
+    }
+    if (column != (size_t)candidate->map.width) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
+                      NULL, "wrong number of v2 grid cells in row", line, 0U);
+    }
     return SCENE_FORMAT_OK;
 }
 
@@ -777,6 +960,8 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     SectionKind current = SECTION_NONE;
     unsigned metadata_seen = 0U;
     size_t light_count = 0U, decal_count = 0U, cells_sections = 0U;
+    size_t occupancy_sections = 0U, wall_sections = 0U;
+    size_t floor_sections = 0U, ceiling_sections = 0U;
     SceneFormatResult result = SCENE_FORMAT_OK;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     if (!source || !out_candidate) return SCENE_FORMAT_INVALID_ARGUMENT;
@@ -818,11 +1003,16 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             }
             current = header.kind;
             if (current == SECTION_CELLS) cells_sections++;
+            else if (current == SECTION_OCCUPANCY) occupancy_sections++;
+            else if (current == SECTION_WALL_MATERIALS) wall_sections++;
+            else if (current == SECTION_FLOOR_MATERIALS) floor_sections++;
+            else if (current == SECTION_CEILING_MATERIALS) ceiling_sections++;
             else if (current == SECTION_LIGHT) light_count++;
-            else decal_count++;
-            if (cells_sections > 1U) {
+            else if (current == SECTION_DECAL) decal_count++;
+            if (cells_sections > 1U || occupancy_sections > 1U || wall_sections > 1U ||
+                floor_sections > 1U || ceiling_sections > 1U) {
                 result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
-                                "cells", NULL, "duplicate cells section", line.number, 0U);
+                                NULL, NULL, "duplicate grid section", line.number, 0U);
                 goto done;
             }
             if (light_count > SCENE_MAX_LIGHTS || decal_count > SCENE_MAX_DECALS) {
@@ -859,9 +1049,15 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             if (result != SCENE_FORMAT_OK) goto done;
         }
     }
-    if ((metadata_seen & META_REQUIRED) != META_REQUIRED || cells_sections != 1U) {
+    if ((metadata_seen & META_REQUIRED) != META_REQUIRED ||
+        (temporary.source_version == SCENE_VERSION_V1 &&
+         (cells_sections != 1U || occupancy_sections || wall_sections ||
+          floor_sections || ceiling_sections)) ||
+        (temporary.source_version == SCENE_VERSION_V2 &&
+         (cells_sections || occupancy_sections != 1U || wall_sections != 1U ||
+          floor_sections != 1U || ceiling_sections != 1U))) {
         result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path, NULL,
-                        NULL, "required metadata or cells section is missing", 0U, 0U);
+                        NULL, "required metadata or versioned grids are missing", 0U, 0U);
         goto done;
     }
     result = allocate_candidate_arrays(&temporary, light_count, decal_count, path,
@@ -874,7 +1070,8 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     {
         SectionHeader header = {SECTION_NONE, 0U};
         unsigned fields_seen = 0U;
-        size_t cell_row = 0U, light_index = 0U, decal_index = 0U;
+        size_t rows[5] = {0U, 0U, 0U, 0U, 0U};
+        size_t light_index = 0U, decal_index = 0U;
         while (line_reader_next(&reader, &line)) {
             char *text = trim(line.text);
             if (*text == '\0' || *text == '#') continue;
@@ -911,13 +1108,25 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             }
             if (current == SECTION_NONE) continue;
             if (current == SECTION_CELLS) {
-                if (cell_row >= (size_t)temporary.map.height) {
+                if (rows[0] >= (size_t)temporary.map.height) {
                     result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
                                     "cells", NULL, "too many cell rows", line.number, 0U);
                     goto done;
                 }
-                result = parse_cells_row(&temporary, text, cell_row++, path, line.number,
+                result = parse_cells_row(&temporary, text, rows[0]++, path, line.number,
                                          diagnostic);
+            } else if (current >= SECTION_OCCUPANCY &&
+                       current <= SECTION_CEILING_MATERIALS) {
+                size_t row_index = (size_t)(current - SECTION_OCCUPANCY) + 1U;
+                if (rows[row_index] >= (size_t)temporary.map.height) {
+                    result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS,
+                                    path, NULL, NULL, "too many v2 grid rows",
+                                    line.number, 0U);
+                    goto done;
+                }
+                result = parse_v2_row(&temporary, current, text,
+                                      rows[row_index]++, path, line.number,
+                                      diagnostic);
             } else {
                 char *key, *value;
                 if (!split_property(text, &key, &value)) {
@@ -944,10 +1153,25 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             path, reader.line_number,
                                   diagnostic);
         if (result != SCENE_FORMAT_OK) goto done;
-        if (cell_row != (size_t)temporary.map.height) {
+        if ((temporary.source_version == SCENE_VERSION_V1 &&
+             rows[0] != (size_t)temporary.map.height) ||
+            (temporary.source_version == SCENE_VERSION_V2 &&
+             (rows[1] != (size_t)temporary.map.height ||
+              rows[2] != (size_t)temporary.map.height ||
+              rows[3] != (size_t)temporary.map.height ||
+              rows[4] != (size_t)temporary.map.height))) {
             result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
-                            "cells", NULL, "wrong number of cell rows", 0U, 0U);
+                            NULL, NULL, "wrong number of versioned grid rows", 0U, 0U);
             goto done;
+        }
+    }
+    if (temporary.source_version == SCENE_VERSION_V2) {
+        size_t i;
+        for (i = 0U; i < temporary.authored_cell_count; i++) {
+            const SceneAuthoredCell *cell = &temporary.authored_cells[i];
+            temporary.map.cells[i].material_id =
+                cell->occupancy == SCENE_CELL_OCCUPANCY_WALL
+                    ? (int)cell->wall_material : 0;
         }
     }
     result = scene_format_validate(&temporary, path, diagnostic);
@@ -1062,7 +1286,9 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     qsort(lights, candidate->light_count, sizeof(lights[0]), compare_light_ptrs);
     qsort(decals, candidate->decal_count, sizeof(decals[0]), compare_decal_ptrs);
 #define APPEND(expression) do { if (!(expression)) goto allocation_failed; } while (0)
-    APPEND(writer_append(&writer, "scene_type = terminal_scene\nscene_version = 1\nname = "));
+    APPEND(writer_printf(&writer, "scene_type = terminal_scene\nscene_version = %u\nname = ",
+                         candidate->source_version == SCENE_VERSION_V2
+                             ? SCENE_VERSION_V2 : SCENE_VERSION_V1));
     APPEND(writer_quoted(&writer, candidate->name));
     APPEND(writer_printf(&writer, "\nwidth = %d\nheight = %d\norigin_x = 0\norigin_y = 0\n"
                         "next_instance_id = %" PRIu64 "\nambient_intensity = ",
@@ -1078,13 +1304,47 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         APPEND(writer_quoted(&writer, candidate->legacy_source_path));
         APPEND(writer_append(&writer, "\n"));
     }
-    APPEND(writer_append(&writer, "\n[cells]\n"));
-    for (y = 0U; y < (size_t)candidate->map.height; y++) {
-        for (x = 0U; x < (size_t)candidate->map.width; x++) {
-            int material = candidate->map.cells[y * (size_t)candidate->map.width + x].material_id;
-            APPEND(writer_printf(&writer, x ? " %03d" : "%03d", material));
+    if (candidate->source_version == SCENE_VERSION_V2) {
+        const SectionKind sections[] = {
+            SECTION_OCCUPANCY, SECTION_WALL_MATERIALS,
+            SECTION_FLOOR_MATERIALS, SECTION_CEILING_MATERIALS
+        };
+        const char *names[] = {
+            "occupancy", "wall_materials", "floor_materials", "ceiling_materials"
+        };
+        size_t section_index;
+        for (section_index = 0U; section_index < 4U; section_index++) {
+            APPEND(writer_printf(&writer, "\n[%s]\n", names[section_index]));
+            for (y = 0U; y < (size_t)candidate->map.height; y++) {
+                for (x = 0U; x < (size_t)candidate->map.width; x++) {
+                    const SceneAuthoredCell *cell = &candidate->authored_cells[
+                        y * (size_t)candidate->map.width + x];
+                    unsigned value;
+                    if (sections[section_index] == SECTION_OCCUPANCY)
+                        value = (unsigned)cell->occupancy;
+                    else if (sections[section_index] == SECTION_WALL_MATERIALS)
+                        value = cell->wall_material;
+                    else if (sections[section_index] == SECTION_FLOOR_MATERIALS)
+                        value = cell->floor_material;
+                    else value = cell->ceiling_material;
+                    APPEND(writer_printf(&writer,
+                        sections[section_index] == SECTION_OCCUPANCY
+                            ? (x ? " %u" : "%u")
+                            : (x ? " %03u" : "%03u"), value));
+                }
+                APPEND(writer_append(&writer, "\n"));
+            }
         }
-        APPEND(writer_append(&writer, "\n"));
+    } else {
+        APPEND(writer_append(&writer, "\n[cells]\n"));
+        for (y = 0U; y < (size_t)candidate->map.height; y++) {
+            for (x = 0U; x < (size_t)candidate->map.width; x++) {
+                int material = candidate->map.cells[
+                    y * (size_t)candidate->map.width + x].material_id;
+                APPEND(writer_printf(&writer, x ? " %03d" : "%03d", material));
+            }
+            APPEND(writer_append(&writer, "\n"));
+        }
     }
     for (i = 0U; i < candidate->light_count; i++) {
         const SceneLight *light = lights[i];

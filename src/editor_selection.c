@@ -40,9 +40,17 @@ bool editor_selection_is_valid_for_map(
     SelectionTarget selection,
     const Map *map
 ) {
-    if (!map || selection.type != SELECTION_WALL_FACE) {
+    if (!map) {
         return false;
     }
+
+    if (selection.type == SELECTION_FLOOR ||
+        selection.type == SELECTION_CEILING) {
+        return map_in_bounds((Map *)map,
+            selection.value.horizontal.map_x,
+            selection.value.horizontal.map_y);
+    }
+    if (selection.type != SELECTION_WALL_FACE) return false;
 
     int x = selection.value.wall_face.map_x;
     int y = selection.value.wall_face.map_y;
@@ -166,5 +174,51 @@ EditorHit editor_pick_light_selection(
         result.target.type = SELECTION_LIGHT;
         result.target.value.light.id = best_id;
     }
+    return result;
+}
+
+EditorHit editor_pick_horizontal_surface_selection(
+    const Camera *camera,
+    const Map *map,
+    EditorHit existing_hit,
+    int viewport_rows,
+    double max_distance
+) {
+    EditorHit result = existing_hit;
+    double pitch;
+    double denominator;
+    double distance;
+    double world_x;
+    double world_y;
+    int map_x;
+    int map_y;
+    SelectionType type;
+
+    if (!camera || !map || viewport_rows <= 0 ||
+        !isfinite(camera->transform.pos.x) ||
+        !isfinite(camera->transform.pos.y) ||
+        !isfinite(camera->transform.angle) || !isfinite(camera->pitch) ||
+        !isfinite(max_distance) || max_distance <= 0.0) return result;
+    pitch = camera->pitch;
+    if (fabs(pitch) < 0.001) return result;
+    denominator = 2.0 * fabs(pitch);
+    distance = (double)viewport_rows / denominator;
+    if (!isfinite(distance) || distance <= 0.0 || distance > max_distance)
+        return result;
+    if (existing_hit.valid && (!isfinite(existing_hit.distance) ||
+        existing_hit.distance <= distance)) return result;
+
+    world_x = camera->transform.pos.x + distance * cos(camera->transform.angle);
+    world_y = camera->transform.pos.y + distance * sin(camera->transform.angle);
+    if (!isfinite(world_x) || !isfinite(world_y)) return result;
+    map_x = (int)floor(world_x);
+    map_y = (int)floor(world_y);
+    if (!map_in_bounds((Map *)map, map_x, map_y)) return result;
+    type = pitch < 0.0 ? SELECTION_FLOOR : SELECTION_CEILING;
+    result.valid = true;
+    result.distance = distance;
+    result.target.type = type;
+    result.target.value.horizontal.map_x = map_x;
+    result.target.value.horizontal.map_y = map_y;
     return result;
 }

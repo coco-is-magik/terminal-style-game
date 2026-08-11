@@ -17,8 +17,24 @@
 typedef enum {
     EDITOR_INSPECTOR_NONE = 0,
     EDITOR_INSPECTOR_WALL_MATERIAL,
-    EDITOR_INSPECTOR_LIGHT
+    EDITOR_INSPECTOR_LIGHT,
+    EDITOR_INSPECTOR_FLOOR_SURFACE,
+    EDITOR_INSPECTOR_CEILING_SURFACE
 } EditorInspectorKind;
+
+typedef enum {
+    EDITOR_SURFACE_FIELD_MATERIAL = 0,
+    EDITOR_SURFACE_FIELD_CONSTRUCTION,
+    EDITOR_SURFACE_FIELD_AMBIENT,
+    EDITOR_SURFACE_FIELD_COUNT
+} EditorSurfaceField;
+
+typedef struct {
+    double minimum;
+    double maximum;
+    double step;
+    unsigned int decimal_places;
+} EditorAmbientMetadata;
 
 typedef enum {
     EDITOR_LIGHT_FIELD_X = 0,
@@ -78,6 +94,30 @@ bool editor_domain_inspector_field_presentation(
 bool editor_domain_make_wall_material_request(
     SelectionTarget target,
     MaterialId material,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_surface_material_request(
+    SelectionTarget target,
+    MaterialId material,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_construction_request(
+    SelectionTarget target,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_ambient_metadata(EditorAmbientMetadata *out_metadata);
+bool editor_domain_format_ambient(
+    double ambient,
+    char *out_text,
+    size_t out_size
+);
+bool editor_domain_make_ambient_step_request(
+    const SceneDocument *document,
+    int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_ambient_value_request(
+    double value,
     EditorMutationRequest *out_request
 );
 

@@ -181,7 +181,8 @@ share one camera and one authoritative `SceneDocument`. Handled menu input is
 consumed before the new editor state updates, so the Enter used to choose
 **Editor** does not also select a file.
 
-The editor works on **native `.tscene` scenes** (the versioned v1 format) and can
+The editor works on **native `.tscene` scenes** (canonical version 2; version 1 remains
+importable through transactional migration) and can
 **import** legacy lowercase `.txt` digit-grid maps. A legacy import is a
 non-destructive conversion: the source bytes are never changed, the document is
 dirty and unsaved, and Save routes to Save As. The chooser lists native scenes
@@ -191,12 +192,14 @@ action.
 Developer checks for the editor-only typed highlight path are available as
 `make benchmark-editor-highlight` and `make stability-editor-highlight`. They run
 headlessly and do not replace visual/input acceptance.
+Authored horizontal-surface rendering has matching headless checks through
+`make benchmark-surface-render` and `make stability-surface-render`.
 
-In edit mode, an adaptive center `+` marks the aim point. Hovered wall faces use a
-dashed outline and selected faces use a solid outline. Existing point lights are
-also selectable: hovered lights use an `o` marker and selected lights use `@`.
-Pressing `E` opens the inspector for the aimed typed target. Closing the inspector
-clears that persistent selection.
+In edit mode, an adaptive center `+` marks the aim point. Wall faces, fixed-height
+floor/ceiling cells, and existing point lights are selectable typed targets. Hovered
+wall faces use a dashed outline and selected faces use a solid outline; point lights
+use `o` and `@` markers. Pressing `E` opens the inspector for the aimed target.
+Closing the inspector clears that persistent selection.
 
 ### Unified editor controls
 
@@ -204,10 +207,10 @@ clears that persistent selection.
 |---|---|
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
-| `E` | Select the aimed wall face or point light and open its inspector |
-| `Up` / `Down` | Move through materials, light fields, or editor-menu choices |
-| `Left` / `Right` | Decrease/increase the selected point-light field |
-| `Enter` | Apply the highlighted wall material or confirm an editor-menu choice |
+| `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector |
+| `Up` / `Down` | Move through inspector fields or editor-menu choices |
+| `Left` / `Right` | Edit the selected material, ambient, or point-light field |
+| `Enter` | Apply material/construction, commit a typed value, or confirm a menu choice |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
 | `Ctrl+S` | Open the Save menu for the current scene |
@@ -234,9 +237,12 @@ the initial no-document chooser to the main menu.
 
 ### Current editor limits
 
-- The map format stores **one material ID per cell**, so selecting any wall
-  face and applying a material changes the entire wall cell, not one face.
-- Native `.tscene` cells store three-digit material IDs `000..255`; legacy
+- Native v2 scenes store independent occupancy plus one wall, floor, and ceiling
+  material reference per cell. Floor and ceiling cells can now be selected and
+  highlighted through the fixed-plane editor view. Surface inspectors edit materials,
+  Place/Remove Wall, and ambient. In-bounds floor/ceiling cells render their authored
+  materials with scalar lighting; out-of-bounds samples retain constant backgrounds.
+- Native `.tscene` material grids store three-digit IDs `001..255`; legacy
   digit-grid maps store one decimal character per cell, so only IDs `0..9`
   persist through the legacy writer.
 - Native scenes persist material IDs through `255`. Only the deprecated legacy
@@ -248,14 +254,15 @@ the initial no-document chooser to the main menu.
 - Existing point lights can be selected and inspected by stable scene ID. Position,
   RGBA channels, intensity, and radius are edited in bounded steps through the same
   undo/redo history as wall materials. Native Save/Open persists those changes.
-- A scene whose decal references a missing reusable pattern commits in visible
+- A scene whose decal or authored surface references a missing asset commits in visible
   repair mode: the authored reference is preserved, a conspicuous fallback is
-  shown, and normal Save is blocked until the reference is explicitly replaced.
+  shown, and normal Save is blocked until the reference is explicitly replaced. Missing
+  floor/ceiling materials use black `.` glyphs on a full-bright purple background.
 - Map discovery is non-recursive and does not follow symlinks. Native dialogs,
   editable paths, and recent files are not part of the current workflow.
 
-Deferred work includes map-cell construction/deletion, per-face materials,
-floor and ceiling editing, material authoring, integrated painter UI, decal and
-sprite placement, animation, objects, point-light creation/deletion and placement
-tools, triggers, and spawn editing. Reusable decal persistence (`decal_io`) and headless pattern
-painting (`decal_painter`) remain available and tested for later integration.
+Deferred work includes per-face wall materials, material authoring, integrated painter
+UI, decal and sprite placement, animation, objects, point-light creation/deletion and
+placement tools, triggers, spawn editing, variable heights, and slopes. Reusable decal
+persistence (`decal_io`) and headless pattern painting (`decal_painter`) remain available
+and tested for later integration.

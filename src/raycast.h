@@ -15,6 +15,7 @@
 #include "grid.h"      /* Grid — render target (output framebuffer) */
 #include "assets.h"    /* AssetRegistry — palettes and materials */
 #include "world.h"     /* WorldState — lights and decals */
+#include "surface_view.h"
 
 /**
  * RayResult — The result of firing a single ray into the map
@@ -66,7 +67,10 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  * @param cam     The camera (position, angle, FOV, pitch)
  * @param assets  Asset registry (palettes, materials)
  * @param world   World state (lights, decals)
+ * @param surfaces Optional borrowed authored floor/ceiling material view. NULL
+ *                 preserves constant legacy backgrounds.
  */
-void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world);
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
+                    WorldState *world, const SceneSurfaceView *surfaces);
 
 #endif /* RAYCAST_H */

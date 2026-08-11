@@ -1,5 +1,5 @@
 /**
- * scene_format.h — Headless native scene v1 format boundary
+ * scene_format.h — Headless native scene format and migration boundary
  *
  * Parsing and serialization operate only on owned authored values. They perform
  * no file I/O and never mutate a SceneDocument or runtime-derived state.
@@ -17,6 +17,9 @@
 
 typedef struct {
     Map map;
+    unsigned int source_version;
+    SceneAuthoredCell *authored_cells;
+    size_t authored_cell_count;
     char name[SCENE_NAME_MAX + 1U];
     double ambient_intensity;
     double spawn_x;
@@ -45,6 +48,18 @@ typedef enum {
 void scene_format_candidate_init(SceneFormatCandidate *candidate);
 void scene_format_candidate_destroy(SceneFormatCandidate *candidate);
 void scene_format_buffer_destroy(SceneFormatBuffer *buffer);
+
+void scene_format_set_allocator_for_test(
+    void *(*calloc_fn)(size_t count, size_t size)
+);
+void scene_format_reset_allocator_for_test(void);
+
+/* Transactionally adds the v2 authored surface model to a parsed v1 candidate. */
+SceneFormatResult scene_format_migrate_v1_to_v2(
+    SceneFormatCandidate *candidate,
+    unsigned int default_material,
+    SceneDiagnostic *out_diagnostic
+);
 
 SceneFormatResult scene_format_parse(
     const char *source,

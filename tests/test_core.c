@@ -302,6 +302,289 @@ static unsigned long grid_region_luminance(const Grid *grid, int y0, int y1) {
     return total;
 }
 
+static uint64_t grid_checksum(const Grid *grid) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    size_t count = (size_t)grid->width * (size_t)grid->height;
+    for (size_t i = 0U; i < count; i++) {
+        const Cell *cell = &grid->cells[i];
+        const uint8_t bytes[] = {
+            cell->glyph,
+            cell->fg.r, cell->fg.g, cell->fg.b, cell->fg.a,
+            cell->bg.r, cell->bg.g, cell->bg.b, cell->bg.a
+        };
+        for (size_t j = 0U; j < sizeof(bytes); j++) {
+            hash ^= bytes[j];
+            hash *= UINT64_C(1099511628211);
+        }
+    }
+    return hash;
+}
+
+static void prepare_surface_baseline(
+    Grid **out_grid,
+    Map **out_map,
+    Camera *camera,
+    AssetRegistry *assets,
+    WorldState *world,
+    int map_width,
+    int map_height,
+    double pitch
+) {
+    size_t count;
+    *out_grid = grid_create(11, 9);
+    *out_map = map_create(map_width, map_height);
+    assert_non_null(*out_grid);
+    assert_non_null(*out_map);
+    camera_init(camera, map_width / 2.0, map_height / 2.0, 0.0, PI / 2.0);
+    camera->pitch = pitch;
+    asset_registry_init(assets);
+    world_init(world);
+    count = (size_t)map_width * (size_t)map_height;
+    for (size_t i = 0U; i < count; i++) (*out_map)->light_map[i] = 1.0;
+    raycast_render(*out_grid, *out_map, camera, assets, world, NULL);
+}
+
+static void assert_surface_cell(
+    const Grid *grid,
+    int x,
+    int y,
+    uint8_t background
+) {
+    Cell cell;
+    assert_true(grid_get((Grid *)grid, x, y, &cell));
+    assert_int_equal(cell.glyph, ' ');
+    assert_int_equal(cell.bg.r, background);
+    assert_int_equal(cell.bg.g, background);
+    assert_int_equal(cell.bg.b, background);
+    assert_int_equal(cell.bg.a, 255U);
+}
+
+static void mark_test_material_loaded(
+    AssetRegistry *assets,
+    int id,
+    int palette_id,
+    const char *glyphs
+) {
+    asset_registry_set_material(assets, id, palette_id, glyphs);
+    assert_true(snprintf(assets->material_names[id],
+                         sizeof(assets->material_names[id]), "%d", id) > 0);
+}
+
+static void test_horizontal_surface_constant_baseline_level(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 9, 9, 0.0);
+    assert_surface_cell(grid, 5, 0, 50U);
+    assert_surface_cell(grid, 5, 8, 30U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(5221556747871135785));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_horizontal_surface_constant_baseline_negative_pitch(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 9, 9, -9.0);
+    assert_surface_cell(grid, 5, 0, 30U);
+    assert_surface_cell(grid, 5, 8, 30U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(15900799000682171264));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_horizontal_surface_constant_baseline_positive_pitch(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 9, 9, 9.0);
+    assert_surface_cell(grid, 5, 0, 50U);
+    assert_surface_cell(grid, 5, 8, 50U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(17892659974333048492));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_horizontal_surface_constant_baseline_out_of_bounds(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 1, 1, 0.0);
+    map->light_map[0] = 0.0;
+    raycast_render(grid, map, &camera, &assets, &world, NULL);
+    assert_surface_cell(grid, 0, 0, 50U);
+    assert_surface_cell(grid, 0, 8, 30U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(5221556747871135785));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_authored_horizontal_materials_and_lighting(void **state) {
+    Grid *grid = grid_create(11, 9);
+    Map *map = map_create(9, 9);
+    SceneAuthoredCell cells[81] = {0};
+    SceneSurfaceView surfaces = {cells, 81U, 9, 9};
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    Cell ceiling;
+    Cell floor_cell;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 4.5, 4.5, 0.0, PI / 2.0);
+    asset_registry_init(&assets);
+    asset_registry_set_palette(
+        &assets, 7, (SDL_Color){200, 20, 10, 255},
+        (SDL_Color){180, 20, 10, 255}, (SDL_Color){160, 20, 10, 255});
+    asset_registry_set_palette(
+        &assets, 2, (SDL_Color){20, 200, 10, 255},
+        (SDL_Color){20, 180, 10, 255}, (SDL_Color){20, 160, 10, 255});
+    mark_test_material_loaded(&assets, 7, 7, "Ff-.");
+    mark_test_material_loaded(&assets, 2, 2, "Cc-.");
+    for (size_t i = 0U; i < 81U; i++) {
+        cells[i].floor_material = 7U;
+        cells[i].ceiling_material = 2U;
+        map->light_map[i] = 0.5;
+    }
+    world_init(&world);
+
+    raycast_render(grid, map, &camera, &assets, &world, &surfaces);
+    assert_true(grid_get(grid, 5, 0, &ceiling));
+    assert_true(grid_get(grid, 5, 8, &floor_cell));
+    assert_int_equal(ceiling.glyph, 'C');
+    assert_int_equal(ceiling.fg.r, 10U);
+    assert_int_equal(ceiling.fg.g, 100U);
+    assert_int_equal(ceiling.fg.b, 5U);
+    assert_int_equal(ceiling.bg.r, 0U);
+    assert_int_equal(floor_cell.glyph, 'F');
+    assert_int_equal(floor_cell.fg.r, 100U);
+    assert_int_equal(floor_cell.fg.g, 10U);
+    assert_int_equal(floor_cell.fg.b, 5U);
+    assert_int_equal(floor_cell.bg.r, 0U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(5266099492592105087));
+
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_missing_horizontal_material_is_obvious_and_unlit(void **state) {
+    Grid *dark_grid = grid_create(11, 9);
+    Grid *bright_grid = grid_create(11, 9);
+    Map *map = map_create(9, 9);
+    SceneAuthoredCell cells[81] = {0};
+    SceneSurfaceView surfaces = {cells, 81U, 9, 9};
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    Cell dark;
+    Cell bright;
+    (void)state;
+    assert_non_null(dark_grid);
+    assert_non_null(bright_grid);
+    assert_non_null(map);
+    camera_init(&camera, 4.5, 4.5, 0.0, PI / 2.0);
+    asset_registry_init(&assets);
+    world_init(&world);
+    for (size_t i = 0U; i < 81U; i++) {
+        cells[i].floor_material = 9U;
+        cells[i].ceiling_material = 9U;
+        map->light_map[i] = 0.0;
+    }
+    raycast_render(dark_grid, map, &camera, &assets, &world, &surfaces);
+    for (size_t i = 0U; i < 81U; i++) map->light_map[i] = 1.0;
+    raycast_render(bright_grid, map, &camera, &assets, &world, &surfaces);
+
+    assert_true(grid_get(dark_grid, 5, 0, &dark));
+    assert_true(grid_get(bright_grid, 5, 0, &bright));
+    assert_memory_equal(&dark, &bright, sizeof(dark));
+    assert_int_equal(dark.glyph, '.');
+    assert_int_equal(dark.fg.r, 0U);
+    assert_int_equal(dark.fg.g, 0U);
+    assert_int_equal(dark.fg.b, 0U);
+    assert_int_equal(dark.bg.r, 128U);
+    assert_int_equal(dark.bg.g, 0U);
+    assert_int_equal(dark.bg.b, 255U);
+    assert_int_equal(dark.bg.a, 255U);
+    assert_true(grid_get(dark_grid, 5, 8, &dark));
+    assert_int_equal(dark.glyph, '.');
+    assert_int_equal(dark.bg.r, 128U);
+    assert_int_equal(dark.bg.b, 255U);
+
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(dark_grid);
+    grid_destroy(bright_grid);
+}
+
+static void test_invalid_surface_view_preserves_constant_backgrounds(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    SceneAuthoredCell cell = {0};
+    SceneSurfaceView mismatched = {&cell, 1U, 1, 1};
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 9, 9, 0.0);
+    raycast_render(grid, map, &camera, &assets, &world, &mismatched);
+    assert_surface_cell(grid, 5, 0, 50U);
+    assert_surface_cell(grid, 5, 8, 30U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(5221556747871135785));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_valid_surface_view_preserves_out_of_bounds_backgrounds(void **state) {
+    Grid *grid;
+    Map *map;
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    SceneAuthoredCell cell = {
+        .floor_material = 9U,
+        .ceiling_material = 9U
+    };
+    SceneSurfaceView surfaces = {&cell, 1U, 1, 1};
+    (void)state;
+    prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 1, 1, 0.0);
+    map->light_map[0] = 0.0;
+    raycast_render(grid, map, &camera, &assets, &world, &surfaces);
+    assert_surface_cell(grid, 0, 0, 50U);
+    assert_surface_cell(grid, 0, 8, 30U);
+    assert_int_equal(grid_checksum(grid), UINT64_C(5221556747871135785));
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
 static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **state) {
     Grid *ambient_grid = grid_create(41, 25);
     Grid *lit_grid = grid_create(41, 25);
@@ -336,7 +619,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     world.ambient_intensity = 0.05;
 
     lighting_update(map, &world);
-    raycast_render(ambient_grid, map, &camera, &assets, &world);
+    raycast_render(ambient_grid, map, &camera, &assets, &world, NULL);
     ambient_top = grid_region_luminance(ambient_grid, 0, 8);
     ambient_middle = grid_region_luminance(ambient_grid, 8, 17);
     ambient_bottom = grid_region_luminance(ambient_grid, 17, 25);
@@ -344,7 +627,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     assert_int_equal(world_add_light(
         &world, 4.5, 3.5, black, 1.0, 4.0), WORLD_INSERT_OK);
     lighting_update(map, &world);
-    raycast_render(lit_grid, map, &camera, &assets, &world);
+    raycast_render(lit_grid, map, &camera, &assets, &world, NULL);
     assert_true(grid_region_luminance(lit_grid, 0, 8) > ambient_top);
     assert_true(grid_region_luminance(lit_grid, 8, 17) > ambient_middle);
     assert_true(grid_region_luminance(lit_grid, 17, 25) > ambient_bottom);
@@ -626,7 +909,7 @@ static void test_raycast_render_output(void **state) {
     world_init(&world);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     
     Cell c;
     // Check ceiling (top row)
@@ -671,11 +954,11 @@ static void test_raycast_render_extreme_horizon_offsets(void **state) {
     lighting_update(m, &world);
 
     cam.pitch = -(double)g->height;
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     cam.pitch = 0.0;
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
     cam.pitch = (double)g->height;
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     map_destroy(m);
     grid_destroy(g);
@@ -705,7 +988,7 @@ static void test_raycast_render_has_no_fixed_width_cutoff(void **state) {
     world_init(&world);
 
     lighting_update(m, &world);
-    raycast_render(g, m, &cam, &assets, &world);
+    raycast_render(g, m, &cam, &assets, &world, NULL);
 
     assert_true(grid_get(g, 1099, 9, &c));
     assert_int_equal(c.glyph, ' ');
@@ -922,6 +1205,14 @@ int main(void) {
         cmocka_unit_test(test_renderer_preflight_boundaries),
         // NEW ENGINE REFACTOR & RAYCAST TESTS
         cmocka_unit_test(test_asset_loader),
+        cmocka_unit_test(test_horizontal_surface_constant_baseline_level),
+        cmocka_unit_test(test_horizontal_surface_constant_baseline_negative_pitch),
+        cmocka_unit_test(test_horizontal_surface_constant_baseline_positive_pitch),
+        cmocka_unit_test(test_horizontal_surface_constant_baseline_out_of_bounds),
+        cmocka_unit_test(test_authored_horizontal_materials_and_lighting),
+        cmocka_unit_test(test_missing_horizontal_material_is_obvious_and_unlit),
+        cmocka_unit_test(test_invalid_surface_view_preserves_constant_backgrounds),
+        cmocka_unit_test(test_valid_surface_view_preserves_out_of_bounds_backgrounds),
         cmocka_unit_test(test_rendered_point_light_affects_ceiling_walls_and_floor),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_config_transactional_valid_override),

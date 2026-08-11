@@ -106,6 +106,30 @@ static MaterialId read_mat(const SceneDocument *doc, int x, int y) {
     return m;
 }
 
+static MaterialId read_surface(
+    const SceneDocument *doc, int x, int y, SceneSurfaceKind surface
+) {
+    MaterialId material = -999;
+    assert_true(scene_document_get_surface_material(
+        doc, x, y, surface, &material));
+    return material;
+}
+
+static SceneCellOccupancy read_occupancy(
+    const SceneDocument *doc, int x, int y
+) {
+    SceneCellOccupancy occupancy = SCENE_CELL_OCCUPANCY_WALL;
+    assert_true(scene_document_get_cell_occupancy(doc, x, y, &occupancy));
+    return occupancy;
+}
+
+static void mark_material_loaded(AssetRegistry *assets, int id) {
+    asset_registry_set_material(assets, id, 1, "#");
+    assert_true(snprintf(assets->material_names[id],
+                         sizeof(assets->material_names[id]), "%d", id) > 0);
+    assets->material_count++;
+}
+
 static void add_two_lights(SceneDocument *doc) {
     doc->lights = calloc(2U, sizeof(*doc->lights));
     assert_non_null(doc->lights);
@@ -790,6 +814,260 @@ static void test_redo_failure_rolls_back_partial_group(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_typed_surfaces_restore_exactly(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    AssetRegistry assets;
+    CommandExecutionContext context = {0};
+    (void)state;
+    load_fixture(&doc);
+    asset_registry_init(&assets);
+    mark_material_loaded(&assets, 1);
+    mark_material_loaded(&assets, 7);
+    context.assets = &assets;
+    command_history_init(&h, doc.current_state);
+
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_FLOOR, 7, &context), CMD_RESULT_OK);
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_CEILING, 7, &context), CMD_RESULT_OK);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 7);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_CEILING), 7);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_CEILING), 1);
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 1);
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 7);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_CEILING), 7);
+
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_FLOOR, 7, &context), CMD_RESULT_NO_CHANGE);
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 99, 1, SCENE_SURFACE_FLOOR, 7, &context),
+        CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_FLOOR, 8, &context),
+        CMD_RESULT_MATERIAL_NOT_LOADED);
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_WALL, 7, &context),
+        CMD_RESULT_INVALID_TARGET);
+
+    command_history_destroy(&h);
+    asset_registry_clear(&assets);
+    scene_document_destroy(&doc);
+}
+
+static void test_wall_material_never_changes_occupancy(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    assert_int_equal(command_history_set_wall_material(
+        &h, &doc, (WallMaterialRef){0, 0}, 9), CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 0, 0), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(read_surface(&doc, 0, 0, SCENE_SURFACE_WALL), 9);
+    assert_int_equal(read_mat(&doc, 0, 0), 9);
+    assert_int_equal(command_history_set_wall_material(
+        &h, &doc, (WallMaterialRef){0, 0}, 0), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(read_occupancy(&doc, 0, 0), SCENE_CELL_OCCUPANCY_WALL);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_ambient_command_range_and_history(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    double before;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    before = scene_document_get_ambient_intensity(&doc);
+    assert_int_equal(command_history_set_ambient_intensity(&h, &doc, 0.625),
+                     CMD_RESULT_OK);
+    assert_true(scene_document_get_ambient_intensity(&doc) == 0.625);
+    assert_int_equal(command_history_set_ambient_intensity(&h, &doc, 0.625),
+                     CMD_RESULT_NO_CHANGE);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_get_ambient_intensity(&doc) == before);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_get_ambient_intensity(&doc) == 0.625);
+    assert_int_equal(command_history_set_ambient_intensity(&h, &doc, -0.01),
+                     CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(command_history_set_ambient_intensity(&h, &doc, 1.01),
+                     CMD_RESULT_INVALID_TARGET);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_place_remove_preserve_latent_surfaces(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    (void)state;
+    load_fixture(&doc);
+    doc.spawn_x = 0.5;
+    doc.spawn_y = 0.5;
+    command_history_init(&h, doc.current_state);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_WALL), 1);
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 1, NULL),
+                     CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(read_mat(&doc, 1, 1), 1);
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 1, NULL),
+                     CMD_RESULT_NO_CHANGE);
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, NULL),
+                     CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(read_mat(&doc, 1, 1), 0);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_WALL), 1);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, NULL),
+                     CMD_RESULT_NO_CHANGE);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_construction_spawn_player_and_attachment_safety(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    CommandExecutionContext context = {0};
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_SPAWN_BLOCKED);
+    doc.spawn_x = 0.5;
+    doc.spawn_y = 0.5;
+    context.has_player_cell = true;
+    context.player_map_x = 1;
+    context.player_map_y = 1;
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_PLAYER_BLOCKED);
+    context.has_player_cell = false;
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_OK);
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    context.has_player_cell = true;
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context),
+                     CMD_RESULT_PLAYER_BLOCKED);
+    assert_int_equal(h.cursor, 0U);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    context.has_player_cell = false;
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
+
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_OK);
+    context.has_player_cell = true;
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context),
+                     CMD_RESULT_PLAYER_BLOCKED);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(h.cursor, 2U);
+    context.has_player_cell = false;
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+
+    doc.decals = calloc(1U, sizeof(*doc.decals));
+    assert_non_null(doc.decals);
+    doc.decal_count = doc.decal_capacity = 1U;
+    doc.decals[0].surface = SCENE_DECAL_SURFACE_WALL;
+    doc.decals[0].map_x = 1;
+    doc.decals[0].map_y = 1;
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_WALL_ATTACHMENT_BLOCKED);
+    doc.decals[0].surface = SCENE_DECAL_SURFACE_FLOOR;
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, &context),
+                     CMD_RESULT_OK);
+    doc.decals[0].surface = SCENE_DECAL_SURFACE_WALL;
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_WALL);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_surface_group_duplicate_and_oom_are_atomic(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    requests[0].type = EDITOR_MUTATION_SET_FLOOR_MATERIAL;
+    requests[0].data.surface_material.map_x = 1;
+    requests[0].data.surface_material.map_y = 1;
+    requests[0].data.surface_material.material = 7;
+    requests[1] = requests[0];
+    requests[1].data.surface_material.material = 8;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 1);
+
+    requests[0].type = EDITOR_MUTATION_PLACE_WALL;
+    requests[0].data.occupancy.map_x = 1;
+    requests[0].data.occupancy.map_y = 1;
+    requests[1].type = EDITOR_MUTATION_REMOVE_WALL;
+    requests[1].data.occupancy = requests[0].data.occupancy;
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+
+    requests[0].type = EDITOR_MUTATION_SET_FLOOR_MATERIAL;
+    requests[0].data.surface_material.map_x = 1;
+    requests[0].data.surface_material.map_y = 1;
+    requests[0].data.surface_material.material = 7;
+    requests[1].type = EDITOR_MUTATION_SET_CEILING_MATERIAL;
+    requests[1].data.surface_material.map_x = 1;
+    requests[1].data.surface_material.map_y = 1;
+    requests[1].data.surface_material.material = 8;
+    g_fail_realloc = 1;
+    command_history_set_allocator_for_test(
+        passthrough_alloc, failing_realloc, passthrough_free);
+    assert_int_equal(command_history_execute_group(&h, &doc, requests, 2U),
+                     CMD_RESULT_OUT_OF_MEMORY);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 1);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_CEILING), 1);
+    assert_int_equal(h.cursor, 0U);
+    assert_int_equal(doc.current_state, 1U);
+    g_fail_realloc = 0;
+    command_history_reset_allocator_for_test();
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_undo_restores_missing_material_and_repair_state(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    AssetRegistry assets;
+    CommandExecutionContext context = {0};
+    (void)state;
+    load_fixture(&doc);
+    asset_registry_init(&assets);
+    mark_material_loaded(&assets, 7);
+    context.assets = &assets;
+    command_history_init(&h, doc.current_state);
+    doc.repair_diagnostics = calloc(12U, sizeof(*doc.repair_diagnostics));
+    assert_non_null(doc.repair_diagnostics);
+    doc.repair_diagnostic_capacity = 12U;
+    assert_int_equal(command_history_set_surface_material(
+        &h, &doc, 1, 1, SCENE_SURFACE_FLOOR, 7, &context), CMD_RESULT_OK);
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(read_surface(&doc, 1, 1, SCENE_SURFACE_FLOOR), 1);
+    assert_true(scene_document_is_repair_required(&doc));
+    assert_int_equal(h.cursor, 0U);
+    command_history_destroy(&h);
+    asset_registry_clear(&assets);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -818,6 +1096,13 @@ int main(void) {
         cmocka_unit_test(test_group_validation_and_oom_leave_state_unchanged),
         cmocka_unit_test(test_undo_failure_rolls_back_partial_group),
         cmocka_unit_test(test_redo_failure_rolls_back_partial_group),
+        cmocka_unit_test(test_typed_surfaces_restore_exactly),
+        cmocka_unit_test(test_wall_material_never_changes_occupancy),
+        cmocka_unit_test(test_ambient_command_range_and_history),
+        cmocka_unit_test(test_place_remove_preserve_latent_surfaces),
+        cmocka_unit_test(test_construction_spawn_player_and_attachment_safety),
+        cmocka_unit_test(test_surface_group_duplicate_and_oom_are_atomic),
+        cmocka_unit_test(test_undo_restores_missing_material_and_repair_state),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

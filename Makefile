@@ -114,6 +114,7 @@ TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
 TEST_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/test-editor-highlight
 BENCH_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/benchmark-editor-highlight
+BENCH_SURFACE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-surface-render
 TEST_EDITOR_DOMAIN_RUNNER    := $(BUILD_DIR)/test-editor-domain
 TEST_UNIFIED_EDITOR_RUNNER   := $(BUILD_DIR)/test-unified-editor
 TEST_INPUT_RUNNER            := $(BUILD_DIR)/test-input
@@ -134,7 +135,7 @@ TEST_CAMERA_RUNNER           := $(BUILD_DIR)/test-camera
 
 
 
-.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight asan ubsan sanitize leak coverage style matrix matrix-one smoke
+.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
 
 
 all: $(APP)
@@ -503,6 +504,12 @@ $(BENCH_EDITOR_HIGHLIGHT_RUNNER): tests/benchmark_editor_highlight.c $(TEST_EDIT
 		tests/benchmark_editor_highlight.c $(TEST_EDITOR_HIGHLIGHT_SRC) $(TEST_FEATURE_EXTRA_SRC) \
 		-o $(BENCH_EDITOR_HIGHLIGHT_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
+$(BENCH_SURFACE_RENDER_RUNNER): tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
+	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
+		tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) \
+		$(SRC_CAMERA) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) \
+		$(TEST_FEATURE_EXTRA_SRC) -o $(BENCH_SURFACE_RENDER_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
+
 $(TEST_EDITOR_DOMAIN_RUNNER): tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SRC) \
 		-o $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -703,6 +710,12 @@ benchmark-editor-highlight: $(BENCH_EDITOR_HIGHLIGHT_RUNNER)
 
 stability-editor-highlight: $(BENCH_EDITOR_HIGHLIGHT_RUNNER)
 	./$(BENCH_EDITOR_HIGHLIGHT_RUNNER) --stability
+
+benchmark-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
+	./$(BENCH_SURFACE_RENDER_RUNNER)
+
+stability-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
+	./$(BENCH_SURFACE_RENDER_RUNNER) --stability
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -48,11 +48,14 @@ static void map_clear_owned(Map *map) {
 
 static void scene_authored_collections_clear(SceneDocument *document) {
     if (!document) return;
+    free(document->authored_cells);
     free(document->lights);
     free(document->decals);
     free(document->legacy_source_path);
     free(document->repair_diagnostics);
     document->lights = NULL;
+    document->authored_cells = NULL;
+    document->authored_cell_count = 0U;
     document->light_count = 0U;
     document->light_capacity = 0U;
     document->decals = NULL;
@@ -64,6 +67,7 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->repair_diagnostic_capacity = 0U;
     document->repair_required = false;
     document->imported_unsaved = false;
+    document->migration_pending = false;
 }
 
 static void scene_authored_defaults(SceneDocument *document) {
@@ -74,18 +78,6 @@ static void scene_authored_defaults(SceneDocument *document) {
     document->spawn_y = 1.5;
     document->spawn_angle = 0.0;
     document->next_instance_id = UINT64_C(1);
-}
-
-/* Move heap Map* contents into an embedded Map and free the shell. */
-static void map_move_from_heap(Map *dst, Map *src_heap) {
-    map_clear_owned(dst);
-    if (!src_heap) return;
-    *dst = *src_heap;
-    src_heap->cells = NULL;
-    src_heap->light_map = NULL;
-    src_heap->width = 0;
-    src_heap->height = 0;
-    free(src_heap);
 }
 
 static char *duplicate_path(const char *path) {
@@ -220,6 +212,7 @@ static SceneLoadResult scene_document_commit_candidate(
     SceneFormatCandidate *candidate,
     char *native_path,
     bool imported_unsaved,
+    bool migration_pending,
     SceneDiagnostic *repair_diagnostics,
     size_t repair_diagnostic_count
 );
@@ -282,7 +275,14 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
     candidate.spawn_y = 1.5;
     candidate.spawn_angle = 0.0;
     candidate.next_instance_id = UINT64_C(1);
-    scene_document_commit_candidate(document, &candidate, NULL, true, NULL, 0U);
+    candidate.source_version = SCENE_VERSION_V1;
+    if (scene_format_migrate_v1_to_v2(
+            &candidate, (unsigned)config->default_material_id, NULL) != SCENE_FORMAT_OK) {
+        scene_format_candidate_destroy(&candidate);
+        return SCENE_LOAD_OUT_OF_MEMORY;
+    }
+    scene_document_commit_candidate(document, &candidate, NULL, true, false,
+                                    NULL, 0U);
     scene_format_candidate_destroy(&candidate);
     return SCENE_LOAD_OK;
 }
@@ -294,6 +294,8 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
 /* DEPRECATED — retained for second removal pass.
    Legacy digit-grid loader that does not capture scene metadata. */
 SceneLoadResult scene_document_load(SceneDocument *document, const char *path) {
+    SceneFormatCandidate candidate;
+    const EngineConfig *config;
     if (!document || !path || path[0] == '\0') {
         return SCENE_LOAD_VALIDATION_FAILED;
     }
@@ -317,14 +319,34 @@ SceneLoadResult scene_document_load(SceneDocument *document, const char *path) {
         return SCENE_LOAD_OUT_OF_MEMORY;
     }
 
-    /* Commit: replace old ownership only after all fallible work. */
-    map_move_from_heap(&document->map, temp);
-    scene_authored_collections_clear(document);
-    scene_authored_defaults(document);
-    free(document->path);
-    document->path = new_path;
-    document->current_state = 1;
-    document->saved_state = 1;
+    config = config_get();
+    if (!config || config->default_material_id < 1 ||
+        config->default_material_id > 255) {
+        map_destroy(temp);
+        free(new_path);
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    scene_format_candidate_init(&candidate);
+    candidate.map = *temp;
+    temp->cells = NULL;
+    temp->light_map = NULL;
+    free(temp);
+    memcpy(candidate.name, "untitled", sizeof("untitled"));
+    candidate.ambient_intensity = config->ambient_light;
+    candidate.spawn_x = 1.5;
+    candidate.spawn_y = 1.5;
+    candidate.spawn_angle = 0.0;
+    candidate.next_instance_id = 1U;
+    candidate.source_version = SCENE_VERSION_V1;
+    if (scene_format_migrate_v1_to_v2(
+            &candidate, (unsigned)config->default_material_id, NULL) != SCENE_FORMAT_OK) {
+        scene_format_candidate_destroy(&candidate);
+        free(new_path);
+        return SCENE_LOAD_OUT_OF_MEMORY;
+    }
+    scene_document_commit_candidate(document, &candidate, new_path, false, false,
+                                    NULL, 0U);
+    scene_format_candidate_destroy(&candidate);
     return SCENE_LOAD_OK;
 }
 
@@ -333,6 +355,7 @@ static SceneLoadResult scene_document_commit_candidate(
     SceneFormatCandidate *candidate,
     char *native_path,
     bool imported_unsaved,
+    bool migration_pending,
     SceneDiagnostic *repair_diagnostics,
     size_t repair_diagnostic_count
 ) {
@@ -345,6 +368,10 @@ static SceneLoadResult scene_document_commit_candidate(
     candidate->map.light_map = NULL;
     candidate->map.width = 0;
     candidate->map.height = 0;
+    document->authored_cells = candidate->authored_cells;
+    document->authored_cell_count = candidate->authored_cell_count;
+    candidate->authored_cells = NULL;
+    candidate->authored_cell_count = 0U;
     memcpy(document->name, candidate->name, sizeof(document->name));
     document->ambient_intensity = candidate->ambient_intensity;
     document->spawn_x = candidate->spawn_x;
@@ -369,8 +396,9 @@ static SceneLoadResult scene_document_commit_candidate(
     document->repair_diagnostic_capacity = repair_diagnostic_count;
     document->repair_required = repair_diagnostic_count > 0U;
     document->imported_unsaved = imported_unsaved;
+    document->migration_pending = migration_pending;
     document->current_state = 1U;
-    document->saved_state = imported_unsaved ? 0U : 1U;
+    document->saved_state = (imported_unsaved || migration_pending) ? 0U : 1U;
     return SCENE_LOAD_OK;
 }
 
@@ -393,6 +421,14 @@ static SceneLoadResult build_repair_diagnostics(
         if (!asset_registry_get_decal_pattern(assets,
                                                candidate->decals[i].asset.id)) {
             missing_count++;
+        }
+    }
+    if (assets && candidate->authored_cells) {
+        for (size_t i = 0U; i < candidate->authored_cell_count; i++) {
+            const SceneAuthoredCell *cell = &candidate->authored_cells[i];
+            if (!material_id_is_loaded(assets, cell->wall_material)) missing_count++;
+            if (!material_id_is_loaded(assets, cell->floor_material)) missing_count++;
+            if (!material_id_is_loaded(assets, cell->ceiling_material)) missing_count++;
         }
     }
     if (missing_count == 0U) return SCENE_LOAD_OK;
@@ -424,6 +460,35 @@ static SceneLoadResult build_repair_diagnostics(
         diagnostics[written].instance_id = decal->id;
         written++;
     }
+    if (assets && candidate->authored_cells) {
+        for (size_t i = 0U;
+             i < candidate->authored_cell_count && written < missing_count; i++) {
+            const SceneAuthoredCell *cell = &candidate->authored_cells[i];
+            const uint8_t materials[] = {
+                cell->wall_material, cell->floor_material, cell->ceiling_material
+            };
+            const char *fields[] = {
+                "wall_material", "floor_material", "ceiling_material"
+            };
+            for (size_t surface = 0U; surface < 3U && written < missing_count;
+                 surface++) {
+                char section[SCENE_DIAGNOSTIC_SECTION_MAX + 1U];
+                char detail[SCENE_DIAGNOSTIC_DETAIL_MAX + 1U];
+                if (material_id_is_loaded(assets, materials[surface])) continue;
+                (void)snprintf(section, sizeof(section), "cell %zu,%zu",
+                               i % (size_t)candidate->map.width,
+                               i / (size_t)candidate->map.width);
+                (void)snprintf(detail, sizeof(detail),
+                               "material asset %u is not loaded",
+                               (unsigned int)materials[surface]);
+                scene_diagnostic_set(&diagnostics[written],
+                                     SCENE_DIAGNOSTIC_INPUT_ASSET_MISSING,
+                                     SCENE_DIAGNOSTIC_SEVERITY_WARNING,
+                                     path, section, fields[surface], detail);
+                written++;
+            }
+        }
+    }
     *out_diagnostics = diagnostics;
     *out_count = written;
     return SCENE_LOAD_OK;
@@ -453,6 +518,36 @@ static void refresh_document_repair_diagnostics(
         document->repair_diagnostics[written].instance_id = decal->id;
         written++;
     }
+    if (assets && document->authored_cells) {
+        for (size_t i = 0U;
+             i < document->authored_cell_count &&
+             written < document->repair_diagnostic_capacity; i++) {
+            const SceneAuthoredCell *cell = &document->authored_cells[i];
+            const uint8_t materials[] = {
+                cell->wall_material, cell->floor_material, cell->ceiling_material
+            };
+            const char *fields[] = {
+                "wall_material", "floor_material", "ceiling_material"
+            };
+            for (size_t surface = 0U; surface < 3U &&
+                 written < document->repair_diagnostic_capacity; surface++) {
+                char section[SCENE_DIAGNOSTIC_SECTION_MAX + 1U];
+                char detail[SCENE_DIAGNOSTIC_DETAIL_MAX + 1U];
+                if (material_id_is_loaded(assets, materials[surface])) continue;
+                (void)snprintf(section, sizeof(section), "cell %zu,%zu",
+                               i % (size_t)document->map.width,
+                               i / (size_t)document->map.width);
+                (void)snprintf(detail, sizeof(detail),
+                               "material asset %u is not loaded",
+                               (unsigned int)materials[surface]);
+                scene_diagnostic_set(&document->repair_diagnostics[written],
+                                     SCENE_DIAGNOSTIC_INPUT_ASSET_MISSING,
+                                     SCENE_DIAGNOSTIC_SEVERITY_WARNING,
+                                     document->path, section, fields[surface], detail);
+                written++;
+            }
+        }
+    }
     document->repair_diagnostic_count = written;
     document->repair_required = written > 0U;
 }
@@ -478,6 +573,7 @@ SceneLoadResult scene_document_load_native_with_assets(
     size_t source_size = 0U;
     SceneDiagnostic *repair_diagnostics = NULL;
     size_t repair_diagnostic_count = 0U;
+    bool migration_pending = false;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     if (!document || !path || path[0] == '\0') {
         load_diagnostic(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
@@ -505,6 +601,22 @@ SceneLoadResult scene_document_load_native_with_assets(
                    ? SCENE_LOAD_OUT_OF_MEMORY
                    : SCENE_LOAD_PARSE_ERROR;
     }
+    if (candidate.source_version == SCENE_VERSION_V1) {
+        const EngineConfig *config = config_get();
+        if (!config || config->default_material_id < 1 ||
+            config->default_material_id > 255) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+        parse_result = scene_format_migrate_v1_to_v2(
+            &candidate, (unsigned)config->default_material_id, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return parse_result == SCENE_FORMAT_OUT_OF_MEMORY
+                ? SCENE_LOAD_OUT_OF_MEMORY : SCENE_LOAD_VALIDATION_FAILED;
+        }
+        migration_pending = true;
+    }
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -522,6 +634,7 @@ SceneLoadResult scene_document_load_native_with_assets(
         return read_result;
     }
     scene_document_commit_candidate(document, &candidate, new_path, false,
+                                    migration_pending,
                                     repair_diagnostics,
                                     repair_diagnostic_count);
     scene_format_candidate_destroy(&candidate);
@@ -585,7 +698,16 @@ SceneLoadResult scene_document_import_legacy(SceneDocument *document,
     candidate.spawn_angle = 0.0;
     candidate.next_instance_id = 1U;
     candidate.legacy_source_path = provenance;
-    scene_document_commit_candidate(document, &candidate, NULL, true, NULL, 0U);
+    memcpy(candidate.name, "untitled", sizeof("untitled"));
+    candidate.source_version = SCENE_VERSION_V1;
+    if (scene_format_migrate_v1_to_v2(
+            &candidate, (unsigned)config_get()->default_material_id,
+            diagnostic) != SCENE_FORMAT_OK) {
+        scene_format_candidate_destroy(&candidate);
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    scene_document_commit_candidate(document, &candidate, NULL, true, false,
+                                    NULL, 0U);
     scene_format_candidate_destroy(&candidate);
     return SCENE_LOAD_OK;
 }
@@ -770,6 +892,9 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
 
     scene_format_candidate_init(&candidate);
     candidate.map = document->map;
+    candidate.source_version = SCENE_VERSION_V2;
+    candidate.authored_cells = document->authored_cells;
+    candidate.authored_cell_count = document->authored_cell_count;
     memcpy(candidate.name, name, strlen(name) + 1U);
     candidate.ambient_intensity = document->ambient_intensity;
     candidate.spawn_x = document->spawn_x;
@@ -883,6 +1008,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     document->path = prepared_path;
     memcpy(document->name, name, strlen(name) + 1U);
     document->imported_unsaved = false;
+    document->migration_pending = false;
     document->saved_state = document->current_state;
     fd = open(directory, O_RDONLY);
     if (fd < 0 || fault == SCENE_SAVE_FAULT_DIRECTORY_SYNC || fsync(fd) != 0) {
@@ -939,6 +1065,31 @@ Map *scene_document_get_map_for_runtime(SceneDocument *document) {
     return &document->map;
 }
 
+const SceneAuthoredCell *scene_document_get_authored_cells(
+    const SceneDocument *document,
+    size_t *out_count
+) {
+    if (out_count) *out_count = document ? document->authored_cell_count : 0U;
+    return document ? document->authored_cells : NULL;
+}
+
+bool scene_document_get_surface_view(
+    const SceneDocument *document,
+    SceneSurfaceView *out_view
+) {
+    size_t expected;
+    if (out_view) memset(out_view, 0, sizeof(*out_view));
+    if (!document || !out_view || !document->authored_cells ||
+        document->map.width <= 0 || document->map.height <= 0) return false;
+    expected = (size_t)document->map.width * (size_t)document->map.height;
+    if (document->authored_cell_count != expected) return false;
+    out_view->cells = document->authored_cells;
+    out_view->cell_count = document->authored_cell_count;
+    out_view->width = document->map.width;
+    out_view->height = document->map.height;
+    return true;
+}
+
 bool scene_document_get_wall_material(
     const SceneDocument *document,
     WallMaterialRef ref,
@@ -952,6 +1103,57 @@ bool scene_document_get_wall_material(
     if (!cell) return false;
     *out_material = cell->material_id;
     return true;
+}
+
+bool scene_document_get_surface_material(
+    const SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId *out_material
+) {
+    size_t index;
+    const SceneAuthoredCell *cell;
+    if (!document || !out_material || !document->authored_cells ||
+        !map_in_bounds((Map *)&document->map, map_x, map_y) ||
+        surface < SCENE_SURFACE_WALL || surface > SCENE_SURFACE_CEILING) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    cell = &document->authored_cells[index];
+    if (surface == SCENE_SURFACE_WALL) *out_material = cell->wall_material;
+    else if (surface == SCENE_SURFACE_FLOOR) *out_material = cell->floor_material;
+    else *out_material = cell->ceiling_material;
+    return true;
+}
+
+bool scene_document_get_cell_occupancy(
+    const SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneCellOccupancy *out_occupancy
+) {
+    size_t index;
+    if (!document || !out_occupancy || !document->authored_cells ||
+        !map_in_bounds((Map *)&document->map, map_x, map_y)) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    *out_occupancy = document->authored_cells[index].occupancy;
+    return true;
+}
+
+bool scene_document_cell_has_wall_decal(
+    const SceneDocument *document,
+    int map_x,
+    int map_y
+) {
+    size_t i;
+    if (!document) return false;
+    for (i = 0U; i < document->decal_count; i++) {
+        const SceneDecalInstance *decal = &document->decals[i];
+        if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
+            decal->map_x == map_x && decal->map_y == map_y) return true;
+    }
+    return false;
 }
 
 bool scene_document_is_dirty(const SceneDocument *document) {
@@ -1152,9 +1354,67 @@ bool scene_document_internal_set_wall_material(
     WallMaterialRef ref,
     MaterialId material
 ) {
-    if (!document) return false;
-    if (!map_in_bounds(&document->map, ref.map_x, ref.map_y)) return false;
-    map_set(&document->map, ref.map_x, ref.map_y, material);
+    return scene_document_internal_set_surface_material(
+        document, ref.map_x, ref.map_y, SCENE_SURFACE_WALL, material, NULL);
+}
+
+bool scene_document_internal_set_surface_material(
+    SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    MaterialId material,
+    const AssetRegistry *assets
+) {
+    size_t index;
+    SceneAuthoredCell *cell;
+    if (!document || !document->authored_cells || material < 1 || material > 255 ||
+        !map_in_bounds(&document->map, map_x, map_y) ||
+        surface < SCENE_SURFACE_WALL || surface > SCENE_SURFACE_CEILING) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    cell = &document->authored_cells[index];
+    if (surface == SCENE_SURFACE_WALL) {
+        cell->wall_material = (uint8_t)material;
+        if (cell->occupancy == SCENE_CELL_OCCUPANCY_WALL)
+            map_set(&document->map, map_x, map_y, material);
+    } else if (surface == SCENE_SURFACE_FLOOR) {
+        cell->floor_material = (uint8_t)material;
+    } else {
+        cell->ceiling_material = (uint8_t)material;
+    }
+    if (assets) refresh_document_repair_diagnostics(document, assets);
+    return true;
+}
+
+bool scene_document_internal_set_cell_occupancy(
+    SceneDocument *document,
+    int map_x,
+    int map_y,
+    SceneCellOccupancy occupancy
+) {
+    size_t index;
+    SceneAuthoredCell *cell;
+    if (!document || !document->authored_cells ||
+        (occupancy != SCENE_CELL_OCCUPANCY_EMPTY &&
+         occupancy != SCENE_CELL_OCCUPANCY_WALL) ||
+        !map_in_bounds(&document->map, map_x, map_y)) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    cell = &document->authored_cells[index];
+    cell->occupancy = occupancy;
+    map_set(&document->map, map_x, map_y,
+            occupancy == SCENE_CELL_OCCUPANCY_WALL ? cell->wall_material : 0);
+    return true;
+}
+
+bool scene_document_internal_set_ambient_intensity(
+    SceneDocument *document,
+    double intensity
+) {
+    if (!document || !isfinite(intensity) || intensity < 0.0 || intensity > 1.0)
+        return false;
+    document->ambient_intensity = intensity;
     return true;
 }
 
@@ -1243,6 +1503,49 @@ SceneRepairReplaceResult scene_document_internal_replace_decal_asset(
     }
     document->decals[index].asset.kind = SCENE_ASSET_KIND_DECAL_PATTERN;
     document->decals[index].asset.id = replacement_asset_id;
+    refresh_document_repair_diagnostics(document, assets);
+    document->current_state = resulting_state;
+    return SCENE_REPAIR_REPLACE_OK;
+}
+
+SceneRepairReplaceResult scene_document_internal_replace_surface_material(
+    SceneDocument *document,
+    const AssetRegistry *assets,
+    int map_x,
+    int map_y,
+    SceneSurfaceKind surface,
+    uint8_t replacement_material_id,
+    DocumentStateId resulting_state
+) {
+    size_t index;
+    uint8_t *target;
+    if (!document || !assets || !document->authored_cells ||
+        !map_in_bounds(&document->map, map_x, map_y) ||
+        surface < SCENE_SURFACE_WALL || surface > SCENE_SURFACE_CEILING ||
+        replacement_material_id == 0U) {
+        return SCENE_REPAIR_REPLACE_INVALID_ARGUMENT;
+    }
+    if (!material_id_is_loaded(assets, replacement_material_id)) {
+        return SCENE_REPAIR_REPLACE_ASSET_NOT_LOADED;
+    }
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) {
+        return SCENE_REPAIR_REPLACE_INSTANCE_NOT_FOUND;
+    }
+    if (surface == SCENE_SURFACE_WALL)
+        target = &document->authored_cells[index].wall_material;
+    else if (surface == SCENE_SURFACE_FLOOR)
+        target = &document->authored_cells[index].floor_material;
+    else target = &document->authored_cells[index].ceiling_material;
+    if (*target == replacement_material_id) {
+        refresh_document_repair_diagnostics(document, assets);
+        return SCENE_REPAIR_REPLACE_NO_CHANGE;
+    }
+    *target = replacement_material_id;
+    if (surface == SCENE_SURFACE_WALL &&
+        document->authored_cells[index].occupancy == SCENE_CELL_OCCUPANCY_WALL) {
+        document->map.cells[index].material_id = replacement_material_id;
+    }
     refresh_document_repair_diagnostics(document, assets);
     document->current_state = resulting_state;
     return SCENE_REPAIR_REPLACE_OK;

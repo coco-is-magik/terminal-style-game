@@ -9,10 +9,13 @@
 #include <cmocka.h>
 
 #include <math.h>
+#include <stdio.h>
 
 #include "../src/config.h"
 #include "../src/editor_highlight.h"
 #include "../src/math.h"
+#include "../src/raycast.h"
+#include "../src/world.h"
 
 static int group_setup(void **state) {
     (void)state;
@@ -33,6 +36,13 @@ static SelectionTarget light_target(SceneInstanceId id) {
     SelectionTarget target = {0};
     target.type = SELECTION_LIGHT;
     target.value.light.id = id;
+    return target;
+}
+
+static SelectionTarget horizontal_target(SelectionType type, int x, int y) {
+    SelectionTarget target = {0};
+    target.type = type;
+    target.value.horizontal = (HorizontalSurfaceRef){x, y};
     return target;
 }
 
@@ -455,6 +465,112 @@ static void test_light_marker_rejects_invalid_or_invisible_targets(void **state)
     grid_destroy(grid);
 }
 
+static void test_horizontal_selected_and_hover_are_distinct(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    Camera camera;
+    SelectionTarget floor = horizontal_target(SELECTION_FLOOR, 4, 3);
+    SelectionTarget ceiling = horizontal_target(SELECTION_CEILING, 4, 3);
+    EditorHit hover = hover_hit(floor);
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
+    camera.pitch = -5.0;
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(
+        grid, map, &camera, NULL, 0U, (SelectionTarget){0}, hover);
+    assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_HOVER_GLYPH) > 0);
+    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_HOVER_GLYPH), 0);
+
+    camera.pitch = 5.0;
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, ceiling, (EditorHit){0});
+    assert_true(count_glyph(grid, EDITOR_CEILING_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_horizontal_highlight_occlusion_invalid_and_borrowed_inputs(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    Camera camera;
+    Camera before_camera;
+    SelectionTarget floor = horizontal_target(SELECTION_FLOOR, 5, 3);
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
+    camera.pitch = -5.0;
+    before_camera = camera;
+    map_set(map, 3, 3, 1);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+    assert_memory_equal(&camera, &before_camera, sizeof(camera));
+    assert_int_equal(map_get(map, 3, 3)->material_id, 1);
+
+    floor.value.horizontal.map_x = 99;
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+static void test_horizontal_highlight_composes_over_authored_material(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    Camera camera;
+    Camera before_camera;
+    AssetRegistry assets;
+    WorldState world;
+    SceneAuthoredCell cells[81] = {0};
+    SceneAuthoredCell before_cells[81];
+    SceneSurfaceView surfaces = {cells, 81U, 9, 9};
+    SelectionTarget floor = horizontal_target(SELECTION_FLOOR, 4, 3);
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
+    camera.pitch = -5.0;
+    before_camera = camera;
+    asset_registry_init(&assets);
+    asset_registry_set_palette(
+        &assets, 1, (SDL_Color){120, 80, 40, 255},
+        (SDL_Color){100, 60, 30, 255}, (SDL_Color){80, 40, 20, 255});
+    asset_registry_set_material(&assets, 1, 1, "ffff");
+    assert_true(snprintf(assets.material_names[1],
+                         sizeof(assets.material_names[1]), "1") > 0);
+    for (size_t i = 0U; i < 81U; i++) {
+        cells[i].floor_material = 1U;
+        map->light_map[i] = 1.0;
+    }
+    memcpy(before_cells, cells, sizeof(cells));
+    world_init(&world);
+
+    raycast_render(grid, map, &camera, &assets, &world, &surfaces);
+    assert_true(count_glyph(grid, 'f') > 0);
+    editor_highlight_render(
+        grid, map, &camera, NULL, 0U, floor, (EditorHit){0});
+    assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_memory_equal(&camera, &before_camera, sizeof(camera));
+    assert_memory_equal(cells, before_cells, sizeof(cells));
+
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
 static void test_null_inputs_are_safe(void **state) {
     SelectionTarget none = {0};
     EditorHit hover = {0};
@@ -479,6 +595,9 @@ int main(void) {
         cmocka_unit_test(test_light_hover_and_selection_precedence),
         cmocka_unit_test(test_light_marker_obeys_wall_occlusion),
         cmocka_unit_test(test_light_marker_rejects_invalid_or_invisible_targets),
+        cmocka_unit_test(test_horizontal_selected_and_hover_are_distinct),
+        cmocka_unit_test(test_horizontal_highlight_occlusion_invalid_and_borrowed_inputs),
+        cmocka_unit_test(test_horizontal_highlight_composes_over_authored_material),
         cmocka_unit_test(test_null_inputs_are_safe),
     };
 

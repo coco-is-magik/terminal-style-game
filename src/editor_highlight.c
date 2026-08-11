@@ -21,6 +21,12 @@ typedef struct {
     int draw_end;
 } HighlightColumn;
 
+static void contrasting_colors(
+    const Cell *under,
+    SDL_Color *foreground,
+    SDL_Color *background
+);
+
 static bool wall_faces_equal(WallFaceRef a, WallFaceRef b) {
     return a.map_x == b.map_x &&
            a.map_y == b.map_y &&
@@ -35,7 +41,88 @@ static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
     if (a.type == SELECTION_LIGHT) {
         return a.value.light.id == b.value.light.id;
     }
+    if (a.type == SELECTION_FLOOR || a.type == SELECTION_CEILING) {
+        return a.value.horizontal.map_x == b.value.horizontal.map_x &&
+            a.value.horizontal.map_y == b.value.horizontal.map_y;
+    }
     return false;
+}
+
+static void draw_horizontal_highlight_cell(
+    Grid *grid, int x, int y, SelectionType type, HighlightStyle style
+) {
+    Cell under;
+    SDL_Color foreground;
+    SDL_Color background;
+    uint8_t glyph;
+    if (style == HIGHLIGHT_STYLE_HOVER && ((x + y) & 1) != 0) return;
+    if (!grid_get(grid, x, y, &under)) return;
+    contrasting_colors(&under, &foreground, &background);
+    if (type == SELECTION_FLOOR) {
+        glyph = style == HIGHLIGHT_STYLE_SELECTED
+            ? EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH
+            : EDITOR_FLOOR_HIGHLIGHT_HOVER_GLYPH;
+    } else {
+        glyph = style == HIGHLIGHT_STYLE_SELECTED
+            ? EDITOR_CEILING_HIGHLIGHT_SELECTED_GLYPH
+            : EDITOR_CEILING_HIGHLIGHT_HOVER_GLYPH;
+    }
+    (void)grid_set(grid, x, y, glyph, foreground, background);
+}
+
+static void render_horizontal_surface(
+    Grid *grid, Map *map, Camera *camera,
+    SelectionTarget target, HighlightStyle style
+) {
+    int x;
+    if ((target.type != SELECTION_FLOOR && target.type != SELECTION_CEILING) ||
+        !editor_selection_is_valid_for_map(target, map) ||
+        !isfinite(camera->transform.pos.x) ||
+        !isfinite(camera->transform.pos.y) ||
+        !isfinite(camera->transform.angle) || !isfinite(camera->fov) ||
+        !isfinite(camera->pitch) || camera->fov <= 0.0) return;
+
+    for (x = 0; x < grid->width; x++) {
+        double camera_x = 2.0 * (x + 0.5) / (double)grid->width - 1.0;
+        double ray_angle = camera->transform.angle +
+            atan(camera_x * tan(camera->fov / 2.0));
+        double dir_x = cos(ray_angle);
+        double dir_y = sin(ray_angle);
+        double correction = cos(ray_angle - camera->transform.angle);
+        RayResult wall = raycast_fire(
+            map, camera, ray_angle, config_get()->raycast_max_distance);
+        int y;
+        if (!isfinite(correction) || correction <= 0.0) continue;
+        for (y = 0; y < grid->height; y++) {
+            double denominator;
+            double current_distance;
+            double distance;
+            double world_x;
+            double world_y;
+            int map_x;
+            int map_y;
+            if (target.type == SELECTION_FLOOR)
+                denominator = 2.0 * (y - camera->pitch) - grid->height;
+            else
+                denominator = grid->height - 2.0 * (y - camera->pitch);
+            if (denominator <= 0.001) continue;
+            current_distance = grid->height / denominator;
+            distance = current_distance / correction;
+            if (!isfinite(distance) || distance <= 0.0 ||
+                distance > config_get()->raycast_max_distance) continue;
+            if (wall.hit && wall.distance <= distance + 0.001) continue;
+            world_x = camera->transform.pos.x + distance * dir_x;
+            world_y = camera->transform.pos.y + distance * dir_y;
+            if (!isfinite(world_x) || !isfinite(world_y)) continue;
+            map_x = (int)floor(world_x);
+            map_y = (int)floor(world_y);
+            if (map_x == target.value.horizontal.map_x &&
+                map_y == target.value.horizontal.map_y) {
+                draw_horizontal_highlight_cell(
+                    grid, x, y, target.type, style);
+            }
+        }
+    }
 }
 
 static bool valid_wall_target(SelectionTarget target, const Map *map) {
@@ -290,6 +377,9 @@ static void render_target(Grid *grid, Map *map, Camera *camera,
         render_wall_outline(grid, map, camera, target, style);
     } else if (target.type == SELECTION_LIGHT) {
         render_light_marker(grid, map, camera, lights, light_count, target, style);
+    } else if (target.type == SELECTION_FLOOR ||
+               target.type == SELECTION_CEILING) {
+        render_horizontal_surface(grid, map, camera, target, style);
     }
 }
 

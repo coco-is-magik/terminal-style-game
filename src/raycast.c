@@ -329,9 +329,19 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  * @param cam     The camera (position, angle, FOV, pitch)
  * @param assets  Asset registry (palettes, materials)
  * @param world   World state (lights, decals)
+ * @param surfaces Optional borrowed authored floor/ceiling material view. NULL
+ *                 preserves constant legacy backgrounds.
  */
-void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world) {
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
+                    WorldState *world, const SceneSurfaceView *surfaces) {
+    bool surfaces_valid;
     if (!grid || !map || !cam || !assets || !world) return;
+
+    surfaces_valid = surfaces && surfaces->cells &&
+        surfaces->width == map->width && surfaces->height == map->height &&
+        surfaces->width > 0 && surfaces->height > 0 &&
+        surfaces->cell_count ==
+            (size_t)surfaces->width * (size_t)surfaces->height;
 
     /* Grid-owned workspace avoids both a hidden width cap and per-frame allocation. */
     double *z_buffer = grid->column_depths;
@@ -344,6 +354,12 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
      * ================================================================ */
 
     for (int x = 0; x < max_x_idx; x++) {
+        size_t ceiling_cached_index = SIZE_MAX;
+        size_t floor_cached_index = SIZE_MAX;
+        const Material *ceiling_cached_material = NULL;
+        const Material *floor_cached_material = NULL;
+        bool ceiling_cached_missing = false;
+        bool floor_cached_missing = false;
         /* ---- a. Calculate ray angle for this column ---- */
         /* Map the grid column index to a normalised camera-space X:
          *   -1 = left edge of screen, 0 = centre, +1 = right edge */
@@ -460,6 +476,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             double curX = cam->transform.pos.x + trueDist * dir_x;
             double curY = cam->transform.pos.y + trueDist * dir_y;
 
+            int map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
+            int map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
+            bool in_bounds = map_in_bounds(map, map_x, map_y);
             uint8_t glyph = ' ';
             SDL_Color fg = {255, 255, 255, 255};
             SDL_Color bg = {50, 50, 50, 255};   /* Grey ceiling */
@@ -467,18 +486,41 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             /* Apply light map */
             double light_level = 1.0;
             if (map->light_map) {
-                int map_x = (int)curX;
-                int map_y = (int)curY;
-                if (map_in_bounds(map, map_x, map_y)) {
+                if (in_bounds) {
                     light_level = map->light_map[map_y * map->width + map_x];
                     if (light_level > 1.0) light_level = 1.0;
-                    fg.r = (uint8_t)(fg.r * light_level);
-                    fg.g = (uint8_t)(fg.g * light_level);
-                    fg.b = (uint8_t)(fg.b * light_level);
-                    bg.r = (uint8_t)(bg.r * light_level);
-                    bg.g = (uint8_t)(bg.g * light_level);
-                    bg.b = (uint8_t)(bg.b * light_level);
                 }
+            }
+
+            if (surfaces_valid && in_bounds) {
+                size_t index = (size_t)map_y * (size_t)map->width + (size_t)map_x;
+                if (index != ceiling_cached_index) {
+                    int id = surfaces->cells[index].ceiling_material;
+                    ceiling_cached_index = index;
+                    ceiling_cached_missing = !material_id_is_loaded(assets, id);
+                    ceiling_cached_material = ceiling_cached_missing
+                        ? NULL : &assets->materials[id];
+                }
+                if (ceiling_cached_missing) {
+                    glyph = '.';
+                    fg = (SDL_Color){0, 0, 0, 255};
+                    bg = (SDL_Color){128, 0, 255, 255};
+                } else {
+                    int glyph_index = trueDist > 10.0 ? 3 :
+                        trueDist > 7.0 ? 2 : trueDist > 4.0 ? 1 : 0;
+                    glyph = ceiling_cached_material->glyphs[glyph_index];
+                    fg = palette_sample(
+                        &assets->palettes[ceiling_cached_material->palette_id],
+                        trueDist, light_level);
+                    bg = (SDL_Color){0, 0, 0, 255};
+                }
+            } else if (in_bounds) {
+                fg.r = (uint8_t)(fg.r * light_level);
+                fg.g = (uint8_t)(fg.g * light_level);
+                fg.b = (uint8_t)(fg.b * light_level);
+                bg.r = (uint8_t)(bg.r * light_level);
+                bg.g = (uint8_t)(bg.g * light_level);
+                bg.b = (uint8_t)(bg.b * light_level);
             }
 
             grid_set(grid, x, y, glyph, fg, bg);
@@ -498,24 +540,50 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, Wo
             double curX = cam->transform.pos.x + trueDist * dir_x;
             double curY = cam->transform.pos.y + trueDist * dir_y;
 
+            int map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
+            int map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
+            bool in_bounds = map_in_bounds(map, map_x, map_y);
             uint8_t glyph = ' ';
             SDL_Color fg = {255, 255, 255, 255};
             SDL_Color bg = {30, 30, 30, 255};   /* Darker floor */
 
             double light_level = 1.0;
             if (map->light_map) {
-                int map_x = (int)curX;
-                int map_y = (int)curY;
-                if (map_in_bounds(map, map_x, map_y)) {
+                if (in_bounds) {
                     light_level = map->light_map[map_y * map->width + map_x];
                     if (light_level > 1.0) light_level = 1.0;
-                    fg.r = (uint8_t)(fg.r * light_level);
-                    fg.g = (uint8_t)(fg.g * light_level);
-                    fg.b = (uint8_t)(fg.b * light_level);
-                    bg.r = (uint8_t)(bg.r * light_level);
-                    bg.g = (uint8_t)(bg.g * light_level);
-                    bg.b = (uint8_t)(bg.b * light_level);
                 }
+            }
+
+            if (surfaces_valid && in_bounds) {
+                size_t index = (size_t)map_y * (size_t)map->width + (size_t)map_x;
+                if (index != floor_cached_index) {
+                    int id = surfaces->cells[index].floor_material;
+                    floor_cached_index = index;
+                    floor_cached_missing = !material_id_is_loaded(assets, id);
+                    floor_cached_material = floor_cached_missing
+                        ? NULL : &assets->materials[id];
+                }
+                if (floor_cached_missing) {
+                    glyph = '.';
+                    fg = (SDL_Color){0, 0, 0, 255};
+                    bg = (SDL_Color){128, 0, 255, 255};
+                } else {
+                    int glyph_index = trueDist > 10.0 ? 3 :
+                        trueDist > 7.0 ? 2 : trueDist > 4.0 ? 1 : 0;
+                    glyph = floor_cached_material->glyphs[glyph_index];
+                    fg = palette_sample(
+                        &assets->palettes[floor_cached_material->palette_id],
+                        trueDist, light_level);
+                    bg = (SDL_Color){0, 0, 0, 255};
+                }
+            } else if (in_bounds) {
+                fg.r = (uint8_t)(fg.r * light_level);
+                fg.g = (uint8_t)(fg.g * light_level);
+                fg.b = (uint8_t)(fg.b * light_level);
+                bg.r = (uint8_t)(bg.r * light_level);
+                bg.g = (uint8_t)(bg.g * light_level);
+                bg.b = (uint8_t)(bg.b * light_level);
             }
 
             grid_set(grid, x, y, glyph, fg, bg);

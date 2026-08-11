@@ -67,6 +67,40 @@ Questions:
 - Which runtime data remains derived rather than serialized?
 - What compatibility guarantees do older scenes receive?
 
+### Extensible per-cell block serialization — **Needs product decision**
+
+**Wanted:** Move per-cell material tokens from fixed 3 decimal digits to fixed-width
+hex blocks, e.g. `XXX-XXX-XXX`, where each 3-digit block is one typed field; new
+per-cell fields are added three hex digits at a time.
+
+Shape of the idea:
+
+- One `-XXX` block = one `0x000..0xFFF` value (max 4096 per field).
+- New fields (per-face wall materials, flags, surface policy) append a block
+  instead of forcing section/version churn.
+- Stays in the same human-editable grid style as today's `001 001 001`.
+
+Current constraints (verified 2026-08-10):
+
+- The 255 material ceiling comes from three places, NOT from digit width:
+  `SceneAuthoredCell` stores `uint8_t` IDs, `AssetRegistry` slots are
+  `materials[256]`/`palettes[256]`, and the parser caps blocks with
+  `parse_uint_range(..., 255U, ...)`. Hex blocks widen the token to 4096 but
+  capacity only moves if the cell type, registry, and loader widen together.
+- 3 hex digits cap at 4096 per field; exceeding that breaks fixed width. This is
+  extensibility-by-new-block, not unbounded capacity.
+- Adopting it is a v2→v3 migration reusing the v1→v2 pending/repair machinery.
+
+Open decisions:
+
+- Concrete consumer first: per-face wall materials (already deferred by R4),
+  capacity above 255, or both?
+- If capacity: choose typed width and registry size first; token base is secondary.
+- Add blocks only when a real field exists, or reserve slots now?
+
+Incremental E follows this idea only in the sense that missing authored surfaces
+need an explicit render fallback; the block schema itself is deliberately parked.
+
 ### Height-aware 2.5D versus stacked/full 3D — **Needs product decision**
 
 A height-aware grid can support ramps, pits, raised floors, and variable

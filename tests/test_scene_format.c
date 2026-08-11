@@ -81,6 +81,56 @@ static const char CANONICAL_SCENE[] =
     "depth = 0.10000000000000001\n"
     "rotation = 0\n";
 
+static const char CANONICAL_V2_SCENE[] =
+    "scene_type = terminal_scene\n"
+    "scene_version = 2\n"
+    "name = \"room_1\"\n"
+    "width = 4\n"
+    "height = 3\n"
+    "origin_x = 0\n"
+    "origin_y = 0\n"
+    "next_instance_id = 8\n"
+    "ambient_intensity = 0.20000000000000001\n"
+    "spawn = 1.5,1.5,0\n"
+    "legacy_source_path = \"assets\\\\maps\\\\room_1.txt\"\n"
+    "\n"
+    "[occupancy]\n"
+    "1 1 1 1\n"
+    "1 0 0 1\n"
+    "1 1 1 1\n"
+    "\n"
+    "[wall_materials]\n"
+    "001 001 001 001\n"
+    "001 009 009 001\n"
+    "001 001 001 001\n"
+    "\n"
+    "[floor_materials]\n"
+    "009 009 009 009\n"
+    "009 009 009 009\n"
+    "009 009 009 009\n"
+    "\n"
+    "[ceiling_materials]\n"
+    "009 009 009 009\n"
+    "009 009 009 009\n"
+    "009 009 009 009\n"
+    "\n"
+    "[light 3]\n"
+    "position = 2.5,1.5\n"
+    "color = 255,128,0,255\n"
+    "intensity = -1\n"
+    "radius = 4\n"
+    "\n"
+    "[decal_instance 7]\n"
+    "asset_kind = decal_pattern\n"
+    "asset_id = 6\n"
+    "surface = wall\n"
+    "anchor = 2,1,0\n"
+    "uv = 0.20000000000000001,0.40000000000000002\n"
+    "size = 0.59999999999999998,0.20000000000000001\n"
+    "glyph_step = 0,0\n"
+    "depth = 0.10000000000000001\n"
+    "rotation = 0\n";
+
 static char *replace_once(const char *source, const char *old_text,
                           const char *new_text) {
     const char *match = strstr(source, old_text);
@@ -106,6 +156,12 @@ static SceneDiagnostic parse_rejected(const char *text,
                                         candidate, &diagnostic),
                      SCENE_FORMAT_REJECTED);
     return diagnostic;
+}
+
+static void *fail_calloc(size_t count, size_t size) {
+    (void)count;
+    (void)size;
+    return NULL;
 }
 
 static void test_parse_and_canonical_round_trip(void **state) {
@@ -393,6 +449,145 @@ static void test_file_line_and_nul_limits(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v1_to_v2_migration_maps_authored_cells_exactly(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    SceneAuthoredCell *authored;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(CANONICAL_SCENE, strlen(CANONICAL_SCENE),
+                                        "v1.tscene", &candidate, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
+    assert_null(candidate.authored_cells);
+
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 9U, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V2);
+    assert_non_null(candidate.authored_cells);
+    assert_int_equal(candidate.authored_cell_count, 12U);
+
+    authored = candidate.authored_cells;
+    assert_int_equal(authored[0].occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(authored[0].wall_material, 1U);
+    assert_int_equal(authored[0].floor_material, 9U);
+    assert_int_equal(authored[0].ceiling_material, 9U);
+    assert_int_equal(authored[5].occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(authored[5].wall_material, 9U);
+    assert_int_equal(authored[5].floor_material, 9U);
+    assert_int_equal(authored[5].ceiling_material, 9U);
+    assert_int_equal(authored[11].occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(authored[11].wall_material, 1U);
+    assert_int_equal(scene_format_validate(&candidate, "v2.tscene", &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(buffer.size, strlen(CANONICAL_V2_SCENE));
+    assert_memory_equal(buffer.data, CANONICAL_V2_SCENE, buffer.size);
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v2.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.source_version, SCENE_VERSION_V2);
+    assert_int_equal(reparsed.authored_cell_count, 12U);
+    assert_int_equal(reparsed.authored_cells[5].occupancy,
+                     SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(reparsed.authored_cells[5].wall_material, 9U);
+    assert_int_equal(reparsed.map.cells[5].material_id, 0);
+
+    authored[5].occupancy = (SceneCellOccupancy)99;
+    assert_int_equal(scene_format_validate(&candidate, "v2.tscene", &diagnostic),
+                     SCENE_FORMAT_REJECTED);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    authored[5].occupancy = SCENE_CELL_OCCUPANCY_EMPTY;
+
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&candidate);
+    assert_null(candidate.authored_cells);
+    assert_int_equal(candidate.authored_cell_count, 0U);
+    assert_int_equal(candidate.source_version, 0U);
+}
+
+static void test_v2_rejects_missing_duplicate_and_malformed_grids(void **state) {
+    SceneFormatCandidate candidate;
+    SceneDiagnostic diagnostic;
+    char *text;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    text = replace_once(CANONICAL_V2_SCENE,
+                        "[floor_materials]\n009 009 009 009\n"
+                        "009 009 009 009\n009 009 009 009\n\n", "");
+    diagnostic = parse_rejected(text, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING);
+    free(text);
+
+    text = replace_once(CANONICAL_V2_SCENE, "[ceiling_materials]\n",
+                        "[ceiling_materials]\n009 009 009 009\n"
+                        "009 009 009 009\n009 009 009 009\n\n"
+                        "[ceiling_materials]\n");
+    diagnostic = parse_rejected(text, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_DUPLICATE);
+    free(text);
+
+    text = replace_once(CANONICAL_V2_SCENE, "1 0 0 1\n", "1 2 0 1\n");
+    diagnostic = parse_rejected(text, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_SYNTAX);
+    free(text);
+
+    text = replace_once(CANONICAL_V2_SCENE, "001 009 009 001\n",
+                        "001 000 009 001\n");
+    diagnostic = parse_rejected(text, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(text);
+    scene_format_candidate_destroy(&candidate);
+}
+
+static void test_v1_to_v2_migration_rejects_invalid_requests_transactionally(void **state) {
+    SceneFormatCandidate candidate;
+    SceneDiagnostic diagnostic;
+    MapCell *original_cells;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    assert_int_equal(scene_format_parse(CANONICAL_SCENE, strlen(CANONICAL_SCENE),
+                                        "v1.tscene", &candidate, &diagnostic),
+                     SCENE_FORMAT_OK);
+    original_cells = candidate.map.cells;
+
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 0U, &diagnostic),
+                     SCENE_FORMAT_REJECTED);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
+    assert_ptr_equal(candidate.map.cells, original_cells);
+    assert_null(candidate.authored_cells);
+    assert_int_equal(candidate.authored_cell_count, 0U);
+
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 256U, &diagnostic),
+                     SCENE_FORMAT_REJECTED);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
+    assert_null(candidate.authored_cells);
+
+    candidate.map.cells[0].material_id = -1;
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 1U, &diagnostic),
+                     SCENE_FORMAT_REJECTED);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
+    assert_null(candidate.authored_cells);
+    candidate.map.cells[0].material_id = 1;
+    scene_format_set_allocator_for_test(fail_calloc);
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 1U, &diagnostic),
+                     SCENE_FORMAT_OUT_OF_MEMORY);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_ENV_ALLOCATION);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
+    assert_null(candidate.authored_cells);
+    assert_int_equal(candidate.authored_cell_count, 0U);
+    scene_format_reset_allocator_for_test();
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -405,7 +600,10 @@ int main(void) {
         cmocka_unit_test(test_locale_independence_without_global_mutation),
         cmocka_unit_test(test_metadata_after_sections_and_floor_decal),
         cmocka_unit_test(test_id_overflow_unknown_section_and_provenance_control),
-        cmocka_unit_test(test_file_line_and_nul_limits)
+        cmocka_unit_test(test_file_line_and_nul_limits),
+        cmocka_unit_test(test_v1_to_v2_migration_maps_authored_cells_exactly),
+        cmocka_unit_test(test_v1_to_v2_migration_rejects_invalid_requests_transactionally),
+        cmocka_unit_test(test_v2_rejects_missing_duplicate_and_malformed_grids)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

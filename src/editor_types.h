@@ -39,10 +39,17 @@ typedef struct {
     SceneInstanceId id;
 } LightSelectionRef;
 
+typedef struct {
+    int map_x;
+    int map_y;
+} HorizontalSurfaceRef;
+
 typedef enum {
     SELECTION_NONE = 0,
     SELECTION_WALL_FACE,
-    SELECTION_LIGHT
+    SELECTION_LIGHT,
+    SELECTION_FLOOR,
+    SELECTION_CEILING
 } SelectionType;
 
 typedef struct {
@@ -50,6 +57,7 @@ typedef struct {
     union {
         WallFaceRef wall_face;
         LightSelectionRef light;
+        HorizontalSurfaceRef horizontal;
     } value;
 } SelectionTarget;
 

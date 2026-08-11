@@ -1,0 +1,79 @@
+scene_type = terminal_scene
+scene_version = 2
+name = "r4_surface_workflow"
+width = 6
+height = 6
+origin_x = 0
+origin_y = 0
+next_instance_id = 5
+ambient_intensity = 0.34999999999999998
+spawn = 1.5,1.5,0
+
+[occupancy]
+1 1 1 1 1 1
+1 0 0 0 0 1
+1 0 0 0 1 1
+1 0 0 0 0 1
+1 0 0 0 0 1
+1 1 1 1 1 1
+
+[wall_materials]
+001 002 003 004 001 002
+002 001 002 003 004 003
+003 002 003 004 004 004
+004 003 004 001 002 001
+001 004 001 002 003 002
+002 001 002 003 004 003
+
+[floor_materials]
+001 001 002 002 003 003
+001 001 002 002 003 003
+002 002 003 003 004 004
+002 002 003 003 004 004
+003 003 004 004 001 001
+003 003 004 004 001 001
+
+[ceiling_materials]
+004 004 003 003 002 002
+004 004 003 003 002 002
+003 003 002 002 001 001
+003 003 002 002 001 001
+002 002 001 001 004 004
+002 002 001 001 004 004
+
+[light 1]
+position = 3.5,3.5
+color = 255,192,128,255
+intensity = 0.80000000000000004
+radius = 4
+
+[decal_instance 2]
+asset_kind = decal_pattern
+asset_id = 6
+surface = wall
+anchor = 4,2,0
+uv = 0.20000000000000001,0.20000000000000001
+size = 0.59999999999999998,0.59999999999999998
+glyph_step = 0,0
+depth = 0.10000000000000001
+rotation = 0
+
+[decal_instance 3]
+asset_kind = decal_pattern
+asset_id = 6
+surface = floor
+position = 3.5,3.5,0
+size = 1,1
+glyph_step = 0,0
+depth = 0.10000000000000001
+rotation = 0
+
+[decal_instance 4]
+asset_kind = decal_pattern
+asset_id = 6
+surface = ceiling
+position = 2.5,3.5,1
+size = 1,1
+glyph_step = 0,0
+depth = 0.10000000000000001
+rotation = 0

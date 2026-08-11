@@ -219,7 +219,7 @@ Do not create empty review directories or placeholder review files.
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
 | R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Verified |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Verified |
-| R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Proposed |
+| R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Active |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Proposed |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Proposed |
@@ -460,13 +460,18 @@ pass.
 
 **Review checkpoint:** `reviews/2026-08-07-roadmap-r3-review-d.md`, focused on
 generalization quality, API size, dependency direction, and editor-controller
-growth. All non-interactive review gates pass; interactive acceptance remains pending.
+growth. All automated and interactive gates pass; R3 is Verified.
 
 **Detailed plan:** `R3_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-07.md`.
 
 ## R4 — Surface data and basic world construction
 
-**Status:** Proposed
+**Status:** Active — interactive acceptance pending
+
+**Active plan:** Q1 approved on 2026-08-10. Increments A–F are implemented and automated
+closeout passes; R4 awaits interactive acceptance. See
+`R4_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-10.md` and
+`R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md`.
 
 **Purpose:** Replace “one wall material ID is the whole cell” with explicit
 authored surfaces sufficient for fixed-height floor/ceiling editing and basic
@@ -478,7 +483,8 @@ construction.
 
 1. Separate occupancy/collision from visual surface references.
 2. Add fixed-height per-cell floor and ceiling material data.
-3. Add per-face wall material data if retained by the approved R4 requirements.
+3. Retain one wall material per cell in R4; per-face materials are deferred by the
+   approved requirements.
 4. Render, select, highlight, edit, undo, and persist horizontal surfaces.
 5. Add distinct in-bounds wall place/remove commands.
 6. Add per-scene ambient editing.
@@ -499,6 +505,14 @@ spawn safety according to requirements; Q1–Q3 pass.
 
 **Review checkpoint:** Targeted architecture review; escalate to Q4 if surface
 adapters or format changes reveal broad coupling.
+
+**Detailed plan:** `R4_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-10.md`.
+
+**Deferred schema candidate:** A fixed-width hex block cell format (`XXX-XXX-XXX`)
+was considered during Increment E planning and parked as a post-R4 migration
+candidate. It needs a concrete consumer decision (per-face wall materials and/or
+more than 255 materials) before promotion from `docs/TODO.md`. Increment E proceeds
+on scene v2.
 
 ## R5 — Reusable asset-document foundation
 
@@ -868,5 +882,7 @@ until that evidence exists.
 
 ## Next action
 
-**R1, R2, and R3 are Verified.** The next priority is R4 (Surface data and basic world
-construction), which depends on R2 scene format and R3 typed editor domains.
+**R1, R2, and R3 are Verified. R4 is Active; Increments A–F are implemented and all
+automated closeout gates pass.** Run and record the real-video checklist in
+`reviews/2026-08-11-roadmap-r4-targeted-review.md`; it is the only remaining R4 gate.
+Use `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` as the current handoff.

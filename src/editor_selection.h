@@ -27,6 +27,14 @@ EditorHit editor_pick_light_selection(
     double pick_radius
 );
 
+EditorHit editor_pick_horizontal_surface_selection(
+    const Camera *camera,
+    const Map *map,
+    EditorHit existing_hit,
+    int viewport_rows,
+    double max_distance
+);
+
 WallFace editor_calculate_wall_face(
     int side,
     double ray_dir_x,
