@@ -1,7 +1,8 @@
 # R4 Requirements and Implementation Plan — Surface Data and Basic World Construction
 
 **Plan date:** 2026-08-10  
-**Status:** Active — Increments A–F implemented; interactive acceptance pending
+**Status:** Active — Increments A–F and manual-review follow-up implemented;
+interactive re-acceptance pending
 **Prerequisites:** R2 and R3 Verified  
 **Review checkpoint:** Targeted surface architecture review; escalate to Q4 if the
 format or runtime adapters reveal broad coupling
@@ -30,10 +31,16 @@ surface identities without implementing R8 vertical geometry.
 
 **Increment A completed 2026-08-10:** canonical scene v2 now owns independent
 occupancy and wall/floor/ceiling material references. Native v1 and legacy maps migrate
-transactionally; native v1 opens migration-dirty until a successful v2 Save. Missing
+transactionally; native v1/v2 open migration-dirty until a successful v3 Save. Missing
 surface references preserve authored IDs, enter repair mode, and block Save. See
 `R4_INCREMENT_A_IMPLEMENTATION_RECORD_2026-08-10.md` and
 `R4_NATIVE_SCENE_V2_SPEC_2026-08-10.md`.
+
+**Manual-review follow-up implemented 2026-08-12:** canonical Save now writes native
+v3 growth provenance; v1/v2 remain migration inputs. Surface inspector hierarchy,
+unified border highlights, decal-cascade wall removal, and east/south copy-growth /
+safe refill-shrink are implemented. See `R4_NATIVE_SCENE_V3_SPEC_2026-08-12.md` and
+`R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
 
 ## Locked decisions
 

@@ -50,4 +50,16 @@ bool editor_selection_is_valid_for_map(
     const Map *map
 );
 
+bool editor_project_horizontal_cell(
+    const Camera *camera,
+    int viewport_width,
+    int viewport_height,
+    int screen_x,
+    int screen_y,
+    SelectionType type,
+    double *out_distance,
+    int *out_map_x,
+    int *out_map_y
+);
+
 #endif /* EDITOR_SELECTION_H */

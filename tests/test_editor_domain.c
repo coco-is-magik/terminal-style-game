@@ -187,7 +187,7 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
         EDITOR_INSPECTOR_WALL_MATERIAL, &inspector));
     assert_string_equal(inspector.title, "wall surface");
     assert_string_equal(inspector.controls,
-                        "Up/Down=field  Left/Right=edit  Enter=apply");
+                        "Up/Down=choose  Enter=open/apply  Esc=back");
     assert_non_null(inspector.note);
     assert_int_equal(inspector.field_count, EDITOR_SURFACE_FIELD_COUNT);
     assert_true(editor_domain_inspector_field_presentation(

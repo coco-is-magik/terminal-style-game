@@ -98,6 +98,8 @@ typedef enum {
     EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED,
     EDITOR_STATUS_SPAWN_BLOCKED,
     EDITOR_STATUS_PLAYER_BLOCKED
+    ,EDITOR_STATUS_MAP_LIMIT
+    ,EDITOR_STATUS_RESIZE_BLOCKED
 } EditorStatus;
 
 typedef struct {
@@ -141,6 +143,7 @@ typedef struct {
     size_t material_picker_index;
     MaterialId highlighted_material;
     EditorSurfaceField surface_field;
+    bool material_picker_open;
     EditorLightField light_field;
     char light_value_text[32];
     size_t light_value_text_length;

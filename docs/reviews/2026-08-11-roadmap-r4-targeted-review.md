@@ -72,14 +72,18 @@ make clean && make
 1. Open `r4_surface_workflow.tscene`. Confirm floor and ceiling regions visibly use
    different materials, ambient and the point light shade them, and wall/floor/ceiling
    decals remain correctly ordered and occluded.
-2. Select and edit one wall, floor, and ceiling material; edit ambient; place and remove
-   a wall in an empty safe cell. Confirm the authored rendering changes immediately.
-3. Attempt construction on spawn/current-player cells and removal of the decal-bearing
-   wall at `(4,2)`. Confirm each refusal is visible and leaves the scene unchanged.
-4. Undo/redo the edits, Save As, restart, and reopen. Confirm materials, ambient,
+2. Confirm floor/ceiling hover and selection use border-only `.`/`#` outlines and the
+   material remains visible. Use Enter to open/apply Material, Esc to return, and verify
+   only the active row has an arrow while persistent context remains green.
+3. Edit wall/floor/ceiling materials and ambient. Place/remove a safe wall. Confirm
+   west/north Remove Wall is visible but unavailable. Remove east and south boundary
+   walls; confirm the previous edge is copied outward, then refill/contract and undo/redo.
+4. Remove the decal-bearing wall at `(4,2)`. Confirm its wall decal is removed and
+   undo restores both wall and decal exactly. Spawn/current-player refusals remain safe.
+5. Save As, restart, and reopen. Confirm materials, ambient, growth provenance,
    occupancy, light, decals, and camera-safe spawn persist. Also open a v1 scene and
    import a legacy map; confirm migration/Save As behavior remains understandable.
-5. Continuously alternate wall, light, floor, and ceiling selection/editing. Exercise
+6. Continuously alternate wall, light, floor, and ceiling selection/editing. Exercise
    Escape, dirty Reload, dirty Open/New, Save/Discard/Cancel, and UI scale presets;
    confirm no visible corruption, stale inspector, hitch, or interaction degradation.
 

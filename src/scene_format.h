@@ -31,6 +31,10 @@ typedef struct {
     size_t decal_count;
     SceneInstanceId next_instance_id;
     char *legacy_source_path;
+    int east_growth[SCENE_MAX_WIDTH];
+    size_t east_growth_count;
+    int south_growth[SCENE_MAX_HEIGHT];
+    size_t south_growth_count;
 } SceneFormatCandidate;
 
 typedef struct {

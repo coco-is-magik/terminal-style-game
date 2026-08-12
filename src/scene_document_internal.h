@@ -32,6 +32,33 @@ bool scene_document_internal_set_cell_occupancy(
     SceneCellOccupancy occupancy
 );
 
+bool scene_document_internal_remove_decal(
+    SceneDocument *document,
+    size_t index,
+    SceneInstanceId expected_id
+);
+
+bool scene_document_internal_insert_decal(
+    SceneDocument *document,
+    size_t index,
+    const SceneDecalInstance *decal
+);
+
+typedef enum {
+    SCENE_RESIZE_OK = 0,
+    SCENE_RESIZE_INVALID,
+    SCENE_RESIZE_LIMIT,
+    SCENE_RESIZE_CONTENT_BLOCKED,
+    SCENE_RESIZE_OUT_OF_MEMORY
+} SceneResizeResult;
+
+SceneResizeResult scene_document_internal_resize_east(
+    SceneDocument *document, bool grow, int trigger
+);
+SceneResizeResult scene_document_internal_resize_south(
+    SceneDocument *document, bool grow, int trigger
+);
+
 bool scene_document_internal_set_ambient_intensity(
     SceneDocument *document,
     double intensity

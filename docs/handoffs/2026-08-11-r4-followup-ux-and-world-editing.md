@@ -12,8 +12,70 @@ has started.**
 - Several items amend the approved R4 contract (attachment policy, inspector
   controls, construction edge semantics). R4 Verified cannot complete until those
   land and the interactive checklist is re-run against the amended behavior.
-- No new phase, format version, origin semantics, or per-face/height geometry is
-  introduced.
+- No new phase, origin semantics, or per-face/height geometry is introduced. The
+  approved persisted-growth requirement now introduces native scene v3 while keeping
+  v1/v2 as migration inputs.
+
+## Interrupted implementation status — 2026-08-12
+
+Implementation began after the manual R4 review and was interrupted before the
+edge-growth format work. The working tree is intentionally uncommitted. Do not mark
+R4 Verified from this state.
+
+### Completed in the working tree
+
+1. **Horizontal highlight and selection refactor:** floor/ceiling highlights use
+   border-only `#`/`.` rendering, preserve interior material glyphs, and share
+   `editor_project_horizontal_cell()` between selection and highlighting.
+2. **Surface inspector hierarchy:** Enter opens/applies the material submenu,
+   Up/Down navigates the active level, Esc ascends, surface Left/Right editing is
+   removed, ambient uses inline entry, and west/north Remove Wall is visibly
+   unavailable and skipped by field navigation. The light inspector is unchanged.
+3. **Wall-decal cascade:** wall removal snapshots attached wall decals in command
+   history, removes them atomically, and restores exact indices/IDs on undo.
+
+### Focused evidence from a clean rebuild
+
+| Runner | Result |
+|---|---:|
+| `test-editor-selection` | 21/21 passed |
+| `test-editor-highlight` | 17/17 passed |
+| `test-editor-domain` | 8/8 passed |
+| `test-command-system` | 29/29 passed |
+| `test-unified-editor` | 53/53 passed |
+| `git diff --check` | passed |
+
+The prior `test_load_success_resets_history_and_selection` segfault is resolved. Its
+fixture had manually assigned `history.count`/`cursor` without allocating command
+entries, which became invalid once commands gained an owned decal payload. The test
+now creates three real ambient commands through the public API and undoes one before
+verifying load reset. This preserves the original intent and exercises valid ownership.
+
+### Implemented after restart
+
+- Native scene v3 parsing, serialization, validation, v1/v2 migration, canonical
+  fixture, specification, and persisted growth provenance.
+- East/south copy-growth, refill-triggered safe shrink, exact undo/redo, dimension
+  limits, copied-ring equality guards, and light/decal content guards.
+- Obstructed-decal benchmark/stability evidence with exact no-decal checksum parity.
+- Strict `make check`, ASan, UBSan, 8/8 matrix, benchmark, and stability pass.
+- Amended interactive acceptance remains the only open gate.
+
+### Product decisions made during implementation
+
+- Auto-growth provenance must survive Save/reopen; therefore canonical native Save
+  moves to **scene v3**. Native v1/v2 remain accepted migration inputs.
+- East/south growth copies the entire previous edge row/column outward cell-for-cell.
+- Persisted provenance uses ordered east trigger rows and south trigger columns.
+  Refill shrink applies to the current outermost trigger; nested growth shrinks in
+  reverse order.
+- Proposed canonical v3 metadata is `east_growth = -|row[,row...]` and
+  `south_growth = -|column[,column...]`, required once in v3 and forbidden in v1/v2.
+
+### Next action
+
+Run and record the amended real-video checklist. Do not mark R4 Verified before it
+passes.
 
 ## Workstream 1 — Inspector navigation hierarchy + disabled options
 
@@ -58,9 +120,9 @@ nowhere"); preferred behavior is a map that grows instead.
 Decisions:
 
 1. **East and south edges:** removing the boundary wall grows the map by 1 unit in
-   that direction. The removed cell becomes empty interior; a new wall appears at
-   the new outer edge using the removed wall's material. New-ring floor/ceiling
-   materials inherit the removed cell's values by default.
+   that direction. The complete prior edge row/column is copied outward cell-for-cell,
+   preserving occupancy and all three surface materials. The selected old-edge wall
+   becomes empty interior; its copied cell behind it remains a same-material wall.
 2. **Refill shrinks:** placing a wall back in the emptied interior cell shrinks the
    map by 1, discarding the outer ring cell.
 3. **West and north edges:** removal is not allowed; "Remove Wall" is greyed and
@@ -73,8 +135,9 @@ Decisions:
    `authored_cell_count` in one undoable command; undo/redo restores exact
    dimensions and contents. East/south append/trim keeps every existing coordinate
    (spawn, lights, decal world positions, wall-decal refs) stable; `origin_x/y`
-   remain 0 — no format change. If the removed east/south wall carried a wall decal,
-   Workstream 3 cascade deletion applies (not transfer).
+   remain 0. Native scene v3 persists ordered east trigger rows and south trigger
+   columns so refill shrink survives Save/reopen. If the removed east/south wall
+   carried a wall decal, Workstream 3 cascade deletion applies (not transfer).
 
 Doc/test impact: R4 plan verification inventory and "rejected approaches" note;
 README editor-limits; new command-system structural-mutation tests.
@@ -156,12 +219,13 @@ Decisions:
 3. No aggressive floor/ceiling occlusion prefilter in this slice (R6 authoring
    territory).
 
-## Open defaults (veto in one line)
+## Resolved defaults
 
 - Material row `Enter` = apply and return to the field list.
 - Light inspector unchanged.
 - Growth cap and shrink-ring refusals shown as status text.
-- Shrunk/grown ring floor/ceiling materials inherit the removed cell's values.
+- Growth copies the entire previous edge row/column outward cell-for-cell.
+- Native v3 persists ordered growth triggers; v1/v2 migrate to v3 on Save.
 
 ## Gates and files
 

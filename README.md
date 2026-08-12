@@ -208,9 +208,9 @@ Closing the inspector clears that persistent selection.
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
 | `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector |
-| `Up` / `Down` | Move through inspector fields or editor-menu choices |
-| `Left` / `Right` | Edit the selected material, ambient, or point-light field |
-| `Enter` | Apply material/construction, commit a typed value, or confirm a menu choice |
+| `Up` / `Down` | Move through the active inspector/menu level |
+| `Left` / `Right` | Edit the selected point-light field (surface inspectors use Enter submenus) |
+| `Enter` | Open/apply a surface submenu, execute construction, commit a typed value, or confirm |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
 | `Ctrl+S` | Open the Save menu for the current scene |
@@ -218,7 +218,7 @@ Closing the inspector clears that persistent selection.
 | `Ctrl+O` | Open the native `.tscene` scene chooser |
 | `Ctrl+I` | Open the legacy import chooser |
 | `F5` | Reload; dirty documents require confirmation |
-| `Escape` | Close inspector, then open the editor exit prompt |
+| `Escape` | Move up one submenu level, close/deselect at inspector top, then open exit prompt |
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.
@@ -237,11 +237,17 @@ the initial no-document chooser to the main menu.
 
 ### Current editor limits
 
-- Native v2 scenes store independent occupancy plus one wall, floor, and ceiling
+- Native v3 scenes store independent occupancy plus one wall, floor, and ceiling
   material reference per cell. Floor and ceiling cells can now be selected and
   highlighted through the fixed-plane editor view. Surface inspectors edit materials,
   Place/Remove Wall, and ambient. In-bounds floor/ceiling cells render their authored
   materials with scalar lighting; out-of-bounds samples retain constant backgrounds.
+- Floor/ceiling hover and selection use the same border-only `.`/`#` vocabulary as
+  walls, leaving the authored material visible. East/south boundary removal grows by
+  copying the prior edge outward; west/north removal is visibly unavailable. Refilling
+  the current growth trigger safely contracts an unchanged, unoccupied copied ring.
+- Removing a wall also removes attached wall decals in the same undoable command;
+  floor/ceiling decals remain independent.
 - Native `.tscene` material grids store three-digit IDs `001..255`; legacy
   digit-grid maps store one decimal character per cell, so only IDs `0..9`
   persist through the legacy writer.

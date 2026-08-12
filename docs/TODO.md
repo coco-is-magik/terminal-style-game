@@ -154,6 +154,18 @@ Likely implications:
 - remain clear at distance/oblique angles and not rely only on color;
 - define hidden/occluded indicators and reduced-motion behavior.
 
+### Hover-outline visibility — **Research track**
+
+The R4 manual review found the unified `.` hover outline visually consistent across
+walls, floors, and ceilings but too easy to miss against some authored materials and
+viewing angles. Evaluate visibility improvements without returning to a filled overlay
+that hides the material being inspected. Compare at minimum: a brighter or alternating
+outline glyph, contrast-aware glyph selection, a two-tone/double edge where space
+permits, and restrained animation or pulsing with a reduced-motion/static equivalent.
+Test dark/bright palettes, missing-material purple, distance, oblique floor/ceiling
+views, UI scale presets, and overlap with persistent `#` selection. Do not rely on
+color alone or mutate authored cells.
+
 ## Open and switch saved scenes/files — **Current-map baseline implemented; scene-dependent later**
 
 **Verified baseline (2026-07-29):** Main-menu

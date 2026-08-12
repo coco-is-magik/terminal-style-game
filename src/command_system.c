@@ -48,7 +48,10 @@ void command_history_init(CommandHistory *history, DocumentStateId initial_state
         ? UINT64_MAX : initial_state + 1U;
 }
 void command_history_destroy(CommandHistory *history) {
+    size_t i;
     if (!history) return;
+    for (i = 0U; i < history->count; i++)
+        g_cmd_free(history->commands[i].removed_decals);
     g_cmd_free(history->commands);
     memset(history, 0, sizeof(*history));
 }
@@ -74,6 +77,40 @@ static bool mutation_is_occupancy(EditorMutationType type) {
     return type == EDITOR_MUTATION_PLACE_WALL ||
         type == EDITOR_MUTATION_REMOVE_WALL;
 }
+static bool mutation_is_resize(EditorMutationType type) {
+    return type == EDITOR_MUTATION_GROW_EAST ||
+        type == EDITOR_MUTATION_GROW_SOUTH ||
+        type == EDITOR_MUTATION_SHRINK_EAST ||
+        type == EDITOR_MUTATION_SHRINK_SOUTH;
+}
+
+static bool shrink_ring_matches_source(const SceneDocument *document, bool east,
+                                       int trigger) {
+    int limit = east ? document->map.height : document->map.width;
+    int outer = (east ? document->map.width : document->map.height) - 1;
+    int inner = outer - 1;
+    int i;
+    for (i = 0; i < limit; i++) {
+        int inner_x = east ? inner : i;
+        int inner_y = east ? i : inner;
+        int outer_x = east ? outer : i;
+        int outer_y = east ? i : outer;
+        size_t inner_index = (size_t)inner_y * (size_t)document->map.width +
+                             (size_t)inner_x;
+        size_t outer_index = (size_t)outer_y * (size_t)document->map.width +
+                             (size_t)outer_x;
+        SceneAuthoredCell expected = document->authored_cells[inner_index];
+        if (i == trigger) expected.occupancy = SCENE_CELL_OCCUPANCY_WALL;
+        {
+            const SceneAuthoredCell *actual = &document->authored_cells[outer_index];
+            if (expected.occupancy != actual->occupancy ||
+                expected.wall_material != actual->wall_material ||
+                expected.floor_material != actual->floor_material ||
+                expected.ceiling_material != actual->ceiling_material) return false;
+        }
+    }
+    return true;
+}
 
 static bool mutations_target_same_field(
     const EditorMutation *a, const EditorMutation *b
@@ -92,6 +129,7 @@ static bool mutations_target_same_field(
     if (a->type == EDITOR_MUTATION_SET_LIGHT &&
         b->type == EDITOR_MUTATION_SET_LIGHT)
         return a->data.light.id == b->data.light.id;
+    if (mutation_is_resize(a->type) && mutation_is_resize(b->type)) return true;
     return false;
 }
 
@@ -155,6 +193,8 @@ static bool prepare_mutation(
         mutation->data.occupancy.map_y = request->data.occupancy.map_y;
         mutation->data.occupancy.before = before;
         mutation->data.occupancy.after = after;
+        mutation->data.occupancy.removed_decal_start = 0U;
+        mutation->data.occupancy.removed_decal_count = 0U;
         *changed = before != after;
         return true;
     }
@@ -169,6 +209,11 @@ static bool prepare_mutation(
         mutation->data.light.after = request->data.light.value;
         *changed = !lights_equal(before, &request->data.light.value);
         return true;
+    }
+    if (mutation_is_resize(request->type)) {
+        mutation->data.resize.trigger = request->data.resize.trigger;
+        *changed = true;
+        return request->data.resize.trigger >= 0;
     }
     return false;
 }
@@ -190,9 +235,6 @@ static CommandResult validate_transition(
         int map_y = mutation->data.occupancy.map_y;
         SceneCellOccupancy occupancy = after ? mutation->data.occupancy.after
                                              : mutation->data.occupancy.before;
-        if (occupancy == SCENE_CELL_OCCUPANCY_EMPTY &&
-            scene_document_cell_has_wall_decal(document, map_x, map_y))
-            return CMD_RESULT_WALL_ATTACHMENT_BLOCKED;
         if (occupancy == SCENE_CELL_OCCUPANCY_WALL) {
             if (map_x == (int)floor(document->spawn_x) &&
                 map_y == (int)floor(document->spawn_y))
@@ -207,7 +249,8 @@ static CommandResult validate_transition(
 
 static bool apply_mutation(
     SceneDocument *document, const EditorMutation *mutation, bool after,
-    const CommandExecutionContext *context
+    const CommandExecutionContext *context,
+    const EditorRemovedDecal *removed_decals
 ) {
     if (mutation_is_surface(mutation->type))
         return scene_document_internal_set_surface_material(
@@ -220,17 +263,88 @@ static bool apply_mutation(
         return scene_document_internal_set_ambient_intensity(
             document, after ? mutation->data.ambient.after
                             : mutation->data.ambient.before);
-    if (mutation_is_occupancy(mutation->type))
-        return scene_document_internal_set_cell_occupancy(
-            document, mutation->data.occupancy.map_x,
-            mutation->data.occupancy.map_y,
-            after ? mutation->data.occupancy.after
-                  : mutation->data.occupancy.before);
+    if (mutation_is_occupancy(mutation->type)) {
+        SceneCellOccupancy occupancy = after ? mutation->data.occupancy.after
+                                             : mutation->data.occupancy.before;
+        size_t count = mutation->data.occupancy.removed_decal_count;
+        size_t i;
+        if (occupancy == SCENE_CELL_OCCUPANCY_EMPTY) {
+            for (i = count; i > 0U; i--) {
+                const EditorRemovedDecal *removed = &removed_decals[
+                    mutation->data.occupancy.removed_decal_start + i - 1U];
+                if (!scene_document_internal_remove_decal(
+                        document, removed->index, removed->value.id)) return false;
+            }
+        }
+        if (!scene_document_internal_set_cell_occupancy(
+                document, mutation->data.occupancy.map_x,
+                mutation->data.occupancy.map_y, occupancy)) return false;
+        if (occupancy == SCENE_CELL_OCCUPANCY_WALL) {
+            for (i = 0U; i < count; i++) {
+                const EditorRemovedDecal *removed = &removed_decals[
+                    mutation->data.occupancy.removed_decal_start + i];
+                if (!scene_document_internal_insert_decal(
+                        document, removed->index, &removed->value)) return false;
+            }
+        }
+        return true;
+    }
+    if (mutation_is_resize(mutation->type)) {
+        bool east = mutation->type == EDITOR_MUTATION_GROW_EAST ||
+                    mutation->type == EDITOR_MUTATION_SHRINK_EAST;
+        bool grow = mutation->type == EDITOR_MUTATION_GROW_EAST ||
+                    mutation->type == EDITOR_MUTATION_GROW_SOUTH;
+        int trigger = mutation->data.resize.trigger;
+        if (!after) grow = !grow;
+        return (east
+            ? scene_document_internal_resize_east(document, grow, trigger)
+            : scene_document_internal_resize_south(document, grow, trigger)) ==
+            SCENE_RESIZE_OK;
+    }
     if (mutation->type == EDITOR_MUTATION_SET_LIGHT)
         return scene_document_internal_set_light(
             document, mutation->data.light.id,
             after ? &mutation->data.light.after : &mutation->data.light.before);
     return false;
+}
+
+static bool collect_removed_decals(SceneDocument *document, EditorCommand *command) {
+    size_t total = 0U;
+    size_t mutation_index;
+    size_t decal_index;
+    for (mutation_index = 0U; mutation_index < command->mutation_count; mutation_index++) {
+        EditorMutation *mutation = &command->mutations[mutation_index];
+        if (!mutation_is_occupancy(mutation->type) ||
+            mutation->data.occupancy.after != SCENE_CELL_OCCUPANCY_EMPTY) continue;
+        for (decal_index = 0U; decal_index < document->decal_count; decal_index++) {
+            const SceneDecalInstance *decal = &document->decals[decal_index];
+            if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
+                decal->map_x == mutation->data.occupancy.map_x &&
+                decal->map_y == mutation->data.occupancy.map_y) total++;
+        }
+    }
+    if (total == 0U) return true;
+    command->removed_decals = g_cmd_realloc(NULL, total * sizeof(*command->removed_decals));
+    if (!command->removed_decals) return false;
+    command->removed_decal_count = total;
+    total = 0U;
+    for (mutation_index = 0U; mutation_index < command->mutation_count; mutation_index++) {
+        EditorMutation *mutation = &command->mutations[mutation_index];
+        if (!mutation_is_occupancy(mutation->type) ||
+            mutation->data.occupancy.after != SCENE_CELL_OCCUPANCY_EMPTY) continue;
+        mutation->data.occupancy.removed_decal_start = total;
+        for (decal_index = 0U; decal_index < document->decal_count; decal_index++) {
+            const SceneDecalInstance *decal = &document->decals[decal_index];
+            if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
+                decal->map_x == mutation->data.occupancy.map_x &&
+                decal->map_y == mutation->data.occupancy.map_y) {
+                command->removed_decals[total++] =
+                    (EditorRemovedDecal){decal_index, *decal};
+                mutation->data.occupancy.removed_decal_count++;
+            }
+        }
+    }
+    return true;
 }
 
 static CommandResult preflight_command(
@@ -273,21 +387,31 @@ CommandResult command_history_execute_group_checked(
         command.mutations[command.mutation_count++] = mutation;
     }
     if (command.mutation_count == 0U) return CMD_RESULT_NO_CHANGE;
+    if (!collect_removed_decals(document, &command)) return CMD_RESULT_OUT_OF_MEMORY;
     validation = preflight_command(document, &command, true, context);
-    if (validation != CMD_RESULT_OK) return validation;
-    if (history->next_state_id == UINT64_MAX) return CMD_RESULT_STATE_ID_EXHAUSTED;
-    if (!history_reserve_one(history)) return CMD_RESULT_OUT_OF_MEMORY;
+    if (validation != CMD_RESULT_OK) { g_cmd_free(command.removed_decals); return validation; }
+    if (history->next_state_id == UINT64_MAX) {
+        g_cmd_free(command.removed_decals); return CMD_RESULT_STATE_ID_EXHAUSTED;
+    }
+    if (!history_reserve_one(history)) {
+        g_cmd_free(command.removed_decals); return CMD_RESULT_OUT_OF_MEMORY;
+    }
     command.before_state = document->current_state;
     command.after_state = history->next_state_id;
     for (i = 0U; i < command.mutation_count; i++) {
-        if (!apply_mutation(document, &command.mutations[i], true, context)) {
+        if (!apply_mutation(document, &command.mutations[i], true, context,
+                            command.removed_decals)) {
             while (i > 0U) {
                 i--;
-                (void)apply_mutation(document, &command.mutations[i], false, context);
+                (void)apply_mutation(document, &command.mutations[i], false, context,
+                                     command.removed_decals);
             }
+            g_cmd_free(command.removed_decals);
             return CMD_RESULT_INVALID_TARGET;
         }
     }
+    for (i = history->cursor; i < history->count; i++)
+        g_cmd_free(history->commands[i].removed_decals);
     history->count = history->cursor;
     history->commands[history->cursor++] = command;
     history->count = history->cursor;
@@ -347,31 +471,81 @@ CommandResult command_history_set_ambient_intensity(
     return command_history_execute_group(history, document, &request, 1U);
 }
 
-static CommandResult command_history_set_occupancy(
-    CommandHistory *history, SceneDocument *document, int map_x, int map_y,
-    EditorMutationType type, const CommandExecutionContext *context
-) {
-    EditorMutationRequest request = {0};
-    request.type = type;
-    request.data.occupancy.map_x = map_x;
-    request.data.occupancy.map_y = map_y;
-    return command_history_execute_group_checked(
-        history, document, &request, 1U, context);
-}
-
 CommandResult command_history_place_wall(
     CommandHistory *history, SceneDocument *document, int map_x, int map_y,
     const CommandExecutionContext *context
 ) {
-    return command_history_set_occupancy(
-        history, document, map_x, map_y, EDITOR_MUTATION_PLACE_WALL, context);
+    EditorMutationRequest requests[2] = {0};
+    bool east_match;
+    bool south_match;
+    SceneCellOccupancy current;
+    size_t count = 1U;
+    size_t i;
+    if (!document) return CMD_RESULT_INVALID_TARGET;
+    if (!scene_document_get_cell_occupancy(document, map_x, map_y, &current))
+        return CMD_RESULT_INVALID_TARGET;
+    if (current == SCENE_CELL_OCCUPANCY_WALL) return CMD_RESULT_NO_CHANGE;
+    east_match = document->east_growth_count > 0U &&
+        map_x == document->map.width - 2 &&
+        map_y == document->east_growth[document->east_growth_count - 1U];
+    south_match = document->south_growth_count > 0U &&
+        map_y == document->map.height - 2 &&
+        map_x == document->south_growth[document->south_growth_count - 1U];
+    if (east_match && south_match) return CMD_RESULT_RESIZE_BLOCKED;
+    if (east_match || south_match) {
+        double boundary = (east_match ? document->map.width : document->map.height) - 1;
+        for (i = 0U; i < document->light_count; i++)
+            if ((east_match ? document->lights[i].x : document->lights[i].y) >= boundary)
+                return CMD_RESULT_RESIZE_BLOCKED;
+        for (i = 0U; i < document->decal_count; i++) {
+            const SceneDecalInstance *decal = &document->decals[i];
+            double coordinate = decal->surface == SCENE_DECAL_SURFACE_WALL
+                ? (east_match ? decal->map_x : decal->map_y)
+                : (east_match ? decal->x : decal->y);
+            if (coordinate >= boundary) return CMD_RESULT_RESIZE_BLOCKED;
+        }
+        if (!shrink_ring_matches_source(document, east_match,
+                east_match ? map_y : map_x)) return CMD_RESULT_RESIZE_BLOCKED;
+        count = 2U;
+    }
+    requests[0].type = EDITOR_MUTATION_PLACE_WALL;
+    requests[0].data.occupancy.map_x = map_x;
+    requests[0].data.occupancy.map_y = map_y;
+    if (count == 2U) {
+        requests[1].type = east_match
+            ? EDITOR_MUTATION_SHRINK_EAST : EDITOR_MUTATION_SHRINK_SOUTH;
+        requests[1].data.resize.trigger = east_match ? map_y : map_x;
+    }
+    return command_history_execute_group_checked(
+        history, document, requests, count, context);
 }
 CommandResult command_history_remove_wall(
     CommandHistory *history, SceneDocument *document, int map_x, int map_y,
     const CommandExecutionContext *context
 ) {
-    return command_history_set_occupancy(
-        history, document, map_x, map_y, EDITOR_MUTATION_REMOVE_WALL, context);
+    EditorMutationRequest requests[2] = {0};
+    SceneCellOccupancy current;
+    size_t count = 1U;
+    if (!document) return CMD_RESULT_INVALID_TARGET;
+    if (!scene_document_get_cell_occupancy(document, map_x, map_y, &current))
+        return CMD_RESULT_INVALID_TARGET;
+    if (current == SCENE_CELL_OCCUPANCY_EMPTY) return CMD_RESULT_NO_CHANGE;
+    if (map_x == document->map.width - 1) {
+        if (document->map.width >= SCENE_MAX_WIDTH) return CMD_RESULT_MAP_LIMIT;
+        requests[0].type = EDITOR_MUTATION_GROW_EAST;
+        requests[0].data.resize.trigger = map_y;
+        count = 2U;
+    } else if (map_y == document->map.height - 1) {
+        if (document->map.height >= SCENE_MAX_HEIGHT) return CMD_RESULT_MAP_LIMIT;
+        requests[0].type = EDITOR_MUTATION_GROW_SOUTH;
+        requests[0].data.resize.trigger = map_x;
+        count = 2U;
+    }
+    requests[count - 1U].type = EDITOR_MUTATION_REMOVE_WALL;
+    requests[count - 1U].data.occupancy.map_x = map_x;
+    requests[count - 1U].data.occupancy.map_y = map_y;
+    return command_history_execute_group_checked(
+        history, document, requests, count, context);
 }
 
 CommandResult command_history_set_light(
@@ -399,11 +573,12 @@ CommandResult command_history_undo_checked(
     validation = preflight_command(document, command, false, context);
     if (validation != CMD_RESULT_OK) return validation;
     for (i = command->mutation_count; i > 0U; i--) {
-        if (!apply_mutation(document, &command->mutations[i - 1U], false, context)) {
+        if (!apply_mutation(document, &command->mutations[i - 1U], false, context,
+                            command->removed_decals)) {
             size_t rollback;
             for (rollback = i; rollback < command->mutation_count; rollback++)
-                (void)apply_mutation(
-                    document, &command->mutations[rollback], true, context);
+                (void)apply_mutation(document, &command->mutations[rollback], true,
+                                     context, command->removed_decals);
             return CMD_RESULT_INVALID_TARGET;
         }
     }
@@ -428,10 +603,12 @@ CommandResult command_history_redo_checked(
     validation = preflight_command(document, command, true, context);
     if (validation != CMD_RESULT_OK) return validation;
     for (i = 0U; i < command->mutation_count; i++) {
-        if (!apply_mutation(document, &command->mutations[i], true, context)) {
+        if (!apply_mutation(document, &command->mutations[i], true, context,
+                            command->removed_decals)) {
             while (i > 0U) {
                 i--;
-                (void)apply_mutation(document, &command->mutations[i], false, context);
+                (void)apply_mutation(document, &command->mutations[i], false, context,
+                                     command->removed_decals);
             }
             return CMD_RESULT_INVALID_TARGET;
         }

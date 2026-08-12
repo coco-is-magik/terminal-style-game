@@ -21,7 +21,11 @@ typedef enum {
     EDITOR_MUTATION_SET_AMBIENT_INTENSITY,
     EDITOR_MUTATION_PLACE_WALL,
     EDITOR_MUTATION_REMOVE_WALL,
-    EDITOR_MUTATION_SET_LIGHT
+    EDITOR_MUTATION_SET_LIGHT,
+    EDITOR_MUTATION_GROW_EAST,
+    EDITOR_MUTATION_GROW_SOUTH,
+    EDITOR_MUTATION_SHRINK_EAST,
+    EDITOR_MUTATION_SHRINK_SOUTH
 } EditorMutationType;
 
 typedef struct {
@@ -54,8 +58,14 @@ typedef struct {
             SceneInstanceId id;
             SceneLight value;
         } light;
+        struct { int trigger; } resize;
     } data;
 } EditorMutationRequest;
+
+typedef struct {
+    size_t index;
+    SceneDecalInstance value;
+} EditorRemovedDecal;
 
 typedef struct {
     EditorMutationType type;
@@ -80,12 +90,15 @@ typedef struct {
             int map_y;
             SceneCellOccupancy before;
             SceneCellOccupancy after;
+            size_t removed_decal_start;
+            size_t removed_decal_count;
         } occupancy;
         struct {
             SceneInstanceId id;
             SceneLight before;
             SceneLight after;
         } light;
+        struct { int trigger; } resize;
     } data;
 } EditorMutation;
 
@@ -101,6 +114,8 @@ typedef enum {
     CMD_RESULT_PLAYER_BLOCKED,
     CMD_RESULT_OUT_OF_MEMORY,
     CMD_RESULT_STATE_ID_EXHAUSTED
+    ,CMD_RESULT_MAP_LIMIT
+    ,CMD_RESULT_RESIZE_BLOCKED
 } CommandResult;
 
 typedef struct {
@@ -108,6 +123,8 @@ typedef struct {
     DocumentStateId after_state;
     size_t mutation_count;
     EditorMutation mutations[EDITOR_COMMAND_MAX_MUTATIONS];
+    EditorRemovedDecal *removed_decals;
+    size_t removed_decal_count;
 } EditorCommand;
 
 typedef struct {

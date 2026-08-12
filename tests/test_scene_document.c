@@ -1355,7 +1355,7 @@ static void test_native_load_light_map_is_populated_by_lighting_update(void **st
     asset_registry_clear(&assets);
 }
 
-static void test_v1_migration_save_emits_v2_and_reopens_clean(void **state) {
+static void test_v1_migration_save_emits_v3_and_reopens_clean(void **state) {
     char source[512];
     char destination[512];
     SceneDocument doc;
@@ -1386,7 +1386,9 @@ static void test_v1_migration_save_emits_v2_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 2\n"));
+    assert_non_null(strstr(saved, "scene_version = 3\n"));
+    assert_non_null(strstr(saved, "east_growth = -\n"));
+    assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
     assert_non_null(strstr(saved, "[floor_materials]\n"));
     assert_null(strstr(saved, "[cells]\n"));
@@ -1424,8 +1426,8 @@ static void test_v2_surface_missing_repair_and_explicit_replacement(void **state
     scene_document_init(&doc);
     assert_int_equal(scene_document_load_native_with_assets(
                          &doc, path, &assets, &diagnostic), SCENE_LOAD_OK);
-    assert_false(doc.migration_pending);
-    assert_false(scene_document_is_dirty(&doc));
+    assert_true(doc.migration_pending);
+    assert_true(scene_document_is_dirty(&doc));
     assert_true(scene_document_is_repair_required(&doc));
     repairs = scene_document_get_repair_diagnostics(&doc, &count);
     assert_non_null(repairs);
@@ -1454,7 +1456,7 @@ static void test_v2_surface_missing_repair_and_explicit_replacement(void **state
     asset_registry_clear(&assets);
 }
 
-static void test_checked_in_r4_v2_fixture_is_clean_and_canonical(void **state) {
+static void test_checked_in_r4_v3_fixture_is_clean_and_canonical(void **state) {
     const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
     char destination[512];
     char *fixture_text;
@@ -1506,6 +1508,38 @@ static void test_checked_in_r4_v2_fixture_is_clean_and_canonical(void **state) {
     remove(destination);
 }
 
+static void test_v3_growth_provenance_save_reopen(void **state) {
+    SceneDocument doc;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    char source[512];
+    char destination[512];
+    (void)state;
+    path_in_tmpdir(source, sizeof(source), "growth_source.txt");
+    path_in_tmpdir(destination, sizeof(destination), "growth_saved.tscene");
+    assert_int_equal(write_text_file(source, "11\n10\n"), 0);
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_load(&doc, source), SCENE_LOAD_OK);
+    doc.east_growth[0] = 0;
+    doc.east_growth[1] = 1;
+    doc.east_growth_count = 2U;
+    doc.south_growth[0] = 1;
+    doc.south_growth_count = 1U;
+    assert_int_equal(scene_document_save_as_native(
+        &doc, destination, "growth", &diagnostic), SCENE_SAVE_OK);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_load_native(
+        &reopened, destination, &diagnostic), SCENE_LOAD_OK);
+    assert_false(reopened.migration_pending);
+    assert_int_equal(reopened.east_growth_count, 2U);
+    assert_int_equal(reopened.east_growth[0], 0);
+    assert_int_equal(reopened.east_growth[1], 1);
+    assert_int_equal(reopened.south_growth_count, 1U);
+    assert_int_equal(reopened.south_growth[0], 1);
+    scene_document_destroy(&reopened);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1547,9 +1581,10 @@ int main(void) {
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
         cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
-        cmocka_unit_test(test_v1_migration_save_emits_v2_and_reopens_clean),
+        cmocka_unit_test(test_v1_migration_save_emits_v3_and_reopens_clean),
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
-        cmocka_unit_test(test_checked_in_r4_v2_fixture_is_clean_and_canonical),
+        cmocka_unit_test(test_checked_in_r4_v3_fixture_is_clean_and_canonical),
+        cmocka_unit_test(test_v3_growth_provenance_save_reopen),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

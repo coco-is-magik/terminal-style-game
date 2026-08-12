@@ -466,12 +466,14 @@ growth. All automated and interactive gates pass; R3 is Verified.
 
 ## R4 — Surface data and basic world construction
 
-**Status:** Active — interactive acceptance pending
+**Status:** Active — amended interactive acceptance pending
 
 **Active plan:** Q1 approved on 2026-08-10. Increments A–F are implemented and automated
-closeout passes; R4 awaits interactive acceptance. See
+closeout plus the manual-review follow-up pass automated gates; R4 awaits amended
+interactive acceptance. See
 `R4_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-10.md` and
-`R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md`.
+`R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` and
+`R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
 
 **Purpose:** Replace “one wall material ID is the whole cell” with explicit
 authored surfaces sufficient for fixed-height floor/ceiling editing and basic
@@ -488,6 +490,10 @@ construction.
 4. Render, select, highlight, edit, undo, and persist horizontal surfaces.
 5. Add distinct in-bounds wall place/remove commands.
 6. Add per-scene ambient editing.
+7. Persist reviewed east/south copy-growth and safe refill-shrink in native v3;
+   unavailable west/north removal remains visible but unselectable.
+8. Remove attached wall decals atomically and keep selected surface materials visible
+   under border-only highlights.
 
 **Data-first opportunities:** Surface references, defaults, orientation, tiling,
 outdoor/no-ceiling state, collision, and render flags belong in typed scene data.
@@ -512,7 +518,7 @@ adapters or format changes reveal broad coupling.
 was considered during Increment E planning and parked as a post-R4 migration
 candidate. It needs a concrete consumer decision (per-face wall materials and/or
 more than 255 materials) before promotion from `docs/TODO.md`. Increment E proceeds
-on scene v2.
+on the existing v2/v3 three-digit grids.
 
 ## R5 — Reusable asset-document foundation
 

@@ -936,6 +936,59 @@ static void test_place_remove_preserve_latent_surfaces(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_east_edge_growth_shrink_undo_redo_and_content_guard(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    CommandExecutionContext context = {0};
+    SceneCellOccupancy occupancy;
+    (void)state;
+    load_fixture(&doc);
+    doc.spawn_x = 0.5;
+    doc.spawn_y = 0.5;
+    command_history_init(&h, doc.current_state);
+
+    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 0, &context),
+                     CMD_RESULT_OK);
+    assert_int_equal(doc.map.width, 3);
+    assert_int_equal(doc.map.height, 2);
+    assert_int_equal(doc.east_growth_count, 1U);
+    assert_int_equal(doc.east_growth[0], 0);
+    assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_int_equal(read_surface(&doc, 2, 0, SCENE_SURFACE_WALL), 2);
+    assert_int_equal(read_occupancy(&doc, 2, 0), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(read_occupancy(&doc, 2, 1), SCENE_CELL_OCCUPANCY_EMPTY);
+
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(doc.map.width, 2);
+    assert_int_equal(doc.east_growth_count, 0U);
+    assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(doc.map.width, 3);
+    assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_EMPTY);
+
+    doc.lights = calloc(1U, sizeof(*doc.lights));
+    assert_non_null(doc.lights);
+    doc.light_count = doc.light_capacity = 1U;
+    doc.lights[0] = (SceneLight){.id = 7U, .x = 2.5, .y = 0.5,
+        .alpha = 255U, .intensity = 1.0, .radius = 1.0};
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 0, &context),
+                     CMD_RESULT_RESIZE_BLOCKED);
+    assert_true(scene_document_get_cell_occupancy(&doc, 1, 0, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    doc.light_count = 0U;
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 0, &context),
+                     CMD_RESULT_OK);
+    assert_int_equal(doc.map.width, 2);
+    assert_int_equal(doc.east_growth_count, 0U);
+    assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(doc.map.width, 3);
+    assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_EMPTY);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
 static void test_construction_spawn_player_and_attachment_safety(void **state) {
     SceneDocument doc;
     CommandHistory h;
@@ -981,14 +1034,16 @@ static void test_construction_spawn_player_and_attachment_safety(void **state) {
     doc.decals[0].surface = SCENE_DECAL_SURFACE_WALL;
     doc.decals[0].map_x = 1;
     doc.decals[0].map_y = 1;
-    assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, &context),
-                     CMD_RESULT_WALL_ATTACHMENT_BLOCKED);
-    doc.decals[0].surface = SCENE_DECAL_SURFACE_FLOOR;
+    doc.decals[0].id = 27U;
     assert_int_equal(command_history_remove_wall(&h, &doc, 1, 1, &context),
                      CMD_RESULT_OK);
-    doc.decals[0].surface = SCENE_DECAL_SURFACE_WALL;
+    assert_int_equal(doc.decal_count, 0U);
     assert_int_equal(command_history_undo_checked(&h, &doc, &context), CMD_RESULT_OK);
     assert_int_equal(read_occupancy(&doc, 1, 1), SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(doc.decal_count, 1U);
+    assert_int_equal(doc.decals[0].id, 27U);
+    assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
+    assert_int_equal(doc.decal_count, 0U);
 
     command_history_destroy(&h);
     scene_document_destroy(&doc);
@@ -1100,6 +1155,7 @@ int main(void) {
         cmocka_unit_test(test_wall_material_never_changes_occupancy),
         cmocka_unit_test(test_ambient_command_range_and_history),
         cmocka_unit_test(test_place_remove_preserve_latent_surfaces),
+        cmocka_unit_test(test_east_edge_growth_shrink_undo_redo_and_content_guard),
         cmocka_unit_test(test_construction_spawn_player_and_attachment_safety),
         cmocka_unit_test(test_surface_group_duplicate_and_oom_are_atomic),
         cmocka_unit_test(test_undo_restores_missing_material_and_repair_state),

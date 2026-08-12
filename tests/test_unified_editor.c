@@ -126,10 +126,10 @@ static const char *SECOND_MAP =
     "222\n";
 
 static const char *NATIVE_SCENE =
-    "scene_type = terminal_scene\nscene_version = 2\nname = \"workflow\"\n"
+    "scene_type = terminal_scene\nscene_version = 3\nname = \"workflow\"\n"
     "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 1\nambient_intensity = 0.25\n"
-    "spawn = 1.5,1.5,0\n\n"
+    "spawn = 1.5,1.5,0\neast_growth = -\nsouth_growth = -\n\n"
     "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
     "[wall_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
     "[floor_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
@@ -137,10 +137,10 @@ static const char *NATIVE_SCENE =
 
 
 static const char *NATIVE_SCENE_WITH_PICKABLE_LIGHT =
-    "scene_type = terminal_scene\nscene_version = 2\nname = \"light_pick\"\n"
+    "scene_type = terminal_scene\nscene_version = 3\nname = \"light_pick\"\n"
     "width = 5\nheight = 5\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 12\nambient_intensity = 0.2\n"
-    "spawn = 1.5,2.5,0\n\n"
+    "spawn = 1.5,2.5,0\neast_growth = -\nsouth_growth = -\n\n"
     "[occupancy]\n1 1 1 1 1\n1 0 0 0 1\n1 0 0 0 1\n"
     "1 0 0 0 1\n1 1 1 1 1\n\n"
     "[wall_materials]\n001 001 001 001 001\n001 001 001 001 001\n"
@@ -153,10 +153,10 @@ static const char *NATIVE_SCENE_WITH_PICKABLE_LIGHT =
     "color = 255,255,255,255\nintensity = 1\nradius = 3\n";
 
 static const char *NATIVE_SCENE_WITH_CONTENT =
-    "scene_type = terminal_scene\nscene_version = 2\nname = \"content\"\n"
+    "scene_type = terminal_scene\nscene_version = 3\nname = \"content\"\n"
     "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
     "next_instance_id = 3\nambient_intensity = 0.3\n"
-    "spawn = 1.5,1.5,0\n\n"
+    "spawn = 1.5,1.5,0\neast_growth = -\nsouth_growth = -\n\n"
     "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
     "[wall_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
     "[floor_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
@@ -1297,8 +1297,15 @@ static void test_load_success_resets_history_and_selection(void **state) {
     ed.inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
     ed.hover.valid = true;
     ed.mode = EDITOR_MODE_EDIT;
-    ed.history.count = 3;
-    ed.history.cursor = 2;
+    assert_int_equal(command_history_set_ambient_intensity(
+        &ed.history, &ed.document, 0.21), CMD_RESULT_OK);
+    assert_int_equal(command_history_set_ambient_intensity(
+        &ed.history, &ed.document, 0.30), CMD_RESULT_OK);
+    assert_int_equal(command_history_set_ambient_intensity(
+        &ed.history, &ed.document, 0.40), CMD_RESULT_OK);
+    assert_int_equal(command_history_undo(&ed.history, &ed.document), CMD_RESULT_OK);
+    assert_int_equal(ed.history.count, 3U);
+    assert_int_equal(ed.history.cursor, 2U);
 
     assert_int_equal(unified_editor_load_scene(&ed, path), SCENE_LOAD_OK);
     assert_int_equal(ed.selection.type, SELECTION_NONE);
@@ -1705,25 +1712,29 @@ static void test_picker_next_prev_and_confirm(void **state) {
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
     assert_true(grid_contains_text(grid, "Inspector: wall surface"));
-    assert_true(grid_contains_text(grid, "Up/Down=field"));
+    assert_true(grid_contains_text(grid, "Up/Down=choose"));
     grid_destroy(grid);
 
-    /* Next → material 2 */
+    /* Enter opens the material submenu; Down moves within it. */
     zero_input(&in);
-    in.editor_increase_pressed = true;
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.material_picker_open);
+    zero_input(&in);
+    in.editor_next_pressed = true;
     EditorInputConsumption c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.highlighted_material, 2);
 
     /* Next → material 12 */
     zero_input(&in);
-    in.editor_increase_pressed = true;
+    in.editor_next_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 12);
 
     /* Prev → material 2 */
     zero_input(&in);
-    in.editor_decrease_pressed = true;
+    in.editor_previous_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 2);
 
@@ -1733,6 +1744,7 @@ static void test_picker_next_prev_and_confirm(void **state) {
     c = unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(c.keyboard_consumed);
     assert_int_equal(wall_mat(&ed), 2);
+    assert_false(ed.material_picker_open);
     assert_true(scene_document_is_dirty(&ed.document));
 
     unified_editor_destroy(&ed);
@@ -2039,9 +2051,13 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     assert_true(ed.inspector_open);
     assert_int_equal(ed.highlighted_material, 1);
 
-    /* Apply material 2 via picker. */
+    /* Apply material 2 via Enter-opened picker. */
     zero_input(&in);
-    in.editor_increase_pressed = true;
+    in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.material_picker_open);
+    zero_input(&in);
+    in.editor_next_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 2);
     zero_input(&in);
@@ -2420,7 +2436,10 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
         &editor.document, x, y, SCENE_SURFACE_FLOOR, &material));
     assert_int_equal(material, 1);
 
-    zero_input(&input); input.editor_increase_pressed = true;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.material_picker_open);
+    zero_input(&input); input.editor_next_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
     assert_int_equal(editor.highlighted_material, 2);
     zero_input(&input); input.editor_confirm_pressed = true;
@@ -2499,14 +2518,9 @@ static void test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape(void *
     path_in_tmpdir(path, sizeof(path), "r4_d_ambient.tscene");
     open_horizontal_inspector(&editor, &camera, path, NATIVE_SCENE, -70.0);
     editor.surface_field = EDITOR_SURFACE_FIELD_AMBIENT;
-    zero_input(&input); input.editor_increase_pressed = true;
+    zero_input(&input); input.editor_confirm_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
-    assert_true(editor.document.ambient_intensity == 0.30);
-    assert_true(editor.runtime_world.ambient_intensity == 0.30);
-    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
-    assert_true(editor.document.ambient_intensity == 0.25);
-    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
-    assert_true(editor.document.ambient_intensity == 0.30);
+    assert_true(editor.light_value_editing);
 
     zero_input(&input); strcpy(input.text_input, "0.80"); input.text_input_len = 4;
     update_with(&editor, &camera, &input);
@@ -2516,7 +2530,13 @@ static void test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape(void *
     assert_false(editor.light_value_editing);
     assert_true(editor.document.ambient_intensity == 0.80);
     assert_true(editor.runtime_world.ambient_intensity == 0.80);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(editor.document.ambient_intensity == 0.25);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+    assert_true(editor.document.ambient_intensity == 0.80);
 
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
     zero_input(&input); strcpy(input.text_input, "9"); input.text_input_len = 1;
     update_with(&editor, &camera, &input);
     zero_input(&input); input.editor_confirm_pressed = true;

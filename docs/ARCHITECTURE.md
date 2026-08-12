@@ -35,6 +35,14 @@ derived compatibility view until later R4 consumers migrate. R1's broader indepe
 collision/appearance/optics and height-aware 2.5D constraints remain future work. See
 `R4_NATIVE_SCENE_V2_SPEC_2026-08-10.md`.
 
+The R4 manual-review follow-up adds canonical native v3 without changing the v2
+surface grids. V3 persists ordered east/south growth triggers; v1/v2 remain migration
+inputs. Structural resize remains command-history controlled and transactionally
+replaces document-owned authored/map/light-map arrays. Wall decal cascades are owned
+command payloads; horizontal and wall highlights share border-only presentation. See
+`R4_NATIVE_SCENE_V3_SPEC_2026-08-12.md` and
+`R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
+
 R4 Increment B adds typed surface/ambient/occupancy commands, duplicate-field rejection,
 attachment/spawn/player safety across execute/undo/redo, and controller-composed
 player/assets context. Successful occupancy and ambient history transitions rebuild the

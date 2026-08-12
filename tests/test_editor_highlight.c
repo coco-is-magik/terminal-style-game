@@ -493,7 +493,7 @@ static void test_horizontal_selected_and_hover_are_distinct(void **state) {
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render(grid, map, &camera, NULL, 0U, ceiling, (EditorHit){0});
     assert_true(count_glyph(grid, EDITOR_CEILING_HIGHLIGHT_SELECTED_GLYPH) > 0);
-    assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+    assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH), 0);
     map_destroy(map);
     grid_destroy(grid);
 }
@@ -562,6 +562,7 @@ static void test_horizontal_highlight_composes_over_authored_material(void **sta
     editor_highlight_render(
         grid, map, &camera, NULL, 0U, floor, (EditorHit){0});
     assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_true(count_glyph(grid, 'f') > 0);
     assert_memory_equal(&camera, &before_camera, sizeof(camera));
     assert_memory_equal(cells, before_cells, sizeof(cells));
 

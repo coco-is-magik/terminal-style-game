@@ -72,12 +72,15 @@ enum {
     META_NEXT_ID = 1U << 7,
     META_AMBIENT = 1U << 8,
     META_SPAWN = 1U << 9,
-    META_LEGACY_PATH = 1U << 10
+    META_LEGACY_PATH = 1U << 10,
+    META_EAST_GROWTH = 1U << 11,
+    META_SOUTH_GROWTH = 1U << 12
 };
 
 #define META_REQUIRED (META_SCENE_TYPE | META_VERSION | META_NAME | META_WIDTH | \
                        META_HEIGHT | META_ORIGIN_X | META_ORIGIN_Y | META_NEXT_ID | \
                        META_AMBIENT | META_SPAWN)
+#define META_V3_REQUIRED (META_REQUIRED | META_EAST_GROWTH | META_SOUTH_GROWTH)
 
 static void set_error(SceneDiagnostic *diagnostic, SceneDiagnosticCode code,
                       const char *path, const char *section, const char *field,
@@ -355,7 +358,7 @@ static bool passable_spawn(const SceneFormatCandidate *candidate) {
     x = (int)candidate->spawn_x;
     y = (int)candidate->spawn_y;
     index = (size_t)y * (size_t)candidate->map.width + (size_t)x;
-    if (candidate->source_version == SCENE_VERSION_V2 &&
+    if (candidate->source_version >= SCENE_VERSION_V2 &&
         candidate->authored_cells && index < candidate->authored_cell_count) {
         return candidate->authored_cells[index].occupancy ==
                SCENE_CELL_OCCUPANCY_EMPTY;
@@ -455,7 +458,7 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                           "cells", NULL, "material ID outside 000..255", 0U, 0U);
         }
     }
-    if (candidate->source_version == SCENE_VERSION_V2) {
+    if (candidate->source_version >= SCENE_VERSION_V2) {
         if (!candidate->authored_cells || candidate->authored_cell_count != count) {
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
                           NULL, NULL, "invalid v2 authored-cell count", 0U, 0U);
@@ -470,6 +473,22 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                               "authored_cells", NULL,
                               "invalid v2 occupancy or material reference", 0U, 0U);
             }
+        }
+    }
+    if (candidate->source_version == SCENE_VERSION_V3) {
+        for (i = 0U; i < candidate->east_growth_count; i++) {
+            if (candidate->east_growth[i] < 0 ||
+                candidate->east_growth[i] >= candidate->map.height)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                              NULL, "east_growth", "trigger row is out of bounds",
+                              0U, 0U);
+        }
+        for (i = 0U; i < candidate->south_growth_count; i++) {
+            if (candidate->south_growth[i] < 0 ||
+                candidate->south_growth[i] >= candidate->map.width)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                              NULL, "south_growth", "trigger column is out of bounds",
+                              0U, 0U);
         }
     }
     if (candidate->ambient_intensity != candidate->ambient_intensity ||
@@ -596,7 +615,7 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
      * or ambient effect. */
     candidate->map.light_map = calloc(count, sizeof(*candidate->map.light_map));
     if (!candidate->map.light_map) goto allocation_failed;
-    if (candidate->source_version == SCENE_VERSION_V2) {
+    if (candidate->source_version >= SCENE_VERSION_V2) {
         candidate->authored_cells = calloc(count, sizeof(*candidate->authored_cells));
         if (!candidate->authored_cells) goto allocation_failed;
         candidate->authored_cell_count = count;
@@ -628,7 +647,31 @@ static unsigned metadata_bit(const char *key) {
     if (strcmp(key, "ambient_intensity") == 0) return META_AMBIENT;
     if (strcmp(key, "spawn") == 0) return META_SPAWN;
     if (strcmp(key, "legacy_source_path") == 0) return META_LEGACY_PATH;
+    if (strcmp(key, "east_growth") == 0) return META_EAST_GROWTH;
+    if (strcmp(key, "south_growth") == 0) return META_SOUTH_GROWTH;
     return 0U;
+}
+
+static bool parse_growth_list(char *value, int *items, size_t capacity,
+                              size_t *out_count) {
+    char *cursor = value;
+    size_t count = 0U;
+    if (strcmp(value, "-") == 0) { *out_count = 0U; return true; }
+    while (*cursor) {
+        char *end;
+        long parsed;
+        if (count >= capacity) return false;
+        errno = 0;
+        parsed = strtol(cursor, &end, 10);
+        if (errno || end == cursor || parsed < 0 || parsed > INT_MAX) return false;
+        items[count++] = (int)parsed;
+        if (*end == '\0') break;
+        if (*end != ',') return false;
+        cursor = end + 1;
+        if (*cursor == '\0') return false;
+    }
+    *out_count = count;
+    return true;
 }
 
 static unsigned metadata_bit_from_property(const char *text) {
@@ -663,7 +706,8 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
             break;
         case META_VERSION:
             if (!parse_uint_range(value, UINT_MAX, &parsed) ||
-                (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2))
+                (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
+                 parsed != SCENE_VERSION_V3))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -721,6 +765,18 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
                 return SCENE_FORMAT_OUT_OF_MEMORY;
             }
             memcpy(candidate->legacy_source_path, decoded, strlen(decoded) + 1U);
+            break;
+        case META_EAST_GROWTH:
+            if (!parse_growth_list(value, candidate->east_growth, SCENE_MAX_WIDTH,
+                                   &candidate->east_growth_count))
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path, NULL,
+                              "east_growth", "invalid east growth list", line, 0U);
+            break;
+        case META_SOUTH_GROWTH:
+            if (!parse_growth_list(value, candidate->south_growth, SCENE_MAX_HEIGHT,
+                                   &candidate->south_growth_count))
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path, NULL,
+                              "south_growth", "invalid south growth list", line, 0U);
             break;
         default: return SCENE_FORMAT_REJECTED;
     }
@@ -1049,11 +1105,16 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             if (result != SCENE_FORMAT_OK) goto done;
         }
     }
-    if ((metadata_seen & META_REQUIRED) != META_REQUIRED ||
+    if ((metadata_seen & (temporary.source_version == SCENE_VERSION_V3
+                              ? META_V3_REQUIRED : META_REQUIRED)) !=
+            (temporary.source_version == SCENE_VERSION_V3
+                 ? META_V3_REQUIRED : META_REQUIRED) ||
+        (temporary.source_version < SCENE_VERSION_V3 &&
+         (metadata_seen & (META_EAST_GROWTH | META_SOUTH_GROWTH))) ||
         (temporary.source_version == SCENE_VERSION_V1 &&
          (cells_sections != 1U || occupancy_sections || wall_sections ||
           floor_sections || ceiling_sections)) ||
-        (temporary.source_version == SCENE_VERSION_V2 &&
+        (temporary.source_version >= SCENE_VERSION_V2 &&
          (cells_sections || occupancy_sections != 1U || wall_sections != 1U ||
           floor_sections != 1U || ceiling_sections != 1U))) {
         result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path, NULL,
@@ -1155,7 +1216,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
         if (result != SCENE_FORMAT_OK) goto done;
         if ((temporary.source_version == SCENE_VERSION_V1 &&
              rows[0] != (size_t)temporary.map.height) ||
-            (temporary.source_version == SCENE_VERSION_V2 &&
+            (temporary.source_version >= SCENE_VERSION_V2 &&
              (rows[1] != (size_t)temporary.map.height ||
               rows[2] != (size_t)temporary.map.height ||
               rows[3] != (size_t)temporary.map.height ||
@@ -1165,7 +1226,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             goto done;
         }
     }
-    if (temporary.source_version == SCENE_VERSION_V2) {
+    if (temporary.source_version >= SCENE_VERSION_V2) {
         size_t i;
         for (i = 0U; i < temporary.authored_cell_count; i++) {
             const SceneAuthoredCell *cell = &temporary.authored_cells[i];
@@ -1270,6 +1331,7 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     locale_t c_locale;
     locale_t previous;
     SceneFormatResult result;
+    unsigned int output_version;
     if (!candidate || !out) return SCENE_FORMAT_INVALID_ARGUMENT;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     result = scene_format_validate(candidate, NULL, diagnostic);
@@ -1281,14 +1343,15 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         return SCENE_FORMAT_OUT_OF_MEMORY;
     }
     previous = uselocale(c_locale);
+    output_version = candidate->source_version == 0U
+        ? SCENE_VERSION_V1 : candidate->source_version;
     for (i = 0U; i < candidate->light_count; i++) lights[i] = &candidate->lights[i];
     for (i = 0U; i < candidate->decal_count; i++) decals[i] = &candidate->decals[i];
     qsort(lights, candidate->light_count, sizeof(lights[0]), compare_light_ptrs);
     qsort(decals, candidate->decal_count, sizeof(decals[0]), compare_decal_ptrs);
 #define APPEND(expression) do { if (!(expression)) goto allocation_failed; } while (0)
     APPEND(writer_printf(&writer, "scene_type = terminal_scene\nscene_version = %u\nname = ",
-                         candidate->source_version == SCENE_VERSION_V2
-                             ? SCENE_VERSION_V2 : SCENE_VERSION_V1));
+                         output_version));
     APPEND(writer_quoted(&writer, candidate->name));
     APPEND(writer_printf(&writer, "\nwidth = %d\nheight = %d\norigin_x = 0\norigin_y = 0\n"
                         "next_instance_id = %" PRIu64 "\nambient_intensity = ",
@@ -1299,12 +1362,23 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     APPEND(writer_double(&writer, candidate->spawn_x)); APPEND(writer_append(&writer, ","));
     APPEND(writer_double(&writer, candidate->spawn_y)); APPEND(writer_append(&writer, ","));
     APPEND(writer_double(&writer, candidate->spawn_angle)); APPEND(writer_append(&writer, "\n"));
+    if (output_version == SCENE_VERSION_V3) {
+        APPEND(writer_append(&writer, "east_growth = "));
+        if (candidate->east_growth_count == 0U) APPEND(writer_append(&writer, "-"));
+        for (i = 0U; i < candidate->east_growth_count; i++)
+            APPEND(writer_printf(&writer, "%s%d", i ? "," : "", candidate->east_growth[i]));
+        APPEND(writer_append(&writer, "\nsouth_growth = "));
+        if (candidate->south_growth_count == 0U) APPEND(writer_append(&writer, "-"));
+        for (i = 0U; i < candidate->south_growth_count; i++)
+            APPEND(writer_printf(&writer, "%s%d", i ? "," : "", candidate->south_growth[i]));
+        APPEND(writer_append(&writer, "\n"));
+    }
     if (candidate->legacy_source_path) {
         APPEND(writer_append(&writer, "legacy_source_path = "));
         APPEND(writer_quoted(&writer, candidate->legacy_source_path));
         APPEND(writer_append(&writer, "\n"));
     }
-    if (candidate->source_version == SCENE_VERSION_V2) {
+    if (output_version >= SCENE_VERSION_V2) {
         const SectionKind sections[] = {
             SECTION_OCCUPANCY, SECTION_WALL_MATERIALS,
             SECTION_FLOOR_MATERIALS, SECTION_CEILING_MATERIALS

@@ -185,11 +185,7 @@ EditorHit editor_pick_horizontal_surface_selection(
     double max_distance
 ) {
     EditorHit result = existing_hit;
-    double pitch;
-    double denominator;
     double distance;
-    double world_x;
-    double world_y;
     int map_x;
     int map_y;
     SelectionType type;
@@ -199,26 +195,58 @@ EditorHit editor_pick_horizontal_surface_selection(
         !isfinite(camera->transform.pos.y) ||
         !isfinite(camera->transform.angle) || !isfinite(camera->pitch) ||
         !isfinite(max_distance) || max_distance <= 0.0) return result;
-    pitch = camera->pitch;
-    if (fabs(pitch) < 0.001) return result;
-    denominator = 2.0 * fabs(pitch);
-    distance = (double)viewport_rows / denominator;
-    if (!isfinite(distance) || distance <= 0.0 || distance > max_distance)
-        return result;
+    type = camera->pitch < 0.0 ? SELECTION_FLOOR : SELECTION_CEILING;
+    if (!editor_project_horizontal_cell(camera, 1, viewport_rows, 0,
+            viewport_rows / 2, type, &distance, &map_x, &map_y) ||
+        distance > max_distance) return result;
     if (existing_hit.valid && (!isfinite(existing_hit.distance) ||
         existing_hit.distance <= distance)) return result;
 
-    world_x = camera->transform.pos.x + distance * cos(camera->transform.angle);
-    world_y = camera->transform.pos.y + distance * sin(camera->transform.angle);
-    if (!isfinite(world_x) || !isfinite(world_y)) return result;
-    map_x = (int)floor(world_x);
-    map_y = (int)floor(world_y);
     if (!map_in_bounds((Map *)map, map_x, map_y)) return result;
-    type = pitch < 0.0 ? SELECTION_FLOOR : SELECTION_CEILING;
     result.valid = true;
     result.distance = distance;
     result.target.type = type;
     result.target.value.horizontal.map_x = map_x;
     result.target.value.horizontal.map_y = map_y;
     return result;
+}
+
+bool editor_project_horizontal_cell(
+    const Camera *camera, int viewport_width, int viewport_height,
+    int screen_x, int screen_y, SelectionType type,
+    double *out_distance, int *out_map_x, int *out_map_y
+) {
+    double camera_x;
+    double ray_angle;
+    double denominator;
+    double current_distance;
+    double correction;
+    double distance;
+    double world_x;
+    double world_y;
+    if (!camera || !out_distance || !out_map_x || !out_map_y ||
+        viewport_width <= 0 || viewport_height <= 0 || screen_x < 0 ||
+        screen_x >= viewport_width || screen_y < 0 || screen_y >= viewport_height ||
+        (type != SELECTION_FLOOR && type != SELECTION_CEILING) ||
+        !isfinite(camera->transform.pos.x) || !isfinite(camera->transform.pos.y) ||
+        !isfinite(camera->transform.angle) || !isfinite(camera->fov) ||
+        !isfinite(camera->pitch) || camera->fov <= 0.0) return false;
+    denominator = type == SELECTION_FLOOR
+        ? 2.0 * (screen_y - camera->pitch) - viewport_height
+        : viewport_height - 2.0 * (screen_y - camera->pitch);
+    if (denominator <= 0.001) return false;
+    camera_x = 2.0 * (screen_x + 0.5) / viewport_width - 1.0;
+    ray_angle = camera->transform.angle + atan(camera_x * tan(camera->fov / 2.0));
+    correction = cos(ray_angle - camera->transform.angle);
+    if (!isfinite(correction) || correction <= 0.0) return false;
+    current_distance = viewport_height / denominator;
+    distance = current_distance / correction;
+    world_x = camera->transform.pos.x + distance * cos(ray_angle);
+    world_y = camera->transform.pos.y + distance * sin(ray_angle);
+    if (!isfinite(distance) || distance <= 0.0 ||
+        !isfinite(world_x) || !isfinite(world_y)) return false;
+    *out_distance = distance;
+    *out_map_x = (int)floor(world_x);
+    *out_map_y = (int)floor(world_y);
+    return true;
 }

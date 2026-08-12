@@ -41,14 +41,14 @@ bool editor_domain_inspector_presentation(
         kind == EDITOR_INSPECTOR_CEILING_SURFACE) {
         *out_presentation = (EditorInspectorPresentation){
             kind == EDITOR_INSPECTOR_FLOOR_SURFACE ? "floor surface" : "ceiling surface",
-            "Up/Down=field  Left/Right=edit  Enter=apply",
+            "Up/Down=choose  Enter=open/apply  Esc=back",
             "Fixed-height surface; construction places one wall cell",
             EDITOR_SURFACE_FIELD_COUNT};
         return true;
     }
     if (kind == EDITOR_INSPECTOR_WALL_MATERIAL) {
         *out_presentation = (EditorInspectorPresentation){
-            "wall surface", "Up/Down=field  Left/Right=edit  Enter=apply",
+            "wall surface", "Up/Down=choose  Enter=open/apply  Esc=back",
             "One material applies to the entire wall cell",
             EDITOR_SURFACE_FIELD_COUNT};
         return true;

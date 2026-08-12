@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -84,6 +85,8 @@ int main(int argc, char **argv) {
     uint64_t surface_checksum;
     double null_average;
     double surface_average;
+    double occluded_decal_average;
+    uint64_t occluded_decal_checksum;
     bool deterministic = true;
     int result = 1;
 
@@ -112,6 +115,7 @@ int main(int argc, char **argv) {
             bool edge = x == 0 || y == 0 ||
                 x == map->width - 1 || y == map->height - 1;
             if (edge) map_set(map, x, y, 1);
+            if (x == 12) map_set(map, x, y, 1);
             map->light_map[index] = 0.75;
             cells[index].floor_material = 1U;
             cells[index].ceiling_material = 2U;
@@ -128,6 +132,27 @@ int main(int argc, char **argv) {
     surface_average = measure(grid, map, &camera, &assets, &world, &surfaces,
                               iterations, surface_checksum, &deterministic);
     if (null_average < 0.0 || surface_average < 0.0) goto cleanup;
+    {
+        Decal decal = {0};
+        decal.surface = DECAL_SURFACE_FLOOR;
+        decal.x = 15.5; decal.y = 6.5; decal.z = 0.0;
+        decal.width = 1.0; decal.height = 1.0;
+        decal.pattern_cols = 1; decal.pattern_rows = 1;
+        decal.pattern = calloc(1U, sizeof(*decal.pattern));
+        if (!decal.pattern) goto cleanup;
+        decal.pattern[0] = (PatternCell){'D', 2};
+        if (world_add_decal(&world, decal) != WORLD_INSERT_OK) {
+            free(decal.pattern);
+            goto cleanup;
+        }
+    }
+    raycast_render(grid, map, &camera, &assets, &world, &surfaces);
+    occluded_decal_checksum = grid_checksum(grid);
+    if (occluded_decal_checksum != surface_checksum) goto cleanup;
+    occluded_decal_average = measure(
+        grid, map, &camera, &assets, &world, &surfaces, iterations,
+        occluded_decal_checksum, &deterministic);
+    if (occluded_decal_average < 0.0) goto cleanup;
 
     printf("{\n");
     printf("  \"mode\": \"%s\",\n", stability ? "stability" : "benchmark");
@@ -137,11 +162,16 @@ int main(int argc, char **argv) {
     printf("  \"authored_view_avg_ms\": %.6f,\n", surface_average);
     printf("  \"authored_overhead_ms\": %.6f,\n",
            surface_average - null_average);
+    printf("  \"occluded_decal_avg_ms\": %.6f,\n", occluded_decal_average);
+    printf("  \"occluded_decal_overhead_ms\": %.6f,\n",
+           occluded_decal_average - surface_average);
     printf("  \"pass_budget_ms\": %.3f,\n", SURFACE_RENDER_PASS_MS);
     printf("  \"null_checksum\": %llu,\n",
            (unsigned long long)null_checksum);
     printf("  \"authored_checksum\": %llu,\n",
            (unsigned long long)surface_checksum);
+    printf("  \"occluded_decal_checksum\": %llu,\n",
+           (unsigned long long)occluded_decal_checksum);
     printf("  \"deterministic\": %s,\n", deterministic ? "true" : "false");
     printf("  \"result\": \"%s\"\n",
            deterministic && surface_average <= SURFACE_RENDER_PASS_MS

@@ -21,6 +21,7 @@
 #include "scene_format.h"
 #include "map_loader.h"
 #include "config.h"
+#include "checked_size.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -68,6 +69,8 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->repair_required = false;
     document->imported_unsaved = false;
     document->migration_pending = false;
+    document->east_growth_count = 0U;
+    document->south_growth_count = 0U;
 }
 
 static void scene_authored_defaults(SceneDocument *document) {
@@ -388,6 +391,12 @@ static SceneLoadResult scene_document_commit_candidate(
     candidate->decals = NULL;
     candidate->decal_count = 0U;
     document->next_instance_id = candidate->next_instance_id;
+    memcpy(document->east_growth, candidate->east_growth,
+           candidate->east_growth_count * sizeof(*document->east_growth));
+    document->east_growth_count = candidate->east_growth_count;
+    memcpy(document->south_growth, candidate->south_growth,
+           candidate->south_growth_count * sizeof(*document->south_growth));
+    document->south_growth_count = candidate->south_growth_count;
     document->legacy_source_path = candidate->legacy_source_path;
     candidate->legacy_source_path = NULL;
     document->path = native_path;
@@ -617,6 +626,7 @@ SceneLoadResult scene_document_load_native_with_assets(
         }
         migration_pending = true;
     }
+    if (candidate.source_version == SCENE_VERSION_V2) migration_pending = true;
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -892,7 +902,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
 
     scene_format_candidate_init(&candidate);
     candidate.map = document->map;
-    candidate.source_version = SCENE_VERSION_V2;
+    candidate.source_version = SCENE_VERSION_V3;
     candidate.authored_cells = document->authored_cells;
     candidate.authored_cell_count = document->authored_cell_count;
     memcpy(candidate.name, name, strlen(name) + 1U);
@@ -905,6 +915,12 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.decals = document->decals;
     candidate.decal_count = document->decal_count;
     candidate.next_instance_id = document->next_instance_id;
+    memcpy(candidate.east_growth, document->east_growth,
+           document->east_growth_count * sizeof(*candidate.east_growth));
+    candidate.east_growth_count = document->east_growth_count;
+    memcpy(candidate.south_growth, document->south_growth,
+           document->south_growth_count * sizeof(*candidate.south_growth));
+    candidate.south_growth_count = document->south_growth_count;
     candidate.legacy_source_path = document->legacy_source_path;
     format_result = scene_format_serialize(&candidate, &buffer, diagnostic);
     if (format_result != SCENE_FORMAT_OK) {
@@ -1407,6 +1423,131 @@ bool scene_document_internal_set_cell_occupancy(
             occupancy == SCENE_CELL_OCCUPANCY_WALL ? cell->wall_material : 0);
     return true;
 }
+
+bool scene_document_internal_remove_decal(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+) {
+    if (!document || index >= document->decal_count ||
+        document->decals[index].id != expected_id) return false;
+    if (index + 1U < document->decal_count) {
+        memmove(&document->decals[index], &document->decals[index + 1U],
+                (document->decal_count - index - 1U) * sizeof(*document->decals));
+    }
+    document->decal_count--;
+    return true;
+}
+
+bool scene_document_internal_insert_decal(
+    SceneDocument *document, size_t index, const SceneDecalInstance *decal
+) {
+    if (!document || !decal || index > document->decal_count ||
+        document->decal_count >= document->decal_capacity) return false;
+    if (index < document->decal_count) {
+        memmove(&document->decals[index + 1U], &document->decals[index],
+                (document->decal_count - index) * sizeof(*document->decals));
+    }
+    document->decals[index] = *decal;
+    document->decal_count++;
+    return true;
+}
+
+static bool resize_ring_has_content(const SceneDocument *document,
+                                    bool east, int new_dimension) {
+    size_t i;
+    for (i = 0U; i < document->light_count; i++)
+        if ((east ? document->lights[i].x : document->lights[i].y) >= new_dimension)
+            return true;
+    for (i = 0U; i < document->decal_count; i++) {
+        const SceneDecalInstance *decal = &document->decals[i];
+        if (decal->surface == SCENE_DECAL_SURFACE_WALL) {
+            if ((east ? decal->map_x : decal->map_y) >= new_dimension) return true;
+        } else if ((east ? decal->x : decal->y) >= new_dimension) return true;
+    }
+    return false;
+}
+
+static SceneResizeResult resize_document(SceneDocument *document, bool east,
+                                         bool grow, int trigger) {
+    int old_width;
+    int old_height;
+    int new_width;
+    int new_height;
+    size_t new_count;
+    SceneAuthoredCell *cells;
+    MapCell *map_cells;
+    double *light_map;
+    int x;
+    int y;
+    int *growth;
+    size_t *growth_count;
+    size_t growth_capacity;
+    if (!document || !document->authored_cells || !document->map.cells ||
+        !document->map.light_map) return SCENE_RESIZE_INVALID;
+    old_width = document->map.width;
+    old_height = document->map.height;
+    growth = east ? document->east_growth : document->south_growth;
+    growth_count = east ? &document->east_growth_count : &document->south_growth_count;
+    growth_capacity = east ? SCENE_MAX_WIDTH : SCENE_MAX_HEIGHT;
+    if (trigger < 0 || trigger >= (east ? old_height : old_width))
+        return SCENE_RESIZE_INVALID;
+    if (grow) {
+        if ((east && old_width >= SCENE_MAX_WIDTH) ||
+            (!east && old_height >= SCENE_MAX_HEIGHT) ||
+            *growth_count >= growth_capacity) return SCENE_RESIZE_LIMIT;
+    } else {
+        if (*growth_count == 0U || growth[*growth_count - 1U] != trigger ||
+            (east ? old_width : old_height) <= 1)
+            return SCENE_RESIZE_INVALID;
+        if (resize_ring_has_content(document, east,
+                (east ? old_width : old_height) - 1))
+            return SCENE_RESIZE_CONTENT_BLOCKED;
+    }
+    new_width = old_width + (east ? (grow ? 1 : -1) : 0);
+    new_height = old_height + (!east ? (grow ? 1 : -1) : 0);
+    if (!checked_size_2d(new_width, new_height, &new_count))
+        return SCENE_RESIZE_INVALID;
+    cells = calloc(new_count, sizeof(*cells));
+    map_cells = calloc(new_count, sizeof(*map_cells));
+    light_map = calloc(new_count, sizeof(*light_map));
+    if (!cells || !map_cells || !light_map) {
+        free(cells); free(map_cells); free(light_map);
+        return SCENE_RESIZE_OUT_OF_MEMORY;
+    }
+    for (y = 0; y < new_height; y++) {
+        for (x = 0; x < new_width; x++) {
+            int source_x = x;
+            int source_y = y;
+            size_t source;
+            size_t target = (size_t)y * (size_t)new_width + (size_t)x;
+            if (grow && east && x == new_width - 1) source_x = old_width - 1;
+            if (grow && !east && y == new_height - 1) source_y = old_height - 1;
+            source = (size_t)source_y * (size_t)old_width + (size_t)source_x;
+            cells[target] = document->authored_cells[source];
+            map_cells[target] = document->map.cells[source];
+            light_map[target] = document->map.light_map[source];
+        }
+    }
+    free(document->authored_cells);
+    free(document->map.cells);
+    free(document->map.light_map);
+    document->authored_cells = cells;
+    document->authored_cell_count = new_count;
+    document->map.cells = map_cells;
+    document->map.light_map = light_map;
+    document->map.width = new_width;
+    document->map.height = new_height;
+    if (grow) growth[(*growth_count)++] = trigger;
+    else (*growth_count)--;
+    return SCENE_RESIZE_OK;
+}
+
+SceneResizeResult scene_document_internal_resize_east(
+    SceneDocument *document, bool grow, int trigger
+) { return resize_document(document, true, grow, trigger); }
+
+SceneResizeResult scene_document_internal_resize_south(
+    SceneDocument *document, bool grow, int trigger
+) { return resize_document(document, false, grow, trigger); }
 
 bool scene_document_internal_set_ambient_intensity(
     SceneDocument *document,

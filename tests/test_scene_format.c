@@ -546,6 +546,53 @@ static void test_v2_rejects_missing_duplicate_and_malformed_grids(void **state) 
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v3_growth_metadata_round_trips_and_is_versioned(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    char *v3;
+    char *bad;
+    (void)state;
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    v3 = replace_once(CANONICAL_V2_SCENE, "scene_version = 2\n",
+        "scene_version = 3\n");
+    bad = replace_once(v3, "spawn = 1.5,1.5,0\n",
+        "spawn = 1.5,1.5,0\neast_growth = 1,2\nsouth_growth = 3\n");
+    free(v3);
+    assert_int_equal(scene_format_parse(bad, strlen(bad), "v3.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    free(bad);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V3);
+    assert_int_equal(candidate.east_growth_count, 2U);
+    assert_int_equal(candidate.east_growth[1], 2);
+    assert_int_equal(candidate.south_growth_count, 1U);
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "east_growth = 1,2\n"));
+    assert_non_null(strstr(buffer.data, "south_growth = 3\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v3.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.east_growth_count, 2U);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&candidate);
+
+    scene_format_candidate_init(&candidate);
+    v3 = replace_once(CANONICAL_V2_SCENE, "scene_version = 2\n",
+        "scene_version = 3\n");
+    diagnostic = parse_rejected(v3, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING);
+    free(v3);
+    bad = replace_once(CANONICAL_V2_SCENE, "spawn = 1.5,1.5,0\n",
+        "spawn = 1.5,1.5,0\neast_growth = -\nsouth_growth = -\n");
+    diagnostic = parse_rejected(bad, &candidate);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING);
+    free(bad);
+    scene_format_candidate_destroy(&candidate);
+}
+
 static void test_v1_to_v2_migration_rejects_invalid_requests_transactionally(void **state) {
     SceneFormatCandidate candidate;
     SceneDiagnostic diagnostic;
@@ -603,7 +650,8 @@ int main(void) {
         cmocka_unit_test(test_file_line_and_nul_limits),
         cmocka_unit_test(test_v1_to_v2_migration_maps_authored_cells_exactly),
         cmocka_unit_test(test_v1_to_v2_migration_rejects_invalid_requests_transactionally),
-        cmocka_unit_test(test_v2_rejects_missing_duplicate_and_malformed_grids)
+        cmocka_unit_test(test_v2_rejects_missing_duplicate_and_malformed_grids),
+        cmocka_unit_test(test_v3_growth_metadata_round_trips_and_is_versioned)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
