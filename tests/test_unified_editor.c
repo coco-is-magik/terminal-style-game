@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
@@ -89,6 +90,8 @@ static void rm_rf_tmpdir(void) {
     path_in_tmpdir(path, sizeof(path), "r2_saved.tscene");
     remove(path);
     path_in_tmpdir(path, sizeof(path), "native_with_content.tscene");
+    remove(path);
+    path_in_tmpdir(path, sizeof(path), "decal_shortlist.tscene");
     remove(path);
     path_in_tmpdir(path, sizeof(path), "light_pick.tscene");
     remove(path);
@@ -176,6 +179,25 @@ static const char *NATIVE_SCENE_WITH_CONTENT =
     "depth = 0.1\n"
     "rotation = 0\n";
 
+static const char *NATIVE_SCENE_WITH_DECAL_SHORTLIST =
+    "scene_type = terminal_scene\nscene_version = 3\nname = \"decals\"\n"
+    "width = 3\nheight = 3\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 5\nambient_intensity = 0.3\n"
+    "spawn = 1.5,1.5,0\neast_growth = -\nsouth_growth = -\n\n"
+    "[occupancy]\n1 1 1\n1 0 1\n1 1 1\n\n"
+    "[wall_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[floor_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[ceiling_materials]\n001 001 001\n001 001 001\n001 001 001\n\n"
+    "[decal_instance 2]\nasset_kind = decal_pattern\nasset_id = 50000\n"
+    "surface = floor\nposition = 1.5,1.5,0\nsize = 1,1\n"
+    "glyph_step = 0,0\ndepth = 0\nrotation = 0\n\n"
+    "[decal_instance 3]\nasset_kind = decal_pattern\nasset_id = 6\n"
+    "surface = floor\nposition = 1.5,1.5,0\nsize = 1,1\n"
+    "glyph_step = 0,0\ndepth = 0\nrotation = 0\n\n"
+    "[decal_instance 4]\nasset_kind = decal_pattern\nasset_id = 6\n"
+    "surface = ceiling\nposition = 1.5,1.5,0\nsize = 1,1\n"
+    "glyph_step = 0,0\ndepth = 0\nrotation = 0\n";
+
 static AssetRegistry g_assets;
 
 static void mark_material_loaded(int id, const char *name) {
@@ -189,7 +211,7 @@ static int group_setup(void **state) {
     (void)state;
     config_init_defaults();
     if (make_tmpdir() != 0) return -1;
-    asset_registry_init(&g_assets);
+    assert_true(asset_registry_init(&g_assets));
     /* Loaded materials: 1, 2, and 12 (unsavable live ID). */
     mark_material_loaded(1, "mat1");
     mark_material_loaded(2, "mat2");
@@ -509,7 +531,7 @@ static void test_r2_typed_workflows_transactional(void **state) {
     assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
     assert_int_equal(unified_editor_open_native(&ed, native), SCENE_LOAD_OK);
     assert_string_equal(ed.document.name, "workflow");
-    assert_false(scene_document_is_dirty(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
     unified_editor_destroy(&ed);
 }
 
@@ -741,7 +763,7 @@ static void test_native_ctrl_s_menu_saves_existing_destination(void **state) {
     assert_false(scene_document_is_dirty(&ed.document));
     assert_string_equal(scene_document_get_path(&ed.document), native);
     assert_int_equal(read_text_file(native, contents, sizeof(contents)), 0);
-    assert_non_null(strstr(contents, "012"));
+    assert_non_null(strstr(contents, "000C"));
     unified_editor_destroy(&ed);
     remove(native);
 }
@@ -835,6 +857,8 @@ static void test_light_inspector_edits_through_history_and_runtime(void **state)
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
     camera_init(&cam, 1.5, 2.5, 0.0, PI / 2.0);
     zero_input(&in);
     unified_editor_update(&ed, &in, &cam, 0.016);
@@ -1708,6 +1732,8 @@ static void test_picker_next_prev_and_confirm(void **state) {
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_true(ed.inspector_open);
     assert_int_equal(ed.highlighted_material, 1);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
     grid = grid_create(260, 30);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
@@ -1726,15 +1752,13 @@ static void test_picker_next_prev_and_confirm(void **state) {
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.highlighted_material, 2);
 
-    /* Next → material 12 */
-    zero_input(&in);
-    in.editor_next_pressed = true;
-    unified_editor_update(&ed, &in, &cam, 0.016);
-    assert_int_equal(ed.highlighted_material, 12);
-
-    /* Prev → material 2 */
+    /* Prev wraps to material 1. */
     zero_input(&in);
     in.editor_previous_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.highlighted_material, 1);
+    zero_input(&in);
+    in.editor_next_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(ed.highlighted_material, 2);
 
@@ -1748,6 +1772,158 @@ static void test_picker_next_prev_and_confirm(void **state) {
     assert_true(scene_document_is_dirty(&ed.document));
 
     unified_editor_destroy(&ed);
+}
+
+static void test_material_shortlist_prefix_search(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "i2_search.txt"), 0);
+    select_east_wall(&ed);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_material_shortlist_count(&ed), 2U);
+    assert_int_equal(unified_editor_material_shortlist_at(&ed, 0U), 1);
+    assert_int_equal(unified_editor_material_shortlist_at(&ed, 1U), 2);
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    ed.material_picker_open = true;
+    zero_input(&in);
+    snprintf(in.text_input, sizeof(in.text_input), "mat2");
+    in.text_input_len = 4;
+    update_with(&ed, &cam, &in);
+    assert_string_equal(ed.material_search_text, "mat2");
+    assert_int_equal(ed.material_search_result_count, 1U);
+    assert_int_equal(ed.highlighted_material, 2);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Search: mat2_"));
+    assert_true(grid_contains_text(grid, "mat2"));
+    grid_destroy(grid);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(wall_mat(&ed), 2);
+    unified_editor_destroy(&ed);
+}
+
+static void test_material_picker_renders_only_four_rows(void **state) {
+    UnifiedEditorState ed;
+    Grid *grid;
+    bool has_mat1;
+    bool has_mat2;
+    bool has_row3;
+    bool has_row4;
+    bool has_row5;
+    int id;
+    (void)state;
+    for (id = 3; id <= 5; id++) {
+        g_assets.materials[id].id = id;
+        snprintf(g_assets.material_names[id], MATERIAL_NAME_CAPACITY, "row%d", id);
+    }
+    assert_int_equal(load_editor(&ed, "i2_rows.txt"), 0);
+    select_east_wall(&ed);
+    for (id = 2; id <= 5; id++) {
+        assert_int_equal(unified_editor_set_wall_material(&ed, id), CMD_RESULT_OK);
+    }
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
+    ed.material_picker_open = true;
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    has_mat1 = grid_contains_text(grid, "mat1");
+    has_mat2 = grid_contains_text(grid, "mat2");
+    has_row3 = grid_contains_text(grid, "row3");
+    has_row4 = grid_contains_text(grid, "row4");
+    has_row5 = grid_contains_text(grid, "row5");
+    grid_destroy(grid);
+    unified_editor_destroy(&ed);
+    for (id = 3; id <= 5; id++) {
+        memset(&g_assets.materials[id], 0, sizeof(g_assets.materials[id]));
+        g_assets.material_names[id][0] = '\0';
+    }
+    assert_true(has_mat1);
+    assert_true(has_mat2);
+    assert_true(has_row3);
+    assert_true(has_row4);
+    assert_false(has_row5);
+}
+
+static void test_material_search_empty_creates_saves_and_applies(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    char path[512];
+    char palette_dir[512];
+    char material_dir[512];
+    char decal_dir[512];
+    char asset_file[512];
+    SDL_Color color = {20U, 30U, 40U, 255U};
+    (void)state;
+    asset_registry_set_palette(&g_assets, 1, color, color, color);
+    assert_int_equal(load_editor(&ed, "i2_create.txt"), 0);
+    path_in_tmpdir(palette_dir, sizeof(palette_dir), "palettes");
+    path_in_tmpdir(material_dir, sizeof(material_dir), "materials");
+    path_in_tmpdir(decal_dir, sizeof(decal_dir), "decals");
+    assert_int_equal(mkdir(palette_dir, 0700), 0);
+    assert_int_equal(mkdir(material_dir, 0700), 0);
+    assert_int_equal(mkdir(decal_dir, 0700), 0);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/1.txt", palette_dir) > 0);
+    assert_int_equal(write_text_file(
+        asset_file, "near=20,30,40,255\nmid=20,30,40,255\nfar=20,30,40,255\n"), 0);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/1.txt", material_dir) > 0);
+    assert_int_equal(write_text_file(asset_file, "palette=1\nglyphs=####\n"), 0);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/2.txt", material_dir) > 0);
+    assert_int_equal(write_text_file(asset_file, "palette=1\nglyphs=@@@@\n"), 0);
+    assert_true(unified_editor_set_material_root(&ed, material_dir));
+    assert_true(unified_editor_set_asset_root(&ed, g_tmpdir));
+    select_east_wall(&ed);
+    ed.material_picker_open = true;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in);
+    snprintf(in.text_input, sizeof(in.text_input), "fresh_material");
+    in.text_input_len = (int)strlen(in.text_input);
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.material_search_result_count, 0U);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Create new material..."));
+    grid_destroy(grid);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_true(material_id_is_loaded(&g_assets, 3));
+    assert_string_equal(material_name_by_id(&g_assets, 3), "fresh_material");
+    assert_int_equal(wall_mat(&ed), 3);
+    assert_int_equal(unified_editor_material_shortlist_count(&ed), 2U);
+    assert_true(snprintf(path, sizeof(path), "%s/fresh_material.txt", material_dir) > 0);
+    assert_int_equal(access(path, F_OK), 0);
+    unified_editor_destroy(&ed);
+    remove(path);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/1.txt", palette_dir) > 0);
+    remove(asset_file);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/1.txt", material_dir) > 0);
+    remove(asset_file);
+    assert_true(snprintf(asset_file, sizeof(asset_file), "%s/2.txt", material_dir) > 0);
+    remove(asset_file);
+    rmdir(palette_dir);
+    rmdir(material_dir);
+    rmdir(decal_dir);
+    memset(&g_assets.materials[3], 0, sizeof(g_assets.materials[3]));
+    g_assets.material_names[3][0] = '\0';
+    mark_material_loaded(1, "mat1");
+    mark_material_loaded(2, "mat2");
+    mark_material_loaded(12, "mat12");
+    g_assets.material_count = 3U;
+    {
+        PatternCell cell = {'A', 1};
+        assert_true(asset_registry_set_decal_pattern(&g_assets, 6, 1, 1,
+                                                     &cell));
+    }
 }
 
 static void test_input_undo_redo_save_shortcuts(void **state) {
@@ -2050,6 +2226,8 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     assert_int_equal(ed.selection.type, SELECTION_WALL_FACE);
     assert_true(ed.inspector_open);
     assert_int_equal(ed.highlighted_material, 1);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
 
     /* Apply material 2 via Enter-opened picker. */
     zero_input(&in);
@@ -2071,7 +2249,7 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     in.editor_undo_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     assert_int_equal(wall_mat(&ed), 1);
-    assert_false(scene_document_is_dirty(&ed.document));
+    assert_true(scene_document_is_dirty(&ed.document));
     zero_input(&in);
     in.editor_redo_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
@@ -2165,6 +2343,7 @@ static void test_native_reload_preserves_light_decal_ambient(void **state) {
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
 
     assert_string_equal(ed.document.name, "content");
     assert_non_null(scene_document_get_path(&ed.document));
@@ -2221,6 +2400,7 @@ static void test_native_reload_clean_preserves_content(void **state) {
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
 
     assert_string_equal(ed.document.name, "content");
     assert_int_equal(ed.runtime_world.num_lights, 1);
@@ -2240,6 +2420,27 @@ static void test_native_reload_clean_preserves_content(void **state) {
     assert_int_equal(ed.runtime_world.num_lights, 1);
     assert_int_equal(ed.runtime_world.num_decals, 1);
 
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_decal_shortlist_is_scene_scoped_sorted_and_repair_visible(
+    void **state
+) {
+    UnifiedEditorState ed;
+    char path[512];
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "decal_shortlist.tscene");
+    assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_DECAL_SHORTLIST), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
+    assert_true(scene_document_is_repair_required(&ed.document));
+    assert_int_equal(unified_editor_decal_shortlist_count(&ed), 2U);
+    assert_int_equal(unified_editor_decal_shortlist_at(&ed, 0U), 6U);
+    assert_int_equal(unified_editor_decal_shortlist_at(&ed, 1U), 50000U);
+    assert_int_equal(unified_editor_decal_shortlist_at(&ed, 2U), 0U);
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    assert_int_equal(unified_editor_decal_shortlist_count(&ed), 0U);
     unified_editor_destroy(&ed);
     remove(path);
 }
@@ -2435,6 +2636,10 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     assert_true(scene_document_get_surface_material(
         &editor.document, x, y, SCENE_SURFACE_FLOOR, &material));
     assert_int_equal(material, 1);
+    assert_int_equal(unified_editor_set_surface_material(
+        &editor, x, y, SCENE_SURFACE_FLOOR, 2), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_surface_material(
+        &editor, x, y, SCENE_SURFACE_FLOOR, 1), CMD_RESULT_OK);
 
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
@@ -2500,6 +2705,7 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     editor.inspector_kind = EDITOR_INSPECTOR_FLOOR_SURFACE;
     editor.inspector_open = true;
     editor.surface_field = EDITOR_SURFACE_FIELD_CONSTRUCTION;
+    editor.material_picker_open = true;
     unified_editor_render_text_overlay(&editor, grid);
     assert_true(grid_contains_text(grid, "Inspector: floor surface"));
     assert_true(grid_contains_text(grid, "> Place Wall"));
@@ -2573,11 +2779,12 @@ static void test_r4_increment_d_empty_missing_and_runtime_failure_atomic(void **
     editor.inspector_kind = EDITOR_INSPECTOR_FLOOR_SURFACE;
     editor.inspector_open = true;
     editor.surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
+    editor.material_picker_open = true;
     grid = grid_create(260, 30);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid);
     assert_true(grid_contains_text(grid, "Material   1 (missing)"));
-    assert_true(grid_contains_text(grid, "(no loaded materials)"));
+    assert_true(grid_contains_text(grid, "Create new material..."));
     grid_destroy(grid);
 
     ambient_before = editor.document.ambient_intensity;
@@ -2627,7 +2834,7 @@ static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
     fixture_assets.material_count = 5;
     assert_true(unified_editor_init(&editor, &fixture_assets));
     assert_int_equal(unified_editor_open_native(&editor, fixture), SCENE_LOAD_OK);
-    assert_false(scene_document_is_dirty(&editor.document));
+    assert_true(scene_document_is_dirty(&editor.document));
     assert_false(scene_document_is_repair_required(&editor.document));
     assert_string_equal(scene_document_get_name(&editor.document),
                         "r4_surface_workflow");
@@ -2759,6 +2966,9 @@ int main(void) {
         cmocka_unit_test(test_unsaveable_material_id_status),
         cmocka_unit_test(test_save_success_clears_dirty),
         cmocka_unit_test(test_picker_next_prev_and_confirm),
+        cmocka_unit_test(test_material_shortlist_prefix_search),
+        cmocka_unit_test(test_material_picker_renders_only_four_rows),
+        cmocka_unit_test(test_material_search_empty_creates_saves_and_applies),
         cmocka_unit_test(test_input_undo_redo_save_shortcuts),
         cmocka_unit_test(test_reload_prompt_when_dirty),
         /* Phase 6 */
@@ -2770,6 +2980,7 @@ int main(void) {
         /* Increment 9 regression guards */
         cmocka_unit_test(test_native_reload_preserves_light_decal_ambient),
         cmocka_unit_test(test_native_reload_clean_preserves_content),
+        cmocka_unit_test(test_decal_shortlist_is_scene_scoped_sorted_and_repair_visible),
         cmocka_unit_test(test_editor_documents_never_hold_legacy_save_path),
         cmocka_unit_test(test_r4_increment_b_controller_commands_and_safety),
         cmocka_unit_test(test_r4_increment_c_horizontal_hover_and_selection),

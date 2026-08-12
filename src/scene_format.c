@@ -3,6 +3,7 @@
 #include "scene_format.h"
 
 #include "checked_size.h"
+#include "scene_block_codec.h"
 
 #include <float.h>
 #include <errno.h>
@@ -397,9 +398,9 @@ SceneFormatResult scene_format_migrate_v1_to_v2(
                       NULL, NULL, "scene_version",
                       "candidate is not an unmigrated v1 scene", 0U, 0U);
     }
-    if (default_material < 1U || default_material > 255U) {
+    if (default_material < 1U || default_material > UINT16_MAX) {
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, NULL, NULL,
-                      "default_material", "default material outside 1..255",
+                      "default_material", "default material outside 1..65535",
                       0U, 0U);
     }
     result = scene_format_validate(candidate, NULL, diagnostic);
@@ -421,11 +422,11 @@ SceneFormatResult scene_format_migrate_v1_to_v2(
         cells[i].occupancy = material == 0
             ? SCENE_CELL_OCCUPANCY_EMPTY
             : SCENE_CELL_OCCUPANCY_WALL;
-        cells[i].wall_material = (uint8_t)(material == 0
+        cells[i].wall_material = (uint16_t)(material == 0
             ? default_material
             : (unsigned int)material);
-        cells[i].floor_material = (uint8_t)default_material;
-        cells[i].ceiling_material = (uint8_t)default_material;
+        cells[i].floor_material = (uint16_t)default_material;
+        cells[i].ceiling_material = (uint16_t)default_material;
     }
     candidate->authored_cells = cells;
     candidate->authored_cell_count = count;
@@ -453,9 +454,9 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
     }
     for (i = 0U; i < count; i++) {
         if (candidate->map.cells[i].material_id < 0 ||
-            candidate->map.cells[i].material_id > 255) {
+            candidate->map.cells[i].material_id > (int)UINT16_MAX) {
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
-                          "cells", NULL, "material ID outside 000..255", 0U, 0U);
+                          "cells", NULL, "material ID outside 0000..FFFF", 0U, 0U);
         }
     }
     if (candidate->source_version >= SCENE_VERSION_V2) {
@@ -465,17 +466,20 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
         }
         for (i = 0U; i < count; i++) {
             const SceneAuthoredCell *cell = &candidate->authored_cells[i];
+            bool invalid_null = candidate->source_version < SCENE_VERSION_V4
+                ? cell->wall_material == 0U || cell->floor_material == 0U ||
+                  cell->ceiling_material == 0U
+                : cell->occupancy == SCENE_CELL_OCCUPANCY_WALL &&
+                  cell->wall_material == 0U;
             if ((cell->occupancy != SCENE_CELL_OCCUPANCY_EMPTY &&
-                 cell->occupancy != SCENE_CELL_OCCUPANCY_WALL) ||
-                cell->wall_material == 0U || cell->floor_material == 0U ||
-                cell->ceiling_material == 0U) {
+                 cell->occupancy != SCENE_CELL_OCCUPANCY_WALL) || invalid_null) {
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                               "authored_cells", NULL,
                               "invalid v2 occupancy or material reference", 0U, 0U);
             }
         }
     }
-    if (candidate->source_version == SCENE_VERSION_V3) {
+    if (candidate->source_version >= SCENE_VERSION_V3) {
         for (i = 0U; i < candidate->east_growth_count; i++) {
             if (candidate->east_growth[i] < 0 ||
                 candidate->east_growth[i] >= candidate->map.height)
@@ -556,7 +560,7 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                               decal->id);
         }
         if (decal->asset.kind != SCENE_ASSET_KIND_DECAL_PATTERN ||
-            decal->asset.id < 1U || decal->asset.id > 255U ||
+            decal->asset.id < 1U ||
             decal->surface < SCENE_DECAL_SURFACE_WALL ||
             decal->surface > SCENE_DECAL_SURFACE_CEILING ||
             decal->width != decal->width || decal->width > DBL_MAX || decal->width <= 0.0 ||
@@ -706,8 +710,8 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
             break;
         case META_VERSION:
             if (!parse_uint_range(value, UINT_MAX, &parsed) ||
-                (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
-                 parsed != SCENE_VERSION_V3))
+                 (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
+                  parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -839,23 +843,44 @@ static SceneFormatResult parse_v2_row(SceneFormatCandidate *candidate,
             value = (unsigned)(cursor[0] - '0');
             cursor += 1;
         } else {
-            if (strlen(cursor) < 3U || cursor[0] < '0' || cursor[0] > '9' ||
-                cursor[1] < '0' || cursor[1] > '9' || cursor[2] < '0' ||
-                cursor[2] > '9' ||
-                (cursor[3] != '\0' && cursor[3] != ' ' && cursor[3] != '\t')) {
+            if (candidate->source_version >= SCENE_VERSION_V4) {
+                uint16_t block_value;
+                char block[SCENE_BLOCK_TEXT_SIZE];
+                if (strlen(cursor) < SCENE_BLOCK_HEX_DIGITS ||
+                    (cursor[SCENE_BLOCK_HEX_DIGITS] != '\0' &&
+                     cursor[SCENE_BLOCK_HEX_DIGITS] != ' ' &&
+                     cursor[SCENE_BLOCK_HEX_DIGITS] != '\t')) {
+                    return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                                  NULL, NULL, "v4 material requires XXXX block",
+                                  line, 0U);
+                }
+                memcpy(block, cursor, SCENE_BLOCK_HEX_DIGITS);
+                block[SCENE_BLOCK_HEX_DIGITS] = '\0';
+                if (!scene_block_parse(block, &block_value)) {
+                    return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                                  NULL, NULL, "invalid v4 hexadecimal material block",
+                                  line, 0U);
+                }
+                value = block_value;
+                cursor += SCENE_BLOCK_HEX_DIGITS;
+            } else if (strlen(cursor) < 3U || cursor[0] < '0' || cursor[0] > '9' ||
+                       cursor[1] < '0' || cursor[1] > '9' || cursor[2] < '0' ||
+                       cursor[2] > '9' ||
+                       (cursor[3] != '\0' && cursor[3] != ' ' && cursor[3] != '\t')) {
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
                               section == SECTION_WALL_MATERIALS ? "wall_materials" :
                               section == SECTION_FLOOR_MATERIALS ? "floor_materials" :
                               "ceiling_materials", NULL,
                               "material grids require three-digit tokens", line, 0U);
+            } else {
+                memcpy(token, cursor, 3U);
+                token[3] = '\0';
+                if (!parse_uint_range(token, 255U, &value) || value == 0U) {
+                    return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                                  NULL, NULL, "v2 material outside 001..255", line, 0U);
+                }
+                cursor += 3;
             }
-            memcpy(token, cursor, 3U);
-            token[3] = '\0';
-            if (!parse_uint_range(token, 255U, &value) || value == 0U) {
-                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
-                              NULL, NULL, "v2 material outside 001..255", line, 0U);
-            }
-            cursor += 3;
         }
         if (column >= (size_t)candidate->map.width) {
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
@@ -865,11 +890,11 @@ static SceneFormatResult parse_v2_row(SceneFormatCandidate *candidate,
         if (section == SECTION_OCCUPANCY)
             candidate->authored_cells[index].occupancy = (SceneCellOccupancy)value;
         else if (section == SECTION_WALL_MATERIALS)
-            candidate->authored_cells[index].wall_material = (uint8_t)value;
+            candidate->authored_cells[index].wall_material = (uint16_t)value;
         else if (section == SECTION_FLOOR_MATERIALS)
-            candidate->authored_cells[index].floor_material = (uint8_t)value;
+            candidate->authored_cells[index].floor_material = (uint16_t)value;
         else
-            candidate->authored_cells[index].ceiling_material = (uint8_t)value;
+            candidate->authored_cells[index].ceiling_material = (uint16_t)value;
     }
     if (column != (size_t)candidate->map.width) {
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
@@ -939,7 +964,7 @@ static SceneFormatResult parse_decal_field(SceneDecalInstance *decal, unsigned *
             if (strcmp(value, "decal_pattern") != 0) goto numeric;
             decal->asset.kind = SCENE_ASSET_KIND_DECAL_PATTERN; break;
         case 2U:
-            if (!parse_uint_range(value, 255U, &number) || number == 0U) goto numeric;
+            if (!parse_uint_range(value, ASSET_ID_MAX, &number) || number == 0U) goto numeric;
             decal->asset.id = (uint16_t)number; break;
         case 4U:
             if (strcmp(value, "wall") == 0) decal->surface = SCENE_DECAL_SURFACE_WALL;
@@ -1105,9 +1130,9 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             if (result != SCENE_FORMAT_OK) goto done;
         }
     }
-    if ((metadata_seen & (temporary.source_version == SCENE_VERSION_V3
+    if ((metadata_seen & (temporary.source_version >= SCENE_VERSION_V3
                               ? META_V3_REQUIRED : META_REQUIRED)) !=
-            (temporary.source_version == SCENE_VERSION_V3
+            (temporary.source_version >= SCENE_VERSION_V3
                  ? META_V3_REQUIRED : META_REQUIRED) ||
         (temporary.source_version < SCENE_VERSION_V3 &&
          (metadata_seen & (META_EAST_GROWTH | META_SOUTH_GROWTH))) ||
@@ -1362,7 +1387,7 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     APPEND(writer_double(&writer, candidate->spawn_x)); APPEND(writer_append(&writer, ","));
     APPEND(writer_double(&writer, candidate->spawn_y)); APPEND(writer_append(&writer, ","));
     APPEND(writer_double(&writer, candidate->spawn_angle)); APPEND(writer_append(&writer, "\n"));
-    if (output_version == SCENE_VERSION_V3) {
+    if (output_version >= SCENE_VERSION_V3) {
         APPEND(writer_append(&writer, "east_growth = "));
         if (candidate->east_growth_count == 0U) APPEND(writer_append(&writer, "-"));
         for (i = 0U; i < candidate->east_growth_count; i++)
@@ -1401,10 +1426,15 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
                     else if (sections[section_index] == SECTION_FLOOR_MATERIALS)
                         value = cell->floor_material;
                     else value = cell->ceiling_material;
-                    APPEND(writer_printf(&writer,
-                        sections[section_index] == SECTION_OCCUPANCY
-                            ? (x ? " %u" : "%u")
-                            : (x ? " %03u" : "%03u"), value));
+                    if (sections[section_index] == SECTION_OCCUPANCY) {
+                        APPEND(writer_printf(&writer, x ? " %u" : "%u", value));
+                    } else if (output_version >= SCENE_VERSION_V4) {
+                        char block[SCENE_BLOCK_TEXT_SIZE];
+                        APPEND(scene_block_format((uint16_t)value, block));
+                        APPEND(writer_printf(&writer, x ? " %s" : "%s", block));
+                    } else {
+                        APPEND(writer_printf(&writer, x ? " %03u" : "%03u", value));
+                    }
                 }
                 APPEND(writer_append(&writer, "\n"));
             }

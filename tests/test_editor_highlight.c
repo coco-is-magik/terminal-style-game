@@ -543,7 +543,7 @@ static void test_horizontal_highlight_composes_over_authored_material(void **sta
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     camera.pitch = -5.0;
     before_camera = camera;
-    asset_registry_init(&assets);
+    assert_true(asset_registry_init(&assets));
     asset_registry_set_palette(
         &assets, 1, (SDL_Color){120, 80, 40, 255},
         (SDL_Color){100, 60, 30, 255}, (SDL_Color){80, 40, 20, 255});

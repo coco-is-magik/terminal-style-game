@@ -9,6 +9,20 @@
 #include <string.h>
 
 #include "../src/scene_format.h"
+#include "../src/scene_block_codec.h"
+
+static const char V4_SCENE[] =
+    "scene_type = terminal_scene\n"
+    "scene_version = 4\n"
+    "name = \"v4_room\"\n"
+    "width = 2\nheight = 2\norigin_x = 0\norigin_y = 0\n"
+    "next_instance_id = 1\nambient_intensity = 0.2\n"
+    "spawn = 1.5,1.5,0\n"
+    "east_growth = -\nsouth_growth = -\n\n"
+    "[occupancy]\n1 1\n1 0\n\n"
+    "[wall_materials]\nFFFF 00FF\n0001 0000\n\n"
+    "[floor_materials]\n0000 1234\n0002 0000\n\n"
+    "[ceiling_materials]\n0000 ABCD\n0003 0000\n";
 
 static const char VALID_SCENE[] =
     "# metadata may be reordered and comments are full-line only\r\n"
@@ -613,7 +627,7 @@ static void test_v1_to_v2_migration_rejects_invalid_requests_transactionally(voi
     assert_null(candidate.authored_cells);
     assert_int_equal(candidate.authored_cell_count, 0U);
 
-    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 256U, &diagnostic),
+    assert_int_equal(scene_format_migrate_v1_to_v2(&candidate, 65536U, &diagnostic),
                      SCENE_FORMAT_REJECTED);
     assert_int_equal(candidate.source_version, SCENE_VERSION_V1);
     assert_null(candidate.authored_cells);
@@ -635,6 +649,67 @@ static void test_v1_to_v2_migration_rejects_invalid_requests_transactionally(voi
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_scene_block_codec(void **state) {
+    uint16_t value = 0U;
+    char formatted[SCENE_BLOCK_TEXT_SIZE];
+    size_t count = 0U;
+    (void)state;
+
+    assert_true(scene_block_parse("0000", &value));
+    assert_true(scene_block_is_null(value));
+    assert_true(scene_block_parse("FFFF", &value));
+    assert_int_equal(value, UINT16_MAX);
+    assert_true(scene_block_format(UINT16_C(0x12AF), formatted));
+    assert_string_equal(formatted, "12AF");
+    assert_true(scene_block_tokens_equal("00FF", "00FF"));
+    assert_false(scene_block_tokens_equal("00FF", "00FE"));
+    assert_true(scene_block_count("0001 00FF\tABCD", &count));
+    assert_int_equal(count, 3U);
+    assert_false(scene_block_parse("ffff", &value));
+    assert_false(scene_block_parse("FFF", &value));
+    assert_false(scene_block_count("0001 bad!", &count));
+}
+
+static void test_v4_hex_blocks_high_ids_and_nulls(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    char *bad;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V4);
+    assert_int_equal(candidate.authored_cells[0].wall_material, UINT16_MAX);
+    assert_int_equal(candidate.authored_cells[1].floor_material, UINT16_C(0x1234));
+    assert_int_equal(candidate.authored_cells[1].ceiling_material, UINT16_C(0xABCD));
+    assert_int_equal(candidate.authored_cells[3].wall_material, 0U);
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "FFFF 00FF\n"));
+    assert_non_null(strstr(buffer.data, "0000 1234\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v4.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.authored_cells[1].ceiling_material,
+                     UINT16_C(0xABCD));
+
+    bad = replace_once(V4_SCENE, "FFFF 00FF\n", "ffff 00FF\n");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_SYNTAX);
+    free(bad);
+    bad = replace_once(V4_SCENE, "FFFF 00FF\n", "0000 00FF\n");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -651,7 +726,9 @@ int main(void) {
         cmocka_unit_test(test_v1_to_v2_migration_maps_authored_cells_exactly),
         cmocka_unit_test(test_v1_to_v2_migration_rejects_invalid_requests_transactionally),
         cmocka_unit_test(test_v2_rejects_missing_duplicate_and_malformed_grids),
-        cmocka_unit_test(test_v3_growth_metadata_round_trips_and_is_versioned)
+        cmocka_unit_test(test_v3_growth_metadata_round_trips_and_is_versioned),
+        cmocka_unit_test(test_scene_block_codec),
+        cmocka_unit_test(test_v4_hex_blocks_high_ids_and_nulls)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

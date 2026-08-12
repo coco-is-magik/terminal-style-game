@@ -22,14 +22,15 @@
 /**
  * asset_loader_load_registry() — Load all generic assets from disk
  *
- * Iterates through assets/palettes/<id>.txt, assets/materials/<id>.txt,
- * and assets/sprites/<id>.txt for IDs 1–255.  IDs 1–10 are always probed;
- * after that, the first missing file stops that asset-type scan.
+ * Enumerates palette, material, and reusable decal files through the 16-bit
+ * asset-ID range. Sprite loading retains its legacy 1–255 probe behavior.
  *
  * @param reg       AssetRegistry to populate
  * @param base_path Root asset directory (e.g. "assets")
+ * @return false for invalid/uninitialized inputs or an unreadable root;
+ *         true after the tolerant eager load completes.
  */
-void asset_loader_load_registry(AssetRegistry *reg, const char *base_path);
+bool asset_loader_load_registry(AssetRegistry *reg, const char *base_path);
 
 /**
  * asset_loader_load_map_data() — Load a map and its associated world objects

@@ -126,7 +126,7 @@ SceneRepairReplaceResult scene_document_internal_replace_surface_material(
     int map_x,
     int map_y,
     SceneSurfaceKind surface,
-    uint8_t replacement_material_id,
+    uint16_t replacement_material_id,
     DocumentStateId resulting_state
 );
 

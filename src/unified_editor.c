@@ -6,12 +6,14 @@
  */
 
 #include "unified_editor.h"
+#include "asset_refresh.h"
 #include "editor_domain.h"
 #include "editor_highlight.h"
 
 #include "camera.h"
 #include "config.h"
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
@@ -19,7 +21,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define EDITOR_PICKER_VISIBLE 6
+#define EDITOR_PICKER_VISIBLE 4
 #define EDITOR_MAP_CHOOSER_VISIBLE 10
 #define EDITOR_LIGHT_PICK_RADIUS 0.50
 #define EDITOR_LIGHT_REPEAT_DELAY_SECONDS 0.35
@@ -33,6 +35,8 @@ void unified_editor_set_runtime_build_failure_for_test(bool fail) {
 }
 
 static void editor_cancel_light_value_edit(UnifiedEditorState *editor);
+static bool editor_rebuild_material_shortlist(UnifiedEditorState *editor);
+static bool editor_rebuild_decal_shortlist(UnifiedEditorState *editor);
 
 static void editor_clear_selection(UnifiedEditorState *editor) {
     editor->selection.type = SELECTION_NONE;
@@ -53,6 +57,8 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->highlighted_material = 0;
     editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->material_picker_open = false;
+    editor->material_search_text[0] = '\0';
+    editor->material_search_text_length = 0U;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
@@ -146,7 +152,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_SAVE_FAILED:           return "Save failed";
         case EDITOR_STATUS_INVALID_SELECTION:     return "Invalid selection";
         case EDITOR_STATUS_INVALID_MATERIAL:      return "Invalid material";
-        case EDITOR_STATUS_UNSAVABLE_MATERIAL_ID:  return "Unsaveable material ID";
+        case EDITOR_STATUS_UNSAVABLE_MATERIAL_ID: return "Unsaveable material ID";
         case EDITOR_STATUS_OUT_OF_MEMORY:         return "Out of memory";
         case EDITOR_STATUS_STATE_ID_EXHAUSTED:    return "State ID exhausted";
         case EDITOR_STATUS_LOAD_FAILED:           return "Load failed";
@@ -161,137 +167,212 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_MAP_LIMIT:              return "Map dimension limit reached";
         case EDITOR_STATUS_RESIZE_BLOCKED:         return "Map resize blocked by outer content";
         case EDITOR_STATUS_NONE:
-        default:                                  return "";
+        default:                                   return "";
     }
 }
 
 /* ---- Material picker helpers ----------------------------------------- */
 
-static size_t editor_count_loaded_materials(const AssetRegistry *assets) {
-    size_t n = 0;
-    int id;
-
-    if (!assets) {
-        return 0;
+static bool editor_reserve_material_ids(MaterialId **ids, size_t *capacity,
+                                        size_t needed) {
+    MaterialId *grown;
+    size_t next;
+    if (needed <= *capacity) return true;
+    next = *capacity == 0U ? 8U : *capacity;
+    while (next < needed) {
+        if (next > SIZE_MAX / 2U) return false;
+        next *= 2U;
     }
-    for (id = 1; id <= 255; id++) {
-        if (material_id_is_loaded(assets, id)) {
-            n++;
-        }
-    }
-    return n;
+    grown = realloc(*ids, next * sizeof(*grown));
+    if (!grown) return false;
+    *ids = grown;
+    *capacity = next;
+    return true;
 }
 
-static bool editor_material_at_picker_index(
-    const AssetRegistry *assets,
-    size_t index,
-    MaterialId *out_id
-) {
-    size_t n = 0;
-    int id;
-
-    if (!assets || !out_id) {
-        return false;
+static bool editor_shortlist_add(UnifiedEditorState *editor, MaterialId id) {
+    size_t i;
+    if (id == 0U || !material_id_is_loaded(editor->assets, id)) return true;
+    for (i = 0U; i < editor->material_shortlist_count; i++) {
+        if (editor->material_shortlist[i] == id) return true;
     }
-    for (id = 1; id <= 255; id++) {
-        if (!material_id_is_loaded(assets, id)) {
-            continue;
-        }
-        if (n == index) {
-            *out_id = (MaterialId)id;
-            return true;
-        }
-        n++;
-    }
-    return false;
+    if (!editor_reserve_material_ids(&editor->material_shortlist,
+                                     &editor->material_shortlist_capacity,
+                                     editor->material_shortlist_count + 1U)) return false;
+    editor->material_shortlist[editor->material_shortlist_count++] = id;
+    return true;
 }
 
-static bool editor_find_picker_index_for_material(
-    const AssetRegistry *assets,
-    MaterialId material,
-    size_t *out_index
-) {
-    size_t n = 0;
-    int id;
-
-    if (!assets || !out_index) {
-        return false;
+static bool editor_material_name_has_prefix(const char *name,
+                                            const char *prefix) {
+    while (*prefix) {
+        unsigned char a = (unsigned char)*name++;
+        unsigned char b = (unsigned char)*prefix++;
+        if (a == '\0' || tolower(a) != tolower(b)) return false;
     }
-    for (id = 1; id <= 255; id++) {
-        if (!material_id_is_loaded(assets, id)) {
-            continue;
+    return true;
+}
+
+static void editor_sort_shortlist(UnifiedEditorState *editor) {
+    size_t i;
+    for (i = 1U; i < editor->material_shortlist_count; i++) {
+        MaterialId value = editor->material_shortlist[i];
+        size_t j = i;
+        while (j > 0U) {
+            MaterialId previous = editor->material_shortlist[j - 1U];
+            int order = strcmp(material_name_by_id(editor->assets, previous),
+                               material_name_by_id(editor->assets, value));
+            if (order < 0 || (order == 0 && previous < value)) break;
+            editor->material_shortlist[j] = previous;
+            j--;
         }
-        if ((MaterialId)id == material) {
-            *out_index = n;
+        editor->material_shortlist[j] = value;
+    }
+}
+
+static bool editor_rebuild_search_results(UnifiedEditorState *editor) {
+    size_t i;
+    editor->material_search_result_count = 0U;
+    if (!editor_reserve_material_ids(&editor->material_search_results,
+                                     &editor->material_search_result_capacity,
+                                     editor->material_shortlist_count)) return false;
+    for (i = 0U; i < editor->material_shortlist_count; i++) {
+        MaterialId id = editor->material_shortlist[i];
+        if (editor_material_name_has_prefix(material_name_by_id(editor->assets, id),
+                                            editor->material_search_text)) {
+            editor->material_search_results[editor->material_search_result_count++] = id;
+        }
+    }
+    editor->material_picker_index = 0U;
+    editor->highlighted_material = editor->material_search_result_count > 0U
+        ? editor->material_search_results[0] : (MaterialId)0;
+    return true;
+}
+
+static bool editor_rebuild_material_shortlist(UnifiedEditorState *editor) {
+    const SceneAuthoredCell *cells;
+    const SceneDecalInstance *decals;
+    size_t count;
+    size_t i;
+    if (!editor || !editor->assets) return false;
+    editor->material_shortlist_count = 0U;
+    cells = scene_document_get_authored_cells(&editor->document, &count);
+    for (i = 0U; i < count; i++) {
+        if (!editor_shortlist_add(editor, cells[i].wall_material) ||
+            !editor_shortlist_add(editor, cells[i].floor_material) ||
+            !editor_shortlist_add(editor, cells[i].ceiling_material)) return false;
+    }
+    decals = scene_document_get_decals(&editor->document, &count);
+    for (i = 0U; i < count; i++) {
+        const DecalPatternAsset *pattern = asset_registry_get_decal_pattern(
+            editor->assets, decals[i].asset.id);
+        size_t cell_count;
+        size_t j;
+        if (!pattern || pattern->cols <= 0 || pattern->rows <= 0) continue;
+        cell_count = (size_t)pattern->cols * (size_t)pattern->rows;
+        for (j = 0U; j < cell_count; j++) {
+            if (!editor_shortlist_add(editor, pattern->pattern[j].material_id)) return false;
+        }
+    }
+    editor_sort_shortlist(editor);
+    editor->material_search_text[0] = '\0';
+    editor->material_search_text_length = 0U;
+    return editor_rebuild_search_results(editor);
+}
+
+static bool editor_rebuild_decal_shortlist(UnifiedEditorState *editor) {
+    const SceneDecalInstance *decals;
+    size_t count;
+    size_t i;
+    if (!editor) return false;
+    editor->decal_shortlist_count = 0U;
+    decals = scene_document_get_decals(&editor->document, &count);
+    for (i = 0U; i < count; i++) {
+        uint16_t id = decals[i].asset.id;
+        size_t insert = 0U;
+        uint16_t *grown;
+        size_t capacity;
+        if (id == 0U) continue;
+        while (insert < editor->decal_shortlist_count &&
+               editor->decal_shortlist[insert] < id) insert++;
+        if (insert < editor->decal_shortlist_count &&
+            editor->decal_shortlist[insert] == id) continue;
+        if (editor->decal_shortlist_count == editor->decal_shortlist_capacity) {
+            capacity = editor->decal_shortlist_capacity == 0U ? 8U :
+                       editor->decal_shortlist_capacity * 2U;
+            grown = realloc(editor->decal_shortlist,
+                            capacity * sizeof(*grown));
+            if (!grown) return false;
+            editor->decal_shortlist = grown;
+            editor->decal_shortlist_capacity = capacity;
+        }
+        memmove(editor->decal_shortlist + insert + 1U,
+                editor->decal_shortlist + insert,
+                (editor->decal_shortlist_count - insert) *
+                    sizeof(*editor->decal_shortlist));
+        editor->decal_shortlist[insert] = id;
+        editor->decal_shortlist_count++;
+    }
+    return true;
+}
+
+static bool editor_rebuild_asset_shortlists(UnifiedEditorState *editor) {
+    return editor_rebuild_material_shortlist(editor) &&
+           editor_rebuild_decal_shortlist(editor);
+}
+
+static bool editor_find_search_index(const UnifiedEditorState *editor,
+                                     MaterialId material, size_t *out_index) {
+    size_t i;
+    if (!editor || !out_index) return false;
+    for (i = 0U; i < editor->material_search_result_count; i++) {
+        if (editor->material_search_results[i] == material) {
+            *out_index = i;
             return true;
         }
-        n++;
     }
     return false;
 }
 
 static void editor_sync_highlighted_from_picker(UnifiedEditorState *editor) {
-    MaterialId id = 0;
-    size_t count;
-
-    if (!editor || !editor->assets) {
+    if (!editor || editor->material_search_result_count == 0U) {
+        if (editor) {
+            editor->material_picker_index = 0U;
+            editor->highlighted_material = 0U;
+        }
         return;
     }
-
-    count = editor_count_loaded_materials(editor->assets);
-    if (count == 0) {
-        editor->material_picker_index = 0;
-        editor->highlighted_material = 0;
-        return;
+    if (editor->material_picker_index >= editor->material_search_result_count) {
+        editor->material_picker_index = editor->material_search_result_count - 1U;
     }
-
-    if (editor->material_picker_index >= count) {
-        editor->material_picker_index = count - 1;
-    }
-
-    if (editor_material_at_picker_index(
-            editor->assets,
-            editor->material_picker_index,
-            &id)) {
-        editor->highlighted_material = id;
-    } else {
-        editor->highlighted_material = 0;
-    }
+    editor->highlighted_material =
+        editor->material_search_results[editor->material_picker_index];
 }
 
 static void editor_rebuild_picker_for_selection(UnifiedEditorState *editor) {
-    MaterialId current = 0;
-    size_t idx = 0;
-
-    if (!editor) {
-        return;
-    }
-
-    editor->material_picker_index = 0;
-    editor->highlighted_material = 0;
-
+    MaterialId current = 0U;
+    size_t index = 0U;
+    if (!editor) return;
+    editor->material_picker_index = 0U;
+    editor->highlighted_material = 0U;
     if (editor->selection.type == SELECTION_WALL_FACE) {
-        WallMaterialRef ref =
-            editor_wall_face_to_material_ref(editor->selection.value.wall_face);
+        WallMaterialRef ref = editor_wall_face_to_material_ref(
+            editor->selection.value.wall_face);
         if (scene_document_get_wall_material(&editor->document, ref, &current) &&
-            editor_find_picker_index_for_material(
-                editor->assets, current, &idx)) {
-            editor->material_picker_index = idx;
+            editor_find_search_index(editor, current, &index)) {
+            editor->material_picker_index = index;
         }
     } else if (editor->selection.type == SELECTION_FLOOR ||
                editor->selection.type == SELECTION_CEILING) {
         SceneSurfaceKind surface = editor->selection.type == SELECTION_FLOOR
             ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING;
         if (scene_document_get_surface_material(
-                &editor->document,
-                editor->selection.value.horizontal.map_x,
-                editor->selection.value.horizontal.map_y,
-                surface, &current) &&
-            editor_find_picker_index_for_material(editor->assets, current, &idx)) {
-            editor->material_picker_index = idx;
+                &editor->document, editor->selection.value.horizontal.map_x,
+                editor->selection.value.horizontal.map_y, surface, &current) &&
+            editor_find_search_index(editor, current, &index)) {
+            editor->material_picker_index = index;
         }
     }
-
     editor_sync_highlighted_from_picker(editor);
 }
 
@@ -501,9 +582,71 @@ void unified_editor_destroy(UnifiedEditorState *editor) {
     editor->map_root = NULL;
     free(editor->scene_root);
     editor->scene_root = NULL;
+    free(editor->material_root);
+    editor->material_root = NULL;
+    free(editor->asset_root);
+    editor->asset_root = NULL;
+    free(editor->material_shortlist);
+    editor->material_shortlist = NULL;
+    editor->material_shortlist_count = 0U;
+    editor->material_shortlist_capacity = 0U;
+    free(editor->material_search_results);
+    editor->material_search_results = NULL;
+    editor->material_search_result_count = 0U;
+    editor->material_search_result_capacity = 0U;
+    free(editor->decal_shortlist);
+    editor->decal_shortlist = NULL;
+    editor->decal_shortlist_count = 0U;
+    editor->decal_shortlist_capacity = 0U;
     editor->assets = NULL;
     editor->active = false;
     editor_reset_session_ui(editor);
+}
+
+bool unified_editor_set_material_root(UnifiedEditorState *editor,
+                                      const char *material_root) {
+    char *copy;
+    if (!editor || !editor->active || !material_root || material_root[0] == '\0') {
+        return false;
+    }
+    copy = editor_duplicate_string(material_root);
+    if (!copy) return false;
+    free(editor->material_root);
+    editor->material_root = copy;
+    return true;
+}
+
+bool unified_editor_set_asset_root(UnifiedEditorState *editor,
+                                   const char *asset_root) {
+    char *copy;
+    if (!editor || !editor->active || !asset_root || asset_root[0] == '\0') {
+        return false;
+    }
+    copy = editor_duplicate_string(asset_root);
+    if (!copy) return false;
+    free(editor->asset_root);
+    editor->asset_root = copy;
+    return true;
+}
+
+size_t unified_editor_material_shortlist_count(const UnifiedEditorState *editor) {
+    return editor ? editor->material_shortlist_count : 0U;
+}
+
+MaterialId unified_editor_material_shortlist_at(const UnifiedEditorState *editor,
+                                                size_t index) {
+    if (!editor || index >= editor->material_shortlist_count) return 0;
+    return editor->material_shortlist[index];
+}
+
+size_t unified_editor_decal_shortlist_count(const UnifiedEditorState *editor) {
+    return editor ? editor->decal_shortlist_count : 0U;
+}
+
+uint16_t unified_editor_decal_shortlist_at(const UnifiedEditorState *editor,
+                                           size_t index) {
+    if (!editor || index >= editor->decal_shortlist_count) return 0U;
+    return editor->decal_shortlist[index];
 }
 
 bool unified_editor_has_document(const UnifiedEditorState *editor) {
@@ -698,7 +841,9 @@ SceneLoadResult unified_editor_load_scene(
     editor->exit_choice = EDITOR_EXIT_RESUME;
     editor->material_picker_index = 0;
     editor->highlighted_material = 0;
-    editor_sync_highlighted_from_picker(editor);
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
     return SCENE_LOAD_OK;
 }
 
@@ -740,6 +885,9 @@ static SceneLoadResult editor_replace_document(UnifiedEditorState *editor,
     editor->modal = EDITOR_MODAL_NONE;
     editor->status = scene_document_is_repair_required(&editor->document)
                          ? EDITOR_STATUS_REPAIR_REQUIRED : EDITOR_STATUS_NONE;
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
     return SCENE_LOAD_OK;
 }
 
@@ -777,6 +925,9 @@ SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
     editor->last_load_result = SCENE_LOAD_OK;
     editor->status = scene_document_is_repair_required(&editor->document)
                          ? EDITOR_STATUS_REPAIR_REQUIRED : EDITOR_STATUS_NONE;
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
     return SCENE_LOAD_OK;
 }
 
@@ -812,6 +963,9 @@ SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor) {
     editor->inspector_open = false;
     editor->modal = EDITOR_MODAL_NONE;
     editor->status = EDITOR_STATUS_NONE;
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
     return SCENE_LOAD_OK;
 }
 
@@ -864,6 +1018,15 @@ CommandResult unified_editor_set_wall_material(
 
     editor_map_command_result(editor, result);
     editor_revalidate_selection(editor);
+    if ((result == CMD_RESULT_OK || result == CMD_RESULT_NO_CHANGE) &&
+        (!editor_shortlist_add(editor, material))) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    } else if (result == CMD_RESULT_OK || result == CMD_RESULT_NO_CHANGE) {
+        editor_sort_shortlist(editor);
+        if (!editor_rebuild_search_results(editor)) {
+            editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        }
+    }
 
     /* Only the deprecated legacy writer is limited to one decimal digit. */
     if ((result == CMD_RESULT_OK || result == CMD_RESULT_NO_CHANGE) &&
@@ -890,6 +1053,15 @@ CommandResult unified_editor_set_surface_material(
         &editor->history, &editor->document, map_x, map_y,
         surface, material, &context);
     editor_map_command_result(editor, result);
+    if ((result == CMD_RESULT_OK || result == CMD_RESULT_NO_CHANGE) &&
+        !editor_shortlist_add(editor, material)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    } else if (result == CMD_RESULT_OK || result == CMD_RESULT_NO_CHANGE) {
+        editor_sort_shortlist(editor);
+        if (!editor_rebuild_search_results(editor)) {
+            editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        }
+    }
     return result;
 }
 
@@ -1178,7 +1350,7 @@ static void editor_handle_select(
 }
 
 static void editor_handle_picker_prev(UnifiedEditorState *editor) {
-    size_t count = editor_count_loaded_materials(editor->assets);
+    size_t count = editor->material_search_result_count;
     if (count == 0) {
         return;
     }
@@ -1191,7 +1363,7 @@ static void editor_handle_picker_prev(UnifiedEditorState *editor) {
 }
 
 static void editor_handle_picker_next(UnifiedEditorState *editor) {
-    size_t count = editor_count_loaded_materials(editor->assets);
+    size_t count = editor->material_search_result_count;
     if (count == 0) {
         return;
     }
@@ -1200,6 +1372,69 @@ static void editor_handle_picker_next(UnifiedEditorState *editor) {
         editor->material_picker_index = 0;
     }
     editor_sync_highlighted_from_picker(editor);
+}
+
+static void editor_append_material_search(UnifiedEditorState *editor,
+                                          const char *text) {
+    const char *cursor;
+    if (!editor || !text) return;
+    for (cursor = text; *cursor; cursor++) {
+        unsigned char ch = (unsigned char)*cursor;
+        if (!(isalnum(ch) || ch == '_' || ch == '-') ||
+            editor->material_search_text_length + 1U >=
+                sizeof(editor->material_search_text)) continue;
+        editor->material_search_text[editor->material_search_text_length++] =
+            (char)ch;
+        editor->material_search_text[editor->material_search_text_length] = '\0';
+    }
+    if (!editor_rebuild_search_results(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
+}
+
+static void editor_backspace_material_search(UnifiedEditorState *editor) {
+    if (!editor || editor->material_search_text_length == 0U) return;
+    editor->material_search_text[--editor->material_search_text_length] = '\0';
+    if (!editor_rebuild_search_results(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
+}
+
+static bool editor_create_searched_material(UnifiedEditorState *editor) {
+    MaterialDocument document;
+    MaterialDocumentResult result;
+    const char glyphs[4] = {'#', '#', '#', '#'};
+    MaterialId id;
+    if (!editor || !editor->material_root || !editor->asset_root ||
+        editor->material_search_text_length == 0U) {
+        editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+        return false;
+    }
+    material_document_init(&document);
+    result = material_document_create(
+        &document, editor->assets, editor->material_search_text,
+        (uint16_t)config_get()->default_palette_id, glyphs);
+    if (result == MATERIAL_DOCUMENT_OK &&
+        asset_refresh_save_material_as(
+            &document, editor->assets, &editor->document,
+            editor->material_root, editor->asset_root,
+            &editor->last_scene_diagnostic) != ASSET_REFRESH_OK) {
+        result = MATERIAL_DOCUMENT_IO_ERROR;
+    }
+    id = document.value.id;
+    material_document_destroy(&document);
+    if (result != MATERIAL_DOCUMENT_OK || !editor_shortlist_add(editor, id)) {
+        editor->status = result == MATERIAL_DOCUMENT_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    editor_sort_shortlist(editor);
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        return false;
+    }
+    editor->highlighted_material = id;
+    return true;
 }
 
 static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
@@ -1217,7 +1452,8 @@ static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
         return;
     }
     if (editor->surface_field != EDITOR_SURFACE_FIELD_MATERIAL) return;
-    if (editor->highlighted_material == 0) {
+    if (editor->highlighted_material == 0 &&
+        !editor_create_searched_material(editor)) {
         editor->status = EDITOR_STATUS_INVALID_MATERIAL;
         return;
     }
@@ -1258,6 +1494,11 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
             editor_handle_confirm_apply(editor);
             editor->material_picker_open = false;
         } else {
+            editor->material_search_text[0] = '\0';
+            editor->material_search_text_length = 0U;
+            if (!editor_rebuild_search_results(editor)) {
+                editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+            }
             editor->material_picker_open = true;
         }
     } else if (editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT) {
@@ -1966,6 +2207,15 @@ EditorInputConsumption unified_editor_update(
             editor_append_light_value_text(editor, input->text_input);
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) &&
+                   editor->material_picker_open &&
+                   input->editor_text_backspace_pressed) {
+            editor_backspace_material_search(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   editor->material_picker_open && input->text_input_len > 0) {
+            editor_append_material_search(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
                    editor->material_picker_open && input->editor_previous_pressed) {
             editor_handle_picker_prev(editor);
             editor_mark_keyboard(&consumed);
@@ -2155,7 +2405,7 @@ void unified_editor_render_text_overlay(
         row = 5;
         if (editor->inspector_open && editor_is_surface_inspector(editor)) {
             EditorInspectorPresentation presentation;
-            size_t count = editor_count_loaded_materials(editor->assets);
+            size_t count = editor->material_search_result_count;
             size_t start;
             size_t i;
             MaterialId current = 0;
@@ -2189,10 +2439,14 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row++, line,
                        editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL ? hi : dim,
                        bg);
-            if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL && count == 0) {
-                grid_print(grid, 1, row++, "  (no loaded materials)", dim, bg);
-            } else if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL &&
+            if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL &&
                        editor->material_picker_open) {
+                snprintf(line, sizeof(line), "   Search: %s_",
+                         editor->material_search_text);
+                grid_print(grid, 1, row++, line, fg, bg);
+                if (count == 0U) {
+                    grid_print(grid, 1, row++, " > Create new material...", hi, bg);
+                }
                 if (editor->material_picker_index >= EDITOR_PICKER_VISIBLE) {
                     start = editor->material_picker_index -
                             (EDITOR_PICKER_VISIBLE - 1);
@@ -2210,10 +2464,7 @@ void unified_editor_render_text_overlay(
                     const char *name;
                     const char *mark;
 
-                    if (!editor_material_at_picker_index(
-                            editor->assets, idx, &id)) {
-                        break;
-                    }
+                    id = editor->material_search_results[idx];
                     name = material_name_by_id(editor->assets, (int)id);
                     mark = (idx == editor->material_picker_index) ? ">" : " ";
                     snprintf(line, sizeof(line), " %s %3d  %s",

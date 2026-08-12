@@ -220,7 +220,7 @@ Do not create empty review directories or placeholder review files.
 | R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Verified |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Verified |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Verified |
-| R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Active |
+| R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Verified |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Proposed |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Proposed |
 | R8 | Vertical-world implementation | R1 decision; R4; R7 semantics | Heights, slopes, vertical movement, true pitch if chosen | Decision-blocked |
@@ -522,7 +522,7 @@ on the existing v2/v3 three-digit grids.
 
 ## R5 — Reusable asset-document foundation
 
-**Status:** Proposed
+**Status:** Verified — I1–I4, Q1–Q3, and Review E passed on 2026-08-12.
 
 **Purpose:** Establish a safe, tested lifecycle for authoring reusable assets,
 then implement material and decal documents through it.

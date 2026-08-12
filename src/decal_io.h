@@ -45,6 +45,7 @@
 
 #define DECAL_PATTERN_MAX_ROWS 64
 #define DECAL_PATTERN_MAX_COLS 255
+#define DECAL_MATERIAL_ROW_MAX_BYTES (DECAL_PATTERN_MAX_COLS * 6)
 
 /**
  * decal_load_from_file() — Load a single decal from a file

@@ -26,7 +26,7 @@ successful v4 Save. Loading never rewrites the source file.
 
 `scene_version` is `4`.
 
-`version=4` must appear in the metadata header before any grid section.
+`scene_version = 4` must appear in the metadata header before any grid section.
 
 ## Token grammar
 
@@ -102,9 +102,11 @@ size_t block_count(const char *row_text);
 - `block_is_null` is true for `0x0000`.
 - `block_count` returns the number of valid blocks in a row string.
 
-`scene_format.c` delegates block parsing to this module. Future fields append
-additional blocks; the codec reads the minimum required set for the file
-version and ignores trailing blocks if present (forward compatibility).
+`scene_format.c` delegates block lexical parsing to this module. Version-specific
+field assembly remains in `scene_format.c`: v4 requires exactly its known grids
+and row cardinality. A future parser may read an older version by supplying
+defaults for fields introduced later; a v4 parser does not silently accept
+unknown future fields.
 
 ## Reserved-block policy
 
@@ -119,9 +121,9 @@ WWWW FFFF CCCC NNNN SSSS EEEE WWWW
 
 (The new blocks are north, south, east, and west wall materials.)
 
-A v4 parser reading such a file consumes the first three blocks and ignores
-the remainder. A v4→vN migration rewrites the file to the new canonical form
-using the existing pending / repair machinery.
+A future-version parser reading v4 supplies defaults for its newly introduced
+fields. Migration rewrites the file to that version's canonical form using the
+existing pending / repair machinery. A v4 parser rejects future-version input.
 
 ## Migration from v1, v2, and v3
 

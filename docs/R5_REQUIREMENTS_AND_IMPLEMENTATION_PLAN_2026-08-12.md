@@ -2,8 +2,8 @@
 
 ## Status
 
-**Active.** Prerequisites satisfied: R0–R4 Verified, material identity policy
-resolved in `R5_ASSET_IDENTITY_DECISION_RECORD_2026-08-12.md`.
+**Verified.** I1–I4, Q1–Q3, and Review E are complete. See the increment
+implementation records and `reviews/2026-08-12-roadmap-r5-review-e.md`.
 
 ## Scope
 
@@ -24,6 +24,9 @@ See `R5_ASSET_IDENTITY_DECISION_RECORD_2026-08-12.md` for:
 
 ### I1 — Block-codec, v4 spec, registry widening, identity policy
 
+**Status: Complete and verified (2026-08-12).** See
+`R5_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-12.md`.
+
 **Goal:** The foundation is widened, parseable, and policy-enforced.
 
 **Tasks:**
@@ -33,7 +36,7 @@ See `R5_ASSET_IDENTITY_DECISION_RECORD_2026-08-12.md` for:
 4. Widen types:
    - `SceneAuthoredCell` materials → `uint16_t`
    - `PatternCell.material_id` → `uint16_t`
-   - `AssetRegistry` arrays → `[65536]`
+   - `AssetRegistry` fixed-capacity direct-indexed storage → 65,536 slots
 5. Update all `1..255` bounds checks to `1..65535`:
    - `assets.c`: `material_id_is_loaded`, `material_name_by_id`,
      `material_find_by_name`, `asset_registry_set_material`,
@@ -46,17 +49,23 @@ See `R5_ASSET_IDENTITY_DECISION_RECORD_2026-08-12.md` for:
    - `command_system.c`: material loaded check
 6. Implement `0000` null-reference handling in v4 parser and missing-ref scan.
 7. Identity policy helpers:
-   - `material_can_delete(AssetRegistry *, SceneDocument *, MaterialId)`:
-     scan cells + decals for references.
-   - `material_allocate_id(AssetRegistry *)`: wrap `first_free_material_id`
-     logic into a public helper.
+   - `scene_document_find_material_reference()`: scan cells and scene-used
+     decal patterns for the first blocking reference.
+   - `asset_registry_allocate_material_id()`: return the lowest free ID ≥ 1.
 
-**Exit gate:** All existing tests pass after widening; new v4 parse / format
-tests added; v2 / v3→v4 migration tested with missing-material repair.
+**Exit gate: Passed.** All existing tests pass after widening; v4 parse/format,
+v1/v2/v3 migration, high-ID disk loading, identity allocation/reference checks,
+and missing-material repair are covered.
 
 **Estimated effort:** 1 day.
 
 ### I2 — Shared document lifecycle, MaterialDocument, picker shortlist
+
+**Status: Complete and verified (2026-08-12).** Shared asset state identity,
+`MaterialDocument`, atomic persistence, map-derived shortlist, four-row scrolling,
+prefix search, and inline default-material creation are implemented. Full visual
+material-property editor UI remains deferred as explicitly decided; the headless
+document API owns and tests edit / undo / redo / preview / Save / Save As / Discard.
 
 **Goal:** Users can create, edit, undo, preview, save, and discard materials.
 
@@ -78,12 +87,20 @@ tests added; v2 / v3→v4 migration tested with missing-material repair.
 4. Remove old picker scans (`editor_count_loaded_materials`,
    `editor_material_at_picker_index`, `editor_find_picker_index_for_material`).
 
-**Exit gate:** Deterministic and interactive tests for new / edit / save /
-discard; picker navigation tests updated; no per-frame scan remains.
+**Exit gate: Passed.** Deterministic tests cover new / edit / save / discard /
+undo / redo / preview and failure paths. Picker tests cover map-derived ordering,
+four visible rows, scrolling, prefix search, empty-result create/save/apply, and
+updated navigation. The retired registry-scan helpers no longer exist; overlay
+rendering reads only the filtered shortlist and visible rows.
 
 **Estimated effort:** 1.5–2 days.
 
 ### I3 — DecalDocument
+
+**Status: Complete and verified (2026-08-12).** `DecalDocument` provides the
+owned pattern-grid lifecycle through `AssetDocumentState`, `decal_painter`, and
+`decal_io`. The editor owns a scene-derived, deduplicated decal shortlist model;
+in-world placement and surface-projected painting remain R6.
 
 **Goal:** Reusable decal pattern authoring through the same lifecycle.
 
@@ -96,12 +113,19 @@ discard; picker navigation tests updated; no per-frame scan remains.
 4. Asset / instance separation: `DecalDocument` edits the reusable pattern;
    scene placement remains in `SceneDocument` (R6).
 
-**Exit gate:** Save / discard / undo / redo pass; pattern validation;
-missing-reference repair detects missing decal patterns.
+**Exit gate: Passed.** Save / Save As / discard / undo / redo / preview and
+atomic failure paths pass. Pattern dimensions and material references are
+validated. Existing repair mode detects missing decal patterns through the
+full 16-bit ID range, and the scene-scoped shortlist retains missing IDs for
+repair visibility without scanning the registry per frame.
 
 **Estimated effort:** 1 day.
 
 ### I4 — Asset refresh, dependency reporting, history boundary, gates
+
+**Status: Complete and verified (2026-08-12).** Commit-only eager refresh,
+transactional registry replacement, dependency diagnostic refresh, independent
+history boundaries, Q1–Q3, and Review E are complete.
 
 **Goal:** Safe registry refresh after commit and explicit history boundaries.
 
@@ -122,8 +146,10 @@ missing-reference repair detects missing decal patterns.
 5. Schedule and pass Review E (asset-document reuse, transactions,
    over-abstraction).
 
-**Exit gate:** Q1–Q3 pass; Review E scheduled; no per-frame refresh;
-dependency rules enforced.
+**Exit gate: Passed.** Q1–Q3 pass and Review E is complete with no blocker.
+Refresh is called only after successful asset Save/Save As, never per frame.
+Scene, decal-pattern, and transitive material dependencies are enforced through
+the existing repair list without mutating scene history.
 
 **Estimated effort:** 0.5–1 day.
 
@@ -158,5 +184,5 @@ dependency rules enforced.
 
 ## Next action
 
-Begin I1: create `scene_block_codec.h`, add `SCENE_VERSION_V4`, and widen
-`SceneAuthoredCell` to `uint16_t`.
+R5 is Verified. Begin R6 planning for decal placement and point-light authoring
+without reopening the R5 asset/instance ownership boundary.

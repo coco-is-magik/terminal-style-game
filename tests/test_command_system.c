@@ -821,7 +821,7 @@ static void test_typed_surfaces_restore_exactly(void **state) {
     CommandExecutionContext context = {0};
     (void)state;
     load_fixture(&doc);
-    asset_registry_init(&assets);
+    assert_true(asset_registry_init(&assets));
     mark_material_loaded(&assets, 1);
     mark_material_loaded(&assets, 7);
     context.assets = &assets;

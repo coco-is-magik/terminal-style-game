@@ -139,7 +139,8 @@ static bool parse_material_row(const char *text, int count, int *materials) {
         long value;
         errno = 0;
         value = strtol(cursor, &end, 10);
-        if (errno == ERANGE || end == cursor || value < 0 || value > 255) return false;
+        if (errno == ERANGE || end == cursor || value < 0 ||
+            value > ASSET_ID_MAX) return false;
         while (*end == ' ' || *end == '\t') end++;
         materials[index] = (int)value;
         if (index + 1 < count) {
@@ -222,7 +223,7 @@ static bool load_material(AssetRegistry *reg, int id, const char *filepath) {
         if (key && val) {
             trim_string(val);
             if (strcmp(key, "palette") == 0 &&
-                !parse_bounded_int(val, 0, 255, &pal_id)) valid = false;
+                !parse_bounded_int(val, 0, ASSET_ID_MAX, &pal_id)) valid = false;
             else if (strcmp(key, "glyphs") == 0) {
                 strncpy(glyphs, val, 4);
                 glyphs[4] = '\0';
@@ -274,34 +275,41 @@ static bool basename_is_numeric(const char *base) {
 }
 
 /**
- * first_free_material_id() — Find the lowest unused material ID slot
- *
- * Scans material_names[1..255] and returns the first ID whose name slot
- * is still empty (not yet loaded).  Returns 0 if all 255 slots are full.
- *
- * @param reg  AssetRegistry to scan
- * @return     First free ID (1–255), or 0 if all slots are occupied
- */
-static int first_free_material_id(const AssetRegistry *reg) {
-    for (int id = 1; id <= 255; id++) {
-        if (reg->material_names[id][0] == '\0') return id;
-    }
-    return 0;
-}
-
-/**
- * qsort_str_cmp() — Comparator for qsort over a 2D char array
- *
- * Each element passed by qsort is a pointer to a fixed-size char row
- * (e.g. char[256]), which decays to const char *.  strcmp is applied
- * directly to the two pointers.
+ * qsort_str_cmp() — Comparator for qsort over owned string pointers
  *
  * @param a  Pointer to first string element (const char *)
  * @param b  Pointer to second string element (const char *)
  * @return   strcmp result for alphabetic ordering
  */
 static int qsort_str_cmp(const void *a, const void *b) {
-    return strcmp((const char *)a, (const char *)b);
+    const char *const *left = a;
+    const char *const *right = b;
+    return strcmp(*left, *right);
+}
+
+static void free_name_list(char **names, size_t count) {
+    if (!names) return;
+    for (size_t i = 0U; i < count; i++) free(names[i]);
+    free(names);
+}
+
+static bool append_name(char ***names, size_t *count, size_t *capacity,
+                        const char *name) {
+    char **grown;
+    char *copy;
+    if (*count == *capacity) {
+        size_t next = *capacity == 0U ? 16U : *capacity * 2U;
+        if (next < *capacity || next > ASSET_ID_CAPACITY) return false;
+        grown = realloc(*names, next * sizeof(**names));
+        if (!grown) return false;
+        *names = grown;
+        *capacity = next;
+    }
+    copy = malloc(strlen(name) + 1U);
+    if (!copy) return false;
+    memcpy(copy, name, strlen(name) + 1U);
+    (*names)[(*count)++] = copy;
+    return true;
 }
 
 /**
@@ -333,12 +341,12 @@ static bool load_named_material(AssetRegistry *reg, const char *filepath,
         if (key && val) {
             trim_string(val);
             if (strcmp(key, "palette") == 0) {
-                if (!parse_bounded_int(val, 0, 255, &pal_id)) valid = false;
+                if (!parse_bounded_int(val, 0, ASSET_ID_MAX, &pal_id)) valid = false;
             } else if (strcmp(key, "glyphs") == 0) {
                 strncpy(glyphs, val, 4);
                 glyphs[4] = '\0';
             } else if (strcmp(key, "id") == 0) {
-                if (!parse_bounded_int(val, 1, 255, &explicit_id)) valid = false;
+                if (!parse_bounded_int(val, 1, ASSET_ID_MAX, &explicit_id)) valid = false;
             }
         }
     }
@@ -355,7 +363,7 @@ static bool load_named_material(AssetRegistry *reg, const char *filepath,
         }
         id = explicit_id;
     } else {
-        id = first_free_material_id(reg);
+        id = (int)asset_registry_allocate_material_id(reg);
         if (id == 0) {
             fprintf(stderr, "material: all ID slots full, skipping '%s'\n", filepath);
             return false;
@@ -558,7 +566,7 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
                 if (!parse_bounded_int(val, 1, SPRITE_PATTERN_MAX_ROWS, &s.rows)) valid = false;
             }
             else if (strcmp(key, "default_material") == 0) {
-                if (!parse_bounded_int(val, 0, 255, &default_material)) valid = false;
+                if (!parse_bounded_int(val, 0, ASSET_ID_MAX, &default_material)) valid = false;
             }
             else if (strncmp(key, "pattern_", 8) == 0) {
                 int r;
@@ -601,7 +609,7 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
                 char glyph = ' ';
                 if (c < (int)strlen(p_buf[r])) glyph = p_buf[r][c];
                 s.pattern[r * s.cols + c].glyph = glyph;
-                s.pattern[r * s.cols + c].material_id = mats[c];
+                s.pattern[r * s.cols + c].material_id = (uint16_t)mats[c];
             }
     }
     
@@ -627,12 +635,12 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
  *     If the file contains an "id=<n>" field, that slot is requested.
  *     If the slot is already occupied, the file is skipped (warning to stderr).
  *     If no id= field is present, the first free slot (lowest unoccupied ID
- *     in 1..255) is assigned.
+ *     in 1..65535) is assigned.
  *
  * Both passes sort their file lists alphabetically before loading, so the
  * result is deterministic regardless of the directory enumeration order.
  *
- * Falls back to the legacy numeric probe loop (1..255) if opendir() fails.
+ * Falls back to the legacy contiguous numeric probe if opendir() fails.
  *
  * @param reg           AssetRegistry to populate
  * @param materials_dir Full path to the materials directory (e.g. "assets/materials")
@@ -642,7 +650,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
     if (!dir) {
         /* Directory missing or unreadable — fall back to numeric probe */
         char filepath[512];
-        for (int i = 1; i < 256; i++) {
+        for (int i = 1; i <= ASSET_ID_MAX; i++) {
             snprintf(filepath, sizeof(filepath), "%s/%d.txt", materials_dir, i);
             if (!load_material(reg, i, filepath)) {
                 if (i > 10) break;
@@ -651,14 +659,11 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         return;
     }
 
-    /* Collect filenames that end in ".txt", split into numeric vs named.
-     * Use fixed-size 2D arrays to avoid heap allocation (strdup not in C11). */
-#define MAT_MAX_FILES 256
-#define MAT_NAME_MAX  256
-    char numeric[MAT_MAX_FILES][MAT_NAME_MAX];
-    int  n_num   = 0;
-    char named[MAT_MAX_FILES][MAT_NAME_MAX];
-    int  n_named = 0;
+    /* Collect filenames that end in ".txt", split into numeric vs named. */
+    char **numeric = NULL;
+    size_t n_num = 0U, numeric_capacity = 0U;
+    char **named = NULL;
+    size_t n_named = 0U, named_capacity = 0U;
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -666,7 +671,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         size_t len = strlen(name);
         /* Must end in ".txt" (at least 5 chars: "x.txt") */
         if (len < 5 || strcmp(name + len - 4, ".txt") != 0) continue;
-        if (len >= MAT_NAME_MAX) continue;  /* Skip unreasonably long names */
+        if (len >= 256U) continue;  /* Skip unreasonably long names */
 
         /* Extract basename (filename without ".txt") */
         size_t baselen = len - 4;
@@ -677,30 +682,21 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         base[baselen] = '\0';
 
         if (basename_is_numeric(base)) {
-            if (n_num < MAT_MAX_FILES) {
-                strncpy(numeric[n_num], name, MAT_NAME_MAX - 1);
-                numeric[n_num][MAT_NAME_MAX - 1] = '\0';
-                n_num++;
-            }
+            if (!append_name(&numeric, &n_num, &numeric_capacity, name)) break;
         } else {
-            if (n_named < MAT_MAX_FILES) {
-                strncpy(named[n_named], name, MAT_NAME_MAX - 1);
-                named[n_named][MAT_NAME_MAX - 1] = '\0';
-                n_named++;
-            }
+            if (!append_name(&named, &n_named, &named_capacity, name)) break;
         }
     }
     closedir(dir);
 
-    /* Sort both lists alphabetically for deterministic ordering.
-     * Elements are char[MAT_NAME_MAX], so qsort passes (const char *) directly. */
-    if (n_num   > 1) qsort(numeric, (size_t)n_num,   MAT_NAME_MAX, qsort_str_cmp);
-    if (n_named > 1) qsort(named,   (size_t)n_named, MAT_NAME_MAX, qsort_str_cmp);
+    /* Sort both lists alphabetically for deterministic ordering. */
+    if (n_num > 1U) qsort(numeric, n_num, sizeof(*numeric), qsort_str_cmp);
+    if (n_named > 1U) qsort(named, n_named, sizeof(*named), qsort_str_cmp);
 
     char filepath[512];
 
     /* --- Pass 1: numeric files — ID comes from the basename integer --- */
-    for (int i = 0; i < n_num; i++) {
+    for (size_t i = 0U; i < n_num; i++) {
         size_t len     = strlen(numeric[i]);
         size_t baselen = len - 4;
         char base[64];
@@ -708,7 +704,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         base[baselen] = '\0';
 
         int id;
-        if (parse_bounded_int(base, 1, 255, &id) &&
+        if (parse_bounded_int(base, 1, ASSET_ID_MAX, &id) &&
             strlen(materials_dir) + 1 + strlen(numeric[i]) < sizeof(filepath)) {
             memcpy(filepath, materials_dir, strlen(materials_dir));
             filepath[strlen(materials_dir)] = '/';
@@ -718,7 +714,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
     }
 
     /* --- Pass 2: named files — ID from id= field or first free slot --- */
-    for (int i = 0; i < n_named; i++) {
+    for (size_t i = 0U; i < n_named; i++) {
         size_t len     = strlen(named[i]);
         size_t baselen = len - 4;
         char base[64];
@@ -733,8 +729,35 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         }
     }
 
-#undef MAT_NAME_MAX
-#undef MAT_MAX_FILES
+    free_name_list(numeric, n_num);
+    free_name_list(named, n_named);
+}
+
+typedef bool (*NumericAssetLoader)(AssetRegistry *, int, const char *);
+
+static void load_numeric_asset_directory(AssetRegistry *reg, const char *directory,
+                                         NumericAssetLoader loader) {
+    DIR *dir = opendir(directory);
+    struct dirent *entry;
+    if (!dir) return;
+    while ((entry = readdir(dir)) != NULL) {
+        size_t length = strlen(entry->d_name);
+        char base[16];
+        char canonical[24];
+        char path[512];
+        int id;
+        if (length < 5U || length >= sizeof(base) + 4U ||
+            strcmp(entry->d_name + length - 4U, ".txt") != 0) continue;
+        memcpy(base, entry->d_name, length - 4U);
+        base[length - 4U] = '\0';
+        if (!parse_bounded_int(base, 1, ASSET_ID_MAX, &id)) continue;
+        if (snprintf(canonical, sizeof(canonical), "%d.txt", id) < 0 ||
+            strcmp(canonical, entry->d_name) != 0) continue;
+        if (snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name) < 0 ||
+            strlen(path) >= sizeof(path)) continue;
+        (void)loader(reg, id, path);
+    }
+    closedir(dir);
 }
 
 /* ===================================================================
@@ -744,27 +767,25 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
 /**
  * asset_loader_load_registry() — Load all generic assets from disk
  *
- * Iterates through palette IDs (1–255), material IDs (1–255), and sprite
- * IDs (1–255), attempting to load each one.  To avoid stat() calls for
- * files that don't exist, we simply try to fopen() each and treat a NULL
- * return as "file not found".  IDs 1–10 are always probed; after that,
- * the first missing file stops that asset-type scan to save time.
+ * Enumerates existing palette, material, and decal files across IDs 1–65535.
+ * Sprite loading intentionally remains the legacy contiguous 1–255 probe.
  *
  * @param reg       AssetRegistry to populate
  * @param base_path Root directory for assets (e.g. "assets")
  */
-void asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
+bool asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
     char filepath[512];
+    char directory[512];
+    DIR *root;
+    if (!reg || !reg->palettes || !reg->materials || !reg->decal_patterns ||
+        !reg->material_names || !base_path || base_path[0] == '\0') return false;
+    root = opendir(base_path);
+    if (!root) return false;
+    if (closedir(root) != 0) return false;
     
-    /* ---- Load palettes (IDs 1 to 255) ---- */
-    for (int i = 1; i < 256; i++) {
-        snprintf(filepath, sizeof(filepath), "%s/palettes/%d.txt", base_path, i);
-        if (!load_palette(reg, i, filepath)) {
-            /* IDs 1–10 are always probed; after that, stop at the first
-             * missing file to avoid many unnecessary failed fopen() calls. */
-            if (i > 10) break;
-        }
-    }
+    /* ---- Load existing palette files (IDs 1 to 65535) ---- */
+    snprintf(directory, sizeof(directory), "%s/palettes", base_path);
+    load_numeric_asset_directory(reg, directory, load_palette);
     
     /* ---- Load materials via two-pass directory scan ---- */
     {
@@ -774,20 +795,18 @@ void asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
     }
     
     /* ---- Load sprites (IDs 1 to 255) ---- */
-    for (int i = 1; i < 256; i++) {
+    for (int i = 1; i < (int)SPRITE_ID_CAPACITY; i++) {
         snprintf(filepath, sizeof(filepath), "%s/sprites/%d.txt", base_path, i);
         if (!load_sprite(reg, i, filepath)) {
             if (i > 10) break;
         }
     }
 
-    /* ---- Load reusable decal patterns without their legacy placement ---- */
-    for (int i = 1; i < 256; i++) {
-        snprintf(filepath, sizeof(filepath), "%s/decals/%d.txt", base_path, i);
-        if (!load_decal_pattern(reg, i, filepath)) {
-            if (i > 10) break;
-        }
-    }
+    /* ---- Load existing reusable decal patterns (IDs 1 to 65535) ---- */
+    snprintf(directory, sizeof(directory), "%s/decals", base_path);
+    load_numeric_asset_directory(reg, directory, load_decal_pattern);
+    (void)asset_registry_bump_generation(reg);
+    return true;
 }
 
 /**

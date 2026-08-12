@@ -18,6 +18,7 @@
 #include "grid.h"
 #include "input.h"
 #include "map_catalog.h"
+#include "material_document.h"
 #include "scene_document.h"
 
 #include <stdbool.h>
@@ -144,6 +145,19 @@ typedef struct {
     MaterialId highlighted_material;
     EditorSurfaceField surface_field;
     bool material_picker_open;
+    MaterialId *material_shortlist;
+    size_t material_shortlist_count;
+    size_t material_shortlist_capacity;
+    MaterialId *material_search_results;
+    size_t material_search_result_count;
+    size_t material_search_result_capacity;
+    char material_search_text[MATERIAL_NAME_CAPACITY];
+    size_t material_search_text_length;
+    char *material_root;
+    char *asset_root;
+    uint16_t *decal_shortlist;
+    size_t decal_shortlist_count;
+    size_t decal_shortlist_capacity;
     EditorLightField light_field;
     char light_value_text[32];
     size_t light_value_text_length;
@@ -177,6 +191,16 @@ bool unified_editor_init(
 );
 
 void unified_editor_destroy(UnifiedEditorState *editor);
+bool unified_editor_set_material_root(UnifiedEditorState *editor,
+                                      const char *material_root);
+bool unified_editor_set_asset_root(UnifiedEditorState *editor,
+                                   const char *asset_root);
+size_t unified_editor_material_shortlist_count(const UnifiedEditorState *editor);
+MaterialId unified_editor_material_shortlist_at(const UnifiedEditorState *editor,
+                                                size_t index);
+size_t unified_editor_decal_shortlist_count(const UnifiedEditorState *editor);
+uint16_t unified_editor_decal_shortlist_at(const UnifiedEditorState *editor,
+                                           size_t index);
 
 MapCatalogResult unified_editor_begin_map_open(
     UnifiedEditorState *editor,

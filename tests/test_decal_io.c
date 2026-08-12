@@ -119,6 +119,21 @@ static void test_round_trip(void **state) {
     remove(TMP_PATH);
 }
 
+static void test_round_trip_uint16_material_id(void **state) {
+    Decal *orig = make_test_decal();
+    Decal *back;
+    (void)state;
+    assert_non_null(orig);
+    orig->pattern[0].material_id = UINT16_MAX;
+    assert_int_equal(decal_save_to_file(TMP_PATH, orig), 0);
+    back = decal_load_from_file(TMP_PATH);
+    assert_non_null(back);
+    assert_int_equal(back->pattern[0].material_id, UINT16_MAX);
+    decal_free(back);
+    decal_free(orig);
+    assert_int_equal(remove(TMP_PATH), 0);
+}
+
 /**
  * test_save_format_keys — Verify the saved file contains the required
  * key-value tokens that the engine's load_decal() parser expects.
@@ -532,6 +547,7 @@ static void test_engine_compatibility(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_round_trip),
+        cmocka_unit_test(test_round_trip_uint16_material_id),
         cmocka_unit_test(test_save_format_keys),
         cmocka_unit_test(test_save_pattern_content),
         cmocka_unit_test(test_load_engine_asset),

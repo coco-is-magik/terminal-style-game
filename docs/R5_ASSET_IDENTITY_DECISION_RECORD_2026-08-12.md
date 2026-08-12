@@ -76,10 +76,10 @@ reference paths.
 | `SceneAuthoredCell.floor_material` | `scene_types.h` | `uint8_t` → `uint16_t` |
 | `SceneAuthoredCell.ceiling_material` | `scene_types.h` | `uint8_t` → `uint16_t` |
 | `PatternCell.material_id` | `assets.h` | `uint8_t` → `uint16_t` |
-| `AssetRegistry.palettes[]` | `assets.h` | `[256]` → `[65536]` |
-| `AssetRegistry.materials[]` | `assets.h` | `[256]` → `[65536]` |
-| `AssetRegistry.decal_patterns[]` | `assets.h` | `[256]` → `[65536]` |
-| `AssetRegistry.material_names[]` | `assets.h` | `[256][64]` → `[65536][64]` |
+| `AssetRegistry.palettes` | `assets.h` | owned fixed-capacity 65,536-slot array |
+| `AssetRegistry.materials` | `assets.h` | owned fixed-capacity 65,536-slot array |
+| `AssetRegistry.decal_patterns` | `assets.h` | owned fixed-capacity 65,536-slot array |
+| `AssetRegistry.material_names` | `assets.h` | owned fixed-capacity `65536 × 64` table |
 | `AssetRegistry.material_count` | `assets.h` | review `int` → `uint16_t` or `size_t` |
 
 **Deferred (out of R5 I1 scope):**

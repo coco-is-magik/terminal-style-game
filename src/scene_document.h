@@ -84,8 +84,32 @@ typedef enum {
     SCENE_RUNTIME_BUILD_INVALID_DOCUMENT
 } SceneRuntimeBuildResult;
 
+typedef enum {
+    MATERIAL_REFERENCE_NONE = 0,
+    MATERIAL_REFERENCE_WALL,
+    MATERIAL_REFERENCE_FLOOR,
+    MATERIAL_REFERENCE_CEILING,
+    MATERIAL_REFERENCE_DECAL_PATTERN
+} MaterialReferenceKind;
+
+typedef struct {
+    MaterialReferenceKind kind;
+    int map_x;
+    int map_y;
+    SceneInstanceId decal_instance_id;
+    uint16_t decal_pattern_id;
+} MaterialReference;
+
 void scene_document_init(SceneDocument *document);
 void scene_document_destroy(SceneDocument *document);
+
+/** Find the first scene/decal-pattern reference blocking material deletion. */
+bool scene_document_find_material_reference(
+    const SceneDocument *document,
+    const AssetRegistry *assets,
+    uint16_t material_id,
+    MaterialReference *out_reference
+);
 
 SceneLoadResult scene_document_create_new(SceneDocument *document);
 
@@ -190,6 +214,12 @@ const SceneDecalInstance *scene_document_get_decals(
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
     const SceneDocument *document,
     size_t *out_count
+);
+/** Transactionally rebuild missing-asset diagnostics without changing history. */
+SceneLoadResult scene_document_refresh_repair_diagnostics(
+    SceneDocument *document,
+    const AssetRegistry *assets,
+    SceneDiagnostic *out_diagnostic
 );
 SceneInstanceId scene_document_get_next_instance_id(
     const SceneDocument *document

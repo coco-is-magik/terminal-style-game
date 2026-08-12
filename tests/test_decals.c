@@ -230,7 +230,7 @@ static void test_decal_rendering_wall(void **state) {
     camera_init(&cam, 2.5, 2.5, -PI/2.0, PI/2.0); // Looking at the wall at (2,0)
     
     AssetRegistry assets;
-    asset_registry_init(&assets);
+    assert_true(asset_registry_init(&assets));
     asset_registry_set_palette(&assets, 1, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255}, (SDL_Color){255,255,255,255});
     asset_registry_set_material(&assets, 1, 1, "####");
 
@@ -260,6 +260,7 @@ static void test_decal_rendering_wall(void **state) {
     assert_int_equal(c.fg.r, 30); // 255 * 0.2 * 0.6 (side 1)
     
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -313,6 +314,7 @@ static void test_decal_rendering_floor(void **state) {
     assert_int_equal(c.fg.g, 51);
     
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -373,6 +375,7 @@ static void test_decal_fisheye_correction(void **state) {
     assert_int_equal(dy, ey);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -481,6 +484,7 @@ static void test_decal_floor_continuous_sampling(void **state) {
     assert_int_equal(e.count, 1);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -530,6 +534,7 @@ static void test_decal_ceiling_continuous_sampling(void **state) {
     assert_int_equal(e.count, 1);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -583,6 +588,7 @@ static void test_decal_floor_glyph_order_2x2(void **state) {
     assert_adjacent_top_to_bottom(b, e);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -634,6 +640,7 @@ static void test_decal_ceiling_glyph_order_2x2(void **state) {
     assert_true(a.min_y != c.min_y);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -686,6 +693,7 @@ static void test_decal_floor_glyph_row_order_4x1(void **state) {
     assert_same_row_band(c, e);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -738,6 +746,7 @@ static void test_decal_ceiling_glyph_row_order_4x1(void **state) {
     assert_same_row_band(c, e);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -796,6 +805,7 @@ static void test_decal_wall_glyph_grid_2x3(void **state) {
     assert_adjacent_top_to_bottom(d_bounds, f);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -842,6 +852,7 @@ static void test_decal_wall_spacing_adjacent(void **state) {
     assert_adjacent_left_to_right(a, b);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -897,6 +908,7 @@ static void test_decal_wall_authoritative_dimensions(void **state) {
     assert_adjacent_left_to_right(c, e);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -953,6 +965,7 @@ static void test_decal_wall_backface_rejected(void **state) {
     assert_int_equal(count_grid_glyph(g, 'B'), 0);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1007,6 +1020,7 @@ static void test_decal_wall_orientation(void **state) {
     assert_true(t_y < b_y); // T should be above B (lower Y value in screen space)
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1050,6 +1064,7 @@ static void test_decal_rendering_extreme_horizon_offsets(void **state) {
     raycast_render(g, m, &cam, &assets, &world, NULL);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1089,6 +1104,7 @@ static GlyphBounds render_single_wall_decal_bounds(double cam_x, uint8_t glyph) 
     GlyphBounds bounds = assert_glyph_bounds(g, glyph);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
     return bounds;
@@ -1149,6 +1165,7 @@ static void test_decal_floor_perspective_plane(void **state) {
     assert_true(near_bounds.min_y >= far_bounds.min_y);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1200,6 +1217,7 @@ static void test_decal_wall_size_respects_width(void **state) {
     assert_true(bounds_width(wide_bounds) >= bounds_width(narrow_bounds));
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1261,6 +1279,7 @@ static void test_decal_oblique_cell_no_bbox_smear(void **state) {
     assert_true(b.count < all_top.count);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1313,6 +1332,7 @@ static void test_decal_whitespace_preserved(void **state) {
     assert_true(middle.glyph != 'B');
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1376,6 +1396,7 @@ static void test_decal_default_spacing_no_smear(void **state) {
     assert_adjacent_left_to_right(c, e);
 
     world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1421,6 +1442,7 @@ static void test_decal_default_spacing_explicit_overrides(void **state) {
     int default_gap = def_b.min_x - def_a.max_x;
 
     world_clear(&world_default);
+    asset_registry_clear(&assets_default);
     map_destroy(m_default);
     grid_destroy(g_default);
 
@@ -1461,6 +1483,7 @@ static void test_decal_default_spacing_explicit_overrides(void **state) {
     int explicit_gap = exp_d.min_x - exp_c.max_x;
 
     world_clear(&world_explicit);
+    asset_registry_clear(&assets_explicit);
     map_destroy(m_explicit);
     grid_destroy(g_explicit);
 
@@ -1506,6 +1529,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         assert_glyph_bounds(g, 'A');
         assert_glyph_bounds(g, 'B');
         world_clear(&world);
+        asset_registry_clear(&assets);
         map_destroy(m);
         grid_destroy(g);
     }
@@ -1541,6 +1565,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         assert_glyph_bounds(g, 'C');
         assert_glyph_bounds(g, 'D');
         world_clear(&world);
+        asset_registry_clear(&assets);
         map_destroy(m);
         grid_destroy(g);
     }
@@ -1576,6 +1601,7 @@ static void test_decal_default_spacing_surface_consistency(void **state) {
         assert_glyph_bounds(g, 'E');
         assert_glyph_bounds(g, 'F');
         world_clear(&world);
+        asset_registry_clear(&assets);
         map_destroy(m);
         grid_destroy(g);
     }

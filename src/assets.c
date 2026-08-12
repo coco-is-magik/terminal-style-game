@@ -36,20 +36,61 @@
  *
  * @param reg  Pointer to the AssetRegistry to initialise (NULL-safe)
  */
-void asset_registry_init(AssetRegistry *reg) {
-    if (!reg) return;
+bool asset_registry_init(AssetRegistry *reg) {
+    if (!reg) return false;
     memset(reg, 0, sizeof(AssetRegistry));
+    reg->palettes = calloc(ASSET_ID_CAPACITY, sizeof(*reg->palettes));
+    reg->materials = calloc(ASSET_ID_CAPACITY, sizeof(*reg->materials));
+    reg->decal_patterns = calloc(ASSET_ID_CAPACITY, sizeof(*reg->decal_patterns));
+    reg->material_names = calloc(ASSET_ID_CAPACITY, sizeof(*reg->material_names));
+    if (!reg->palettes || !reg->materials || !reg->decal_patterns ||
+        !reg->material_names) {
+        asset_registry_clear(reg);
+        return false;
+    }
+    return true;
 }
 
 void asset_registry_clear(AssetRegistry *reg) {
     if (!reg) return;
-    for (int id = 0; id < 256; id++) {
+    for (size_t id = 0U; id < SPRITE_ID_CAPACITY; id++) {
         free(reg->sprites[id].pattern);
         reg->sprites[id].pattern = NULL;
+    }
+    if (reg->decal_patterns) {
+        for (size_t id = 0U; id < ASSET_ID_CAPACITY; id++) {
         free(reg->decal_patterns[id].pattern);
         reg->decal_patterns[id].pattern = NULL;
+        }
     }
-    asset_registry_init(reg);
+    free(reg->palettes);
+    free(reg->materials);
+    free(reg->decal_patterns);
+    free(reg->material_names);
+    memset(reg, 0, sizeof(*reg));
+}
+
+uint16_t asset_registry_allocate_material_id(const AssetRegistry *reg) {
+    if (!reg || !reg->material_names) return 0U;
+    for (uint32_t id = 1U; id < ASSET_ID_CAPACITY; id++) {
+        if (reg->material_names[id][0] == '\0') return (uint16_t)id;
+    }
+    return 0U;
+}
+
+uint16_t asset_registry_allocate_decal_pattern_id(const AssetRegistry *reg) {
+    if (!reg || !reg->decal_patterns) return 0U;
+    for (uint32_t id = 1U; id < ASSET_ID_CAPACITY; id++) {
+        if (!reg->decal_patterns[id].pattern) return (uint16_t)id;
+    }
+    return 0U;
+}
+
+uint32_t asset_registry_bump_generation(AssetRegistry *reg) {
+    if (!reg) return 0U;
+    reg->generation++;
+    if (reg->generation == 0U) reg->generation = 1U;
+    return reg->generation;
 }
 
 /**
@@ -67,7 +108,7 @@ void asset_registry_clear(AssetRegistry *reg) {
  * @param f    Colour for far-away surfaces (8+ cells away)
  */
 void asset_registry_set_palette(AssetRegistry *reg, int id, SDL_Color n, SDL_Color m, SDL_Color f) {
-    if (!reg || id < 0 || id > 255) return;
+    if (!reg || !reg->palettes || id < 0 || id > ASSET_ID_MAX) return;
     reg->palettes[id].near_color = n;
     reg->palettes[id].mid_color = m;
     reg->palettes[id].far_color = f;
@@ -93,7 +134,8 @@ void asset_registry_set_palette(AssetRegistry *reg, int id, SDL_Color n, SDL_Col
  * @param glyph_set  Pointer to a string of 1–4 glyphs (e.g. "#@:.")
  */
 void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const char *glyph_set) {
-    if (!reg || id < 0 || id > 255) return;
+    if (!reg || !reg->materials || id < 0 || id > ASSET_ID_MAX ||
+        pal_id < 0 || pal_id > ASSET_ID_MAX) return;
     reg->materials[id].id = id;
     reg->materials[id].palette_id = pal_id;
 
@@ -160,8 +202,8 @@ SDL_Color palette_sample(const Palette *p, double distance, double light_level) 
  * matches name exactly.  Returns -1 if no match is found.
  */
 int material_find_by_name(const AssetRegistry *reg, const char *name) {
-    if (!reg || !name) return -1;
-    for (int id = 1; id <= 255; id++) {
+    if (!reg || !reg->material_names || !name) return -1;
+    for (int id = 1; id <= ASSET_ID_MAX; id++) {
         if (reg->material_names[id][0] != '\0' &&
             strcmp(reg->material_names[id], name) == 0) {
             return id;
@@ -177,7 +219,7 @@ int material_find_by_name(const AssetRegistry *reg, const char *name) {
  * Returns the literal string "UNKNOWN" for invalid or unloaded IDs.
  */
 const char *material_name_by_id(const AssetRegistry *reg, int id) {
-    if (!reg || id < 1 || id > 255) return "UNKNOWN";
+    if (!reg || !reg->material_names || id < 1 || id > ASSET_ID_MAX) return "UNKNOWN";
     if (reg->material_names[id][0] == '\0') return "UNKNOWN";
     return reg->material_names[id];
 }
@@ -189,7 +231,7 @@ const char *material_name_by_id(const AssetRegistry *reg, int id) {
  * populated by the loader).  IDs outside 1..255 always return false.
  */
 bool material_id_is_loaded(const AssetRegistry *reg, int id) {
-    if (!reg || id < 1 || id > 255) return false;
+    if (!reg || !reg->material_names || id < 1 || id > ASSET_ID_MAX) return false;
     return reg->material_names[id][0] != '\0';
 }
 
@@ -198,7 +240,7 @@ bool asset_registry_set_decal_pattern(AssetRegistry *reg, int id, int cols,
     size_t cells;
     size_t bytes;
     PatternCell *copy;
-    if (!reg || id < 1 || id > 255 || cols <= 0 ||
+    if (!reg || !reg->decal_patterns || id < 1 || id > ASSET_ID_MAX || cols <= 0 ||
         cols > DECAL_PATTERN_ASSET_MAX_COLS || rows <= 0 ||
         rows > DECAL_PATTERN_ASSET_MAX_ROWS || !pattern) {
         return false;
@@ -219,7 +261,8 @@ bool asset_registry_set_decal_pattern(AssetRegistry *reg, int id, int cols,
 
 const DecalPatternAsset *asset_registry_get_decal_pattern(
     const AssetRegistry *reg, int id) {
-    if (!reg || id < 1 || id > 255 || !reg->decal_patterns[id].pattern) {
+    if (!reg || !reg->decal_patterns || id < 1 || id > ASSET_ID_MAX ||
+        !reg->decal_patterns[id].pattern) {
         return NULL;
     }
     return &reg->decal_patterns[id];
@@ -227,8 +270,8 @@ const DecalPatternAsset *asset_registry_get_decal_pattern(
 
 const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void) {
     static PatternCell cells[4] = {
-        {(uint8_t)'!', UINT8_C(1)}, {(uint8_t)'#', UINT8_C(2)},
-        {(uint8_t)'#', UINT8_C(2)}, {(uint8_t)'!', UINT8_C(1)}
+        {(uint8_t)'!', UINT16_C(1)}, {(uint8_t)'#', UINT16_C(2)},
+        {(uint8_t)'#', UINT16_C(2)}, {(uint8_t)'!', UINT16_C(1)}
     };
     static DecalPatternAsset fallback = {2, 2, cells};
     return &fallback;

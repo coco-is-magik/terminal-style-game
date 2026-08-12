@@ -95,7 +95,10 @@ int main(int argc, char **argv) {
         return 2;
     }
     config_init_defaults();
-    asset_registry_init(&assets);
+    if (!asset_registry_init(&assets)) {
+        fprintf(stderr, "asset registry allocation failed\n");
+        return 1;
+    }
     world_init(&world);
     grid = grid_create(260, 160);
     map = map_create(20, 12);

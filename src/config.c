@@ -18,6 +18,7 @@
 
 #include "config.h"        /* EngineConfig struct, function declarations,
                               RunMode and VisualMode enums */
+#include "assets.h"
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -49,8 +50,8 @@ bool config_validate(const EngineConfig *config) {
            isfinite(config->side_shadow_attenuation) &&
            config->side_shadow_attenuation >= 0.0 &&
            config->side_shadow_attenuation <= 1.0 &&
-           config->default_material_id >= 1 && config->default_material_id <= 255 &&
-           config->default_palette_id >= 1 && config->default_palette_id <= 255 &&
+           config->default_material_id >= 1 && config->default_material_id <= ASSET_ID_MAX &&
+           config->default_palette_id >= 1 && config->default_palette_id <= ASSET_ID_MAX &&
            config->asset_canvas_cols > 0 && config->asset_canvas_rows > 0;
 }
 
@@ -214,7 +215,7 @@ static bool parse_line(char *line, EngineConfig *candidate) {
         return true;
     }
     if (strcmp(key, "default_material_id") == 0 || strcmp(key, "default_palette_id") == 0) {
-        if (!parse_int_range(val, 1, 255, &parsed_int)) return false;
+        if (!parse_int_range(val, 1, ASSET_ID_MAX, &parsed_int)) return false;
         if (key[8] == 'm') candidate->default_material_id = parsed_int;
         else candidate->default_palette_id = parsed_int;
         return true;

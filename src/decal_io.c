@@ -105,13 +105,13 @@ Decal *decal_load_from_file(const char *path) {
      * m_buf[r] holds the comma-separated material IDs for row r.
      */
     char p_buf[DECAL_PATTERN_MAX_ROWS][DECAL_PATTERN_MAX_COLS + 1];
-    char m_buf[DECAL_PATTERN_MAX_ROWS][DECAL_PATTERN_MAX_COLS + 1];
+    char m_buf[DECAL_PATTERN_MAX_ROWS][DECAL_MATERIAL_ROW_MAX_BYTES + 1];
     memset(p_buf, 0, sizeof(p_buf));
     memset(m_buf, 0, sizeof(m_buf));
 
     int art_mode = 0;
 
-    char line[256];
+    char line[DECAL_MATERIAL_ROW_MAX_BYTES + 32];
     while (fgets(line, sizeof(line), f)) {
         /* Detect the inline-art header (stops the key-value parse loop) */
         if (strncmp(line, "art=", 4) == 0 ||
@@ -150,7 +150,12 @@ Decal *decal_load_from_file(const char *path) {
         else if (strcmp(key, "pattern_rows") == 0) {
             if (!parse_bounded_dimension(val, DECAL_PATTERN_MAX_ROWS, &d->pattern_rows)) goto fail;
         }
-        else if (strcmp(key, "default_material")== 0) default_material  = atoi(val);
+        else if (strcmp(key, "default_material")== 0) {
+            char *end = NULL;
+            long parsed = strtol(val, &end, 10);
+            if (end == val || *end != '\0' || parsed < 0 || parsed > ASSET_ID_MAX) goto fail;
+            default_material = (int)parsed;
+        }
 
         /* Per-row pattern data: keys are "pattern_0", "pattern_1", ... */
         else if (strncmp(key, "pattern_", 8) == 0) {
@@ -165,8 +170,8 @@ Decal *decal_load_from_file(const char *path) {
         else if (strncmp(key, "material_", 9) == 0) {
             int r = atoi(key + 9);
             if (r >= 0 && r < DECAL_PATTERN_MAX_ROWS) {
-                strncpy(m_buf[r], val, 255);
-                m_buf[r][255] = '\0';
+                strncpy(m_buf[r], val, DECAL_MATERIAL_ROW_MAX_BYTES);
+                m_buf[r][DECAL_MATERIAL_ROW_MAX_BYTES] = '\0';
             }
         }
     }
@@ -201,14 +206,14 @@ Decal *decal_load_from_file(const char *path) {
                 char g = line[c];
                 if (g == '\t') g = ' ';
                 d->pattern[r * d->pattern_cols + c].glyph       = (uint8_t)g;
-                d->pattern[r * d->pattern_cols + c].material_id = (uint8_t)default_material;
+                d->pattern[r * d->pattern_cols + c].material_id = (uint16_t)default_material;
             }
         }
         if (!success && d->pattern) {
             /* Fill with error markers on dimension mismatch */
             for (size_t i = 0; i < cells; i++) {
                 d->pattern[i].glyph       = '!';
-                d->pattern[i].material_id = (uint8_t)default_material;
+                d->pattern[i].material_id = (uint16_t)default_material;
             }
         }
     } else {
@@ -222,8 +227,13 @@ Decal *decal_load_from_file(const char *path) {
                 char *p = m_buf[r];
                 int c = 0;
                 while (*p && c < d->pattern_cols) {
-                    mats[c++] = atoi(p);
-                    while (*p && *p != ',') p++;
+                    char *end = NULL;
+                    long parsed = strtol(p, &end, 10);
+                    if (end == p || parsed < 0 || parsed > ASSET_ID_MAX) goto fail;
+                    mats[c++] = (int)parsed;
+                    p = end;
+                    while (*p == ' ' || *p == '\t') p++;
+                    if (*p != '\0' && *p != ',') goto fail;
                     if (*p == ',') p++;
                 }
             }
@@ -231,7 +241,7 @@ Decal *decal_load_from_file(const char *path) {
                 char glyph = ' ';
                 if (c < (int)strlen(p_buf[r])) glyph = p_buf[r][c];
                 d->pattern[r * d->pattern_cols + c].glyph       = (uint8_t)glyph;
-                d->pattern[r * d->pattern_cols + c].material_id = (uint8_t)mats[c];
+                d->pattern[r * d->pattern_cols + c].material_id = (uint16_t)mats[c];
             }
         }
     }
@@ -276,7 +286,8 @@ int decal_save_to_file(const char *path, const Decal *decal) {
         for (int r = 0; r < decal->pattern_rows; r++) {
             fprintf(f, "pattern_%d=", r);
             for (int c = 0; c < decal->pattern_cols; c++) {
-                fputc((int)decal->pattern[r * decal->pattern_cols + c].glyph, f);
+                uint8_t glyph = decal->pattern[r * decal->pattern_cols + c].glyph;
+                fputc(glyph == 0U ? ' ' : (int)glyph, f);
             }
             fputc('\n', f);
         }
@@ -292,8 +303,9 @@ int decal_save_to_file(const char *path, const Decal *decal) {
         }
     }
 
-    if (fclose(f) != 0) return -1;
-    return 0;
+    int failed = ferror(f) != 0;
+    if (fclose(f) != 0) failed = 1;
+    return failed ? -1 : 0;
 }
 
 void decal_free(Decal *decal) {

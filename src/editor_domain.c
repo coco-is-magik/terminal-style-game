@@ -96,7 +96,7 @@ bool editor_domain_make_surface_material_request(
     SelectionTarget target, MaterialId material,
     EditorMutationRequest *out_request
 ) {
-    if (!out_request || material < 1 || material > 255) return false;
+    if (!out_request || material < 1 || material > ASSET_ID_MAX) return false;
     memset(out_request, 0, sizeof(*out_request));
     if (target.type == SELECTION_WALL_FACE) {
         out_request->type = EDITOR_MUTATION_SET_WALL_MATERIAL;

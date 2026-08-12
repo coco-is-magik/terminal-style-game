@@ -1,0 +1,3 @@
+id=7
+palette=1
+glyphs=####

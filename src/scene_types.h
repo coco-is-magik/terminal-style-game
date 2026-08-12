@@ -14,8 +14,9 @@
 #define SCENE_VERSION_V1 1U
 #define SCENE_VERSION_V2 2U
 #define SCENE_VERSION_V3 3U
-/* Canonical writes use v3; v1/v2 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V3
+#define SCENE_VERSION_V4 4U
+/* Canonical writes use v4; v1/v2/v3 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V4
 #define SCENE_FILE_MAX_BYTES (2U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -35,9 +36,9 @@ typedef enum {
 
 typedef struct {
     SceneCellOccupancy occupancy;
-    uint8_t wall_material;
-    uint8_t floor_material;
-    uint8_t ceiling_material;
+    uint16_t wall_material;
+    uint16_t floor_material;
+    uint16_t ceiling_material;
 } SceneAuthoredCell;
 
 typedef enum {

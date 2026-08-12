@@ -10,7 +10,7 @@
  *   DecalPatternAsset — Reusable pattern-only decal definition
  *   AssetRegistry — Top-level container for reusable visual definitions
  *
- * All assets are indexed by ID (0–255).  ID 0 is typically unused / default.
+ * Materials, palettes, and decals use IDs 0–65535. Sprite IDs remain 0–255.
  * Assets are loaded from disk by asset_loader.c.
  */
 
@@ -20,9 +20,14 @@
 #include <SDL3/SDL.h>    /* SDL_Color */
 #include <stdint.h>       /* uint8_t */
 #include <stdbool.h>      /* bool */
+#include <stddef.h>       /* size_t */
 
 #define DECAL_PATTERN_ASSET_MAX_COLS 255
 #define DECAL_PATTERN_ASSET_MAX_ROWS 64
+#define ASSET_ID_CAPACITY 65536U
+#define ASSET_ID_MAX 65535
+#define SPRITE_ID_CAPACITY 256U
+#define MATERIAL_NAME_CAPACITY 64U
 
 /**
  * Palette — Three-colour distance-based shading palette
@@ -62,7 +67,7 @@ typedef struct {
  */
 typedef struct {
     uint8_t glyph;           /* Character to render */
-    uint8_t material_id;     /* Material index for colouring this cell */
+    uint16_t material_id;    /* Material index for colouring this cell */
 } PatternCell;
 
 /**
@@ -88,8 +93,8 @@ typedef struct {
 /**
  * AssetRegistry — Top-level container for all visual assets
  *
- * Holds 256 slots each for palettes, materials, and sprites.
- * Indices 1–255 are used; index 0 is typically left as default/zero.
+ * Holds direct-indexed fixed-capacity storage for palettes, materials, and
+ * decals. Sprite storage intentionally remains 256 slots. Index 0 is null.
  *
  * material_names[id] — filename-derived name for material id (e.g. "1", "2").
  *   Non-empty string means the slot is loaded.  Empty string means unloaded.
@@ -98,33 +103,43 @@ typedef struct {
  *   IDs are not necessarily contiguous; do NOT assume IDs 1..material_count are loaded.
  */
 typedef struct {
-    Palette      palettes[256];           /* Distance-based colour palettes */
-    Material     materials[256];          /* Surface materials (palette ref + glyphs) */
-    SpriteAsset  sprites[256];            /* 2D sprite pattern definitions */
-    DecalPatternAsset decal_patterns[256]; /* Reusable decal glyph grids */
-    char         material_names[256][64]; /* Filename-derived name per material ID */
-    int          material_count;          /* Number of successfully loaded material slots */
+    Palette *palettes;                    /* Fixed-capacity, direct-indexed storage */
+    Material *materials;                  /* Fixed-capacity, direct-indexed storage */
+    SpriteAsset sprites[SPRITE_ID_CAPACITY]; /* Sprite widening remains deferred */
+    DecalPatternAsset *decal_patterns;    /* Fixed-capacity reusable decal storage */
+    char (*material_names)[MATERIAL_NAME_CAPACITY];
+    size_t material_count;
+    uint32_t generation;
 } AssetRegistry;
 
 /**
  * asset_registry_init() — Zero-initialise the entire AssetRegistry
  *
- * Sets all palette colours to {0,0,0,0}, materials to id=0/palette_id=0,
- * and sprites to empty.  Must be called before loading assets.
+ * Allocates zeroed fixed-capacity palette/material/decal storage and clears
+ * sprites. Must be called before loading assets.
  *
- * @param reg  Pointer to AssetRegistry to initialise (NULL-safe)
+ * @return true on success; false for NULL or allocation failure
  */
-void asset_registry_init(AssetRegistry *reg);
+bool asset_registry_init(AssetRegistry *reg);
 
 /**
  * asset_registry_clear() — Release registry-owned sprite patterns and reset
  *
- * Frees every loaded SpriteAsset pattern and returns the registry to the same
- * zeroed state as asset_registry_init(). The registry object itself is not freed.
+ * Frees every registry-owned pattern and fixed-capacity array. The registry
+ * object itself is not freed and must be reinitialized before reuse.
  *
  * @param reg  Pointer to AssetRegistry to clear (NULL-safe)
  */
 void asset_registry_clear(AssetRegistry *reg);
+
+/** Return the lowest unused material ID, or 0 when unavailable/full. */
+uint16_t asset_registry_allocate_material_id(const AssetRegistry *reg);
+
+/** Return the lowest unused reusable decal-pattern ID, or 0 when unavailable/full. */
+uint16_t asset_registry_allocate_decal_pattern_id(const AssetRegistry *reg);
+
+/** Increment and return the registry generation after a completed bulk refresh. */
+uint32_t asset_registry_bump_generation(AssetRegistry *reg);
 
 /**
  * asset_registry_set_palette() — Register a palette under a given ID

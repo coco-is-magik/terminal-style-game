@@ -322,6 +322,16 @@ static bool enter_unified_editor(UnifiedEditorState *ued,
         fprintf(stderr, "unified_editor_init failed\n");
         return false;
     }
+    if (!unified_editor_set_material_root(ued, "assets/materials")) {
+        unified_editor_destroy(ued);
+        fprintf(stderr, "material editor root allocation failed\n");
+        return false;
+    }
+    if (!unified_editor_set_asset_root(ued, "assets")) {
+        unified_editor_destroy(ued);
+        fprintf(stderr, "asset editor root allocation failed\n");
+        return false;
+    }
     (void)unified_editor_begin_legacy_import(ued, "assets/maps");
     (void)unified_editor_begin_native_open(ued, "assets/scenes");
     camera_init(cam, 1.5, 1.5, PI / 4.0, PI / 2.0);
@@ -339,8 +349,9 @@ static void sync_editor_text_input(Renderer *renderer,
     should_be_active = app_state == APP_STATE_EDITOR && editor && editor->active &&
         ((editor->modal == EDITOR_MENU_SAVE &&
           editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME) ||
-         (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
-          editor->inspector_kind == EDITOR_INSPECTOR_LIGHT));
+          (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
+           (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
+            editor->material_picker_open)));
     if (should_be_active && !SDL_TextInputActive(renderer->window)) {
         if (!SDL_StartTextInput(renderer->window)) {
             fprintf(stderr, "Failed to start editor text input: %s\n", SDL_GetError());
@@ -423,9 +434,17 @@ static int run_headless_smoke(void) {
     WorldState world;
     Map *map;
 
-    asset_registry_init(&assets);
+    if (!asset_registry_init(&assets)) {
+        fprintf(stderr, "{\"smoke\":\"fail\",\"stage\":\"asset_registry\"}\n");
+        return 1;
+    }
     world_init(&world);
-    asset_loader_load_registry(&assets, "assets");
+    if (!asset_loader_load_registry(&assets, "assets")) {
+        fprintf(stderr, "{\"smoke\":\"fail\",\"stage\":\"asset_load\"}\n");
+        world_clear(&world);
+        asset_registry_clear(&assets);
+        return 1;
+    }
 
     map = asset_loader_load_map_data(&world, "assets", 1);
     if (!map) {
@@ -488,10 +507,18 @@ int app_main(int argc, char* argv[]) {
     resources.grid = grid;
 
     AssetRegistry assets;
-    asset_registry_init(&assets);
+    if (!asset_registry_init(&assets)) {
+        fprintf(stderr, "Failed to initialize asset registry.\n");
+        app_resources_cleanup(&resources);
+        return 1;
+    }
     resources.assets = &assets;
     resources.assets_initialized = true;
-    asset_loader_load_registry(&assets, "assets");
+    if (!asset_loader_load_registry(&assets, "assets")) {
+        fprintf(stderr, "Failed to load asset registry.\n");
+        app_resources_cleanup(&resources);
+        return 1;
+    }
 
     WorldState world;
     world_init(&world);

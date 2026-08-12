@@ -152,7 +152,7 @@ static bool prepare_surface_mutation(
         map_y = request->data.surface_material.map_y;
         material = request->data.surface_material.material;
     }
-    if (material < 1 || material > 255 ||
+    if (material < 1 || material > ASSET_ID_MAX ||
         !scene_document_get_surface_material(
             document, map_x, map_y, surface, &before)) return false;
     if (surface == SCENE_SURFACE_WALL &&

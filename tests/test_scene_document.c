@@ -416,7 +416,7 @@ static void test_asset_registry_decal_patterns_and_fallback(void **state) {
     const DecalPatternAsset *stored;
     const DecalPatternAsset *fallback;
     (void)state;
-    asset_registry_init(&assets);
+    assert_true(asset_registry_init(&assets));
     assert_false(asset_registry_set_decal_pattern(&assets, 0, 2, 1, source));
     assert_false(asset_registry_set_decal_pattern(
         &assets, 1, DECAL_PATTERN_ASSET_MAX_COLS + 1, 1, source));
@@ -437,6 +437,55 @@ static void test_asset_registry_decal_patterns_and_fallback(void **state) {
                          fallback->pattern[1].material_id);
     asset_registry_clear(&assets);
     assert_null(asset_registry_get_decal_pattern(&assets, 7));
+}
+
+static void test_material_identity_allocation_and_reference_policy(void **state) {
+    AssetRegistry assets;
+    SceneDocument document;
+    MaterialReference reference;
+    PatternCell decal_cell = {(uint8_t)'D', UINT16_C(60000)};
+    SceneDecalInstance decal = {0};
+    (void)state;
+
+    assert_true(asset_registry_init(&assets));
+    assert_int_equal(asset_registry_allocate_material_id(&assets), 1U);
+    memcpy(assets.material_names[1], "one", sizeof("one"));
+    assert_int_equal(asset_registry_allocate_material_id(&assets), 2U);
+    memcpy(assets.material_names[2], "two", sizeof("two"));
+    assets.material_names[1][0] = '\0';
+    assert_int_equal(asset_registry_allocate_material_id(&assets), 1U);
+    asset_registry_set_material(&assets, 60000, 65535, "#");
+    memcpy(assets.material_names[60000], "high", sizeof("high"));
+    assert_true(material_id_is_loaded(&assets, 60000));
+
+    scene_document_init(&document);
+    assert_int_equal(scene_document_create_new(&document), SCENE_LOAD_OK);
+    document.authored_cells[0].floor_material = UINT16_C(60000);
+    assert_true(scene_document_find_material_reference(
+        &document, &assets, UINT16_C(60000), &reference));
+    assert_int_equal(reference.kind, MATERIAL_REFERENCE_FLOOR);
+    assert_int_equal(reference.map_x, 0);
+    assert_int_equal(reference.map_y, 0);
+
+    document.authored_cells[0].floor_material = 1U;
+    assert_true(asset_registry_set_decal_pattern(&assets, 50000, 1, 1, &decal_cell));
+    decal.id = 42U;
+    decal.asset.kind = SCENE_ASSET_KIND_DECAL_PATTERN;
+    decal.asset.id = 50000U;
+    document.decals = &decal;
+    document.decal_count = 1U;
+    assert_true(scene_document_find_material_reference(
+        &document, &assets, UINT16_C(60000), &reference));
+    assert_int_equal(reference.kind, MATERIAL_REFERENCE_DECAL_PATTERN);
+    assert_int_equal(reference.decal_instance_id, 42U);
+    assert_int_equal(reference.decal_pattern_id, 50000U);
+    assert_false(scene_document_find_material_reference(
+        &document, &assets, UINT16_C(40000), &reference));
+
+    document.decals = NULL;
+    document.decal_count = 0U;
+    scene_document_destroy(&document);
+    asset_registry_clear(&assets);
 }
 
 static void test_native_asset_resolution_repair_fallback_and_replacement(void **state) {
@@ -490,6 +539,7 @@ static void test_native_asset_resolution_repair_fallback_and_replacement(void **
                          &doc, &assets, 3, 9, 2),
                      SCENE_REPAIR_REPLACE_ASSET_NOT_LOADED);
     assert_true(asset_registry_set_decal_pattern(&assets, 9, 1, 1, &nine));
+    mark_material_loaded(&assets, 2);
     assert_int_equal(scene_document_internal_replace_decal_asset(
                          &doc, &assets, 3, 9, 2),
                      SCENE_REPAIR_REPLACE_NO_CHANGE);
@@ -1355,7 +1405,7 @@ static void test_native_load_light_map_is_populated_by_lighting_update(void **st
     asset_registry_clear(&assets);
 }
 
-static void test_v1_migration_save_emits_v3_and_reopens_clean(void **state) {
+static void test_v1_migration_save_emits_v4_and_reopens_clean(void **state) {
     char source[512];
     char destination[512];
     SceneDocument doc;
@@ -1386,11 +1436,12 @@ static void test_v1_migration_save_emits_v3_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 3\n"));
+    assert_non_null(strstr(saved, "scene_version = 4\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
     assert_non_null(strstr(saved, "[floor_materials]\n"));
+    assert_non_null(strstr(saved, "0001 0001 0001\n"));
     assert_null(strstr(saved, "[cells]\n"));
     free(saved);
 
@@ -1404,7 +1455,7 @@ static void test_v1_migration_save_emits_v3_and_reopens_clean(void **state) {
     assert_int_equal(count, 9U);
     assert_int_equal(cells[4].occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
     assert_int_equal(cells[4].wall_material,
-                     (uint8_t)config_get()->default_material_id);
+                     (uint16_t)config_get()->default_material_id);
     scene_document_destroy(&reopened);
     scene_document_destroy(&doc);
 }
@@ -1456,7 +1507,7 @@ static void test_v2_surface_missing_repair_and_explicit_replacement(void **state
     asset_registry_clear(&assets);
 }
 
-static void test_checked_in_r4_v3_fixture_is_clean_and_canonical(void **state) {
+static void test_checked_in_r4_v3_fixture_migrates_to_v4(void **state) {
     const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
     char destination[512];
     char *fixture_text;
@@ -1478,8 +1529,8 @@ static void test_checked_in_r4_v3_fixture_is_clean_and_canonical(void **state) {
 
     assert_int_equal(scene_document_load_native_with_assets(
         &document, fixture, &assets, &diagnostic), SCENE_LOAD_OK);
-    assert_false(document.migration_pending);
-    assert_false(scene_document_is_dirty(&document));
+    assert_true(document.migration_pending);
+    assert_true(scene_document_is_dirty(&document));
     assert_false(scene_document_is_repair_required(&document));
     assert_string_equal(scene_document_get_name(&document), "r4_surface_workflow");
     assert_int_equal(document.map.width, 6);
@@ -1499,7 +1550,11 @@ static void test_checked_in_r4_v3_fixture_is_clean_and_canonical(void **state) {
     saved_text = read_text_file(destination);
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
-    assert_string_equal(saved_text, fixture_text);
+    assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 4\n"));
+    assert_non_null(strstr(saved_text, "0001 0002 0003 0004"));
+    assert_false(document.migration_pending);
+    assert_false(scene_document_is_dirty(&document));
     free(saved_text);
     free(fixture_text);
 
@@ -1556,6 +1611,7 @@ int main(void) {
         cmocka_unit_test(test_failed_load_preserves_document),
         cmocka_unit_test(test_native_load_commits_complete_clean_document),
         cmocka_unit_test(test_asset_registry_decal_patterns_and_fallback),
+        cmocka_unit_test(test_material_identity_allocation_and_reference_policy),
         cmocka_unit_test(test_native_asset_resolution_repair_fallback_and_replacement),
         cmocka_unit_test(test_native_all_assets_loaded_and_failed_load_preserves_repair),
         cmocka_unit_test(test_repair_diagnostic_bound),
@@ -1581,9 +1637,9 @@ int main(void) {
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
         cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
-        cmocka_unit_test(test_v1_migration_save_emits_v3_and_reopens_clean),
+        cmocka_unit_test(test_v1_migration_save_emits_v4_and_reopens_clean),
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
-        cmocka_unit_test(test_checked_in_r4_v3_fixture_is_clean_and_canonical),
+        cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v4),
         cmocka_unit_test(test_v3_growth_provenance_save_reopen),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);

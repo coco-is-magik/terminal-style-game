@@ -260,7 +260,7 @@ static void test_renderer_preflight_boundaries(void **state) {
 static void test_asset_loader(void **state) {
     (void)state;
     AssetRegistry assets;
-    asset_registry_init(&assets);
+    assert_true(asset_registry_init(&assets));
     
     // Test loading palettes and materials
     asset_loader_load_registry(&assets, "assets");
@@ -337,7 +337,7 @@ static void prepare_surface_baseline(
     assert_non_null(*out_map);
     camera_init(camera, map_width / 2.0, map_height / 2.0, 0.0, PI / 2.0);
     camera->pitch = pitch;
-    asset_registry_init(assets);
+    assert_true(asset_registry_init(assets));
     world_init(world);
     count = (size_t)map_width * (size_t)map_height;
     for (size_t i = 0U; i < count; i++) (*out_map)->light_map[i] = 1.0;
@@ -632,6 +632,8 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     assert_true(grid_region_luminance(lit_grid, 8, 17) > ambient_middle);
     assert_true(grid_region_luminance(lit_grid, 17, 25) > ambient_bottom);
 
+    world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(map);
     grid_destroy(ambient_grid);
     grid_destroy(lit_grid);
@@ -927,6 +929,8 @@ static void test_raycast_render_output(void **state) {
     assert_true(c.glyph == '#' || c.glyph == 'x' || c.glyph == '+' || c.glyph == '-' || c.glyph == '.');
     assert_int_equal(c.bg.r, 0); // Wall bg is solid black
     
+    world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -960,6 +964,8 @@ static void test_raycast_render_extreme_horizon_offsets(void **state) {
     cam.pitch = (double)g->height;
     raycast_render(g, m, &cam, &assets, &world, NULL);
 
+    world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -995,6 +1001,8 @@ static void test_raycast_render_has_no_fixed_width_cutoff(void **state) {
     assert_int_equal(c.bg.r, 6);
     assert_true(g->column_depths[1099] > 0.0);
 
+    world_clear(&world);
+    asset_registry_clear(&assets);
     map_destroy(m);
     grid_destroy(g);
 }
@@ -1023,6 +1031,8 @@ static void test_material_find_by_name(void **state) {
 
     assert_int_equal(material_find_by_name(&assets, "1"), 1);
     assert_int_equal(material_find_by_name(&assets, "nonexistent"), -1);
+
+    asset_registry_clear(&assets);
     asset_registry_clear(&assets);
 }
 
@@ -1087,6 +1097,7 @@ static void test_named_material_auto_assign(void **state) {
 
     assert_int_equal(material_find_by_name(&assets, "stone_brick"), 1);
     assert_int_equal(material_find_by_name(&assets, "2"),           2);
+    asset_registry_clear(&assets);
 
     remove("/tmp/tst_mat1/2.txt");
     remove("/tmp/tst_mat1/stone_brick.txt");
@@ -1107,6 +1118,8 @@ static void test_named_material_gap_assign(void **state) {
 
     assert_int_equal(material_find_by_name(&assets, "extra"), 2);
 
+    asset_registry_clear(&assets);
+
     remove("/tmp/tst_mat2/1.txt");
     remove("/tmp/tst_mat2/3.txt");
     remove("/tmp/tst_mat2/extra.txt");
@@ -1126,8 +1139,27 @@ static void test_named_material_explicit_id(void **state) {
     assert_int_equal(material_find_by_name(&assets, "wood"), 8);
     assert_true(material_id_is_loaded(&assets, 8));
 
+    asset_registry_clear(&assets);
+
     remove("/tmp/tst_mat3/wood.txt");
     rmdir("/tmp/tst_mat3");
+}
+
+static void test_named_material_high_explicit_id(void **state) {
+    AssetRegistry assets;
+    (void)state;
+    mkdir("/tmp/tst_mat_high", 0755);
+    write_mat_file("/tmp/tst_mat_high/high.txt",
+                   "palette=65535\nglyphs=HH\nid=60000\n");
+
+    assert_true(asset_registry_init(&assets));
+    asset_loader_load_materials(&assets, "/tmp/tst_mat_high");
+    assert_int_equal(material_find_by_name(&assets, "high"), 60000);
+    assert_int_equal(assets.materials[60000].palette_id, 65535);
+    asset_registry_clear(&assets);
+
+    remove("/tmp/tst_mat_high/high.txt");
+    rmdir("/tmp/tst_mat_high");
 }
 
 static void test_named_material_collision_skipped(void **state) {
@@ -1144,6 +1176,8 @@ static void test_named_material_collision_skipped(void **state) {
     /* ID 1 still holds the numeric file's name, not "conflict" */
     assert_string_equal(material_name_by_id(&assets, 1), "1");
     assert_int_equal(material_find_by_name(&assets, "conflict"), -1);
+
+    asset_registry_clear(&assets);
 
     remove("/tmp/tst_mat4/1.txt");
     remove("/tmp/tst_mat4/conflict.txt");
@@ -1164,6 +1198,8 @@ static void test_named_material_count_is_count(void **state) {
     /* Two files loaded → count == 2, not 2 from highest-ID tracking */
     assert_int_equal(assets.material_count, 2);
 
+    asset_registry_clear(&assets);
+
     remove("/tmp/tst_mat5/1.txt");
     remove("/tmp/tst_mat5/wood.txt");
     rmdir("/tmp/tst_mat5");
@@ -1180,6 +1216,47 @@ static void test_numeric_material_regression(void **state) {
     assert_string_equal(material_name_by_id(&assets, 2), "2");
     assert_true(assets.material_count >= 4);
     asset_registry_clear(&assets);
+}
+
+static void test_sparse_high_id_bulk_asset_loading(void **state) {
+    const char *root = "/tmp/tst_assets_high";
+    AssetRegistry assets;
+    const DecalPatternAsset *decal;
+    SDL_Color sampled;
+    (void)state;
+
+    mkdir(root, 0755);
+    mkdir("/tmp/tst_assets_high/palettes", 0755);
+    mkdir("/tmp/tst_assets_high/materials", 0755);
+    mkdir("/tmp/tst_assets_high/sprites", 0755);
+    mkdir("/tmp/tst_assets_high/decals", 0755);
+    write_mat_file("/tmp/tst_assets_high/palettes/50000.txt",
+                   "near=10,20,30,255\nmid=4,5,6,255\nfar=1,2,3,255\n");
+    write_mat_file("/tmp/tst_assets_high/decals/50000.txt",
+                   "pattern_cols=1\npattern_rows=1\ndefault_material=65535\n"
+                   "pattern_0=X\nmaterial_0=65535\n");
+
+    assert_true(asset_registry_init(&assets));
+    assert_int_equal(assets.generation, 0U);
+    asset_loader_load_registry(&assets, root);
+    assert_int_equal(assets.generation, 1U);
+    sampled = palette_sample(&assets.palettes[50000], 1.0, 1.0);
+    assert_int_equal(sampled.r, 10U);
+    assert_int_equal(sampled.g, 20U);
+    assert_int_equal(sampled.b, 30U);
+    decal = asset_registry_get_decal_pattern(&assets, 50000);
+    assert_non_null(decal);
+    assert_int_equal(decal->pattern[0].glyph, 'X');
+    assert_int_equal(decal->pattern[0].material_id, UINT16_MAX);
+    asset_registry_clear(&assets);
+
+    remove("/tmp/tst_assets_high/palettes/50000.txt");
+    remove("/tmp/tst_assets_high/decals/50000.txt");
+    rmdir("/tmp/tst_assets_high/palettes");
+    rmdir("/tmp/tst_assets_high/materials");
+    rmdir("/tmp/tst_assets_high/sprites");
+    rmdir("/tmp/tst_assets_high/decals");
+    rmdir(root);
 }
 
 int main(void) {
@@ -1243,9 +1320,11 @@ int main(void) {
         cmocka_unit_test(test_named_material_auto_assign),
         cmocka_unit_test(test_named_material_gap_assign),
         cmocka_unit_test(test_named_material_explicit_id),
+        cmocka_unit_test(test_named_material_high_explicit_id),
         cmocka_unit_test(test_named_material_collision_skipped),
         cmocka_unit_test(test_named_material_count_is_count),
         cmocka_unit_test(test_numeric_material_regression),
+        cmocka_unit_test(test_sparse_high_id_bulk_asset_loading),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
