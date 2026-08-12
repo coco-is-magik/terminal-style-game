@@ -8,10 +8,8 @@ R4 Increments A–F found the core workflow "mostly working" and surfaced five f
 refinements to the surface editor. This is **documentation only — no implementation
 has started.**
 
-- R4 remains **Active**; the interactive acceptance checklist remains **Pending**.
-- Several items amend the approved R4 contract (attachment policy, inspector
-  controls, construction edge semantics). R4 Verified cannot complete until those
-  land and the interactive checklist is re-run against the amended behavior.
+- R4 was marked **Verified** on 2026-08-12 after the amended interactive checklist
+  passed.
 - No new phase, origin semantics, or per-face/height geometry is introduced. The
   approved persisted-growth requirement now introduces native scene v3 while keeping
   v1/v2 as migration inputs.
@@ -72,10 +70,10 @@ verifying load reset. This preserves the original intent and exercises valid own
 - Proposed canonical v3 metadata is `east_growth = -|row[,row...]` and
   `south_growth = -|column[,column...]`, required once in v3 and forbidden in v1/v2.
 
-### Next action
+### Verified
 
-Run and record the amended real-video checklist. Do not mark R4 Verified before it
-passes.
+The amended real-video checklist passed on 2026-08-12. R4 is Verified; this handoff
+is superseded by `../R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
 
 ## Workstream 1 — Inspector navigation hierarchy + disabled options
 

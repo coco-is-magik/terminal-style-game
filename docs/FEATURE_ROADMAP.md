@@ -219,7 +219,7 @@ Do not create empty review directories or placeholder review files.
 | R1 | World, format, ownership, and identity decisions | R0 review evidence | A coherent scene implementation | Verified |
 | R2 | Versioned scene/document data foundation | R1 decisions | Complete-scene loading and placed-content ownership | Verified |
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Verified |
-| R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Active |
+| R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Verified |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Proposed |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Proposed |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Proposed |
@@ -466,11 +466,11 @@ growth. All automated and interactive gates pass; R3 is Verified.
 
 ## R4 — Surface data and basic world construction
 
-**Status:** Active — amended interactive acceptance pending
+**Status:** Verified
 
-**Active plan:** Q1 approved on 2026-08-10. Increments A–F are implemented and automated
-closeout plus the manual-review follow-up pass automated gates; R4 awaits amended
-interactive acceptance. See
+**Active plan:** Q1 approved on 2026-08-10. Increments A–F and the manual-review
+follow-up are implemented; automated gates and the amended interactive checklist
+passed, and R4 was marked Verified on 2026-08-12. See
 `R4_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-10.md` and
 `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` and
 `R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
@@ -888,7 +888,7 @@ until that evidence exists.
 
 ## Next action
 
-**R1, R2, and R3 are Verified. R4 is Active; Increments A–F are implemented and all
-automated closeout gates pass.** Run and record the real-video checklist in
-`reviews/2026-08-11-roadmap-r4-targeted-review.md`; it is the only remaining R4 gate.
-Use `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` as the current handoff.
+**R0–R4 are Verified.** The next phase is R5 (Reusable asset-document foundation),
+currently Proposed. Per roadmap policy, promote it to Active only after scoped Q1
+planning; the current R4 evidence is in
+`R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.

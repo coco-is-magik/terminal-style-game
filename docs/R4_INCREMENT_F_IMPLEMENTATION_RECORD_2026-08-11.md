@@ -2,8 +2,8 @@
 
 ## Status
 
-**Increment F implementation and automated closeout are complete. R4 interactive
-acceptance remains pending, so R4 is not yet Verified.**
+**Increment F implementation and automated closeout are complete. The amended
+interactive checklist passed on 2026-08-12; R4 is now Verified.**
 
 ## Delivered
 
@@ -72,9 +72,8 @@ CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Werror
 - No per-face wall material, slope, variable height, optical policy, or hex-block schema
   was introduced.
 
-## Remaining acceptance gate
+## Acceptance gate
 
-The headless environment cannot truthfully certify human-observed visual/input behavior.
-Run the exact checklist in `reviews/2026-08-11-roadmap-r4-targeted-review.md` in a real
-SDL video environment. Record pass/fail findings there. Only a successful pass permits
-R4 to change from Active to Verified.
+The headless environment cannot by itself certify human-observed visual/input behavior,
+so the exact checklist in `reviews/2026-08-11-roadmap-r4-targeted-review.md` was run in
+a real SDL video environment on 2026-08-12 and passed. R4 is now Verified.

@@ -2,15 +2,15 @@
 
 **Review date:** 2026-08-11  
 **Review type:** Targeted R4 architecture and phase-gate review  
-**Disposition:** No architecture blocker; automated gates pass; interactive acceptance pending
+**Disposition:** No architecture blocker; automated gates and amended interactive acceptance pass; R4 Verified
 
 ## Summary
 
-R4 Increments A–F are implemented. The representative v2 workflow and all automated
-closeout gates pass. The targeted review found no duplicate authored map, controller
-ownership expansion, or cross-domain format/runtime coupling, so escalation to a full
-Q4 review is not required. R4 remains Active only because its required human-observed
-interactive acceptance has not yet been recorded.
+R4 Increments A–F and the manual-review follow-up are implemented. The representative
+workflow, all automated closeout gates, and the amended real-video checklist pass. The
+targeted review found no duplicate authored map, controller ownership expansion, or
+cross-domain format/runtime coupling, so escalation to a full Q4 review was not
+required. R4 was marked Verified on 2026-08-12.
 
 ## Architecture findings
 
@@ -47,7 +47,7 @@ runtime-build, durable-save, dirty prompt, and failed-switch regressions remain 
 |---|---|---|
 | Blocker | None in architecture or automated behavior | Closed |
 | Documentation | README deferred list still named completed construction and horizontal surface work | Fixed during Increment F closeout |
-| Acceptance | Human-observed R4 visual/input workflow not yet run | Open; blocks R4 Verified |
+| Acceptance | Human-observed R4 visual/input workflow | Closed 2026-08-12; amended checklist passed |
 
 ## Automated evidence
 
@@ -89,12 +89,16 @@ make clean && make
 
 Record the date, environment, and each item as pass/fail below. Any failure reopens R4.
 
-**Interactive result:** Pending  
-**Environment:** Pending  
-**Findings:** Pending
+**Interactive result:** Passed
+**Environment:** Real SDL video session (user-run)
+**Findings:** All six amended items passed; west/north removal visibly unavailable,
+east/south copy-growth and refill-shrink confirmed, decal cascade and exact undo/redo
+confirmed, border-only highlights preserved material visibility, and no corruption or
+interaction degradation observed. Hover-outline visibility remains a tracked research
+item (`../TODO.md`), not an acceptance blocker.
 
 ## Conclusion
 
-The targeted architecture review records no blocker and does not escalate to Q4.
-Increment F implementation and automated closeout are complete. **R4 remains Active
-until the interactive checklist passes.**
+The targeted architecture review recorded no blocker and did not escalate to Q4.
+Increment F, the manual-review follow-up, and the amended interactive checklist are
+complete. **R4 is Verified.**

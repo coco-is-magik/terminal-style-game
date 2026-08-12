@@ -1,8 +1,8 @@
 # R4 Requirements and Implementation Plan — Surface Data and Basic World Construction
 
 **Plan date:** 2026-08-10  
-**Status:** Active — Increments A–F and manual-review follow-up implemented;
-interactive re-acceptance pending
+**Status:** Verified — Increments A–F and manual-review follow-up complete; amended
+interactive acceptance passed 2026-08-12
 **Prerequisites:** R2 and R3 Verified  
 **Review checkpoint:** Targeted surface architecture review; escalate to Q4 if the
 format or runtime adapters reveal broad coupling
@@ -359,9 +359,10 @@ sustained ASan/UBSan run.
 
 ## Increment F — Workflow integration and closeout
 
-**Implemented 2026-08-11; interactive acceptance pending.** The complete automated v2
-workflow, representative checked-in scene, Q3 gates, and targeted architecture review
-are complete. R4 remains Active until the required real-video checklist passes.
+**Implemented 2026-08-11; interactive acceptance passed 2026-08-12.** The complete
+automated workflow, representative checked-in scene, Q3 gates, targeted architecture
+review, manual-review follow-up, and the amended real-video checklist are complete.
+R4 is Verified.
 
 - Integrate New/Open/Import/Save/Save As/Reload and dirty/repair prompts for v2 without
   changing their accepted menu and failure-atomicity behavior.
@@ -439,7 +440,7 @@ targeted review records no blocker.
 
 ## Next action
 
-Run the interactive checklist in
-`reviews/2026-08-11-roadmap-r4-targeted-review.md`. Increment F implementation and
-automated closeout evidence are in `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md`.
-Do not mark R4 Verified until the checklist passes and its findings are recorded.
+The amended interactive checklist in
+`reviews/2026-08-11-roadmap-r4-targeted-review.md` passed on 2026-08-12, and R4 was
+marked Verified. Evidence is in `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md`
+and `R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.

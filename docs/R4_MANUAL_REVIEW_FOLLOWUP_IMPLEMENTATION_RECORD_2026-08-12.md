@@ -2,8 +2,9 @@
 
 ## Status
 
-The automated implementation is complete. R4 remains **Active** until the amended
-interactive checklist in `reviews/2026-08-11-roadmap-r4-targeted-review.md` passes.
+The automated implementation and the amended interactive checklist in
+`reviews/2026-08-11-roadmap-r4-targeted-review.md` are complete. R4 is **Verified**
+(2026-08-12).
 
 ## Delivered
 
@@ -39,7 +40,7 @@ not reintroduce a material-obscuring filled overlay.
 Strict flags remain `-std=c11 -Wall -Wextra -Wpedantic -Werror`. The final normal
 `make check` restored the non-sanitized build.
 
-## Remaining gate
+## Verified
 
-Run the amended real-video checklist. Record date, environment, and findings there.
-Only a successful pass permits R4 to become Verified.
+The amended real-video checklist passed on 2026-08-12; results are recorded in the
+review file. R4 is now Verified.
