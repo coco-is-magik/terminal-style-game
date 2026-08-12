@@ -107,3 +107,41 @@ transactional registry lifetime, and asset/instance separation.
 Begin R6 planning using the verified R5 ownership boundary: reusable decal
 patterns remain asset documents; placement transforms and instance commands
 remain scene-owned.
+
+### Near-term follow-up: name-collision confirmation flow
+
+**Scope:** `src/material_document.c`, `src/unified_editor.c`,
+`tests/test_asset_refresh.c`. Decal collision flow deferred to R6.
+
+**Trigger:** user creates a new material by name; name collides with an existing
+asset file on disk.
+
+**Dialog text:** `"Material '<name>' already exists in assets. Load material?"`
+
+**Controls:**
+- Enter — Yes: load existing from disk; add to shortlist only after reload.
+- Esc — No: abort; no material changes, shortlist untouched.
+- O — Overwrite: open second dialog
+  `"Overwrite '<name>'? Existing asset will be lost."` (Enter/Esc).
+  - Yes: overwrite asset file with current document values; reload; add to shortlist.
+  - Esc: back to original dialog.
+- R — Rename: reopen in-place name editor with colliding name pre-selected.
+  - Enter: recheck collision; if still taken, show
+    `"Name taken. Press Esc to cancel or type another."` and keep editing with no
+    material changes; if free, proceed to normal new-material creation.
+  - Esc: abort the full flow; no material changes applied.
+
+**Rules:**
+- Shortlist updated only after an asset file is written to disk and reloaded.
+- Overwrite always requires a second confirmation before any file deletion/write.
+- Repeated name collisions never error out; the user loops until free or Esc.
+- Dialog uses the existing headless confirm hook pattern so it is testable without
+  a real UI.
+
+**Tests to add in `tests/test_asset_refresh.c`:**
+- Collision returns `ASSET_REFRESH_NAME_COLLISION` + `existing_asset_name`.
+- Enter (Yes) loads from disk and adds to shortlist.
+- Overwrite requires second confirmation; confirmed overwrite replaces the file
+  and updates shortlist; Esc returns to first dialog and leaves shortlist alone.
+- Rename → Esc leaves shortlist and document state unchanged.
+- Rename → collide → free name writes a fresh asset and updates shortlist.
