@@ -183,6 +183,26 @@ static void test_editor_inspector_left_right_are_edges(void **state) {
     assert_false(input.editor_increase_pressed);
 }
 
+static void test_editor_place_light_is_nonrepeat_edge(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_L,
+        false, false, false, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_place_light_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_place_light_pressed);
+    event.repeat = true;
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_place_light_pressed);
+    event.repeat = false;
+    input_apply_event(&input, &event, true);
+    assert_false(input.editor_place_light_pressed);
+}
+
 static void test_text_mouse_buttons_and_wheel(void **state) {
     (void)state;
     InputState input = {0};
@@ -247,6 +267,7 @@ int main(void) {
         cmocka_unit_test(test_editor_backspace_is_an_edge),
         cmocka_unit_test(test_editor_material_overwrite_key_is_an_edge),
         cmocka_unit_test(test_editor_inspector_left_right_are_edges),
+        cmocka_unit_test(test_editor_place_light_is_nonrepeat_edge),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
     };

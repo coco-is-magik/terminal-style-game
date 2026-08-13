@@ -211,6 +211,10 @@ const SceneDecalInstance *scene_document_get_decals(
     const SceneDocument *document,
     size_t *out_count
 );
+const SceneDecalInstance *scene_document_find_decal(
+    const SceneDocument *document,
+    SceneInstanceId instance_id
+);
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
     const SceneDocument *document,
     size_t *out_count

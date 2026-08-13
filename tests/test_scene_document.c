@@ -214,6 +214,80 @@ static void test_find_light_by_stable_id(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_light_insert_remove_preserves_index_order(void **state) {
+    SceneDocument doc;
+    SceneLight first = {.id = 10U, .x = 0.5, .y = 0.5, .radius = 1.0};
+    SceneLight second = {.id = 20U, .x = 1.5, .y = 0.5, .radius = 2.0};
+    SceneLight middle = {.id = 15U, .x = 1.0, .y = 1.0, .radius = 3.0};
+    (void)state;
+
+    scene_document_init(&doc);
+    assert_true(scene_document_internal_insert_light(&doc, 0U, &first));
+    assert_true(scene_document_internal_insert_light(&doc, 1U, &second));
+    assert_true(scene_document_internal_insert_light(&doc, 1U, &middle));
+    assert_int_equal(doc.light_count, 3U);
+    assert_true(doc.light_capacity >= doc.light_count);
+    assert_int_equal(doc.lights[0].id, 10U);
+    assert_int_equal(doc.lights[1].id, 15U);
+    assert_int_equal(doc.lights[2].id, 20U);
+    assert_false(scene_document_internal_remove_light(&doc, 1U, 20U));
+    assert_int_equal(doc.light_count, 3U);
+    assert_true(scene_document_internal_remove_light(&doc, 1U, 15U));
+    assert_int_equal(doc.light_count, 2U);
+    assert_int_equal(doc.lights[0].id, 10U);
+    assert_int_equal(doc.lights[1].id, 20U);
+    assert_false(scene_document_internal_insert_light(&doc, 3U, &middle));
+    scene_document_destroy(&doc);
+}
+
+static void test_light_insert_rejects_full_capacity(void **state) {
+    SceneDocument doc;
+    SceneLight extra = {.id = 65U, .x = 0.5, .y = 0.5, .radius = 1.0};
+    (void)state;
+
+    scene_document_init(&doc);
+    doc.lights = calloc(SCENE_MAX_LIGHTS, sizeof(*doc.lights));
+    assert_non_null(doc.lights);
+    doc.light_count = SCENE_MAX_LIGHTS;
+    doc.light_capacity = SCENE_MAX_LIGHTS;
+    for (size_t i = 0U; i < SCENE_MAX_LIGHTS; i++) doc.lights[i].id = i + 1U;
+    assert_false(scene_document_internal_insert_light(
+        &doc, doc.light_count, &extra));
+    assert_int_equal(doc.light_count, SCENE_MAX_LIGHTS);
+    scene_document_destroy(&doc);
+}
+
+static void test_decal_insert_remove_lookup_and_order(void **state) {
+    SceneDocument doc;
+    SceneDecalInstance a = {.id = 10U, .asset = {SCENE_ASSET_KIND_DECAL_PATTERN, 1U}, .surface = SCENE_DECAL_SURFACE_FLOOR, .x = 0.5, .y = 0.5, .width = 1.0, .height = 1.0};
+    SceneDecalInstance b = {.id = 20U, .asset = {SCENE_ASSET_KIND_DECAL_PATTERN, 1U}, .surface = SCENE_DECAL_SURFACE_CEILING, .x = 1.5, .y = 0.5, .width = 1.0, .height = 1.0};
+    SceneDecalInstance middle = {.id = 15U, .asset = {SCENE_ASSET_KIND_DECAL_PATTERN, 1U}, .surface = SCENE_DECAL_SURFACE_WALL, .map_x = 0, .map_y = 0, .side = 0, .u = 0.2, .v = 0.2, .width = 0.5, .height = 0.5};
+    (void)state;
+    scene_document_init(&doc);
+    {
+        Map *map = map_create(3, 2);
+        assert_non_null(map);
+        doc.map = *map;
+        free(map);
+    }
+    assert_true(scene_document_internal_insert_decal(&doc, 0U, &a));
+    assert_true(scene_document_internal_insert_decal(&doc, 1U, &b));
+    assert_true(scene_document_internal_insert_decal(&doc, 1U, &middle));
+    assert_int_equal(doc.decal_count, 3U);
+    assert_true(doc.decal_capacity >= 3U);
+    assert_ptr_equal(scene_document_find_decal(&doc, 15U), &doc.decals[1]);
+    assert_false(scene_document_internal_remove_decal(&doc, 1U, 20U));
+    assert_true(scene_document_internal_remove_decal(&doc, 1U, 15U));
+    assert_int_equal(doc.decals[0].id, 10U);
+    assert_int_equal(doc.decals[1].id, 20U);
+    assert_null(scene_document_find_decal(&doc, 15U));
+    assert_true(scene_document_internal_decal_value_is_valid(&doc, 10U, &a));
+    a.width = 2.0;
+    assert_true(scene_document_internal_set_decal(&doc, 10U, &a));
+    assert_true(scene_document_find_decal(&doc, 10U)->width == 2.0);
+    scene_document_destroy(&doc);
+}
+
 static void test_instance_id_allocation_monotonic_and_exhaustion(void **state) {
     (void)state;
     SceneDocument doc;
@@ -1604,6 +1678,9 @@ int main(void) {
         cmocka_unit_test(test_init_destroy_empty),
         cmocka_unit_test(test_authored_queries_empty_and_null_safe),
         cmocka_unit_test(test_find_light_by_stable_id),
+        cmocka_unit_test(test_light_insert_remove_preserves_index_order),
+        cmocka_unit_test(test_light_insert_rejects_full_capacity),
+        cmocka_unit_test(test_decal_insert_remove_lookup_and_order),
         cmocka_unit_test(test_instance_id_allocation_monotonic_and_exhaustion),
         cmocka_unit_test(test_structured_diagnostic_is_bounded),
         cmocka_unit_test(test_load_valid_fixture),

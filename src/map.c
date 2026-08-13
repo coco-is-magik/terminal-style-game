@@ -126,7 +126,7 @@ void map_destroy(Map *map) {
  * @param y    Row index
  * @return     true if the coordinates are valid, false otherwise
  */
-bool map_in_bounds(Map *map, int x, int y) {
+bool map_in_bounds(const Map *map, int x, int y) {
     if (!map) return false;
     return x >= 0 && x < map->width && y >= 0 && y < map->height;
 }

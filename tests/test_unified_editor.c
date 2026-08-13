@@ -208,21 +208,23 @@ static void mark_material_loaded(int id, const char *name) {
              "%s", name);
 }
 
+static void restore_baseline_assets(void) {
+    PatternCell cell = {'A', 1};
+    asset_registry_clear(&g_assets);
+    assert_true(asset_registry_init(&g_assets));
+    mark_material_loaded(1, "mat1");
+    mark_material_loaded(2, "mat2");
+    mark_material_loaded(12, "mat12");
+    g_assets.material_count = 3U;
+    assert_true(asset_registry_set_decal_pattern(&g_assets, 6, 1, 1, &cell));
+}
+
 static int group_setup(void **state) {
     (void)state;
     config_init_defaults();
     if (make_tmpdir() != 0) return -1;
-    assert_true(asset_registry_init(&g_assets));
-    /* Loaded materials: 1, 2, and 12 (unsavable live ID). */
-    mark_material_loaded(1, "mat1");
-    mark_material_loaded(2, "mat2");
-    mark_material_loaded(12, "mat12");
-    g_assets.material_count = 3;
-    {
-        PatternCell cell = {'A', 1};
-        assert_true(asset_registry_set_decal_pattern(&g_assets, 6, 1, 1,
-                                                     &cell));
-    }
+    memset(&g_assets, 0, sizeof(g_assets));
+    restore_baseline_assets();
     return 0;
 }
 
@@ -310,6 +312,22 @@ static EditorInputConsumption update_with(
     InputState *in
 ) {
     return unified_editor_update(ed, in, cam, 0.016);
+}
+
+static void set_horizontal_hover(
+    UnifiedEditorState *ed, SelectionType type, int map_x, int map_y
+) {
+    ed->hover.valid = true;
+    ed->hover.target.type = type;
+    ed->hover.target.value.horizontal = (HorizontalSurfaceRef){map_x, map_y};
+}
+
+static void set_wall_hover(
+    UnifiedEditorState *ed, int map_x, int map_y, WallFace face
+) {
+    ed->hover.valid = true;
+    ed->hover.target.type = SELECTION_WALL_FACE;
+    ed->hover.target.value.wall_face = (WallFaceRef){map_x, map_y, face};
 }
 
 static void set_scene_root(UnifiedEditorState *ed, const char *root) {
@@ -1013,7 +1031,465 @@ static void test_overlay_includes_new_scene_shortcut(void **state) {
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
     assert_true(grid_contains_text(grid, "Ctrl+N=new"));
+    assert_true(grid_contains_text(grid, "L=place light"));
     grid_destroy(grid);
+    unified_editor_destroy(&ed);
+}
+
+static void assert_new_light_defaults(
+    const UnifiedEditorState *ed, double x, double y
+) {
+    const SceneLight *light;
+    assert_int_equal(ed->document.light_count, 1U);
+    light = &ed->document.lights[0];
+    assert_true(light->x == x && light->y == y);
+    assert_int_equal(light->red, 255U);
+    assert_int_equal(light->green, 255U);
+    assert_int_equal(light->blue, 255U);
+    assert_int_equal(light->alpha, 255U);
+    assert_true(light->intensity == 1.0);
+    assert_true(light->radius == 5.0);
+    assert_int_equal(ed->selection.type, SELECTION_LIGHT);
+    assert_int_equal(ed->selection.value.light.id, light->id);
+    assert_true(ed->inspector_open);
+    assert_int_equal(ed->inspector_kind, EDITOR_INSPECTOR_LIGHT);
+    assert_int_equal(ed->light_field, EDITOR_LIGHT_FIELD_X);
+}
+
+static void test_light_place_floor_ceiling_centers_and_fresh_selection(void **state) {
+    UnifiedEditorState ed;
+    SceneInstanceId first_id;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "place_horizontal.txt"), 0);
+
+    set_horizontal_hover(&ed, SELECTION_FLOOR, 1, 2);
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OK);
+    assert_new_light_defaults(&ed, 1.5, 2.5);
+    first_id = ed.document.lights[0].id;
+    assert_int_equal(ed.runtime_world.num_lights, 1);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.light_count, 0U);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.lights[0].id, first_id);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+
+    set_horizontal_hover(&ed, SELECTION_CEILING, 3, 1);
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OK);
+    assert_new_light_defaults(&ed, 3.5, 1.5);
+    assert_true(ed.document.lights[0].id > first_id);
+    unified_editor_destroy(&ed);
+}
+
+static void test_light_place_wall_adjacent_and_oob_rejection(void **state) {
+    UnifiedEditorState ed;
+    const struct {
+        WallFace face;
+        double x;
+        double y;
+    } cases[] = {
+        {WALL_FACE_NORTH, 2.5, 1.5},
+        {WALL_FACE_SOUTH, 2.5, 3.5},
+        {WALL_FACE_EAST, 3.5, 2.5},
+        {WALL_FACE_WEST, 1.5, 2.5}
+    };
+    (void)state;
+    assert_int_equal(load_editor(&ed, "place_wall.txt"), 0);
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        set_wall_hover(&ed, 2, 2, cases[i].face);
+        assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OK);
+        assert_new_light_defaults(&ed, cases[i].x, cases[i].y);
+        assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    }
+    {
+        size_t history_count = ed.history.count;
+        SceneInstanceId next_id = ed.document.next_instance_id;
+        set_wall_hover(&ed, 0, 0, WALL_FACE_NORTH);
+        assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_INVALID_TARGET);
+        assert_int_equal(ed.document.light_count, 0U);
+        assert_int_equal(ed.document.next_instance_id, next_id);
+        assert_int_equal(ed.history.count, history_count);
+    }
+    ed.hover.valid = false;
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_INVALID_TARGET);
+    unified_editor_destroy(&ed);
+}
+
+static void test_light_place_capacity_and_runtime_failure_are_atomic(void **state) {
+    UnifiedEditorState ed;
+    SceneInstanceId next_id;
+    size_t history_count;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "place_capacity.txt"), 0);
+    set_horizontal_hover(&ed, SELECTION_FLOOR, 1, 1);
+    ed.document.lights = calloc(SCENE_MAX_LIGHTS, sizeof(*ed.document.lights));
+    assert_non_null(ed.document.lights);
+    ed.document.light_count = ed.document.light_capacity = SCENE_MAX_LIGHTS;
+    for (size_t i = 0U; i < SCENE_MAX_LIGHTS; i++) {
+        ed.document.lights[i] = (SceneLight){
+            .id = i + 1U, .x = 0.5, .y = 0.5, .radius = 1.0};
+    }
+    ed.document.next_instance_id = 100U;
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(ed.document.next_instance_id, 100U);
+    assert_int_equal(ed.document.light_count, SCENE_MAX_LIGHTS);
+    assert_int_equal(ed.history.count, 0U);
+
+    ed.document.light_count = 0U;
+    next_id = ed.document.next_instance_id;
+    history_count = ed.history.count;
+    unified_editor_set_runtime_build_failure_for_test(true);
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OUT_OF_MEMORY);
+    unified_editor_set_runtime_build_failure_for_test(false);
+    assert_int_equal(ed.document.light_count, 0U);
+    assert_int_equal(ed.document.next_instance_id, next_id);
+    assert_int_equal(ed.history.count, history_count);
+    assert_int_equal(ed.history.cursor, 0U);
+    unified_editor_destroy(&ed);
+}
+
+static void test_light_remove_prompt_cancel_confirm_and_undo_redo(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char path[512];
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "light_remove.tscene");
+    open_pickable_light(&ed, &cam, path);
+    ed.light_field = EDITOR_LIGHT_FIELD_REMOVE;
+
+    zero_input(&in);
+    in.editor_increase_pressed = true;
+    in.held_arrow_right = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.status, EDITOR_STATUS_NONE);
+    assert_false(ed.light_value_editing);
+    assert_int_equal(ed.history.count, 0U);
+
+    zero_input(&in);
+    strcpy(in.text_input, "9");
+    in.text_input_len = 1;
+    update_with(&ed, &cam, &in);
+    assert_false(ed.light_value_editing);
+    assert_int_equal(ed.history.count, 0U);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_LIGHT_REMOVE_PROMPT);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_non_null(scene_document_find_light(&ed.document, 11U));
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_LIGHT_REMOVE_PROMPT);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_null(scene_document_find_light(&ed.document, 11U));
+    assert_int_equal(ed.selection.type, SELECTION_NONE);
+    assert_false(ed.inspector_open);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_non_null(scene_document_find_light(&ed.document, 11U));
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_null(scene_document_find_light(&ed.document, 11U));
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_placed_light_native_save_reopen_round_trip(void **state) {
+    UnifiedEditorState ed;
+    UnifiedEditorState reopened;
+    SceneDiagnostic diagnostic;
+    SceneInstanceId id;
+    char path[512];
+    const SceneLight *light;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "light_round_source.txt"), 0);
+    set_horizontal_hover(&ed, SELECTION_CEILING, 2, 3);
+    assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OK);
+    id = ed.document.lights[0].id;
+    path_in_tmpdir(path, sizeof(path), "light_round_trip.tscene");
+    assert_int_equal(unified_editor_save_as(
+        &ed, path, "light_round_trip"), SCENE_SAVE_OK);
+    assert_true(unified_editor_init(&reopened, &g_assets));
+    assert_int_equal(scene_document_load_native(
+        &reopened.document, path, &diagnostic), SCENE_LOAD_OK);
+    light = scene_document_find_light(&reopened.document, id);
+    assert_non_null(light);
+    assert_true(light->x == 2.5 && light->y == 3.5);
+    assert_int_equal(light->red, 255U);
+    assert_int_equal(light->alpha, 255U);
+    assert_true(light->intensity == 1.0 && light->radius == 5.0);
+    assert_true(reopened.document.next_instance_id > id);
+    unified_editor_destroy(&reopened);
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void select_surface_direct(
+    UnifiedEditorState *ed, SelectionType type, int x, int y
+) {
+    ed->selection.type = type;
+    ed->selection.value.horizontal = (HorizontalSurfaceRef){x, y};
+    ed->inspector_open = true;
+    ed->inspector_kind = editor_domain_inspector_kind(ed->selection);
+    ed->surface_field = EDITOR_SURFACE_FIELD_DECALS;
+}
+
+static void select_wall_face_direct(
+    UnifiedEditorState *ed, int x, int y, WallFace face
+) {
+    ed->selection.type = SELECTION_WALL_FACE;
+    ed->selection.value.wall_face = (WallFaceRef){x, y, face};
+    ed->inspector_open = true;
+    ed->inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
+    ed->surface_field = EDITOR_SURFACE_FIELD_DECALS;
+}
+
+static void test_decal_place_each_surface_defaults_and_undo_redo(void **state) {
+    UnifiedEditorState ed;
+    const SceneDecalInstance *decal;
+    SceneInstanceId id;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_surfaces.txt"), 0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 2);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 1.0, 0.5), CMD_RESULT_OK);
+    decal = &ed.document.decals[0];
+    assert_int_equal(decal->surface, SCENE_DECAL_SURFACE_FLOOR);
+    assert_true(decal->x == 1.5 && decal->y == 2.5 && decal->z == 0.0);
+    assert_true(decal->rotation == 0.0 && decal->depth == 0.1);
+    assert_int_equal(ed.runtime_world.num_decals, 1);
+    id = decal->id;
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.decal_count, 0U);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.decals[0].id, id);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+
+    select_surface_direct(&ed, SELECTION_CEILING, 3, 1);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 0.5, 1.0), CMD_RESULT_OK);
+    decal = &ed.document.decals[0];
+    assert_int_equal(decal->surface, SCENE_DECAL_SURFACE_CEILING);
+    assert_true(decal->x == 3.5 && decal->y == 1.5 && decal->z == 1.0);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+
+    {
+        const struct { WallFace face; int anchor_x; int anchor_y; int side; double rotation; } cases[] = {
+            {WALL_FACE_EAST, 2, 2, 0, 0.0},
+            {WALL_FACE_WEST, 1, 2, 0, PI},
+            {WALL_FACE_SOUTH, 2, 2, 1, PI * 0.5},
+            {WALL_FACE_NORTH, 2, 1, 1, -PI * 0.5}
+        };
+        for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+            select_wall_face_direct(&ed, 2, 2, cases[i].face);
+            assert_int_equal(unified_editor_place_decal(
+                &ed, 6U, 0.5, 0.5), CMD_RESULT_OK);
+            decal = &ed.document.decals[0];
+            assert_int_equal(decal->surface, SCENE_DECAL_SURFACE_WALL);
+            assert_int_equal(decal->map_x, cases[i].anchor_x);
+            assert_int_equal(decal->map_y, cases[i].anchor_y);
+            assert_int_equal(decal->side, cases[i].side);
+            assert_true(decal->rotation == cases[i].rotation);
+            assert_true(decal->u == 0.25 && decal->v == 0.25);
+            assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+        }
+    }
+    unified_editor_destroy(&ed);
+}
+
+static void test_decal_surface_menu_selects_stable_id(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    SceneInstanceId first;
+    SceneInstanceId second;
+    Grid *grid;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_menu.txt"), 0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 1);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 1.0, 1.0), CMD_RESULT_OK);
+    first = ed.document.decals[0].id;
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 1);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 0.5, 0.5), CMD_RESULT_OK);
+    second = ed.document.decals[1].id;
+    (void)second;
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 1);
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_true(ed.decal_menu_open);
+    assert_int_equal(ed.decal_menu_stage, EDITOR_DECAL_MENU_LIST);
+    grid = grid_create(260, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Add decal..."));
+    assert_true(grid_contains_text(grid, "decal:"));
+    grid_destroy(grid);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.selection.type, SELECTION_DECAL);
+    assert_int_equal(ed.selection.value.decal.id, first);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_DECAL);
+    unified_editor_destroy(&ed);
+}
+
+static void test_decal_wall_surface_menu_excludes_opposite_face(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    SceneInstanceId east_id;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_wall_faces.txt"), 0);
+    select_wall_face_direct(&ed, 2, 2, WALL_FACE_EAST);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 0.5, 0.5), CMD_RESULT_OK);
+    east_id = ed.document.decals[0].id;
+    select_wall_face_direct(&ed, 3, 2, WALL_FACE_WEST);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 0.5, 0.5), CMD_RESULT_OK);
+    select_wall_face_direct(&ed, 2, 2, WALL_FACE_EAST);
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.selection.type, SELECTION_DECAL);
+    assert_int_equal(ed.selection.value.decal.id, east_id);
+    unified_editor_destroy(&ed);
+}
+
+static void test_decal_edit_remove_prompt_and_round_trip(void **state) {
+    UnifiedEditorState ed;
+    UnifiedEditorState reopened;
+    Camera cam;
+    InputState in;
+    SceneInstanceId id;
+    char path[512];
+    const SceneDecalInstance *decal;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_edit.txt"), 0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 2, 2);
+    assert_int_equal(unified_editor_place_decal(&ed, 6U, 1.0, 1.0), CMD_RESULT_OK);
+    id = ed.document.decals[0].id;
+    assert_int_equal(unified_editor_set_decal_field_value(
+        &ed, EDITOR_DECAL_FIELD_WIDTH, 2.0), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_set_decal_field_value(
+        &ed, EDITOR_DECAL_FIELD_ROTATION, 1.25), CMD_RESULT_OK);
+    assert_true(scene_document_find_decal(&ed.document, id)->width == 2.0);
+    assert_true(ed.runtime_world.decals[0].rotation == 1.25);
+    ed.decal_field = EDITOR_DECAL_FIELD_REMOVE;
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_DECAL_REMOVE_PROMPT);
+    zero_input(&in); in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_non_null(scene_document_find_decal(&ed.document, id));
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_null(scene_document_find_decal(&ed.document, id));
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    decal = scene_document_find_decal(&ed.document, id);
+    assert_non_null(decal);
+    assert_true(decal->width == 2.0 && decal->rotation == 1.25);
+    path_in_tmpdir(path, sizeof(path), "decal_round_trip.tscene");
+    assert_int_equal(unified_editor_save_as(
+        &ed, path, "decal_round_trip"), SCENE_SAVE_OK);
+    assert_true(unified_editor_init(&reopened, &g_assets));
+    assert_int_equal(unified_editor_open_native(&reopened, path), SCENE_LOAD_OK);
+    decal = scene_document_find_decal(&reopened.document, id);
+    assert_non_null(decal);
+    assert_true(decal->width == 2.0 && decal->rotation == 1.25);
+    unified_editor_destroy(&reopened);
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
+static void test_decal_create_empty_flow_saves_refreshes_and_places(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char palettes[512];
+    char materials[512];
+    char decals[512];
+    char path[512];
+    uint16_t new_asset;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_create_empty.txt"), 0);
+    path_in_tmpdir(palettes, sizeof(palettes), "palettes");
+    path_in_tmpdir(materials, sizeof(materials), "materials");
+    path_in_tmpdir(decals, sizeof(decals), "decals");
+    assert_int_equal(mkdir(palettes, 0700), 0);
+    assert_int_equal(mkdir(materials, 0700), 0);
+    assert_int_equal(mkdir(decals, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", palettes) > 0);
+    assert_int_equal(write_text_file(path,
+        "near=10,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n"), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", materials) > 0);
+    assert_int_equal(write_text_file(path, "palette=1\nglyphs=####\n"), 0);
+    assert_true(unified_editor_set_asset_root(&ed, g_tmpdir));
+    select_surface_direct(&ed, SELECTION_CEILING, 1, 1);
+    ed.decal_menu_open = true;
+    ed.decal_menu_stage = EDITOR_DECAL_MENU_CREATE_DIMENSIONS;
+    ed.decal_create_cols = 3U;
+    ed.decal_create_rows = 2U;
+    camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
+    new_asset = asset_registry_allocate_decal_pattern_id(&g_assets);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.document.decal_count, 1U);
+    assert_int_equal(ed.document.decals[0].asset.id, new_asset);
+    assert_non_null(asset_registry_get_decal_pattern(&g_assets, new_asset));
+    assert_int_equal(asset_registry_get_decal_pattern(&g_assets, new_asset)->cols, 3);
+    assert_int_equal(asset_registry_get_decal_pattern(&g_assets, new_asset)->rows, 2);
+    assert_true(snprintf(path, sizeof(path), "%s/%u.txt", decals,
+                         (unsigned)new_asset) > 0);
+    assert_int_equal(access(path, F_OK), 0);
+    unified_editor_destroy(&ed);
+    remove(path);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", palettes) > 0); remove(path);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", materials) > 0); remove(path);
+    rmdir(palettes); rmdir(materials); rmdir(decals);
+    restore_baseline_assets();
+}
+
+static void test_decal_capacity_and_runtime_edit_failure_are_atomic(void **state) {
+    UnifiedEditorState ed;
+    SceneInstanceId next_id;
+    size_t history_count;
+    double width;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "decal_atomic.txt"), 0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 1);
+    ed.document.decals = calloc(SCENE_MAX_DECALS, sizeof(*ed.document.decals));
+    assert_non_null(ed.document.decals);
+    ed.document.decal_count = ed.document.decal_capacity = SCENE_MAX_DECALS;
+    for (size_t i = 0U; i < SCENE_MAX_DECALS; i++)
+        ed.document.decals[i].id = i + 1U;
+    ed.document.next_instance_id = 300U;
+    assert_int_equal(unified_editor_place_decal(
+        &ed, 6U, 1.0, 1.0), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(ed.document.next_instance_id, 300U);
+    assert_int_equal(ed.history.count, 0U);
+    ed.document.decal_count = 0U;
+    assert_int_equal(unified_editor_place_decal(
+        &ed, 6U, 1.0, 1.0), CMD_RESULT_OK);
+    width = ed.document.decals[0].width;
+    history_count = ed.history.count;
+    next_id = ed.document.next_instance_id;
+    unified_editor_set_runtime_build_failure_for_test(true);
+    assert_int_equal(unified_editor_set_decal_field_value(
+        &ed, EDITOR_DECAL_FIELD_WIDTH, 2.0), CMD_RESULT_OUT_OF_MEMORY);
+    unified_editor_set_runtime_build_failure_for_test(false);
+    assert_true(ed.document.decals[0].width == width);
+    assert_int_equal(ed.history.count, history_count);
+    assert_int_equal(ed.history.cursor, history_count);
+    assert_int_equal(ed.document.next_instance_id, next_id);
     unified_editor_destroy(&ed);
 }
 
@@ -3106,6 +3582,17 @@ int main(void) {
         cmocka_unit_test(test_light_inspector_numeric_entry_commit_cancel_and_validation),
         cmocka_unit_test(test_light_inspector_held_arrow_repeats_after_delay),
         cmocka_unit_test(test_overlay_includes_new_scene_shortcut),
+        cmocka_unit_test(test_light_place_floor_ceiling_centers_and_fresh_selection),
+        cmocka_unit_test(test_light_place_wall_adjacent_and_oob_rejection),
+        cmocka_unit_test(test_light_place_capacity_and_runtime_failure_are_atomic),
+        cmocka_unit_test(test_light_remove_prompt_cancel_confirm_and_undo_redo),
+        cmocka_unit_test(test_placed_light_native_save_reopen_round_trip),
+        cmocka_unit_test(test_decal_place_each_surface_defaults_and_undo_redo),
+        cmocka_unit_test(test_decal_surface_menu_selects_stable_id),
+        cmocka_unit_test(test_decal_wall_surface_menu_excludes_opposite_face),
+        cmocka_unit_test(test_decal_edit_remove_prompt_and_round_trip),
+        cmocka_unit_test(test_decal_create_empty_flow_saves_refreshes_and_places),
+        cmocka_unit_test(test_decal_capacity_and_runtime_edit_failure_are_atomic),
         cmocka_unit_test(test_clean_switch_and_failed_load_preserve),
         cmocka_unit_test(test_dirty_switch_cancel_discard_and_failure),
         cmocka_unit_test(test_dirty_save_success_then_switch_and_save_failure),

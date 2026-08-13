@@ -37,6 +37,8 @@ typedef enum {
     EDITOR_MODAL_DIRTY_OPEN_PROMPT,
     EDITOR_MODAL_MATERIAL_COLLISION,
     EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT,
+    EDITOR_MODAL_LIGHT_REMOVE_PROMPT,
+    EDITOR_MODAL_DECAL_REMOVE_PROMPT,
     EDITOR_MENU_SAVE
 } EditorModal;
 
@@ -82,6 +84,12 @@ typedef enum {
     EDITOR_DIRTY_OPEN_CHOICE_COUNT
 } EditorDirtyOpenChoice;
 
+typedef enum {
+    EDITOR_DECAL_MENU_LIST = 0,
+    EDITOR_DECAL_MENU_PATTERNS,
+    EDITOR_DECAL_MENU_CREATE_DIMENSIONS
+} EditorDecalMenuStage;
+
 
 typedef enum {
     EDITOR_STATUS_NONE = 0,
@@ -98,6 +106,7 @@ typedef enum {
     EDITOR_STATUS_DURABILITY_WARNING,
     EDITOR_STATUS_INVALID_SCENE_NAME,
     EDITOR_STATUS_INVALID_NUMERIC_VALUE,
+    EDITOR_STATUS_INVALID_DECAL,
     EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED,
     EDITOR_STATUS_SPAWN_BLOCKED,
     EDITOR_STATUS_PLAYER_BLOCKED
@@ -147,6 +156,13 @@ typedef struct {
     MaterialId highlighted_material;
     EditorSurfaceField surface_field;
     bool material_picker_open;
+    bool decal_menu_open;
+    EditorDecalMenuStage decal_menu_stage;
+    size_t decal_menu_index;
+    size_t decal_pattern_index;
+    size_t decal_create_cols;
+    size_t decal_create_rows;
+    bool decal_create_edit_rows;
     MaterialId *material_shortlist;
     size_t material_shortlist_count;
     size_t material_shortlist_capacity;
@@ -162,6 +178,7 @@ typedef struct {
     size_t decal_shortlist_count;
     size_t decal_shortlist_capacity;
     EditorLightField light_field;
+    EditorDecalField decal_field;
     char light_value_text[32];
     size_t light_value_text_length;
     bool light_value_editing;
@@ -271,6 +288,31 @@ CommandResult unified_editor_remove_wall(
     UnifiedEditorState *editor,
     int map_x,
     int map_y
+);
+CommandResult unified_editor_place_light(UnifiedEditorState *editor);
+CommandResult unified_editor_remove_light(
+    UnifiedEditorState *editor,
+    SceneInstanceId id
+);
+CommandResult unified_editor_place_decal(
+    UnifiedEditorState *editor,
+    uint16_t asset_id,
+    double width,
+    double height
+);
+CommandResult unified_editor_remove_decal(
+    UnifiedEditorState *editor,
+    SceneInstanceId id
+);
+CommandResult unified_editor_step_decal_field(
+    UnifiedEditorState *editor,
+    EditorDecalField field,
+    int direction
+);
+CommandResult unified_editor_set_decal_field_value(
+    UnifiedEditorState *editor,
+    EditorDecalField field,
+    double value
 );
 CommandResult unified_editor_step_light_field(
     UnifiedEditorState *editor,

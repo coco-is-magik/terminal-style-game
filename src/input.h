@@ -29,7 +29,7 @@ typedef enum {
     INPUT_KEY_BACKSPACE, INPUT_KEY_F5, INPUT_KEY_F9, INPUT_KEY_LEFTBRACKET,
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
     INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
-    INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO
+    INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO, INPUT_KEY_L
 } InputKey;
 
 typedef struct {
@@ -107,6 +107,7 @@ typedef struct {
     bool editor_decrease_pressed;    /* Left — decrease inspector field */
     bool editor_increase_pressed;    /* Right — increase inspector field */
     bool editor_overwrite_pressed;   /* O — choose overwrite in an editor modal */
+    bool editor_place_light_pressed; /* L — place a point light at hovered cell */
 
   /* Held state — physically depressed this frame.
 

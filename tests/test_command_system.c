@@ -153,6 +153,27 @@ static SceneLight read_light(const SceneDocument *doc, SceneInstanceId id) {
     return *light;
 }
 
+static SceneLight light_prototype(double x, double y) {
+    return (SceneLight){
+        .x = x, .y = y,
+        .red = 255U, .green = 255U, .blue = 255U, .alpha = 255U,
+        .intensity = 1.0, .radius = 5.0
+    };
+}
+
+static SceneDecalInstance decal_prototype(SceneDecalSurface surface) {
+    SceneDecalInstance decal = {
+        .asset = {SCENE_ASSET_KIND_DECAL_PATTERN, 6U},
+        .surface = surface, .x = 0.5, .y = 0.5,
+        .width = 1.0, .height = 1.0, .depth = 0.1
+    };
+    if (surface == SCENE_DECAL_SURFACE_WALL) {
+        decal.map_x = 0; decal.map_y = 0; decal.side = 0;
+        decal.u = 0.25; decal.v = 0.25;
+    }
+    return decal;
+}
+
 /* ===================================================================
  *  Failing allocator
  * =================================================================== */
@@ -1123,6 +1144,193 @@ static void test_undo_restores_missing_material_and_repair_state(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_light_insert_remove_undo_redo_stable_ids_and_order(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneLight prototype = light_prototype(1.5, 1.5);
+    SceneInstanceId inserted = SCENE_INSTANCE_ID_INVALID;
+    (void)state;
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    doc.next_instance_id = 13U;
+    command_history_init(&h, doc.current_state);
+
+    assert_int_equal(command_history_insert_light(
+        &h, &doc, &prototype, &inserted), CMD_RESULT_OK);
+    assert_int_equal(inserted, 13U);
+    assert_int_equal(doc.next_instance_id, 14U);
+    assert_int_equal(doc.light_count, 3U);
+    assert_int_equal(doc.lights[0].id, 11U);
+    assert_int_equal(doc.lights[1].id, 12U);
+    assert_int_equal(doc.lights[2].id, 13U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.light_count, 2U);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.lights[2].id, 13U);
+
+    assert_int_equal(command_history_remove_light(&h, &doc, 12U), CMD_RESULT_OK);
+    assert_int_equal(doc.light_count, 2U);
+    assert_int_equal(doc.lights[0].id, 11U);
+    assert_int_equal(doc.lights[1].id, 13U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.light_count, 3U);
+    assert_int_equal(doc.lights[1].id, 12U);
+    assert_int_equal(doc.lights[2].id, 13U);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.lights[1].id, 13U);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_light_insert_failures_do_not_consume_id(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneLight prototype = light_prototype(0.5, 0.5);
+    SceneInstanceId output = 999U;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    doc.next_instance_id = 50U;
+    doc.lights = calloc(SCENE_MAX_LIGHTS, sizeof(*doc.lights));
+    assert_non_null(doc.lights);
+    doc.light_count = doc.light_capacity = SCENE_MAX_LIGHTS;
+    for (size_t i = 0U; i < SCENE_MAX_LIGHTS; i++) doc.lights[i].id = i + 1U;
+    assert_int_equal(command_history_insert_light(
+        &h, &doc, &prototype, &output), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.next_instance_id, 50U);
+    assert_int_equal(output, 999U);
+    assert_int_equal(h.count, 0U);
+
+    doc.light_count = 0U;
+    prototype.x = -1.0;
+    assert_int_equal(command_history_insert_light(
+        &h, &doc, &prototype, &output), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.next_instance_id, 50U);
+    g_fail_realloc = 1;
+    command_history_set_allocator_for_test(
+        passthrough_alloc, failing_realloc, passthrough_free);
+    prototype.x = 0.5;
+    assert_int_equal(command_history_insert_light(
+        &h, &doc, &prototype, &output), CMD_RESULT_OUT_OF_MEMORY);
+    g_fail_realloc = 0;
+    command_history_reset_allocator_for_test();
+    assert_int_equal(doc.next_instance_id, 50U);
+    assert_int_equal(doc.light_count, 0U);
+
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_mixed_set_remove_light_target_is_rejected_atomically(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    EditorMutationRequest requests[2] = {0};
+    SceneLight changed;
+    (void)state;
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    command_history_init(&h, doc.current_state);
+    changed = doc.lights[0];
+    changed.radius = 9.0;
+    requests[0].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[0].data.light.id = 11U;
+    requests[0].data.light.value = changed;
+    requests[1].type = EDITOR_MUTATION_REMOVE_LIGHT;
+    requests[1].data.remove_light.id = 11U;
+    assert_int_equal(command_history_execute_group(
+        &h, &doc, requests, 2U), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.light_count, 2U);
+    assert_true(read_light(&doc, 11U).radius == 2.0);
+    assert_int_equal(h.count, 0U);
+    requests[0] = requests[1];
+    requests[1].type = EDITOR_MUTATION_SET_LIGHT;
+    requests[1].data.light.id = 11U;
+    requests[1].data.light.value = changed;
+    assert_int_equal(command_history_execute_group(
+        &h, &doc, requests, 2U), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.light_count, 2U);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_decal_set_insert_remove_undo_redo_stable_order(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneDecalInstance first = decal_prototype(SCENE_DECAL_SURFACE_FLOOR);
+    SceneDecalInstance second = decal_prototype(SCENE_DECAL_SURFACE_CEILING);
+    SceneInstanceId first_id = 0U;
+    SceneInstanceId second_id = 0U;
+    (void)state;
+    load_fixture(&doc);
+    doc.next_instance_id = 30U;
+    command_history_init(&h, doc.current_state);
+    assert_int_equal(command_history_insert_decal(
+        &h, &doc, &first, &first_id), CMD_RESULT_OK);
+    assert_int_equal(command_history_insert_decal(
+        &h, &doc, &second, &second_id), CMD_RESULT_OK);
+    assert_int_equal(first_id, 30U);
+    assert_int_equal(second_id, 31U);
+    first = *scene_document_find_decal(&doc, first_id);
+    first.width = 2.0;
+    assert_int_equal(command_history_set_decal(
+        &h, &doc, first_id, &first), CMD_RESULT_OK);
+    assert_true(scene_document_find_decal(&doc, first_id)->width == 2.0);
+    assert_int_equal(command_history_remove_decal(
+        &h, &doc, first_id), CMD_RESULT_OK);
+    assert_int_equal(doc.decal_count, 1U);
+    assert_int_equal(doc.decals[0].id, second_id);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.decals[0].id, first_id);
+    assert_int_equal(doc.decals[1].id, second_id);
+    assert_true(doc.decals[0].width == 2.0);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.decals[0].id, second_id);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_decal_insert_failure_does_not_consume_id(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneDecalInstance decal = decal_prototype(SCENE_DECAL_SURFACE_FLOOR);
+    SceneInstanceId output = 99U;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    doc.next_instance_id = 40U;
+    decal.width = 0.0;
+    assert_int_equal(command_history_insert_decal(
+        &h, &doc, &decal, &output), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.next_instance_id, 40U);
+    assert_int_equal(output, 99U);
+    doc.lights = calloc(1U, sizeof(*doc.lights));
+    assert_non_null(doc.lights);
+    doc.light_count = doc.light_capacity = 1U;
+    doc.lights[0] = (SceneLight){.id = 40U, .x = 0.5, .y = 0.5, .radius = 1.0};
+    decal.width = 1.0;
+    {
+        EditorMutationRequest request = {0};
+        request.type = EDITOR_MUTATION_INSERT_DECAL;
+        request.data.insert_decal.value = decal;
+        request.data.insert_decal.value.id = 40U;
+        assert_int_equal(command_history_execute_group(
+            &h, &doc, &request, 1U), CMD_RESULT_INVALID_TARGET);
+    }
+    doc.light_count = 0U;
+    g_fail_realloc = 1;
+    command_history_set_allocator_for_test(
+        passthrough_alloc, failing_realloc, passthrough_free);
+    assert_int_equal(command_history_insert_decal(
+        &h, &doc, &decal, &output), CMD_RESULT_OUT_OF_MEMORY);
+    g_fail_realloc = 0;
+    command_history_reset_allocator_for_test();
+    assert_int_equal(doc.next_instance_id, 40U);
+    assert_int_equal(doc.decal_count, 0U);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1159,6 +1367,11 @@ int main(void) {
         cmocka_unit_test(test_construction_spawn_player_and_attachment_safety),
         cmocka_unit_test(test_surface_group_duplicate_and_oom_are_atomic),
         cmocka_unit_test(test_undo_restores_missing_material_and_repair_state),
+        cmocka_unit_test(test_light_insert_remove_undo_redo_stable_ids_and_order),
+        cmocka_unit_test(test_light_insert_failures_do_not_consume_id),
+        cmocka_unit_test(test_mixed_set_remove_light_target_is_rejected_atomically),
+        cmocka_unit_test(test_decal_set_insert_remove_undo_redo_stable_order),
+        cmocka_unit_test(test_decal_insert_failure_does_not_consume_id),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

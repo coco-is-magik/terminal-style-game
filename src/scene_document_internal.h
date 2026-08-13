@@ -44,6 +44,30 @@ bool scene_document_internal_insert_decal(
     const SceneDecalInstance *decal
 );
 
+bool scene_document_internal_set_decal(
+    SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneDecalInstance *value
+);
+
+bool scene_document_internal_decal_value_is_valid(
+    const SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneDecalInstance *value
+);
+
+bool scene_document_internal_insert_light(
+    SceneDocument *document,
+    size_t index,
+    const SceneLight *light
+);
+
+bool scene_document_internal_remove_light(
+    SceneDocument *document,
+    size_t index,
+    SceneInstanceId expected_id
+);
+
 typedef enum {
     SCENE_RESIZE_OK = 0,
     SCENE_RESIZE_INVALID,

@@ -349,8 +349,9 @@ static void sync_editor_text_input(Renderer *renderer,
     should_be_active = app_state == APP_STATE_EDITOR && editor && editor->active &&
         ((editor->modal == EDITOR_MENU_SAVE &&
           editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME) ||
-          (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
-           (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
+           (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
+            (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
+             editor->inspector_kind == EDITOR_INSPECTOR_DECAL ||
             editor->material_picker_open)));
     if (should_be_active && !SDL_TextInputActive(renderer->window)) {
         if (!SDL_StartTextInput(renderer->window)) {

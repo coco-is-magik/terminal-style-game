@@ -46,7 +46,7 @@ typedef struct {
 
 Map*     map_create(int width, int height);
 void     map_destroy(Map *map);
-bool     map_in_bounds(Map *map, int x, int y);
+bool     map_in_bounds(const Map *map, int x, int y);
 MapCell* map_get(Map *map, int x, int y);
 void     map_set(Map *map, int x, int y, int material_id);
 

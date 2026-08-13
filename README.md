@@ -207,10 +207,11 @@ Closing the inspector clears that persistent selection.
 |---|---|
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
-| `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector |
+| `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector / surface submenu |
+| `L` | Place an undoable point light at the aimed cell center (wall face uses the adjacent cell) |
 | `Up` / `Down` | Move through the active inspector/menu level |
-| `Left` / `Right` | Edit the selected point-light field (surface inspectors use Enter submenus) |
-| `Enter` | Open/apply a surface submenu, execute construction, commit a typed value, or confirm |
+| `Left` / `Right` | Edit the selected point-light or decal field (surface inspectors and submenus use Enter) |
+| `Enter` | Open/apply a surface submenu or modal, execute construction, commit a typed value, or confirm |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
 | `Ctrl+S` | Open the Save menu for the current scene |
@@ -257,9 +258,18 @@ the initial no-document chooser to the main menu.
   empty material-`0` cells to the longest row.
 - If a selected wall references an unloaded material, its numeric ID is shown
   with `(missing)` and may be replaced by a loaded material.
-- Existing point lights can be selected and inspected by stable scene ID. Position,
-  RGBA channels, intensity, and radius are edited in bounded steps through the same
-  undo/redo history as wall materials. Native Save/Open persists those changes.
+- Point lights can be placed at aimed cell centers and selected by stable scene ID.
+  Position, RGBA channels, intensity, and radius are edited in bounded steps; the
+  inspector Remove row asks for confirmation. Placement, removal, and edits share
+  the same undo/redo history as wall materials, and native Save/Open persists them.
+- Decals can be placed on wall, floor, and ceiling surfaces through the surface
+  inspector's Decals submenu. **Add decal…** creates a new reusable pattern asset
+  (default `1 × 1`, editable columns/rows), refreshes the registry, and places a
+  straight-up canvas instance. Existing decals on a surface are listed by stable ID
+  and selected through the same submenu. Width, height, rotation, depth, glyph step,
+  and surface-local U/V position are edited in bounded steps; Remove asks for
+  confirmation. All decal edits share the scene undo/redo history and persist in
+  native Save/Open.
 - A scene whose decal or authored surface references a missing asset commits in visible
   repair mode: the authored reference is preserved, a conspicuous fallback is
   shown, and normal Save is blocked until the reference is explicitly replaced. Missing
@@ -268,7 +278,7 @@ the initial no-document chooser to the main menu.
   editable paths, and recent files are not part of the current workflow.
 
 Deferred work includes per-face wall materials, material authoring, integrated painter
-UI, decal and sprite placement, animation, objects, point-light creation/deletion and
-placement tools, triggers, spawn editing, variable heights, and slopes. Reusable decal
+UI, sprite placement, animation, objects, triggers, spawn editing, variable
+heights, and slopes. Reusable decal
 persistence (`decal_io`) and headless pattern painting (`decal_painter`) remain available
 and tested for later integration.

@@ -19,13 +19,15 @@ typedef enum {
     EDITOR_INSPECTOR_WALL_MATERIAL,
     EDITOR_INSPECTOR_LIGHT,
     EDITOR_INSPECTOR_FLOOR_SURFACE,
-    EDITOR_INSPECTOR_CEILING_SURFACE
+    EDITOR_INSPECTOR_CEILING_SURFACE,
+    EDITOR_INSPECTOR_DECAL
 } EditorInspectorKind;
 
 typedef enum {
     EDITOR_SURFACE_FIELD_MATERIAL = 0,
     EDITOR_SURFACE_FIELD_CONSTRUCTION,
     EDITOR_SURFACE_FIELD_AMBIENT,
+    EDITOR_SURFACE_FIELD_DECALS,
     EDITOR_SURFACE_FIELD_COUNT
 } EditorSurfaceField;
 
@@ -44,6 +46,7 @@ typedef enum {
     EDITOR_LIGHT_FIELD_BLUE,
     EDITOR_LIGHT_FIELD_INTENSITY,
     EDITOR_LIGHT_FIELD_RADIUS,
+    EDITOR_LIGHT_FIELD_REMOVE,
     EDITOR_LIGHT_FIELD_COUNT
 } EditorLightField;
 
@@ -55,6 +58,17 @@ typedef struct {
     double step;
     unsigned int decimal_places;
 } EditorLightFieldMetadata;
+
+typedef enum {
+    EDITOR_DECAL_FIELD_POSITION_U = 0,
+    EDITOR_DECAL_FIELD_POSITION_V,
+    EDITOR_DECAL_FIELD_WIDTH,
+    EDITOR_DECAL_FIELD_HEIGHT,
+    EDITOR_DECAL_FIELD_ROTATION,
+    EDITOR_DECAL_FIELD_DEPTH,
+    EDITOR_DECAL_FIELD_REMOVE,
+    EDITOR_DECAL_FIELD_COUNT
+} EditorDecalField;
 
 typedef enum {
     EDITOR_INSPECTOR_FIELD_CHOICE = 0,
@@ -146,6 +160,31 @@ bool editor_domain_make_light_value_request(
     const SceneDocument *document,
     SelectionTarget target,
     EditorLightField field,
+    double numeric_value,
+    EditorMutationRequest *out_request
+);
+
+bool editor_domain_decal_field_presentation(
+    EditorDecalField field,
+    EditorInspectorFieldPresentation *out_presentation
+);
+bool editor_domain_format_decal_field(
+    const SceneDecalInstance *decal,
+    EditorDecalField field,
+    char *out_text,
+    size_t out_size
+);
+bool editor_domain_make_decal_step_request(
+    const SceneDocument *document,
+    SelectionTarget target,
+    EditorDecalField field,
+    int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_decal_value_request(
+    const SceneDocument *document,
+    SelectionTarget target,
+    EditorDecalField field,
     double numeric_value,
     EditorMutationRequest *out_request
 );

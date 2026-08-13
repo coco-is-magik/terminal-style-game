@@ -22,6 +22,11 @@ typedef enum {
     EDITOR_MUTATION_PLACE_WALL,
     EDITOR_MUTATION_REMOVE_WALL,
     EDITOR_MUTATION_SET_LIGHT,
+    EDITOR_MUTATION_INSERT_LIGHT,
+    EDITOR_MUTATION_REMOVE_LIGHT,
+    EDITOR_MUTATION_SET_DECAL,
+    EDITOR_MUTATION_INSERT_DECAL,
+    EDITOR_MUTATION_REMOVE_DECAL,
     EDITOR_MUTATION_GROW_EAST,
     EDITOR_MUTATION_GROW_SOUTH,
     EDITOR_MUTATION_SHRINK_EAST,
@@ -58,6 +63,22 @@ typedef struct {
             SceneInstanceId id;
             SceneLight value;
         } light;
+        struct {
+            SceneLight value;
+        } insert_light;
+        struct {
+            SceneInstanceId id;
+        } remove_light;
+        struct {
+            SceneInstanceId id;
+            SceneDecalInstance value;
+        } decal;
+        struct {
+            SceneDecalInstance value;
+        } insert_decal;
+        struct {
+            SceneInstanceId id;
+        } remove_decal;
         struct { int trigger; } resize;
     } data;
 } EditorMutationRequest;
@@ -98,6 +119,27 @@ typedef struct {
             SceneLight before;
             SceneLight after;
         } light;
+        struct {
+            SceneLight value;
+        } insert_light;
+        struct {
+            SceneInstanceId id;
+            size_t index;
+            SceneLight removed_value;
+        } remove_light;
+        struct {
+            SceneInstanceId id;
+            SceneDecalInstance before;
+            SceneDecalInstance after;
+        } decal;
+        struct {
+            SceneDecalInstance value;
+        } insert_decal;
+        struct {
+            SceneInstanceId id;
+            size_t index;
+            SceneDecalInstance removed_value;
+        } remove_decal;
         struct { int trigger; } resize;
     } data;
 } EditorMutation;
@@ -197,6 +239,39 @@ CommandResult command_history_set_light(
     SceneDocument *document,
     SceneInstanceId id,
     const SceneLight *value
+);
+
+CommandResult command_history_insert_light(
+    CommandHistory *history,
+    SceneDocument *document,
+    const SceneLight *prototype,
+    SceneInstanceId *out_id
+);
+
+CommandResult command_history_remove_light(
+    CommandHistory *history,
+    SceneDocument *document,
+    SceneInstanceId id
+);
+
+CommandResult command_history_set_decal(
+    CommandHistory *history,
+    SceneDocument *document,
+    SceneInstanceId id,
+    const SceneDecalInstance *value
+);
+
+CommandResult command_history_insert_decal(
+    CommandHistory *history,
+    SceneDocument *document,
+    const SceneDecalInstance *prototype,
+    SceneInstanceId *out_id
+);
+
+CommandResult command_history_remove_decal(
+    CommandHistory *history,
+    SceneDocument *document,
+    SceneInstanceId id
 );
 
 CommandResult command_history_undo(CommandHistory *history, SceneDocument *document);

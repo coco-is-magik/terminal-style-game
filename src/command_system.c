@@ -63,6 +63,96 @@ static bool lights_equal(const SceneLight *a, const SceneLight *b) {
         a->radius == b->radius;
 }
 
+static bool decals_equal(
+    const SceneDecalInstance *a, const SceneDecalInstance *b
+) {
+    return memcmp(a, b, sizeof(*a)) == 0;
+}
+
+static bool decal_value_common_is_valid(
+    const SceneDocument *document, const SceneDecalInstance *value
+) {
+    if (!document || !value || value->id == SCENE_INSTANCE_ID_INVALID ||
+        value->asset.kind != SCENE_ASSET_KIND_DECAL_PATTERN || value->asset.id == 0U ||
+        value->surface < SCENE_DECAL_SURFACE_WALL ||
+        value->surface > SCENE_DECAL_SURFACE_CEILING ||
+        !isfinite(value->width) || value->width <= 0.0 ||
+        !isfinite(value->height) || value->height <= 0.0 ||
+        !isfinite(value->glyph_step_u) || value->glyph_step_u < 0.0 ||
+        !isfinite(value->glyph_step_v) || value->glyph_step_v < 0.0 ||
+        !isfinite(value->depth) || value->depth < 0.0 ||
+        !isfinite(value->rotation)) return false;
+    if (value->surface == SCENE_DECAL_SURFACE_WALL) {
+        return map_in_bounds(&document->map, value->map_x, value->map_y) &&
+            (value->side == 0 || value->side == 1) &&
+            isfinite(value->u) && value->u >= 0.0 && value->u <= 1.0 &&
+            isfinite(value->v) && value->v >= 0.0 && value->v <= 1.0;
+    }
+    return isfinite(value->x) && isfinite(value->y) && isfinite(value->z) &&
+        value->x >= 0.0 && value->x < document->map.width &&
+        value->y >= 0.0 && value->y < document->map.height;
+}
+
+static bool find_decal_index(
+    const SceneDocument *document, SceneInstanceId id, size_t *out_index
+) {
+    size_t i;
+    if (!document || id == SCENE_INSTANCE_ID_INVALID || !out_index) return false;
+    for (i = 0U; i < document->decal_count; i++) {
+        if (document->decals[i].id == id) {
+            *out_index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool wall_decal_supports_cell(
+    const SceneDecalInstance *decal, int map_x, int map_y
+) {
+    int support_x;
+    int support_y;
+    if (!decal || decal->surface != SCENE_DECAL_SURFACE_WALL) return false;
+    support_x = decal->map_x;
+    support_y = decal->map_y;
+    if (decal->side == 0 && cos(decal->rotation) < 0.0) support_x++;
+    if (decal->side == 1 && sin(decal->rotation) < 0.0) support_y++;
+    return support_x == map_x && support_y == map_y;
+}
+
+static bool light_value_insert_is_valid(
+    const SceneDocument *document,
+    const SceneLight *value
+) {
+    if (!document || !value || value->id == SCENE_INSTANCE_ID_INVALID ||
+        !isfinite(value->x) || !isfinite(value->y) ||
+        !isfinite(value->intensity) || !isfinite(value->radius) ||
+        value->x < 0.0 || value->y < 0.0 ||
+        value->x >= document->map.width || value->y >= document->map.height ||
+        value->radius <= 0.0 ||
+        document->light_count >= SCENE_MAX_LIGHTS ||
+        scene_document_find_light(document, value->id) != NULL) {
+        return false;
+    }
+    return true;
+}
+
+static bool find_light_index(
+    const SceneDocument *document,
+    SceneInstanceId id,
+    size_t *out_index
+) {
+    size_t i;
+    if (!document || id == SCENE_INSTANCE_ID_INVALID || !out_index) return false;
+    for (i = 0U; i < document->light_count; i++) {
+        if (document->lights[i].id == id) {
+            *out_index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool mutation_is_surface(EditorMutationType type) {
     return type == EDITOR_MUTATION_SET_WALL_MATERIAL ||
         type == EDITOR_MUTATION_SET_FLOOR_MATERIAL ||
@@ -126,9 +216,31 @@ static bool mutations_target_same_field(
     }
     if (a->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY &&
         b->type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY) return true;
-    if (a->type == EDITOR_MUTATION_SET_LIGHT &&
-        b->type == EDITOR_MUTATION_SET_LIGHT)
-        return a->data.light.id == b->data.light.id;
+    if ((a->type == EDITOR_MUTATION_SET_LIGHT ||
+         a->type == EDITOR_MUTATION_REMOVE_LIGHT) &&
+        (b->type == EDITOR_MUTATION_SET_LIGHT ||
+         b->type == EDITOR_MUTATION_REMOVE_LIGHT)) {
+        SceneInstanceId a_id = a->type == EDITOR_MUTATION_SET_LIGHT
+            ? a->data.light.id : a->data.remove_light.id;
+        SceneInstanceId b_id = b->type == EDITOR_MUTATION_SET_LIGHT
+            ? b->data.light.id : b->data.remove_light.id;
+        return a_id == b_id;
+    }
+    if (a->type == EDITOR_MUTATION_INSERT_LIGHT &&
+        b->type == EDITOR_MUTATION_INSERT_LIGHT)
+        return true;
+    if ((a->type == EDITOR_MUTATION_SET_DECAL ||
+         a->type == EDITOR_MUTATION_REMOVE_DECAL) &&
+        (b->type == EDITOR_MUTATION_SET_DECAL ||
+         b->type == EDITOR_MUTATION_REMOVE_DECAL)) {
+        SceneInstanceId a_id = a->type == EDITOR_MUTATION_SET_DECAL
+            ? a->data.decal.id : a->data.remove_decal.id;
+        SceneInstanceId b_id = b->type == EDITOR_MUTATION_SET_DECAL
+            ? b->data.decal.id : b->data.remove_decal.id;
+        return a_id == b_id;
+    }
+    if (a->type == EDITOR_MUTATION_INSERT_DECAL &&
+        b->type == EDITOR_MUTATION_INSERT_DECAL) return true;
     if (mutation_is_resize(a->type) && mutation_is_resize(b->type)) return true;
     return false;
 }
@@ -208,6 +320,56 @@ static bool prepare_mutation(
         mutation->data.light.before = *before;
         mutation->data.light.after = request->data.light.value;
         *changed = !lights_equal(before, &request->data.light.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_INSERT_LIGHT) {
+        if (!light_value_insert_is_valid(document, &request->data.insert_light.value))
+            return false;
+        mutation->data.insert_light.value = request->data.insert_light.value;
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_REMOVE_LIGHT) {
+        size_t index;
+        if (!find_light_index(document, request->data.remove_light.id, &index))
+            return false;
+        mutation->data.remove_light.id = request->data.remove_light.id;
+        mutation->data.remove_light.index = index;
+        mutation->data.remove_light.removed_value = document->lights[index];
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_DECAL) {
+        const SceneDecalInstance *before = scene_document_find_decal(
+            document, request->data.decal.id);
+        if (!before || !scene_document_internal_decal_value_is_valid(
+                document, request->data.decal.id, &request->data.decal.value))
+            return false;
+        mutation->data.decal.id = request->data.decal.id;
+        mutation->data.decal.before = *before;
+        mutation->data.decal.after = request->data.decal.value;
+        *changed = !decals_equal(before, &request->data.decal.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_INSERT_DECAL) {
+        if (document->decal_count >= SCENE_MAX_DECALS ||
+            !decal_value_common_is_valid(document, &request->data.insert_decal.value) ||
+            scene_document_find_decal(
+                document, request->data.insert_decal.value.id) != NULL ||
+            scene_document_find_light(
+                document, request->data.insert_decal.value.id) != NULL) return false;
+        mutation->data.insert_decal.value = request->data.insert_decal.value;
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_REMOVE_DECAL) {
+        size_t index;
+        if (!find_decal_index(document, request->data.remove_decal.id, &index))
+            return false;
+        mutation->data.remove_decal.id = request->data.remove_decal.id;
+        mutation->data.remove_decal.index = index;
+        mutation->data.remove_decal.removed_value = document->decals[index];
+        *changed = true;
         return true;
     }
     if (mutation_is_resize(request->type)) {
@@ -305,6 +467,53 @@ static bool apply_mutation(
         return scene_document_internal_set_light(
             document, mutation->data.light.id,
             after ? &mutation->data.light.after : &mutation->data.light.before);
+    if (mutation->type == EDITOR_MUTATION_INSERT_LIGHT) {
+        if (after) {
+            return scene_document_internal_insert_light(
+                document, document->light_count,
+                &mutation->data.insert_light.value);
+        }
+        {
+            size_t index;
+            if (!find_light_index(document, mutation->data.insert_light.value.id,
+                                  &index)) return false;
+            return scene_document_internal_remove_light(
+                document, index, mutation->data.insert_light.value.id);
+        }
+    }
+    if (mutation->type == EDITOR_MUTATION_REMOVE_LIGHT) {
+        if (after) {
+            return scene_document_internal_remove_light(
+                document, mutation->data.remove_light.index,
+                mutation->data.remove_light.id);
+        }
+        return scene_document_internal_insert_light(
+            document, mutation->data.remove_light.index,
+            &mutation->data.remove_light.removed_value);
+    }
+    if (mutation->type == EDITOR_MUTATION_SET_DECAL)
+        return scene_document_internal_set_decal(
+            document, mutation->data.decal.id,
+            after ? &mutation->data.decal.after : &mutation->data.decal.before);
+    if (mutation->type == EDITOR_MUTATION_INSERT_DECAL) {
+        if (after) return scene_document_internal_insert_decal(
+            document, document->decal_count, &mutation->data.insert_decal.value);
+        {
+            size_t index;
+            if (!find_decal_index(document, mutation->data.insert_decal.value.id,
+                                  &index)) return false;
+            return scene_document_internal_remove_decal(
+                document, index, mutation->data.insert_decal.value.id);
+        }
+    }
+    if (mutation->type == EDITOR_MUTATION_REMOVE_DECAL) {
+        if (after) return scene_document_internal_remove_decal(
+            document, mutation->data.remove_decal.index,
+            mutation->data.remove_decal.id);
+        return scene_document_internal_insert_decal(
+            document, mutation->data.remove_decal.index,
+            &mutation->data.remove_decal.removed_value);
+    }
     return false;
 }
 
@@ -318,9 +527,9 @@ static bool collect_removed_decals(SceneDocument *document, EditorCommand *comma
             mutation->data.occupancy.after != SCENE_CELL_OCCUPANCY_EMPTY) continue;
         for (decal_index = 0U; decal_index < document->decal_count; decal_index++) {
             const SceneDecalInstance *decal = &document->decals[decal_index];
-            if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
-                decal->map_x == mutation->data.occupancy.map_x &&
-                decal->map_y == mutation->data.occupancy.map_y) total++;
+            if (wall_decal_supports_cell(
+                    decal, mutation->data.occupancy.map_x,
+                    mutation->data.occupancy.map_y)) total++;
         }
     }
     if (total == 0U) return true;
@@ -335,9 +544,9 @@ static bool collect_removed_decals(SceneDocument *document, EditorCommand *comma
         mutation->data.occupancy.removed_decal_start = total;
         for (decal_index = 0U; decal_index < document->decal_count; decal_index++) {
             const SceneDecalInstance *decal = &document->decals[decal_index];
-            if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
-                decal->map_x == mutation->data.occupancy.map_x &&
-                decal->map_y == mutation->data.occupancy.map_y) {
+            if (wall_decal_supports_cell(
+                    decal, mutation->data.occupancy.map_x,
+                    mutation->data.occupancy.map_y)) {
                 command->removed_decals[total++] =
                     (EditorRemovedDecal){decal_index, *decal};
                 mutation->data.occupancy.removed_decal_count++;
@@ -557,6 +766,100 @@ CommandResult command_history_set_light(
     request.type = EDITOR_MUTATION_SET_LIGHT;
     request.data.light.id = id;
     request.data.light.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_insert_light(
+    CommandHistory *history, SceneDocument *document,
+    const SceneLight *prototype, SceneInstanceId *out_id
+) {
+    EditorMutationRequest request = {0};
+    SceneInstanceId allocated;
+    SceneIdAllocateResult alloc_result;
+    SceneInstanceId next_before;
+    CommandResult result;
+    if (!history || !document || !prototype) return CMD_RESULT_INVALID_TARGET;
+    if (document->light_count >= SCENE_MAX_LIGHTS ||
+        !isfinite(prototype->x) || !isfinite(prototype->y) ||
+        !isfinite(prototype->intensity) || !isfinite(prototype->radius) ||
+        prototype->x < 0.0 || prototype->y < 0.0 ||
+        prototype->x >= document->map.width ||
+        prototype->y >= document->map.height || prototype->radius <= 0.0) {
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    next_before = document->next_instance_id;
+    alloc_result = scene_document_internal_allocate_instance_id(document, &allocated);
+    if (alloc_result == SCENE_ID_ALLOCATE_EXHAUSTED)
+        return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (alloc_result != SCENE_ID_ALLOCATE_OK) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_INSERT_LIGHT;
+    request.data.insert_light.value = *prototype;
+    request.data.insert_light.value.id = allocated;
+    result = command_history_execute_group(history, document, &request, 1U);
+    if (result != CMD_RESULT_OK) {
+        document->next_instance_id = next_before;
+        return result;
+    }
+    if (out_id) *out_id = allocated;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_remove_light(
+    CommandHistory *history, SceneDocument *document,
+    SceneInstanceId id
+) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_REMOVE_LIGHT;
+    request.data.remove_light.id = id;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_decal(
+    CommandHistory *history, SceneDocument *document,
+    SceneInstanceId id, const SceneDecalInstance *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_DECAL;
+    request.data.decal.id = id;
+    request.data.decal.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_insert_decal(
+    CommandHistory *history, SceneDocument *document,
+    const SceneDecalInstance *prototype, SceneInstanceId *out_id
+) {
+    EditorMutationRequest request = {0};
+    SceneInstanceId allocated;
+    SceneInstanceId next_before;
+    SceneIdAllocateResult alloc_result;
+    CommandResult result;
+    if (!history || !document || !prototype ||
+        document->decal_count >= SCENE_MAX_DECALS) return CMD_RESULT_INVALID_TARGET;
+    next_before = document->next_instance_id;
+    alloc_result = scene_document_internal_allocate_instance_id(document, &allocated);
+    if (alloc_result == SCENE_ID_ALLOCATE_EXHAUSTED)
+        return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (alloc_result != SCENE_ID_ALLOCATE_OK) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_INSERT_DECAL;
+    request.data.insert_decal.value = *prototype;
+    request.data.insert_decal.value.id = allocated;
+    result = command_history_execute_group(history, document, &request, 1U);
+    if (result != CMD_RESULT_OK) {
+        document->next_instance_id = next_before;
+        return result;
+    }
+    if (out_id) *out_id = allocated;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_remove_decal(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
+) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_REMOVE_DECAL;
+    request.data.remove_decal.id = id;
     return command_history_execute_group(history, document, &request, 1U);
 }
 

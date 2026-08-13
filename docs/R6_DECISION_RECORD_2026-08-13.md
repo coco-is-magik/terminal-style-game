@@ -56,18 +56,20 @@ editing afterward, not by the placement gesture.
 
 ## 3. Light interaction flow
 
-**Decision:** Reuse the first-person crosshair/hover + Enter vocabulary, no
-dedicated mode. Hover a cell → a new-light action → Enter drives placement into a
-fresh inspector.
+**Decision:** Reuse the first-person crosshair/hover vocabulary with no dedicated
+mode. Hover a cell and press `L` to place the light and open a fresh inspector;
+Enter remains the inspector/modal confirmation action.
 
 **Deletion:** mirror the existing **wall-removal confirm** flow. Select the light,
 a **"remove" menu item** in the inspector asks to confirm, then one undoable
 command removes it.
 
-**Required command additions (do not exist today):** `scene_document_internal`
-has `insert_decal`/`remove_decal` but **no insert/remove light**; `command_system`
-has only `EDITOR_MUTATION_SET_LIGHT`. I1 must add insert-light and remove-light
-command mutations.
+**Required command additions identified at decision time:**
+`scene_document_internal` had `insert_decal`/`remove_decal` but no insert/remove
+light, and `command_system` had only `EDITOR_MUTATION_SET_LIGHT`. I1 therefore
+requires insert-light and remove-light command mutations. Partial implementation
+status is tracked separately in
+`R6_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-13.md`.
 
 **Plan details (not open decisions):**
 - Light capacity is `SCENE_MAX_LIGHTS = 64`; insertion at full capacity rejects

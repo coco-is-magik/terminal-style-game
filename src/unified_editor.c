@@ -57,10 +57,19 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->highlighted_material = 0;
     editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->material_picker_open = false;
+    editor->decal_menu_open = false;
+    editor->decal_menu_open = false;
+    editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
+    editor->decal_menu_index = 0U;
+    editor->decal_pattern_index = 0U;
+    editor->decal_create_cols = 1U;
+    editor->decal_create_rows = 1U;
+    editor->decal_create_edit_rows = false;
     editor->material_search_text[0] = '\0';
     editor->material_search_text_length = 0U;
     editor->material_collision_id = 0U;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
+    editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
     editor->light_value_editing = false;
@@ -162,6 +171,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_DURABILITY_WARNING:    return "Saved; durability warning";
         case EDITOR_STATUS_INVALID_SCENE_NAME:    return "Invalid scene name";
         case EDITOR_STATUS_INVALID_NUMERIC_VALUE: return "Invalid or out-of-range number";
+        case EDITOR_STATUS_INVALID_DECAL:         return "Invalid decal operation";
         case EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED: return "Remove attached wall decal first";
         case EDITOR_STATUS_SPAWN_BLOCKED:          return "Cannot place wall at spawn";
         case EDITOR_STATUS_PLAYER_BLOCKED:         return "Leave cell before placing wall";
@@ -465,6 +475,10 @@ static bool editor_selection_is_valid(
         return scene_document_find_light(
             &editor->document, selection.value.light.id) != NULL;
     }
+    if (selection.type == SELECTION_DECAL) {
+        return scene_document_find_decal(
+            &editor->document, selection.value.decal.id) != NULL;
+    }
     if (selection.type == SELECTION_FLOOR ||
         selection.type == SELECTION_CEILING) {
         return editor_selection_is_valid_for_map(
@@ -489,6 +503,11 @@ static bool editor_command_requires_runtime_refresh(const EditorCommand *command
     for (i = 0U; i < command->mutation_count; i++) {
         EditorMutationType type = command->mutations[i].type;
         if (type == EDITOR_MUTATION_SET_LIGHT ||
+            type == EDITOR_MUTATION_INSERT_LIGHT ||
+            type == EDITOR_MUTATION_REMOVE_LIGHT ||
+            type == EDITOR_MUTATION_SET_DECAL ||
+            type == EDITOR_MUTATION_INSERT_DECAL ||
+            type == EDITOR_MUTATION_REMOVE_DECAL ||
             type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY ||
             type == EDITOR_MUTATION_PLACE_WALL ||
             type == EDITOR_MUTATION_REMOVE_WALL ||
@@ -1082,8 +1101,9 @@ CommandResult unified_editor_set_ambient_intensity(
         &editor->history, &editor->document, intensity);
     editor_map_command_result(editor, result);
     if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
-            editor, result, old_count, old_cursor, old_next))
+            editor, result, old_count, old_cursor, old_next)) {
         return CMD_RESULT_OUT_OF_MEMORY;
+    }
     return result;
 }
 
@@ -1110,8 +1130,9 @@ static CommandResult editor_set_wall_occupancy(
             &editor->history, &editor->document, map_x, map_y, &context);
     editor_map_command_result(editor, result);
     if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
-            editor, result, old_count, old_cursor, old_next))
+            editor, result, old_count, old_cursor, old_next)) {
         return CMD_RESULT_OUT_OF_MEMORY;
+    }
     if (result == CMD_RESULT_OK) {
         editor_clear_selection(editor);
         editor->inspector_open = false;
@@ -1130,6 +1151,379 @@ CommandResult unified_editor_remove_wall(
     UnifiedEditorState *editor, int map_x, int map_y
 ) {
     return editor_set_wall_occupancy(editor, map_x, map_y, false);
+}
+
+static bool editor_compute_light_placement_cell(
+    const UnifiedEditorState *editor,
+    int *out_map_x,
+    int *out_map_y
+) {
+    const EditorHit *hover;
+    const Map *map;
+    if (!editor || !out_map_x || !out_map_y) return false;
+    hover = &editor->hover;
+    if (!hover->valid) return false;
+    map = scene_document_get_map(&editor->document);
+    if (!map) return false;
+    if (hover->target.type == SELECTION_FLOOR ||
+        hover->target.type == SELECTION_CEILING) {
+        *out_map_x = hover->target.value.horizontal.map_x;
+        *out_map_y = hover->target.value.horizontal.map_y;
+        return map_in_bounds(map, *out_map_x, *out_map_y);
+    }
+    if (hover->target.type == SELECTION_WALL_FACE) {
+        const WallFaceRef *wf = &hover->target.value.wall_face;
+        int x = wf->map_x;
+        int y = wf->map_y;
+        switch (wf->face) {
+            case WALL_FACE_NORTH: y--; break;
+            case WALL_FACE_SOUTH: y++; break;
+            case WALL_FACE_EAST:  x++; break;
+            case WALL_FACE_WEST:  x--; break;
+        }
+        if (map_in_bounds(map, x, y)) {
+            *out_map_x = x;
+            *out_map_y = y;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+CommandResult unified_editor_place_light(UnifiedEditorState *editor) {
+    int map_x;
+    int map_y;
+    SceneLight prototype;
+    SceneInstanceId new_id = SCENE_INSTANCE_ID_INVALID;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    SceneInstanceId old_next_instance;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    if (!editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
+        editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    memset(&prototype, 0, sizeof(prototype));
+    prototype.x = (double)map_x + 0.5;
+    prototype.y = (double)map_y + 0.5;
+    prototype.red = 255;
+    prototype.green = 255;
+    prototype.blue = 255;
+    prototype.alpha = 255;
+    prototype.intensity = 1.0;
+    prototype.radius = 5.0;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    old_next_instance = editor->document.next_instance_id;
+    result = command_history_insert_light(
+        &editor->history, &editor->document, &prototype, &new_id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next)) {
+        editor->document.next_instance_id = old_next_instance;
+        return CMD_RESULT_OUT_OF_MEMORY;
+    }
+    if (result == CMD_RESULT_OK) {
+        editor->selection.type = SELECTION_LIGHT;
+        editor->selection.value.light.id = new_id;
+        editor->inspector_open = true;
+        editor->inspector_kind = EDITOR_INSPECTOR_LIGHT;
+        editor->light_field = EDITOR_LIGHT_FIELD_X;
+        editor_cancel_light_value_edit(editor);
+    }
+    return result;
+}
+
+CommandResult unified_editor_remove_light(
+    UnifiedEditorState *editor,
+    SceneInstanceId id
+) {
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_remove_light(
+        &editor->history, &editor->document, id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    }
+    return result;
+}
+
+static bool editor_selected_decal_surface(
+    const UnifiedEditorState *editor,
+    SceneDecalSurface *out_surface,
+    int *out_map_x,
+    int *out_map_y,
+    int *out_side,
+    double *out_rotation
+) {
+    if (!editor || !out_surface || !out_map_x || !out_map_y || !out_side ||
+        !out_rotation) return false;
+    if (editor->selection.type == SELECTION_FLOOR ||
+        editor->selection.type == SELECTION_CEILING) {
+        *out_surface = editor->selection.type == SELECTION_FLOOR
+            ? SCENE_DECAL_SURFACE_FLOOR : SCENE_DECAL_SURFACE_CEILING;
+        *out_map_x = editor->selection.value.horizontal.map_x;
+        *out_map_y = editor->selection.value.horizontal.map_y;
+        *out_side = 0;
+        *out_rotation = 0.0;
+        return map_in_bounds(&editor->document.map, *out_map_x, *out_map_y);
+    }
+    if (editor->selection.type == SELECTION_WALL_FACE) {
+        const WallFaceRef *face = &editor->selection.value.wall_face;
+        *out_surface = SCENE_DECAL_SURFACE_WALL;
+        *out_map_x = face->map_x;
+        *out_map_y = face->map_y;
+        if (face->face == WALL_FACE_EAST) {
+            *out_side = 0; *out_rotation = 0.0;
+        } else if (face->face == WALL_FACE_WEST) {
+            *out_map_x -= 1; *out_side = 0; *out_rotation = PI;
+        } else if (face->face == WALL_FACE_SOUTH) {
+            *out_side = 1; *out_rotation = PI * 0.5;
+        } else {
+            *out_map_y -= 1; *out_side = 1; *out_rotation = -PI * 0.5;
+        }
+        return map_in_bounds(&editor->document.map, *out_map_x, *out_map_y);
+    }
+    return false;
+}
+
+static bool editor_decal_matches_surface_selection(
+    const UnifiedEditorState *editor, const SceneDecalInstance *decal
+) {
+    SceneDecalSurface surface;
+    int map_x;
+    int map_y;
+    int side;
+    double rotation;
+    if (!decal || !editor_selected_decal_surface(
+            editor, &surface, &map_x, &map_y, &side, &rotation)) return false;
+    (void)rotation;
+    if (decal->surface != surface) return false;
+    if (surface == SCENE_DECAL_SURFACE_WALL)
+        return decal->map_x == map_x && decal->map_y == map_y &&
+            decal->side == side && fabs(decal->rotation - rotation) < 0.000001;
+    return (int)floor(decal->x) == map_x && (int)floor(decal->y) == map_y;
+}
+
+static size_t editor_surface_decal_count(const UnifiedEditorState *editor) {
+    size_t count = 0U;
+    if (!editor) return 0U;
+    for (size_t i = 0U; i < editor->document.decal_count; i++)
+        if (editor_decal_matches_surface_selection(editor, &editor->document.decals[i]))
+            count++;
+    return count;
+}
+
+static const SceneDecalInstance *editor_surface_decal_at(
+    const UnifiedEditorState *editor, size_t match_index
+) {
+    if (!editor) return NULL;
+    for (size_t i = 0U; i < editor->document.decal_count; i++) {
+        if (!editor_decal_matches_surface_selection(editor, &editor->document.decals[i]))
+            continue;
+        if (match_index == 0U) return &editor->document.decals[i];
+        match_index--;
+    }
+    return NULL;
+}
+
+static bool editor_create_empty_decal_pattern(UnifiedEditorState *editor) {
+    DecalDocument document;
+    AssetRefreshResult refresh;
+    char directory[1024];
+    uint16_t id;
+    if (!editor || !editor->asset_root ||
+        snprintf(directory, sizeof(directory), "%s/decals", editor->asset_root) >=
+            (int)sizeof(directory)) return false;
+    decal_document_init(&document);
+    if (decal_document_create(
+            &document, editor->assets, editor->decal_create_cols,
+            editor->decal_create_rows) != DECAL_DOCUMENT_OK) {
+        decal_document_destroy(&document);
+        editor->status = EDITOR_STATUS_INVALID_DECAL;
+        return false;
+    }
+    id = document.value.id;
+    refresh = asset_refresh_save_decal_as(
+        &document, editor->assets, &editor->document, directory,
+        editor->asset_root, &editor->last_scene_diagnostic);
+    decal_document_destroy(&document);
+    if (refresh != ASSET_REFRESH_OK) {
+        editor->status = refresh == ASSET_REFRESH_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        return false;
+    }
+    return unified_editor_place_decal(editor, id, 1.0, 1.0) == CMD_RESULT_OK;
+}
+
+CommandResult unified_editor_place_decal(
+    UnifiedEditorState *editor, uint16_t asset_id, double width, double height
+) {
+    SceneDecalInstance prototype;
+    SceneDecalSurface surface;
+    SceneInstanceId new_id = SCENE_INSTANCE_ID_INVALID;
+    SceneInstanceId old_next_instance;
+    int map_x;
+    int map_y;
+    int side;
+    double rotation;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active ||
+        !asset_registry_get_decal_pattern(editor->assets, asset_id) ||
+        !isfinite(width) || !isfinite(height) || width <= 0.0 || height <= 0.0 ||
+        !editor_selected_decal_surface(
+            editor, &surface, &map_x, &map_y, &side, &rotation)) {
+        if (editor) editor_map_command_result(editor, CMD_RESULT_INVALID_TARGET);
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    memset(&prototype, 0, sizeof(prototype));
+    prototype.asset.kind = SCENE_ASSET_KIND_DECAL_PATTERN;
+    prototype.asset.id = asset_id;
+    prototype.surface = surface;
+    prototype.width = width;
+    prototype.height = height;
+    prototype.depth = 0.1;
+    prototype.rotation = rotation;
+    if (surface == SCENE_DECAL_SURFACE_WALL) {
+        prototype.map_x = map_x;
+        prototype.map_y = map_y;
+        prototype.side = side;
+        prototype.u = width < 1.0 ? (1.0 - width) * 0.5 : 0.0;
+        prototype.v = height < 1.0 ? (1.0 - height) * 0.5 : 0.0;
+    } else {
+        prototype.x = (double)map_x + 0.5;
+        prototype.y = (double)map_y + 0.5;
+        prototype.z = surface == SCENE_DECAL_SURFACE_CEILING ? 1.0 : 0.0;
+    }
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    old_next_instance = editor->document.next_instance_id;
+    result = command_history_insert_decal(
+        &editor->history, &editor->document, &prototype, &new_id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next)) {
+        editor->document.next_instance_id = old_next_instance;
+        return CMD_RESULT_OUT_OF_MEMORY;
+    }
+    if (result == CMD_RESULT_OK) {
+        editor->selection.type = SELECTION_DECAL;
+        editor->selection.value.decal.id = new_id;
+        editor->inspector_open = true;
+        editor->inspector_kind = EDITOR_INSPECTOR_DECAL;
+        editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
+        editor->decal_menu_open = false;
+        editor_cancel_light_value_edit(editor);
+        (void)editor_rebuild_decal_shortlist(editor);
+    }
+    return result;
+}
+
+CommandResult unified_editor_remove_decal(
+    UnifiedEditorState *editor, SceneInstanceId id
+) {
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_remove_decal(&editor->history, &editor->document, id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+        (void)editor_rebuild_decal_shortlist(editor);
+    }
+    return result;
+}
+
+CommandResult unified_editor_step_decal_field(
+    UnifiedEditorState *editor, EditorDecalField field, int direction
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active ||
+        !editor_domain_make_decal_step_request(
+            &editor->document, editor->selection, field, direction, &request)) {
+        if (editor) editor_map_command_result(editor, CMD_RESULT_INVALID_TARGET);
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+CommandResult unified_editor_set_decal_field_value(
+    UnifiedEditorState *editor, EditorDecalField field, double value
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active ||
+        !editor_domain_make_decal_value_request(
+            &editor->document, editor->selection, field, value, &request)) {
+        if (editor) {
+            editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+            editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        }
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
 }
 
 CommandResult unified_editor_step_light_field(
@@ -1296,6 +1690,17 @@ static void editor_handle_escape(
     if (editor->material_picker_open) {
         editor->material_picker_open = false;
         editor->material_collision_id = 0U;
+        editor_mark_keyboard(consumed);
+        return;
+    }
+
+    if (editor->decal_menu_open) {
+        if (editor->decal_menu_stage != EDITOR_DECAL_MENU_LIST) {
+            editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
+            editor->decal_menu_index = 0U;
+        } else {
+            editor->decal_menu_open = false;
+        }
         editor_mark_keyboard(consumed);
         return;
     }
@@ -1577,6 +1982,10 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
             }
             editor->material_picker_open = true;
         }
+    } else if (editor->surface_field == EDITOR_SURFACE_FIELD_DECALS) {
+        editor->decal_menu_open = true;
+        editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
+        editor->decal_menu_index = 0U;
     } else if (editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT) {
         editor->light_value_editing = true;
         editor->light_value_text_length = 0U;
@@ -1584,6 +1993,67 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
     } else if (!editor_construction_is_disabled(editor)) {
         editor_handle_confirm_apply(editor);
     }
+}
+
+static void editor_step_decal_menu(UnifiedEditorState *editor, int direction) {
+    size_t count;
+    if (editor->decal_menu_stage == EDITOR_DECAL_MENU_CREATE_DIMENSIONS) {
+        editor->decal_create_edit_rows = !editor->decal_create_edit_rows;
+        return;
+    }
+    count = editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST
+        ? editor_surface_decal_count(editor) + 1U
+        : editor->decal_shortlist_count + 1U;
+    if (count == 0U) return;
+    if (direction < 0)
+        editor->decal_menu_index = editor->decal_menu_index == 0U
+            ? count - 1U : editor->decal_menu_index - 1U;
+    else editor->decal_menu_index = (editor->decal_menu_index + 1U) % count;
+}
+
+static void editor_confirm_decal_menu(UnifiedEditorState *editor) {
+    if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
+        size_t count = editor_surface_decal_count(editor);
+        if (editor->decal_menu_index < count) {
+            const SceneDecalInstance *decal = editor_surface_decal_at(
+                editor, editor->decal_menu_index);
+            if (!decal) return;
+            editor->selection.type = SELECTION_DECAL;
+            editor->selection.value.decal.id = decal->id;
+            editor->inspector_kind = EDITOR_INSPECTOR_DECAL;
+            editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
+            editor->decal_menu_open = false;
+        } else {
+            editor->decal_menu_stage = EDITOR_DECAL_MENU_PATTERNS;
+            editor->decal_menu_index = 0U;
+        }
+        return;
+    }
+    if (editor->decal_menu_stage == EDITOR_DECAL_MENU_PATTERNS) {
+        if (editor->decal_menu_index < editor->decal_shortlist_count) {
+            (void)unified_editor_place_decal(
+                editor, editor->decal_shortlist[editor->decal_menu_index], 1.0, 1.0);
+        } else {
+            editor->decal_menu_stage = EDITOR_DECAL_MENU_CREATE_DIMENSIONS;
+            editor->decal_create_cols = 1U;
+            editor->decal_create_rows = 1U;
+            editor->decal_create_edit_rows = false;
+        }
+        return;
+    }
+    (void)editor_create_empty_decal_pattern(editor);
+}
+
+static void editor_adjust_decal_create_dimension(
+    UnifiedEditorState *editor, int direction
+) {
+    size_t *value = editor->decal_create_edit_rows
+        ? &editor->decal_create_rows : &editor->decal_create_cols;
+    size_t maximum = editor->decal_create_edit_rows
+        ? DECAL_PATTERN_ASSET_MAX_ROWS : DECAL_PATTERN_ASSET_MAX_COLS;
+    if (direction < 0) {
+        if (*value > 1U) (*value)--;
+    } else if (*value < maximum) (*value)++;
 }
 
 static void editor_handle_light_field_prev(UnifiedEditorState *editor) {
@@ -1644,6 +2114,22 @@ static bool editor_commit_light_value(UnifiedEditorState *editor) {
     value = strtod(editor->light_value_text, &end);
     if (!end || *end != '\0' ||
         unified_editor_set_light_field_value(editor, editor->light_field, value) ==
+            CMD_RESULT_INVALID_TARGET) {
+        editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+        return true;
+    }
+    editor_cancel_light_value_edit(editor);
+    return true;
+}
+
+static bool editor_commit_decal_value(UnifiedEditorState *editor) {
+    char *end = NULL;
+    double value;
+    if (!editor || !editor->light_value_editing ||
+        editor->light_value_text_length == 0U) return false;
+    value = strtod(editor->light_value_text, &end);
+    if (!end || *end != '\0' ||
+        unified_editor_set_decal_field_value(editor, editor->decal_field, value) ==
             CMD_RESULT_INVALID_TARGET) {
         editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
         return true;
@@ -2086,6 +2572,23 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
         return;
     }
 
+    if (editor->modal == EDITOR_MODAL_LIGHT_REMOVE_PROMPT) {
+        editor->modal = EDITOR_MODAL_NONE;
+        if (editor->selection.type == SELECTION_LIGHT) {
+            (void)unified_editor_remove_light(
+                editor, editor->selection.value.light.id);
+        }
+        return;
+    }
+
+    if (editor->modal == EDITOR_MODAL_DECAL_REMOVE_PROMPT) {
+        editor->modal = EDITOR_MODAL_NONE;
+        if (editor->selection.type == SELECTION_DECAL)
+            (void)unified_editor_remove_decal(
+                editor, editor->selection.value.decal.id);
+        return;
+    }
+
     if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
         char path_copy[1024];
         path_copy[0] = '\0';
@@ -2298,7 +2801,29 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor_is_surface_inspector(editor) &&
+        if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+            input->editor_previous_pressed) {
+            editor_step_decal_menu(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+                   input->editor_next_pressed) {
+            editor_step_decal_menu(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+                   input->editor_confirm_pressed) {
+            editor_confirm_decal_menu(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+                   input->editor_decrease_pressed) {
+            if (editor->decal_menu_stage == EDITOR_DECAL_MENU_CREATE_DIMENSIONS)
+                editor_adjust_decal_create_dimension(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+                   input->editor_increase_pressed) {
+            if (editor->decal_menu_stage == EDITOR_DECAL_MENU_CREATE_DIMENSIONS)
+                editor_adjust_decal_create_dimension(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
             editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT &&
             editor->light_value_editing && input->editor_confirm_pressed) {
             (void)editor_commit_ambient_value(editor);
@@ -2336,6 +2861,12 @@ EditorInputConsumption unified_editor_update(
         } else if (editor_is_surface_inspector(editor) && input->editor_confirm_pressed) {
             editor_handle_surface_confirm(editor); editor_mark_keyboard(&consumed);
         } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+                   !editor->light_value_editing &&
+                   input->editor_confirm_pressed &&
+                   editor->light_field == EDITOR_LIGHT_FIELD_REMOVE) {
+            editor->modal = EDITOR_MODAL_LIGHT_REMOVE_PROMPT;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
             editor->light_value_editing && input->editor_confirm_pressed) {
             (void)editor_commit_light_value(editor);
             editor_mark_keyboard(&consumed);
@@ -2345,6 +2876,26 @@ EditorInputConsumption unified_editor_update(
             editor_backspace_light_value(editor);
             editor_mark_keyboard(&consumed);
         } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
+                   editor->light_field != EDITOR_LIGHT_FIELD_REMOVE &&
+                   input->text_input_len > 0) {
+            editor_append_light_value_text(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_DECAL &&
+                   !editor->light_value_editing && input->editor_confirm_pressed &&
+                   editor->decal_field == EDITOR_DECAL_FIELD_REMOVE) {
+            editor->modal = EDITOR_MODAL_DECAL_REMOVE_PROMPT;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_DECAL &&
+                   editor->light_value_editing && input->editor_confirm_pressed) {
+            (void)editor_commit_decal_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_DECAL &&
+                   editor->light_value_editing &&
+                   input->editor_text_backspace_pressed) {
+            editor_backspace_light_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_DECAL &&
+                   editor->decal_field != EDITOR_DECAL_FIELD_REMOVE &&
                    input->text_input_len > 0) {
             editor_append_light_value_text(editor, input->text_input);
             editor_mark_keyboard(&consumed);
@@ -2368,24 +2919,60 @@ EditorInputConsumption unified_editor_update(
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             editor_handle_light_field_next(editor);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
+            editor_cancel_light_value_edit(editor);
+            editor->decal_field = editor->decal_field == EDITOR_DECAL_FIELD_POSITION_U
+                ? (EditorDecalField)(EDITOR_DECAL_FIELD_COUNT - 1)
+                : (EditorDecalField)(editor->decal_field - 1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
+            editor_cancel_light_value_edit(editor);
+            editor->decal_field = (EditorDecalField)(
+                (editor->decal_field + 1) % EDITOR_DECAL_FIELD_COUNT);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_decrease_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
+            if (editor->decal_field != EDITOR_DECAL_FIELD_REMOVE)
+                (void)unified_editor_step_decal_field(
+                    editor, editor->decal_field, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_increase_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
+            if (editor->decal_field != EDITOR_DECAL_FIELD_REMOVE)
+                (void)unified_editor_step_decal_field(
+                    editor, editor->decal_field, 1);
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_decrease_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
-            (void)unified_editor_step_light_field(
-                editor, editor->light_field, -1);
-            editor->light_repeat_direction = input->held_arrow_left ? -1 : 0;
-            editor->light_repeat_elapsed = input->held_arrow_left
-                ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            if (editor->light_field != EDITOR_LIGHT_FIELD_REMOVE) {
+                (void)unified_editor_step_light_field(
+                    editor, editor->light_field, -1);
+                editor->light_repeat_direction = input->held_arrow_left ? -1 : 0;
+                editor->light_repeat_elapsed = input->held_arrow_left
+                    ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            } else {
+                editor->light_repeat_direction = 0;
+                editor->light_repeat_elapsed = 0.0;
+            }
             editor_mark_keyboard(&consumed);
         } else if (input->editor_increase_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
-            (void)unified_editor_step_light_field(
-                editor, editor->light_field, 1);
-            editor->light_repeat_direction = input->held_arrow_right ? 1 : 0;
-            editor->light_repeat_elapsed = input->held_arrow_right
-                ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            if (editor->light_field != EDITOR_LIGHT_FIELD_REMOVE) {
+                (void)unified_editor_step_light_field(
+                    editor, editor->light_field, 1);
+                editor->light_repeat_direction = input->held_arrow_right ? 1 : 0;
+                editor->light_repeat_elapsed = input->held_arrow_right
+                    ? EDITOR_LIGHT_REPEAT_DELAY_SECONDS : 0.0;
+            } else {
+                editor->light_repeat_direction = 0;
+                editor->light_repeat_elapsed = 0.0;
+            }
             editor_mark_keyboard(&consumed);
         } else if (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT &&
-                   !editor->light_value_editing) {
+                   !editor->light_value_editing &&
+                   editor->light_field != EDITOR_LIGHT_FIELD_REMOVE) {
             int repeat = editor_light_repeat_steps(editor, input, delta_seconds);
             int direction = repeat < 0 ? -1 : 1;
             int count = repeat < 0 ? -repeat : repeat;
@@ -2422,6 +3009,9 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_reload_pressed) {
             editor_handle_reload_request(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_place_light_pressed) {
+            (void)unified_editor_place_light(editor);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
@@ -2499,6 +3089,13 @@ void unified_editor_render_text_overlay(
                      "Select light:%" PRIu64 " pos:(%.2f,%.2f)",
                      editor->selection.value.light.id,
                      light ? light->x : 0.0, light ? light->y : 0.0);
+        } else if (editor->selection.type == SELECTION_DECAL) {
+            const SceneDecalInstance *decal = scene_document_find_decal(
+                &editor->document, editor->selection.value.decal.id);
+            snprintf(line, sizeof(line),
+                     "Select decal:%" PRIu64 " asset:%u",
+                     editor->selection.value.decal.id,
+                     decal ? (unsigned)decal->asset.id : 0U);
         } else {
             snprintf(line, sizeof(line), "Select (none)");
         }
@@ -2602,6 +3199,63 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row++, line,
                        editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT ? hi : dim,
                        bg);
+            snprintf(line, sizeof(line), " %s Decals      %zu  Enter=open",
+                     editor->surface_field == EDITOR_SURFACE_FIELD_DECALS &&
+                         !editor->decal_menu_open ? ">" : " ",
+                     editor_surface_decal_count(editor));
+            grid_print(grid, 1, row++, line,
+                       editor->surface_field == EDITOR_SURFACE_FIELD_DECALS ? hi : dim,
+                       bg);
+            if (editor->decal_menu_open) {
+                if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
+                    size_t decals = editor_surface_decal_count(editor);
+                    grid_print(grid, 1, row++,
+                               "   DECALS  Up/Down  Enter=select  Esc=back", fg, bg);
+                    for (i = 0U; i < decals; i++) {
+                        const SceneDecalInstance *decal = editor_surface_decal_at(editor, i);
+                        snprintf(line, sizeof(line), " %s decal:%" PRIu64 " asset:%u",
+                                 editor->decal_menu_index == i ? ">" : " ",
+                                 decal ? decal->id : 0U,
+                                 decal ? (unsigned)decal->asset.id : 0U);
+                        grid_print(grid, 1, row++, line,
+                                   editor->decal_menu_index == i ? hi : dim, bg);
+                    }
+                    grid_print(grid, 1, row++,
+                               editor->decal_menu_index == decals
+                                   ? " > Add decal..." : "   Add decal...",
+                               editor->decal_menu_index == decals ? hi : dim, bg);
+                } else if (editor->decal_menu_stage == EDITOR_DECAL_MENU_PATTERNS) {
+                    grid_print(grid, 1, row++,
+                               "   PATTERN  Up/Down  Enter=place  Esc=back", fg, bg);
+                    for (i = 0U; i < editor->decal_shortlist_count; i++) {
+                        snprintf(line, sizeof(line), " %s pattern:%u",
+                                 editor->decal_menu_index == i ? ">" : " ",
+                                 (unsigned)editor->decal_shortlist[i]);
+                        grid_print(grid, 1, row++, line,
+                                   editor->decal_menu_index == i ? hi : dim, bg);
+                    }
+                    grid_print(grid, 1, row++,
+                               editor->decal_menu_index == editor->decal_shortlist_count
+                                   ? " > Create empty..." : "   Create empty...",
+                               editor->decal_menu_index == editor->decal_shortlist_count
+                                   ? hi : dim, bg);
+                } else {
+                    grid_print(grid, 1, row++,
+                               "   CREATE EMPTY  Up/Down=field Left/Right=size",
+                               fg, bg);
+                    snprintf(line, sizeof(line), " %s Columns: %zu",
+                             !editor->decal_create_edit_rows ? ">" : " ",
+                             editor->decal_create_cols);
+                    grid_print(grid, 1, row++, line,
+                               !editor->decal_create_edit_rows ? hi : dim, bg);
+                    snprintf(line, sizeof(line), " %s Rows:    %zu",
+                             editor->decal_create_edit_rows ? ">" : " ",
+                             editor->decal_create_rows);
+                    grid_print(grid, 1, row++, line,
+                               editor->decal_create_edit_rows ? hi : dim, bg);
+                    grid_print(grid, 1, row++, "   Enter=create and place  Esc=back", dim, bg);
+                }
+            }
             if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
@@ -2640,6 +3294,33 @@ void unified_editor_render_text_overlay(
             }
             if (presentation.note) {
                 grid_print(grid, 1, row++, presentation.note, warn, bg);
+            }
+        } else if (editor->inspector_open &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
+            EditorInspectorPresentation presentation;
+            const SceneDecalInstance *decal = scene_document_find_decal(
+                &editor->document, editor->selection.value.decal.id);
+            if (editor_domain_inspector_presentation(
+                    EDITOR_INSPECTOR_DECAL, &presentation)) {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+                for (size_t field = 0U; field < presentation.field_count; field++) {
+                    EditorInspectorFieldPresentation fp;
+                    char value[32];
+                    bool selected = field == (size_t)editor->decal_field;
+                    if (!decal || !editor_domain_decal_field_presentation(
+                            (EditorDecalField)field, &fp) ||
+                        !editor_domain_format_decal_field(
+                            decal, (EditorDecalField)field, value, sizeof(value))) continue;
+                    if (selected && editor->light_value_editing)
+                        snprintf(line, sizeof(line), " > %-10s [%s_]",
+                                 fp.label, editor->light_value_text);
+                    else snprintf(line, sizeof(line), " %s %-10s %s",
+                                  selected ? ">" : " ", fp.label, value);
+                    grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
+                }
+                if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
         }
 
@@ -2740,6 +3421,12 @@ void unified_editor_render_text_overlay(
                      editor->material_search_text);
             grid_print(grid, 1, row++, line, warn, bg);
             grid_print(grid, 1, row++, "Enter=Yes  Esc=No", dim, bg);
+        } else if (editor->modal == EDITOR_MODAL_LIGHT_REMOVE_PROMPT) {
+            grid_print(grid, 1, row++,
+                       "Remove selected light? Enter=yes  Esc=no", warn, bg);
+        } else if (editor->modal == EDITOR_MODAL_DECAL_REMOVE_PROMPT) {
+            grid_print(grid, 1, row++,
+                       "Remove selected decal? Enter=yes  Esc=no", warn, bg);
         } else if (editor->modal == EDITOR_MENU_SAVE) {
             const char *root = editor->scene_root
                 ? editor->scene_root : "assets/scenes";
@@ -2787,7 +3474,7 @@ void unified_editor_render_text_overlay(
 
 
         grid_print(grid, 1, grid->height - 2,
-                   "Tab=walk/edit  E=select  Enter=apply  "
+                   "Tab=walk/edit  E=select  L=place light  Enter=apply  "
                    "Ctrl+Z/Y=undo/redo  Ctrl+N=new  Ctrl+S=save  Ctrl+O=open",
                    dim, bg);
     }

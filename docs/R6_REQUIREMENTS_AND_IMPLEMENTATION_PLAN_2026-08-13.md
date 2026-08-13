@@ -2,12 +2,14 @@
 
 ## Status
 
-**Ready to plan.** Phase R6 (Decal placement and point-light authoring) is
-sequenced and its product/architecture decisions are locked in
+**Verified; I1 and I2 complete.** Phase R6 (Decal placement and point-light
+authoring) is complete and its product/architecture decisions remain locked in
 `R6_DECISION_RECORD_2026-08-13.md`. R5 is Verified (I1–I4, Q1–Q3, Review E) and
 R6 builds directly on its reusable asset-document and eager-refresh foundation.
-Increment plans below are ready to execute; phase status advances to Active when
-Increment I1 planning is approved.
+I1's and I2's deterministic exit gates and Q2 pass; aggregate tests, sanitizers,
+the build matrix, native round-trip, and headless smoke also pass. Evidence is
+recorded in `R6_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-13.md` and
+`R6_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-13.md`. R7 is next.
 
 ## Scope
 
@@ -31,7 +33,9 @@ See `R6_DECISION_RECORD_2026-08-13.md` for:
 
 ### I1 — Point-light creation and deletion
 
-**Status:** Not started.
+**Status:** Complete and verified. See
+`R6_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-13.md` for implementation and
+verification evidence.
 
 **Goal:** Users can place a new point light at the hovered cell, then delete a
 selected light through the inspector, both as atomic undoable commands.
@@ -48,8 +52,8 @@ selected light through the inspector, both as atomic undoable commands.
    capacity `SCENE_MAX_LIGHTS = 64`), undo/redo snapshots, and mutation
    collision/merge rules parallel to existing light handling.
 3. Editor place flow (no dedicated mode):
-   - Hover a cell → new-light action → Enter drives placement centered in the
-     hovered cell (wall-face hover → adjacent cell center).
+   - Hover a cell → press `L` to place centered in the hovered cell (wall-face
+     hover → adjacent cell center). Enter remains inspector/modal confirmation.
    - New light enters a fresh inspector for immediate refinement.
    - Insertion at full capacity rejects and reports; never silently drops.
 4. Editor delete flow: reuse the wall-removal confirm flow. Select the light → a
@@ -65,7 +69,9 @@ stable-ID preservation, and reload round-trip. Strict build and Q2 pass.
 
 ### I2 — Decal placement and orientation (placement-first)
 
-**Status:** Not started.
+**Status:** Complete and verified. See
+`R6_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-13.md` for implementation and
+verification evidence.
 
 **Goal:** Users can associate a reusable decal pattern asset with a surface
 (create-empty flow) and place/orient the canvas on a wall/floor/ceiling; select
@@ -110,6 +116,7 @@ round-trip. Strict build and Q2 pass.
   surface → Decals submenu selection, add-decal flow, status/overlay text.
 - `test_editor_domain.c`: inspector handling for light remove action and decal
   field editing.
+- `test_input.c`: non-repeating `L` placement edge and per-frame reset.
 - No new format/migration tests (v4 already covers all fields).
 
 ## Affected files checklist
@@ -122,8 +129,10 @@ round-trip. Strict build and Q2 pass.
 | `src/command_system.c` | ✓ | ✓ |
 | `src/editor_domain.h` / `.c` | ✓ | ✓ |
 | `src/unified_editor.h` / `.c` | ✓ | ✓ |
+| `src/input.h` / `.c` | ✓ |  |
 | `tests/test_scene_document.c` | ✓ | ✓ |
 | `tests/test_command_system.c` | ✓ | ✓ |
 | `tests/test_unified_editor.c` | ✓ | ✓ |
 | `tests/test_editor_domain.c` | ✓ | ✓ |
+| `tests/test_input.c` | ✓ |  |
 

@@ -46,7 +46,7 @@ bool editor_selection_is_valid_for_map(
 
     if (selection.type == SELECTION_FLOOR ||
         selection.type == SELECTION_CEILING) {
-        return map_in_bounds((Map *)map,
+        return map_in_bounds(map,
             selection.value.horizontal.map_x,
             selection.value.horizontal.map_y);
     }
@@ -202,7 +202,7 @@ EditorHit editor_pick_horizontal_surface_selection(
     if (existing_hit.valid && (!isfinite(existing_hit.distance) ||
         existing_hit.distance <= distance)) return result;
 
-    if (!map_in_bounds((Map *)map, map_x, map_y)) return result;
+    if (!map_in_bounds(map, map_x, map_y)) return result;
     result.valid = true;
     result.distance = distance;
     result.target.type = type;

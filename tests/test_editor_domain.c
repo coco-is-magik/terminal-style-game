@@ -43,6 +43,13 @@ static SelectionTarget surface_target(SelectionType type, int x, int y) {
     return target;
 }
 
+static SelectionTarget decal_target(SceneInstanceId id) {
+    SelectionTarget target = {0};
+    target.type = SELECTION_DECAL;
+    target.value.decal.id = id;
+    return target;
+}
+
 static void test_dispatch_and_wall_request(void **state) {
     SelectionTarget target = {0};
     EditorMutationRequest request;
@@ -74,7 +81,7 @@ static void test_light_metadata_and_formatting(void **state) {
     init_document(&document);
     assert_int_equal(editor_domain_inspector_kind(light_target(11U)),
                      EDITOR_INSPECTOR_LIGHT);
-    for (field = 0; field < EDITOR_LIGHT_FIELD_COUNT; field++) {
+    for (field = 0; field < EDITOR_LIGHT_FIELD_REMOVE; field++) {
         assert_true(editor_domain_light_field_metadata(
             (EditorLightField)field, &document.map, &metadata));
         assert_non_null(metadata.label);
@@ -92,7 +99,12 @@ static void test_light_metadata_and_formatting(void **state) {
     assert_true(editor_domain_light_field_metadata(
         EDITOR_LIGHT_FIELD_RED, &document.map, &metadata));
     assert_true(metadata.minimum == 0.0 && metadata.maximum == 255.0);
-    assert_int_equal(EDITOR_LIGHT_FIELD_COUNT, 7);
+    assert_false(editor_domain_light_field_metadata(
+        EDITOR_LIGHT_FIELD_REMOVE, &document.map, &metadata));
+    assert_true(editor_domain_format_light_field(
+        &document.lights[0], EDITOR_LIGHT_FIELD_REMOVE, text, sizeof(text)));
+    assert_string_equal(text, "Enter=remove");
+    assert_int_equal(EDITOR_LIGHT_FIELD_COUNT, 8);
     assert_false(editor_domain_light_field_metadata(
         EDITOR_LIGHT_FIELD_COUNT, &document.map, &metadata));
     assert_false(editor_domain_light_field_metadata(
@@ -186,6 +198,12 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
     assert_true(editor_domain_inspector_presentation(
         EDITOR_INSPECTOR_WALL_MATERIAL, &inspector));
     assert_string_equal(inspector.title, "wall surface");
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_LIGHT, EDITOR_LIGHT_FIELD_REMOVE,
+        &document.map, &field));
+    assert_string_equal(field.label, "Remove");
+    assert_int_equal(field.kind, EDITOR_INSPECTOR_FIELD_CHOICE);
+    assert_true(field.minimum == 0.0 && field.maximum == 0.0 && field.step == 0.0);
     assert_string_equal(inspector.controls,
                         "Up/Down=choose  Enter=open/apply  Esc=back");
     assert_non_null(inspector.note);
@@ -296,6 +314,47 @@ static void test_ambient_metadata_format_step_and_value(void **state) {
     scene_document_destroy(&document);
 }
 
+static void test_decal_inspector_fields_and_typed_requests(void **state) {
+    SceneDocument document;
+    EditorInspectorPresentation inspector;
+    EditorInspectorFieldPresentation field;
+    EditorMutationRequest request;
+    char text[32];
+    (void)state;
+    init_document(&document);
+    document.decals = calloc(1U, sizeof(*document.decals));
+    assert_non_null(document.decals);
+    document.decal_count = document.decal_capacity = 1U;
+    document.decals[0] = (SceneDecalInstance){
+        .id = 21U, .asset = {SCENE_ASSET_KIND_DECAL_PATTERN, 6U},
+        .surface = SCENE_DECAL_SURFACE_FLOOR, .x = 2.5, .y = 1.5,
+        .width = 1.0, .height = 0.5, .depth = 0.1, .rotation = 0.0};
+    assert_int_equal(editor_domain_inspector_kind(decal_target(21U)),
+                     EDITOR_INSPECTOR_DECAL);
+    assert_true(editor_domain_inspector_presentation(
+        EDITOR_INSPECTOR_DECAL, &inspector));
+    assert_int_equal(inspector.field_count, EDITOR_DECAL_FIELD_COUNT);
+    assert_true(editor_domain_decal_field_presentation(
+        EDITOR_DECAL_FIELD_WIDTH, &field));
+    assert_int_equal(field.kind, EDITOR_INSPECTOR_FIELD_NUMBER);
+    assert_true(editor_domain_decal_field_presentation(
+        EDITOR_DECAL_FIELD_REMOVE, &field));
+    assert_int_equal(field.kind, EDITOR_INSPECTOR_FIELD_CHOICE);
+    assert_true(editor_domain_format_decal_field(
+        &document.decals[0], EDITOR_DECAL_FIELD_REMOVE, text, sizeof(text)));
+    assert_string_equal(text, "Enter=remove");
+    assert_true(editor_domain_make_decal_step_request(
+        &document, decal_target(21U), EDITOR_DECAL_FIELD_WIDTH, 1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_DECAL);
+    assert_true(request.data.decal.value.width == 1.05);
+    assert_true(editor_domain_make_decal_value_request(
+        &document, decal_target(21U), EDITOR_DECAL_FIELD_ROTATION, 1.5, &request));
+    assert_true(request.data.decal.value.rotation == 1.5);
+    assert_false(editor_domain_make_decal_value_request(
+        &document, decal_target(21U), EDITOR_DECAL_FIELD_REMOVE, 1.0, &request));
+    scene_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dispatch_and_wall_request),
@@ -306,6 +365,7 @@ int main(void) {
         cmocka_unit_test(test_shared_inspector_presentation_is_typed),
         cmocka_unit_test(test_surface_dispatch_metadata_and_requests),
         cmocka_unit_test(test_ambient_metadata_format_step_and_value),
+        cmocka_unit_test(test_decal_inspector_fields_and_typed_requests),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

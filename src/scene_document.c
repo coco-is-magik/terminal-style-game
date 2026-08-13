@@ -1166,13 +1166,11 @@ bool scene_document_get_wall_material(
     WallMaterialRef ref,
     MaterialId *out_material
 ) {
+    size_t index;
     if (!document || !out_material) return false;
-    /* map_in_bounds / map_get take non-const Map*; cast is safe for read. */
-    Map *map = (Map *)&document->map;
-    if (!map_in_bounds(map, ref.map_x, ref.map_y)) return false;
-    MapCell *cell = map_get(map, ref.map_x, ref.map_y);
-    if (!cell) return false;
-    *out_material = cell->material_id;
+    if (!map_in_bounds(&document->map, ref.map_x, ref.map_y)) return false;
+    index = (size_t)ref.map_y * (size_t)document->map.width + (size_t)ref.map_x;
+    *out_material = document->map.cells[index].material_id;
     return true;
 }
 
@@ -1186,7 +1184,7 @@ bool scene_document_get_surface_material(
     size_t index;
     const SceneAuthoredCell *cell;
     if (!document || !out_material || !document->authored_cells ||
-        !map_in_bounds((Map *)&document->map, map_x, map_y) ||
+        !map_in_bounds(&document->map, map_x, map_y) ||
         surface < SCENE_SURFACE_WALL || surface > SCENE_SURFACE_CEILING) return false;
     index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
     if (index >= document->authored_cell_count) return false;
@@ -1205,7 +1203,7 @@ bool scene_document_get_cell_occupancy(
 ) {
     size_t index;
     if (!document || !out_occupancy || !document->authored_cells ||
-        !map_in_bounds((Map *)&document->map, map_x, map_y)) return false;
+        !map_in_bounds(&document->map, map_x, map_y)) return false;
     index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
     if (index >= document->authored_cell_count) return false;
     *out_occupancy = document->authored_cells[index].occupancy;
@@ -1221,8 +1219,13 @@ bool scene_document_cell_has_wall_decal(
     if (!document) return false;
     for (i = 0U; i < document->decal_count; i++) {
         const SceneDecalInstance *decal = &document->decals[i];
-        if (decal->surface == SCENE_DECAL_SURFACE_WALL &&
-            decal->map_x == map_x && decal->map_y == map_y) return true;
+        if (decal->surface == SCENE_DECAL_SURFACE_WALL) {
+            int support_x = decal->map_x;
+            int support_y = decal->map_y;
+            if (decal->side == 0 && cos(decal->rotation) < 0.0) support_x++;
+            if (decal->side == 1 && sin(decal->rotation) < 0.0) support_y++;
+            if (support_x == map_x && support_y == map_y) return true;
+        }
     }
     return false;
 }
@@ -1298,6 +1301,18 @@ const SceneDecalInstance *scene_document_get_decals(
 ) {
     if (out_count) *out_count = document ? document->decal_count : 0U;
     return document ? document->decals : NULL;
+}
+
+const SceneDecalInstance *scene_document_find_decal(
+    const SceneDocument *document,
+    SceneInstanceId instance_id
+) {
+    size_t i;
+    if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (i = 0U; i < document->decal_count; i++) {
+        if (document->decals[i].id == instance_id) return &document->decals[i];
+    }
+    return NULL;
 }
 
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
@@ -1498,14 +1513,106 @@ bool scene_document_internal_remove_decal(
 bool scene_document_internal_insert_decal(
     SceneDocument *document, size_t index, const SceneDecalInstance *decal
 ) {
+    SceneDecalInstance *grown;
+    size_t capacity;
     if (!document || !decal || index > document->decal_count ||
-        document->decal_count >= document->decal_capacity) return false;
+        document->decal_count >= SCENE_MAX_DECALS) return false;
+    if (document->decal_count >= document->decal_capacity) {
+        capacity = document->decal_capacity ? document->decal_capacity * 2U : 8U;
+        if (capacity > SCENE_MAX_DECALS) capacity = SCENE_MAX_DECALS;
+        if (capacity <= document->decal_count) return false;
+        grown = realloc(document->decals, capacity * sizeof(*document->decals));
+        if (!grown) return false;
+        document->decals = grown;
+        document->decal_capacity = capacity;
+    }
     if (index < document->decal_count) {
         memmove(&document->decals[index + 1U], &document->decals[index],
                 (document->decal_count - index) * sizeof(*document->decals));
     }
     document->decals[index] = *decal;
     document->decal_count++;
+    return true;
+}
+
+bool scene_document_internal_decal_value_is_valid(
+    const SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneDecalInstance *value
+) {
+    if (!document || !value || instance_id == SCENE_INSTANCE_ID_INVALID ||
+        value->id != instance_id || value->asset.kind != SCENE_ASSET_KIND_DECAL_PATTERN ||
+        value->asset.id == 0U || value->surface < SCENE_DECAL_SURFACE_WALL ||
+        value->surface > SCENE_DECAL_SURFACE_CEILING ||
+        !isfinite(value->width) || value->width <= 0.0 ||
+        !isfinite(value->height) || value->height <= 0.0 ||
+        !isfinite(value->glyph_step_u) || value->glyph_step_u < 0.0 ||
+        !isfinite(value->glyph_step_v) || value->glyph_step_v < 0.0 ||
+        !isfinite(value->depth) || value->depth < 0.0 ||
+        !isfinite(value->rotation)) return false;
+    if (value->surface == SCENE_DECAL_SURFACE_WALL) {
+        if (!map_in_bounds(&document->map, value->map_x, value->map_y) ||
+            (value->side != 0 && value->side != 1) ||
+            !isfinite(value->u) || value->u < 0.0 || value->u > 1.0 ||
+            !isfinite(value->v) || value->v < 0.0 || value->v > 1.0) return false;
+    } else if (!isfinite(value->x) || !isfinite(value->y) || !isfinite(value->z) ||
+               value->x < 0.0 || value->x >= document->map.width ||
+               value->y < 0.0 || value->y >= document->map.height) return false;
+    return scene_document_find_decal(document, instance_id) != NULL;
+}
+
+bool scene_document_internal_set_decal(
+    SceneDocument *document,
+    SceneInstanceId instance_id,
+    const SceneDecalInstance *value
+) {
+    size_t i;
+    if (!scene_document_internal_decal_value_is_valid(
+            document, instance_id, value)) return false;
+    for (i = 0U; i < document->decal_count; i++) {
+        if (document->decals[i].id == instance_id) {
+            document->decals[i] = *value;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool scene_document_internal_insert_light(
+    SceneDocument *document, size_t index, const SceneLight *light
+) {
+    SceneLight *grown;
+    size_t capacity;
+    if (!document || !light || index > document->light_count ||
+        document->light_count >= SCENE_MAX_LIGHTS) return false;
+    if (document->light_count >= document->light_capacity) {
+        capacity = document->light_capacity ? document->light_capacity * 2U : 4U;
+        if (capacity > SCENE_MAX_LIGHTS) capacity = SCENE_MAX_LIGHTS;
+        if (capacity <= document->light_count) return false;
+        grown = realloc(document->lights, capacity * sizeof(*document->lights));
+        if (!grown) return false;
+        document->lights = grown;
+        document->light_capacity = capacity;
+    }
+    if (document->light_count > 0U && index < document->light_count) {
+        memmove(&document->lights[index + 1U], &document->lights[index],
+                (document->light_count - index) * sizeof(*document->lights));
+    }
+    document->lights[index] = *light;
+    document->light_count++;
+    return true;
+}
+
+bool scene_document_internal_remove_light(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+) {
+    if (!document || index >= document->light_count ||
+        document->lights[index].id != expected_id) return false;
+    if (index + 1U < document->light_count) {
+        memmove(&document->lights[index], &document->lights[index + 1U],
+                (document->light_count - index - 1U) * sizeof(*document->lights));
+    }
+    document->light_count--;
     return true;
 }
 
