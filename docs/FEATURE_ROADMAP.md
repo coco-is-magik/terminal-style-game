@@ -221,7 +221,7 @@ Do not create empty review directories or placeholder review files.
 | R3 | Generalized editor domain foundation | R2 | Multiple typed target and command domains | Verified |
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Verified |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Verified |
-| R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Proposed |
+| R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Ready to plan |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Proposed |
 | R8 | Vertical-world implementation | R1 decision; R4; R7 semantics | Heights, slopes, vertical movement, true pitch if chosen | Decision-blocked |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Research track |
@@ -562,7 +562,11 @@ over-abstraction, asset/scene transaction boundaries, and registry lifetime.
 
 ## R6 — Decal placement and point-light authoring
 
-**Status:** Proposed
+**Status:** Ready to plan — decisions locked in
+[`R6_DECISION_RECORD_2026-08-13.md`](R6_DECISION_RECORD_2026-08-13.md) and
+[`R6_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`](R6_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md).
+Scope and increment plan are drafted. Advances to Active when Increment I1
+planning is approved.
 
 **Purpose:** Use stable scene instances, typed selections, surface data, and
 reusable assets to author placed visual/environment content.

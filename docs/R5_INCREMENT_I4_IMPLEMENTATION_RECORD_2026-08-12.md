@@ -110,15 +110,20 @@ remain scene-owned.
 
 ### Completed follow-up: name-collision confirmation flow
 
-**Status: Implemented and focused-test verified (2026-08-13).**
+**Status: Verified and amended (2026-08-13).** The original flow included an `R=Rename` retry path. Manual acceptance and review found that retry added controller complexity and an ambiguous "pre-select the colliding name" UX without a clear win. The rename path was removed. The verified three-option flow is:
 
-**Scope:** `src/input.c`, `src/material_document.c`, `src/unified_editor.c`, and
-their focused tests. Decal collision flow remains deferred to R6.
+- **Enter** — load and apply the existing material.
+- **Esc** — abort with no scene, asset, or shortlist changes.
+- **O** — open a second confirmation dialog, then atomically overwrite.
 
-**Trigger:** user creates a new material by name; name collides with an existing
-asset file on disk.
+The second dialog text is `"Overwrite '<name>'? Existing asset will be lost."` with Enter/Esc.
 
-**Dialog text:** `"Material '<name>' already exists in assets. Load material?"`
+**Verification (2026-08-13):**
+- `make all` — clean strict build.
+- `make test` — 405/405 passed.
+- `make asan` / `make ubsan` — passed.
+- No `editor_rename_pressed`, `material_rename_active`, `R=Rename`, or "Name taken" strings remain in `src/`, `tests/`, or `docs/`.
+- Manual collision, overwrite-confirm, and abort checks pass interactively.
 
 **Controls:**
 - Enter — Yes: select the eagerly loaded disk asset and apply it to the scene;
@@ -133,7 +138,7 @@ asset file on disk.
 **Rules:**
 - New/overwritten assets enter the map-derived shortlist only after write, reload,
   and scene application. Loading an existing asset applies its already-loaded ID;
-  saving that scene reference makes the membership persistent across reloads.
+  saving that scene reference makes it membership persistent across reloads.
 - Overwrite always requires a second confirmation before any file deletion/write.
 - Dialog is controller state driven and testable without a real UI.
 

@@ -117,6 +117,28 @@ full Save + eager refresh coordinator. No direct commit is reachable per frame.
 - No new pointer/video interaction was introduced. Existing inline material
   creation is exercised through deterministic controller input/render tests.
 
+## Post-review amendment: material collision rename path removed
+
+**Date:** 2026-08-13
+**Classification:** Accepted constraint — **closed**.
+
+The original I4 material collision prompt included `R=Rename`, which reopened the
+picker with the colliding name pre-selected so the user could edit and retry.
+Manual acceptance and review found that:
+
+- The retry loop added controller state (`material_rename_active`) and branches
+  without a clear user benefit.
+- "Pre-select the colliding name" is ambiguous: the user already typed that name
+  and received a collision, so retyping is not a meaningful shortcut.
+- The three remaining options (Enter=load, Esc=abort, O=overwrite with second
+  confirmation) cover the actual use cases cleanly.
+
+The rename path was removed from `src/input.{h,c}`, `src/unified_editor.{h,c}`,
+focused tests, and documentation. Verification: 405/405 tests, strict build,
+ASan/UBSan, manual collision/overwrite/abort checks. No rename symbols remain.
+
+---
+
 ## Review conclusion
 
 R5's lifecycle seam, ownership, transaction boundary, and dependency model are
