@@ -51,6 +51,7 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_next_pressed);
     RESET_FIELD(editor_decrease_pressed);
     RESET_FIELD(editor_increase_pressed);
+    RESET_FIELD(editor_overwrite_pressed);
     RESET_FIELD(ui_scale_increase_pressed);
     RESET_FIELD(ui_scale_decrease_pressed);
     RESET_FIELD(ui_scale_reset_pressed);
@@ -149,7 +150,10 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
             if (event->ctrl && event->shift) input->editor_save_as_pressed = true;
             else if (event->ctrl) input->editor_save_pressed = true;
             break;
-        case INPUT_KEY_O: if (event->ctrl) input->editor_open_pressed = true; break;
+        case INPUT_KEY_O:
+            if (event->ctrl) input->editor_open_pressed = true;
+            else input->editor_overwrite_pressed = true;
+            break;
         case INPUT_KEY_N: if (event->ctrl) input->editor_new_pressed = true; break;
         case INPUT_KEY_I: if (event->ctrl) input->editor_import_pressed = true; break;
         case INPUT_KEY_EQUALS:

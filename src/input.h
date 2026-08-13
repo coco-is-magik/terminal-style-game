@@ -106,6 +106,7 @@ typedef struct {
     bool editor_next_pressed;        /* Down — picker next */
     bool editor_decrease_pressed;    /* Left — decrease inspector field */
     bool editor_increase_pressed;    /* Right — increase inspector field */
+    bool editor_overwrite_pressed;   /* O — choose overwrite in an editor modal */
 
   /* Held state — physically depressed this frame.
 

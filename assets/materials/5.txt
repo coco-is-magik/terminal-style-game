@@ -1,3 +1,0 @@
-id=5
-palette=1
-glyphs=####

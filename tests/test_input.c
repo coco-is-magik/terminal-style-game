@@ -148,6 +148,21 @@ static void test_editor_backspace_is_an_edge(void **state) {
     assert_false(input.editor_text_backspace_pressed);
 }
 
+static void test_editor_material_overwrite_key_is_an_edge(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_O,
+        false, false, false, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_overwrite_pressed);
+    assert_false(input.editor_open_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_overwrite_pressed);
+}
+
 static void test_editor_inspector_left_right_are_edges(void **state) {
     InputState input = {0};
     InputEvent event = {
@@ -230,6 +245,7 @@ int main(void) {
         cmocka_unit_test(test_r2_editor_shortcuts),
         cmocka_unit_test(test_ctrl_shortcut_suppresses_movement),
         cmocka_unit_test(test_editor_backspace_is_an_edge),
+        cmocka_unit_test(test_editor_material_overwrite_key_is_an_edge),
         cmocka_unit_test(test_editor_inspector_left_right_are_edges),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),

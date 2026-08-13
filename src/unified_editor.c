@@ -59,6 +59,7 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->material_picker_open = false;
     editor->material_search_text[0] = '\0';
     editor->material_search_text_length = 0U;
+    editor->material_collision_id = 0U;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
@@ -1294,6 +1295,7 @@ static void editor_handle_escape(
 
     if (editor->material_picker_open) {
         editor->material_picker_open = false;
+        editor->material_collision_id = 0U;
         editor_mark_keyboard(consumed);
         return;
     }
@@ -1414,6 +1416,19 @@ static bool editor_create_searched_material(UnifiedEditorState *editor) {
     result = material_document_create(
         &document, editor->assets, editor->material_search_text,
         (uint16_t)config_get()->default_palette_id, glyphs);
+    if (result == MATERIAL_DOCUMENT_DUPLICATE_NAME) {
+        int existing = material_find_by_name(
+            editor->assets, editor->material_search_text);
+        material_document_destroy(&document);
+        if (existing <= 0) {
+            editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+            return false;
+        }
+        editor->material_collision_id = (MaterialId)existing;
+        editor->modal = EDITOR_MODAL_MATERIAL_COLLISION;
+        editor->status = EDITOR_STATUS_NONE;
+        return false;
+    }
     if (result == MATERIAL_DOCUMENT_OK &&
         asset_refresh_save_material_as(
             &document, editor->assets, &editor->document,
@@ -1437,6 +1452,63 @@ static bool editor_create_searched_material(UnifiedEditorState *editor) {
     return true;
 }
 
+static bool editor_apply_material_selection(UnifiedEditorState *editor,
+                                            MaterialId id) {
+    CommandResult result;
+    if (!editor || id == 0U || !material_id_is_loaded(editor->assets, id)) {
+        return false;
+    }
+    if (editor->selection.type == SELECTION_WALL_FACE) {
+        result = unified_editor_set_wall_material(editor, id);
+    } else {
+        result = unified_editor_set_surface_material(
+            editor, editor->selection.value.horizontal.map_x,
+            editor->selection.value.horizontal.map_y,
+            editor->selection.type == SELECTION_FLOOR
+                ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING,
+            id);
+    }
+    if (result != CMD_RESULT_OK && result != CMD_RESULT_NO_CHANGE) return false;
+    editor->highlighted_material = id;
+    editor->material_picker_open = false;
+    editor->material_collision_id = 0U;
+    editor->modal = EDITOR_MODAL_NONE;
+    return true;
+}
+
+static bool editor_overwrite_colliding_material(UnifiedEditorState *editor) {
+    MaterialDocument document;
+    MaterialDocumentResult result;
+    AssetRefreshResult refresh_result = ASSET_REFRESH_INVALID_ARGUMENT;
+    const char glyphs[4] = {'#', '#', '#', '#'};
+    MaterialId id;
+    if (!editor || !editor->material_root || !editor->asset_root ||
+        editor->material_collision_id == 0U) return false;
+    id = editor->material_collision_id;
+    material_document_init(&document);
+    result = material_document_create_replacement(
+        &document, editor->assets, id, editor->material_search_text,
+        (uint16_t)config_get()->default_palette_id, glyphs);
+    if (result == MATERIAL_DOCUMENT_OK) {
+        refresh_result = asset_refresh_save_material_as(
+            &document, editor->assets, &editor->document,
+            editor->material_root, editor->asset_root,
+            &editor->last_scene_diagnostic);
+    }
+    material_document_destroy(&document);
+    if (result != MATERIAL_DOCUMENT_OK || refresh_result != ASSET_REFRESH_OK) {
+        editor->status = result == MATERIAL_DOCUMENT_OUT_OF_MEMORY ||
+                         refresh_result == ASSET_REFRESH_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        return false;
+    }
+    return editor_apply_material_selection(editor, id);
+}
+
 static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
     if (!editor->inspector_open) return;
     if (editor->surface_field == EDITOR_SURFACE_FIELD_CONSTRUCTION) {
@@ -1454,7 +1526,9 @@ static void editor_handle_confirm_apply(UnifiedEditorState *editor) {
     if (editor->surface_field != EDITOR_SURFACE_FIELD_MATERIAL) return;
     if (editor->highlighted_material == 0 &&
         !editor_create_searched_material(editor)) {
-        editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+        if (editor->modal != EDITOR_MODAL_MATERIAL_COLLISION) {
+            editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+        }
         return;
     }
     if (editor->selection.type == SELECTION_WALL_FACE)
@@ -1492,7 +1566,9 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
     if (editor->surface_field == EDITOR_SURFACE_FIELD_MATERIAL) {
         if (editor->material_picker_open) {
             editor_handle_confirm_apply(editor);
-            editor->material_picker_open = false;
+            if (editor->modal != EDITOR_MODAL_MATERIAL_COLLISION) {
+                editor->material_picker_open = false;
+            }
         } else {
             editor->material_search_text[0] = '\0';
             editor->material_search_text_length = 0U;
@@ -1980,6 +2056,21 @@ static void editor_handle_exit_confirm(UnifiedEditorState *editor) {
 }
 
 static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
+    if (editor->modal == EDITOR_MODAL_MATERIAL_COLLISION) {
+        if (!editor_apply_material_selection(
+                editor, editor->material_collision_id)) {
+            editor->status = EDITOR_STATUS_INVALID_MATERIAL;
+        }
+        return;
+    }
+
+    if (editor->modal == EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT) {
+        if (!editor_overwrite_colliding_material(editor)) {
+            editor->modal = EDITOR_MODAL_MATERIAL_COLLISION;
+        }
+        return;
+    }
+
     if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
         editor_handle_map_chooser_confirm(editor);
         return;
@@ -2053,7 +2144,13 @@ EditorInputConsumption unified_editor_update(
         /* 2. Modal input first. */
         if (editor->modal != EDITOR_MODAL_NONE) {
             if (input->editor_cancel_pressed) {
-                if (editor->modal == EDITOR_MENU_SAVE) {
+                if (editor->modal == EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT) {
+                    editor->modal = EDITOR_MODAL_MATERIAL_COLLISION;
+                } else if (editor->modal == EDITOR_MODAL_MATERIAL_COLLISION) {
+                    editor->material_collision_id = 0U;
+                    editor->material_picker_open = false;
+                    editor->modal = EDITOR_MODAL_NONE;
+                } else if (editor->modal == EDITOR_MENU_SAVE) {
                     editor_cancel_save_menu(editor);
                 } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
                     if (editor->pending_action == EDITOR_PENDING_CHOOSER_LOAD) {
@@ -2069,6 +2166,10 @@ EditorInputConsumption unified_editor_update(
                 } else {
                     editor->modal = EDITOR_MODAL_NONE;
                 }
+                editor_mark_keyboard(&consumed);
+            } else if (editor->modal == EDITOR_MODAL_MATERIAL_COLLISION &&
+                       input->editor_overwrite_pressed) {
+                editor->modal = EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT;
                 editor_mark_keyboard(&consumed);
             } else if (input->editor_confirm_pressed) {
                 editor_handle_modal_confirm(editor);
@@ -2139,7 +2240,8 @@ EditorInputConsumption unified_editor_update(
                        input->editor_previous_pressed ||
                        input->editor_next_pressed ||
                        input->editor_decrease_pressed ||
-                       input->editor_increase_pressed) {
+                       input->editor_increase_pressed ||
+                       input->editor_overwrite_pressed) {
                 editor_mark_keyboard(&consumed);
             }
             return consumed;
@@ -2625,6 +2727,19 @@ void unified_editor_render_text_overlay(
                 grid_print(grid, 1, row++, line,
                            c == (int)editor->dirty_open_choice ? hi : dim, bg);
             }
+        } else if (editor->modal == EDITOR_MODAL_MATERIAL_COLLISION) {
+            snprintf(line, sizeof(line),
+                     "Material '%s' already exists in assets. Load material?",
+                     editor->material_search_text);
+            grid_print(grid, 1, row++, line, warn, bg);
+            grid_print(grid, 1, row++,
+                       "Enter=Yes  Esc=No  O=Overwrite", dim, bg);
+        } else if (editor->modal == EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT) {
+            snprintf(line, sizeof(line),
+                     "Overwrite '%s'? Existing asset will be lost.",
+                     editor->material_search_text);
+            grid_print(grid, 1, row++, line, warn, bg);
+            grid_print(grid, 1, row++, "Enter=Yes  Esc=No", dim, bg);
         } else if (editor->modal == EDITOR_MENU_SAVE) {
             const char *root = editor->scene_root
                 ? editor->scene_root : "assets/scenes";
@@ -2683,6 +2798,8 @@ bool unified_editor_crosshair_visible(const UnifiedEditorState *editor) {
     return editor && editor->active && unified_editor_has_document(editor) &&
            editor->modal != EDITOR_MODAL_MAP_CHOOSER &&
            editor->modal != EDITOR_MODAL_DIRTY_OPEN_PROMPT &&
+           editor->modal != EDITOR_MODAL_MATERIAL_COLLISION &&
+           editor->modal != EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT &&
            editor->modal != EDITOR_MENU_SAVE;
 }
 

@@ -132,12 +132,31 @@ static void test_failed_save_preserves_dirty_and_destination(void **state) {
     material_document_destroy(&document);
 }
 
+static void test_replacement_preserves_existing_id(void **state) {
+    MaterialDocument document;
+    const char glyphs[4] = {'#', '#', '#', '#'};
+    (void)state;
+    material_document_init(&document);
+    assert_int_equal(material_document_create_replacement(
+                         &document, &assets, 1U, "existing", 1U, glyphs),
+                     MATERIAL_DOCUMENT_OK);
+    assert_int_equal(document.value.id, 1U);
+    assert_string_equal(document.value.name, "existing");
+    assert_true(material_document_is_dirty(&document));
+    assert_int_equal(material_document_create_replacement(
+                         &document, &assets, 2U, "existing", 1U, glyphs),
+                     MATERIAL_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(document.value.id, 1U);
+    material_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_create_edit_undo_redo_preview, setup, teardown),
         cmocka_unit_test_setup_teardown(test_validation_rejects_bad_and_duplicate_names, setup, teardown),
         cmocka_unit_test_setup_teardown(test_atomic_save_open_discard_and_registry_commit, setup, teardown),
         cmocka_unit_test_setup_teardown(test_failed_save_preserves_dirty_and_destination, setup, teardown)
+        ,cmocka_unit_test_setup_teardown(test_replacement_preserves_existing_id, setup, teardown)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

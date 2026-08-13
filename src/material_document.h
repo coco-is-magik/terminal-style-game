@@ -56,6 +56,14 @@ MaterialDocumentResult material_document_create(MaterialDocument *document,
                                                 const char *name,
                                                 uint16_t palette_id,
                                                 const char glyphs[4]);
+MaterialDocumentResult material_document_create_replacement(
+    MaterialDocument *document,
+    const AssetRegistry *assets,
+    uint16_t id,
+    const char *name,
+    uint16_t palette_id,
+    const char glyphs[4]
+);
 MaterialDocumentResult material_document_open(MaterialDocument *document,
                                               const AssetRegistry *assets,
                                               uint16_t id,

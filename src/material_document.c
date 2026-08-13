@@ -127,6 +127,34 @@ MaterialDocumentResult material_document_create(MaterialDocument *document,
     return MATERIAL_DOCUMENT_OK;
 }
 
+MaterialDocumentResult material_document_create_replacement(
+    MaterialDocument *document,
+    const AssetRegistry *assets,
+    uint16_t id,
+    const char *name,
+    uint16_t palette_id,
+    const char glyphs[4]
+) {
+    MaterialDocumentValue value;
+    MaterialDocumentResult result;
+    if (!document || !assets || !glyphs || id == 0U ||
+        !material_id_is_loaded(assets, id)) {
+        return MATERIAL_DOCUMENT_INVALID_ARGUMENT;
+    }
+    memset(&value, 0, sizeof(value));
+    value.id = id;
+    value.palette_id = palette_id;
+    if (name) snprintf(value.name, sizeof(value.name), "%s", name);
+    memcpy(value.glyphs, glyphs, 4U);
+    result = validate_value(&value, assets);
+    if (result != MATERIAL_DOCUMENT_OK) return result;
+    material_document_destroy(document);
+    document->value = value;
+    document->saved_value = value;
+    document->state.saved_state = 0U;
+    return MATERIAL_DOCUMENT_OK;
+}
+
 MaterialDocumentResult material_document_open(MaterialDocument *document,
                                               const AssetRegistry *assets,
                                               uint16_t id,

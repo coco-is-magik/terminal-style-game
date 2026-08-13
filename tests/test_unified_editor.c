@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
+#include "../src/asset_refresh.h"
 
 /* Editor behavior tests use the production logical viewport height. */
 #define unified_editor_update(editor, input, camera, delta) \
@@ -1926,6 +1927,171 @@ static void test_material_search_empty_creates_saves_and_applies(void **state) {
     }
 }
 
+static void prepare_material_collision_editor(
+    UnifiedEditorState *ed,
+    Camera *cam,
+    char *palette_dir,
+    size_t palette_dir_size,
+    char *material_dir,
+    size_t material_dir_size,
+    char *decal_dir,
+    size_t decal_dir_size
+) {
+    char path[512];
+    SDL_Color color = {20U, 30U, 40U, 255U};
+    asset_registry_set_palette(&g_assets, 1, color, color, color);
+    assert_int_equal(load_editor(ed, "material_collision.txt"), 0);
+    path_in_tmpdir(palette_dir, palette_dir_size, "palettes");
+    path_in_tmpdir(material_dir, material_dir_size, "materials");
+    path_in_tmpdir(decal_dir, decal_dir_size, "decals");
+    assert_int_equal(mkdir(palette_dir, 0700), 0);
+    assert_int_equal(mkdir(material_dir, 0700), 0);
+    assert_int_equal(mkdir(decal_dir, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", palette_dir) > 0);
+    assert_int_equal(write_text_file(
+        path, "near=20,30,40,255\nmid=20,30,40,255\nfar=20,30,40,255\n"), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", material_dir) > 0);
+    assert_int_equal(write_text_file(path, "palette=1\nglyphs=####\n"), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/existing_disk.txt", material_dir) > 0);
+    assert_int_equal(write_text_file(
+        path, "id=2\npalette=1\nglyphs=ABCD\n"), 0);
+    assert_true(unified_editor_set_material_root(ed, material_dir));
+    assert_true(unified_editor_set_asset_root(ed, g_tmpdir));
+    assert_int_equal(asset_refresh_after_commit(
+                         &g_assets, &ed->document, g_tmpdir,
+                         &ed->last_scene_diagnostic), ASSET_REFRESH_OK);
+    select_east_wall(ed);
+    ed->material_picker_open = true;
+    camera_init(cam, 2.5, 2.5, 0.0, PI / 2.0);
+}
+
+static void cleanup_material_collision_editor(
+    UnifiedEditorState *ed,
+    const char *palette_dir,
+    const char *material_dir,
+    const char *decal_dir,
+    const char *extra_name
+) {
+    char path[512];
+    unified_editor_destroy(ed);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", palette_dir) > 0);
+    remove(path);
+    assert_true(snprintf(path, sizeof(path), "%s/1.txt", material_dir) > 0);
+    remove(path);
+    assert_true(snprintf(path, sizeof(path), "%s/existing_disk.txt", material_dir) > 0);
+    remove(path);
+    if (extra_name) {
+        assert_true(snprintf(path, sizeof(path), "%s/%s.txt",
+                             material_dir, extra_name) > 0);
+        remove(path);
+    }
+    rmdir(palette_dir);
+    rmdir(material_dir);
+    rmdir(decal_dir);
+    asset_registry_clear(&g_assets);
+    assert_true(asset_registry_init(&g_assets));
+    mark_material_loaded(1, "mat1");
+    mark_material_loaded(2, "mat2");
+    mark_material_loaded(12, "mat12");
+    g_assets.material_count = 3U;
+    {
+        PatternCell cell = {'A', 1};
+        assert_true(asset_registry_set_decal_pattern(&g_assets, 6, 1, 1, &cell));
+    }
+}
+
+static void enter_material_collision(UnifiedEditorState *ed, Camera *cam) {
+    InputState in;
+    zero_input(&in);
+    snprintf(in.text_input, sizeof(in.text_input), "existing_disk");
+    in.text_input_len = (int)strlen(in.text_input);
+    update_with(ed, cam, &in);
+    assert_int_equal(ed->material_search_result_count, 0U);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(ed, cam, &in);
+    assert_int_equal(ed->modal, EDITOR_MODAL_MATERIAL_COLLISION);
+}
+
+static void test_material_collision_load_and_no(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    char palette_dir[512], material_dir[512], decal_dir[512];
+    (void)state;
+    prepare_material_collision_editor(
+        &ed, &cam, palette_dir, sizeof(palette_dir), material_dir,
+        sizeof(material_dir), decal_dir, sizeof(decal_dir));
+    enter_material_collision(&ed, &cam);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(
+        grid, "Material 'existing_disk' already exists in assets. Load material?"));
+    assert_true(grid_contains_text(
+        grid, "Enter=Yes  Esc=No  O=Overwrite"));
+    grid_destroy(grid);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(wall_mat(&ed), 1U);
+    assert_false(scene_document_is_dirty(&ed.document));
+
+    ed.material_picker_open = true;
+    ed.material_search_text[0] = '\0';
+    ed.material_search_text_length = 0U;
+    enter_material_collision(&ed, &cam);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(wall_mat(&ed), 2U);
+    assert_true(scene_document_is_dirty(&ed.document));
+    cleanup_material_collision_editor(
+        &ed, palette_dir, material_dir, decal_dir, NULL);
+}
+
+static void test_material_collision_overwrite_requires_confirmation(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    char palette_dir[512], material_dir[512], decal_dir[512];
+    char path[512], content[256];
+    (void)state;
+    prepare_material_collision_editor(
+        &ed, &cam, palette_dir, sizeof(palette_dir), material_dir,
+        sizeof(material_dir), decal_dir, sizeof(decal_dir));
+    enter_material_collision(&ed, &cam);
+    zero_input(&in);
+    in.editor_overwrite_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT);
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_MATERIAL_COLLISION);
+    assert_int_equal(wall_mat(&ed), 1U);
+    assert_true(snprintf(path, sizeof(path), "%s/existing_disk.txt", material_dir) > 0);
+    assert_int_equal(read_text_file(path, content, sizeof(content)), 0);
+    assert_non_null(strstr(content, "glyphs=ABCD"));
+
+    zero_input(&in);
+    in.editor_overwrite_pressed = true;
+    update_with(&ed, &cam, &in);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
+    assert_int_equal(wall_mat(&ed), 2U);
+    assert_int_equal(read_text_file(path, content, sizeof(content)), 0);
+    assert_non_null(strstr(content, "id=2"));
+    assert_non_null(strstr(content, "glyphs=####"));
+    cleanup_material_collision_editor(
+        &ed, palette_dir, material_dir, decal_dir, NULL);
+}
+
 static void test_input_undo_redo_save_shortcuts(void **state) {
     (void)state;
     UnifiedEditorState ed;
@@ -2969,6 +3135,8 @@ int main(void) {
         cmocka_unit_test(test_material_shortlist_prefix_search),
         cmocka_unit_test(test_material_picker_renders_only_four_rows),
         cmocka_unit_test(test_material_search_empty_creates_saves_and_applies),
+        cmocka_unit_test(test_material_collision_load_and_no),
+        cmocka_unit_test(test_material_collision_overwrite_requires_confirmation),
         cmocka_unit_test(test_input_undo_redo_save_shortcuts),
         cmocka_unit_test(test_reload_prompt_when_dirty),
         /* Phase 6 */

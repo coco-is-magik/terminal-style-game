@@ -35,6 +35,8 @@ typedef enum {
     EDITOR_MODAL_RELOAD_PROMPT,
     EDITOR_MODAL_MAP_CHOOSER,
     EDITOR_MODAL_DIRTY_OPEN_PROMPT,
+    EDITOR_MODAL_MATERIAL_COLLISION,
+    EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT,
     EDITOR_MENU_SAVE
 } EditorModal;
 
@@ -153,6 +155,7 @@ typedef struct {
     size_t material_search_result_capacity;
     char material_search_text[MATERIAL_NAME_CAPACITY];
     size_t material_search_text_length;
+    MaterialId material_collision_id;
     char *material_root;
     char *asset_root;
     uint16_t *decal_shortlist;
