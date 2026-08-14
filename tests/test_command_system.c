@@ -1331,6 +1331,80 @@ static void test_decal_insert_failure_does_not_consume_id(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_decal_batch_insert_is_one_step_and_rolls_back_ids(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    SceneDecalInstance decals[2];
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    doc.next_instance_id = 50U;
+    decals[0] = decal_prototype(SCENE_DECAL_SURFACE_FLOOR);
+    decals[1] = decal_prototype(SCENE_DECAL_SURFACE_CEILING);
+    assert_int_equal(command_history_insert_decals(
+        &h, &doc, decals, 2U), CMD_RESULT_OK);
+    assert_int_equal(doc.decal_count, 2U);
+    assert_int_equal(doc.decals[0].id, 50U);
+    assert_int_equal(doc.decals[1].id, 51U);
+    assert_int_equal(doc.next_instance_id, 52U);
+    assert_int_equal(h.count, 1U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.decal_count, 0U);
+    assert_int_equal(command_history_redo(&h, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.decals[1].id, 51U);
+    assert_int_equal(command_history_undo(&h, &doc), CMD_RESULT_OK);
+    command_history_destroy(&h);
+    command_history_init(&h, doc.current_state);
+    g_fail_realloc = 1;
+    command_history_set_allocator_for_test(
+        passthrough_alloc, failing_realloc, passthrough_free);
+    assert_int_equal(command_history_insert_decals(
+        &h, &doc, decals, 2U), CMD_RESULT_OUT_OF_MEMORY);
+    g_fail_realloc = 0;
+    command_history_reset_allocator_for_test();
+    assert_int_equal(doc.next_instance_id, 52U);
+    assert_int_equal(doc.decal_count, 0U);
+    decals[1].width = 0.0;
+    assert_int_equal(command_history_insert_decals(
+        &h, &doc, decals, 2U), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(doc.next_instance_id, 52U);
+    assert_int_equal(doc.decal_count, 0U);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
+static void test_history_memory_limit_is_bounded_and_atomic(void **state) {
+    SceneDocument doc;
+    CommandHistory h;
+    CommandResult result = CMD_RESULT_OK;
+    size_t accepted = 0U;
+    double before;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&h, doc.current_state);
+    while (accepted < 50000U) {
+        double value = (accepted & 1U) == 0U ? 0.25 : 0.75;
+        before = scene_document_get_ambient_intensity(&doc);
+        result = command_history_set_ambient_intensity(&h, &doc, value);
+        if (result == CMD_RESULT_HISTORY_LIMIT) {
+            assert_true(scene_document_get_ambient_intensity(&doc) == before);
+            break;
+        }
+        assert_int_equal(result, CMD_RESULT_OK);
+        assert_true(command_history_retained_bytes(&h) <=
+                    COMMAND_HISTORY_MAX_RETAINED_BYTES);
+        accepted++;
+    }
+    assert_int_equal(result, CMD_RESULT_HISTORY_LIMIT);
+    assert_true(accepted > 100U);
+    assert_int_equal(h.count, accepted);
+    assert_int_equal(h.cursor, accepted);
+    assert_true(command_history_retained_bytes(&h) <=
+                COMMAND_HISTORY_MAX_RETAINED_BYTES);
+    command_history_destroy(&h);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1372,6 +1446,8 @@ int main(void) {
         cmocka_unit_test(test_mixed_set_remove_light_target_is_rejected_atomically),
         cmocka_unit_test(test_decal_set_insert_remove_undo_redo_stable_order),
         cmocka_unit_test(test_decal_insert_failure_does_not_consume_id),
+        cmocka_unit_test(test_decal_batch_insert_is_one_step_and_rolls_back_ids),
+        cmocka_unit_test(test_history_memory_limit_is_bounded_and_atomic),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

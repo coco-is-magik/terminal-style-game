@@ -82,6 +82,9 @@ SceneResizeResult scene_document_internal_resize_east(
 SceneResizeResult scene_document_internal_resize_south(
     SceneDocument *document, bool grow, int trigger
 );
+void scene_document_set_resize_allocator_for_test(
+    void *(*calloc_fn)(size_t, size_t), void (*free_fn)(void *));
+void scene_document_reset_resize_allocator_for_test(void);
 
 bool scene_document_internal_set_ambient_intensity(
     SceneDocument *document,

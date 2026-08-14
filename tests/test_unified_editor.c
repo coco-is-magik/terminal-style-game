@@ -1239,6 +1239,7 @@ static void select_surface_direct(
     ed->inspector_open = true;
     ed->inspector_kind = editor_domain_inspector_kind(ed->selection);
     ed->surface_field = EDITOR_SURFACE_FIELD_DECALS;
+    assert_true(editor_selection_set_reset(&ed->selection_set, ed->selection));
 }
 
 static void select_wall_face_direct(
@@ -1249,6 +1250,17 @@ static void select_wall_face_direct(
     ed->inspector_open = true;
     ed->inspector_kind = EDITOR_INSPECTOR_WALL_MATERIAL;
     ed->surface_field = EDITOR_SURFACE_FIELD_DECALS;
+    assert_true(editor_selection_set_reset(&ed->selection_set, ed->selection));
+}
+
+static void add_horizontal_selection(
+    UnifiedEditorState *ed, SelectionType type, int x, int y
+) {
+    SelectionTarget target = {0};
+    target.type = type;
+    target.value.horizontal = (HorizontalSurfaceRef){x, y};
+    assert_true(editor_selection_set_add(&ed->selection_set, target));
+    ed->selection = target;
 }
 
 static void test_decal_place_each_surface_defaults_and_undo_redo(void **state) {
@@ -3565,6 +3577,83 @@ static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
     remove(saved_path);
 }
 
+static void test_r7_multiselect_batch_material_and_construction(void **state) {
+    UnifiedEditorState ed;
+    MaterialId material = 0;
+    SceneCellOccupancy occupancy;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "r7_batch_surface.txt"), 0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 2);
+    add_horizontal_selection(&ed, SELECTION_FLOOR, 2, 2);
+    assert_int_equal(ed.selection_set.count, 2U);
+    assert_int_equal(unified_editor_apply_material_to_selection(&ed, 2), CMD_RESULT_OK);
+    assert_int_equal(ed.history.count, 1U);
+    assert_true(scene_document_get_surface_material(
+        &ed.document, 1, 2, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 2);
+    assert_true(scene_document_get_surface_material(
+        &ed.document, 2, 2, SCENE_SURFACE_FLOOR, &material));
+    assert_int_equal(material, 2);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(unified_editor_apply_construction_to_selection(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.history.count, 2U);
+    assert_true(scene_document_get_cell_occupancy(&ed.document, 1, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_true(scene_document_get_cell_occupancy(&ed.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_true(scene_document_get_cell_occupancy(&ed.document, 1, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    assert_true(scene_document_get_cell_occupancy(&ed.document, 2, 2, &occupancy));
+    assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
+    unified_editor_destroy(&ed);
+}
+
+static void test_r7_multiselect_batch_decals_one_undo_step(void **state) {
+    UnifiedEditorState ed;
+    SceneInstanceId first;
+    SceneInstanceId second;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "r7_batch_decal.txt"), 0);
+    select_surface_direct(&ed, SELECTION_CEILING, 1, 1);
+    add_horizontal_selection(&ed, SELECTION_CEILING, 2, 1);
+    assert_int_equal(unified_editor_place_decal_on_selection(
+        &ed, 6U, 1.0, 1.0), CMD_RESULT_OK);
+    assert_int_equal(ed.document.decal_count, 2U);
+    assert_int_equal(ed.history.count, 1U);
+    first = ed.document.decals[0].id;
+    second = ed.document.decals[1].id;
+    assert_true(first != second);
+    assert_true(ed.document.decals[0].x == 1.5);
+    assert_true(ed.document.decals[1].x == 2.5);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.decal_count, 0U);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.decals[0].id, first);
+    assert_int_equal(ed.document.decals[1].id, second);
+    unified_editor_destroy(&ed);
+}
+
+static void test_r7_ctrl_arrow_axis_and_occlusion(void **state) {
+    UnifiedEditorState ed;
+    Camera camera;
+    InputState input;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "r7_extend.txt"), 0);
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    select_surface_direct(&ed, SELECTION_FLOOR, 1, 1);
+    zero_input(&input);
+    input.ctrl_right = true;
+    assert_true(update_with(&ed, &camera, &input).keyboard_consumed);
+    assert_int_equal(ed.selection_set.count, 2U);
+    assert_int_equal(ed.selection.value.horizontal.map_x, 2);
+    select_wall_face_direct(&ed, 4, 0, WALL_FACE_NORTH);
+    assert_false(unified_editor_extend_selection(&ed, &camera, 0, 1));
+    assert_int_equal(ed.selection_set.count, 1U);
+    unified_editor_destroy(&ed);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -3643,6 +3732,9 @@ int main(void) {
         cmocka_unit_test(test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape),
         cmocka_unit_test(test_r4_increment_d_empty_missing_and_runtime_failure_atomic),
         cmocka_unit_test(test_r4_increment_f_checked_in_v2_workflow),
+        cmocka_unit_test(test_r7_multiselect_batch_material_and_construction),
+        cmocka_unit_test(test_r7_multiselect_batch_decals_one_undo_step),
+        cmocka_unit_test(test_r7_ctrl_arrow_axis_and_occlusion),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

@@ -222,7 +222,7 @@ Do not create empty review directories or placeholder review files.
 | R4 | Surface data and basic world construction | R2–R3 | Floor/ceiling editing, stable surface anchors | Verified |
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Verified |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
-| R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Proposed |
+| R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 decision; R4; R7 semantics | Heights, slopes, vertical movement, true pitch if chosen | Decision-blocked |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Research track |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
@@ -605,7 +605,17 @@ command grouping, and lighting invalidation.
 
 ## R7 — Structural editing and scale
 
-**Status:** Proposed
+**Status:** Verified — Increments I1 and I2 complete. Origin model (option B: fixed top-left,
+east/south edges, content-blocked shrink) and the multiselect design (Ctrl+arrow,
+same-axis homogeneous family, occlusion-respecting, reduced Remove/Apply
+material/Add decal batch ops) are locked and recorded in
+[`R7_DECISION_RECORD_2026-08-13.md`](R7_DECISION_RECORD_2026-08-13.md). The scoped
+plan is
+[`R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`](R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md).
+I1 evidence is in
+[`R7_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-13.md`](R7_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-13.md).
+I2 limits/stress evidence is in
+[`R7_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-13.md`](R7_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-13.md).
 
 **Purpose:** Add operations that relocate coordinates or mutate many targets
 after all affected scene content has stable semantics.
@@ -895,7 +905,7 @@ until that evidence exists.
 
 ## Next action
 
-**R0–R4 are Verified.** The next phase is R5 (Reusable asset-document foundation),
-currently Proposed. Per roadmap policy, promote it to Active only after scoped Q1
-planning; the current R4 evidence is in
-`R4_MANUAL_REVIEW_FOLLOWUP_IMPLEMENTATION_RECORD_2026-08-12.md`.
+**R0–R7 are Verified.** The scoped R7 plan and locked
+decisions are in `R7_DECISION_RECORD_2026-08-13.md` and
+`R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`. R8 (Vertical-world
+implementation) remains Decision-blocked pending the R1 world decision.

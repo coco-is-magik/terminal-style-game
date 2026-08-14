@@ -13,6 +13,7 @@
 #include <stddef.h>
 
 #define EDITOR_COMMAND_MAX_MUTATIONS 8U
+#define COMMAND_HISTORY_MAX_RETAINED_BYTES (16U * 1024U * 1024U)
 
 typedef enum {
     EDITOR_MUTATION_SET_WALL_MATERIAL = 0,
@@ -158,6 +159,7 @@ typedef enum {
     CMD_RESULT_STATE_ID_EXHAUSTED
     ,CMD_RESULT_MAP_LIMIT
     ,CMD_RESULT_RESIZE_BLOCKED
+    ,CMD_RESULT_HISTORY_LIMIT
 } CommandResult;
 
 typedef struct {
@@ -179,6 +181,7 @@ typedef struct {
 
 void command_history_init(CommandHistory *history, DocumentStateId initial_state);
 void command_history_destroy(CommandHistory *history);
+size_t command_history_retained_bytes(const CommandHistory *history);
 
 CommandResult command_history_execute_group(
     CommandHistory *history,
@@ -266,6 +269,12 @@ CommandResult command_history_insert_decal(
     SceneDocument *document,
     const SceneDecalInstance *prototype,
     SceneInstanceId *out_id
+);
+CommandResult command_history_insert_decals(
+    CommandHistory *history,
+    SceneDocument *document,
+    const SceneDecalInstance *prototypes,
+    size_t prototype_count
 );
 
 CommandResult command_history_remove_decal(

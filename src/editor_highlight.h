@@ -40,6 +40,13 @@ void editor_highlight_render(
     EditorHit hover
 );
 
+void editor_highlight_render_set(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneLight *lights, size_t light_count,
+    const SelectionTarget *selections, size_t selection_count,
+    size_t primary_index, EditorHit hover
+);
+
 /** Draw the editor center-ray reticle above world highlights. */
 void editor_crosshair_render(Grid *grid);
 

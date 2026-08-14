@@ -158,6 +158,31 @@ static void test_hover_is_dashed_and_selection_wins_same_target(void **state) {
     grid_destroy(grid);
 }
 
+static void test_selection_set_marks_members_and_primary_distinctly(void **state) {
+    Grid *grid = grid_create(61, 25);
+    Map *map = map_create(8, 8);
+    Camera camera;
+    SelectionTarget targets[2] = {
+        wall_target(5, 3, WALL_FACE_WEST),
+        wall_target(5, 4, WALL_FACE_WEST)
+    };
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    map_set(map, 5, 3, 1);
+    map_set(map, 5, 4, 1);
+    camera_init(&camera, 2.5, 3.8, 0.0, PI / 2.0);
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render_set(
+        grid, map, &camera, NULL, 0U, targets, 2U, 1U, hover);
+    assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH) > 0);
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
 static void test_nearer_wall_occludes_target(void **state) {
     Grid *grid = grid_create(41, 25);
     Map *map = map_create(7, 7);
@@ -585,6 +610,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_selected_outline_all_cardinal_faces),
         cmocka_unit_test(test_hover_is_dashed_and_selection_wins_same_target),
+        cmocka_unit_test(test_selection_set_marks_members_and_primary_distinctly),
         cmocka_unit_test(test_nearer_wall_occludes_target),
         cmocka_unit_test(test_wrong_face_and_invalid_target_draw_nothing),
         cmocka_unit_test(test_contrast_adapts_to_dark_and_bright_cells),

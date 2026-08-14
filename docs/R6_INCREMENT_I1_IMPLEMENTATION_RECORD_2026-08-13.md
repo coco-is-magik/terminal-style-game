@@ -65,11 +65,11 @@ Final checks run on 2026-08-13:
 
 ## Remaining follow-up
 
-An attended visual playthrough was not performed in this headless agent session.
-The production controller paths, overlay text, runtime-world refresh, modal input,
-and application startup are covered deterministically/headlessly. A later human
-review may additionally confirm visual placement and lighting feel; this is not an
-unresolved I1 correctness blocker. I2 remains not started.
+An attended visual playthrough was subsequently completed and **confirmed working
+as intended** (2026-08-13), including placement on floor/ceiling and all wall
+faces, removal confirm/cancel, undo/redo, and save-and-reopen. There are no open
+R6 I1 correctness or UX blockers. I2 is complete and verified in
+`R6_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-13.md`.
 
 ## Research boundary
 

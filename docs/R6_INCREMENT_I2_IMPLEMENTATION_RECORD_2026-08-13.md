@@ -84,11 +84,11 @@ Audited on 2026-08-13:
 
 ## Remaining follow-up
 
-An attended visual playthrough was not performed in this headless agent session.
-The production controller paths, overlay text, runtime-world refresh, modal input,
-and application startup are covered deterministically/headlessly. A later human
-review may additionally confirm visual placement and decal orientation feel; this
-is not an unresolved I2 correctness blocker.
+An attended visual playthrough was subsequently completed and **confirmed working
+as intended** (2026-08-13), including the create-empty add-decal flow, placement
+on floor/ceiling and all four wall faces, opposite-face orientation, property
+editing, removal confirm/cancel, undo/redo, and save-and-reopen. There are no open
+R6 I2 correctness or UX blockers.
 
 Interactive decal-pattern painting UI remains deferred past R6, as decided in
 `R6_DECISION_RECORD_2026-08-13.md`.

@@ -17,6 +17,86 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <string.h>
+
+static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
+    if (a.type != b.type) return false;
+    if (a.type == SELECTION_WALL_FACE)
+        return a.value.wall_face.map_x == b.value.wall_face.map_x &&
+            a.value.wall_face.map_y == b.value.wall_face.map_y &&
+            a.value.wall_face.face == b.value.wall_face.face;
+    if (a.type == SELECTION_FLOOR || a.type == SELECTION_CEILING)
+        return a.value.horizontal.map_x == b.value.horizontal.map_x &&
+            a.value.horizontal.map_y == b.value.horizontal.map_y;
+    if (a.type == SELECTION_LIGHT)
+        return a.value.light.id == b.value.light.id;
+    if (a.type == SELECTION_DECAL)
+        return a.value.decal.id == b.value.decal.id;
+    return a.type == SELECTION_NONE;
+}
+
+void editor_selection_set_clear(EditorSelectionSet *set) {
+    if (!set) return;
+    memset(set, 0, sizeof(*set));
+}
+
+bool editor_selection_set_reset(EditorSelectionSet *set, SelectionTarget primary) {
+    if (!set || primary.type == SELECTION_NONE) return false;
+    editor_selection_set_clear(set);
+    set->members[0] = primary;
+    set->count = 1U;
+    return true;
+}
+
+bool editor_selection_set_contains(const EditorSelectionSet *set,
+                                   SelectionTarget target) {
+    size_t i;
+    if (!set) return false;
+    for (i = 0U; i < set->count; i++)
+        if (selection_targets_equal(set->members[i], target)) return true;
+    return false;
+}
+
+bool editor_selection_set_add(EditorSelectionSet *set, SelectionTarget target) {
+    if (!set || target.type == SELECTION_NONE) return false;
+    if (editor_selection_set_contains(set, target)) {
+        size_t i;
+        for (i = 0U; i < set->count; i++)
+            if (selection_targets_equal(set->members[i], target)) {
+                set->primary_index = i;
+                return true;
+            }
+    }
+    if (set->count >= EDITOR_SELECTION_SET_CAPACITY) return false;
+    set->members[set->count] = target;
+    set->primary_index = set->count++;
+    return true;
+}
+
+void editor_selection_set_revalidate(EditorSelectionSet *set, const Map *map) {
+    size_t read_index;
+    size_t write_index = 0U;
+    size_t new_primary = 0U;
+    bool primary_survived = false;
+    if (!set) return;
+    for (read_index = 0U; read_index < set->count; read_index++) {
+        if (!editor_selection_is_valid_for_map(set->members[read_index], map)) continue;
+        set->members[write_index] = set->members[read_index];
+        if (read_index == set->primary_index) {
+            new_primary = write_index;
+            primary_survived = true;
+        }
+        write_index++;
+    }
+    set->count = write_index;
+    set->primary_index = write_index == 0U ? 0U
+        : (primary_survived ? new_primary : write_index - 1U);
+}
+
+const SelectionTarget *editor_selection_set_primary(const EditorSelectionSet *set) {
+    if (!set || set->count == 0U || set->primary_index >= set->count) return NULL;
+    return &set->members[set->primary_index];
+}
 
 WallFace editor_calculate_wall_face(
     int side,

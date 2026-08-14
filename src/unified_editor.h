@@ -112,6 +112,8 @@ typedef enum {
     EDITOR_STATUS_PLAYER_BLOCKED
     ,EDITOR_STATUS_MAP_LIMIT
     ,EDITOR_STATUS_RESIZE_BLOCKED
+    ,EDITOR_STATUS_SELECTION_LIMIT
+    ,EDITOR_STATUS_HISTORY_LIMIT
 } EditorStatus;
 
 typedef struct {
@@ -143,6 +145,7 @@ typedef struct {
     bool save_force_new_path;
 
     SelectionTarget selection;
+    EditorSelectionSet selection_set;
     EditorHit hover;
 
     AssetRegistry *assets;
@@ -275,6 +278,14 @@ CommandResult unified_editor_set_surface_material(
     SceneSurfaceKind surface,
     MaterialId material
 );
+CommandResult unified_editor_apply_material_to_selection(
+    UnifiedEditorState *editor, MaterialId material);
+CommandResult unified_editor_apply_construction_to_selection(
+    UnifiedEditorState *editor);
+CommandResult unified_editor_place_decal_on_selection(
+    UnifiedEditorState *editor, uint16_t asset_id, double width, double height);
+bool unified_editor_extend_selection(
+    UnifiedEditorState *editor, const Camera *camera, int delta_x, int delta_y);
 CommandResult unified_editor_set_ambient_intensity(
     UnifiedEditorState *editor,
     double intensity

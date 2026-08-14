@@ -900,9 +900,16 @@ int app_main(int argc, char* argv[]) {
                     lighting_update(ed_map, &ued.runtime_world);
                     raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world,
                                    surfaces);
-                    editor_highlight_render(grid, ed_map, &cam,
-                                            editor_lights, editor_light_count,
-                                            ued.selection, ued.hover);
+                    if (ued.selection_set.count > 0U) {
+                        editor_highlight_render_set(
+                            grid, ed_map, &cam, editor_lights, editor_light_count,
+                            ued.selection_set.members, ued.selection_set.count,
+                            ued.selection_set.primary_index, ued.hover);
+                    } else {
+                        editor_highlight_render(grid, ed_map, &cam,
+                                                editor_lights, editor_light_count,
+                                                ued.selection, ued.hover);
+                    }
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);

@@ -13,6 +13,22 @@
 #include "map.h"
 #include "scene_types.h"
 
+#define EDITOR_SELECTION_SET_CAPACITY 8U
+
+typedef struct {
+    SelectionTarget members[EDITOR_SELECTION_SET_CAPACITY];
+    size_t count;
+    size_t primary_index;
+} EditorSelectionSet;
+
+void editor_selection_set_clear(EditorSelectionSet *set);
+bool editor_selection_set_reset(EditorSelectionSet *set, SelectionTarget primary);
+bool editor_selection_set_contains(const EditorSelectionSet *set,
+                                   SelectionTarget target);
+bool editor_selection_set_add(EditorSelectionSet *set, SelectionTarget target);
+void editor_selection_set_revalidate(EditorSelectionSet *set, const Map *map);
+const SelectionTarget *editor_selection_set_primary(const EditorSelectionSet *set);
+
 EditorHit editor_raycast_selection(
     const Camera *camera,
     const Map *map

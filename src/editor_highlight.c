@@ -382,6 +382,29 @@ void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
                   HIGHLIGHT_STYLE_SELECTED);
 }
 
+void editor_highlight_render_set(Grid *grid, Map *map, Camera *camera,
+                                 const SceneLight *lights, size_t light_count,
+                                 const SelectionTarget *selections,
+                                 size_t selection_count, size_t primary_index,
+                                 EditorHit hover) {
+    size_t i;
+    bool hover_matches = false;
+    if (!grid || !map || !camera || grid->width <= 0 || grid->height <= 0) return;
+    for (i = 0U; i < selection_count; i++)
+        if (hover.valid && selection_targets_equal(selections[i], hover.target))
+            hover_matches = true;
+    if (hover.valid && !hover_matches)
+        render_target(grid, map, camera, lights, light_count, hover.target,
+                      HIGHLIGHT_STYLE_HOVER);
+    for (i = 0U; i < selection_count; i++)
+        if (i != primary_index)
+            render_target(grid, map, camera, lights, light_count, selections[i],
+                          HIGHLIGHT_STYLE_HOVER);
+    if (selections && primary_index < selection_count)
+        render_target(grid, map, camera, lights, light_count,
+                      selections[primary_index], HIGHLIGHT_STYLE_SELECTED);
+}
+
 void editor_crosshair_render(Grid *grid) {
     Cell under;
     SDL_Color foreground;

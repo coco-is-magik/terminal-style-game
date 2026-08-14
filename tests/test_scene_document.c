@@ -28,6 +28,17 @@
 #include "../src/config.h"
 #include "../src/lighting.h"
 
+static int g_resize_allocations_before_failure = -1;
+
+static void *failing_resize_calloc(size_t count, size_t size) {
+    if (g_resize_allocations_before_failure == 0) return NULL;
+    if (g_resize_allocations_before_failure > 0)
+        g_resize_allocations_before_failure--;
+    return calloc(count, size);
+}
+
+static void passthrough_resize_free(void *ptr) { free(ptr); }
+
 /* ===================================================================
  *  Temp directory helpers
  * =================================================================== */
@@ -1637,6 +1648,69 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v4(void **state) {
     remove(destination);
 }
 
+static void test_resize_limits_and_allocation_failures_are_atomic(void **state) {
+    SceneDocument doc;
+    MapCell *map_cells;
+    double *light_map;
+    SceneAuthoredCell *authored;
+    int width;
+    int height;
+    int fail_after;
+    (void)state;
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_create_new(&doc), SCENE_LOAD_OK);
+    width = doc.map.width;
+    height = doc.map.height;
+    for (fail_after = 0; fail_after < 3; fail_after++) {
+        map_cells = doc.map.cells;
+        light_map = doc.map.light_map;
+        authored = doc.authored_cells;
+        g_resize_allocations_before_failure = fail_after;
+        scene_document_set_resize_allocator_for_test(
+            failing_resize_calloc, passthrough_resize_free);
+        assert_int_equal(scene_document_internal_resize_east(
+            &doc, true, 1), SCENE_RESIZE_OUT_OF_MEMORY);
+        scene_document_reset_resize_allocator_for_test();
+        assert_ptr_equal(doc.map.cells, map_cells);
+        assert_ptr_equal(doc.map.light_map, light_map);
+        assert_ptr_equal(doc.authored_cells, authored);
+        assert_int_equal(doc.map.width, width);
+        assert_int_equal(doc.map.height, height);
+        assert_int_equal(doc.east_growth_count, 0U);
+    }
+    doc.map.width = SCENE_MAX_WIDTH;
+    assert_int_equal(scene_document_internal_resize_east(
+        &doc, true, 1), SCENE_RESIZE_LIMIT);
+    doc.map.width = width;
+    doc.map.height = SCENE_MAX_HEIGHT;
+    assert_int_equal(scene_document_internal_resize_south(
+        &doc, true, 1), SCENE_RESIZE_LIMIT);
+    doc.map.height = height;
+    assert_int_equal(scene_document_internal_resize_east(
+        &doc, true, 1), SCENE_RESIZE_OK);
+    assert_int_equal(doc.map.width, width + 1);
+    assert_int_equal(doc.authored_cell_count, (size_t)(width + 1) * (size_t)height);
+    scene_document_destroy(&doc);
+
+    scene_document_init(&doc);
+    doc.map.width = SCENE_MAX_WIDTH;
+    doc.map.height = SCENE_MAX_HEIGHT;
+    doc.authored_cell_count = (size_t)SCENE_MAX_WIDTH * (size_t)SCENE_MAX_HEIGHT;
+    doc.authored_cells = calloc(doc.authored_cell_count, sizeof(*doc.authored_cells));
+    doc.map.cells = calloc(doc.authored_cell_count, sizeof(*doc.map.cells));
+    doc.map.light_map = calloc(doc.authored_cell_count, sizeof(*doc.map.light_map));
+    assert_non_null(doc.authored_cells);
+    assert_non_null(doc.map.cells);
+    assert_non_null(doc.map.light_map);
+    assert_int_equal(scene_document_internal_resize_east(
+        &doc, true, 0), SCENE_RESIZE_LIMIT);
+    assert_int_equal(scene_document_internal_resize_south(
+        &doc, true, 0), SCENE_RESIZE_LIMIT);
+    assert_int_equal(doc.authored_cell_count,
+                     (size_t)SCENE_MAX_WIDTH * (size_t)SCENE_MAX_HEIGHT);
+    scene_document_destroy(&doc);
+}
+
 static void test_v3_growth_provenance_save_reopen(void **state) {
     SceneDocument doc;
     SceneDocument reopened;
@@ -1718,6 +1792,7 @@ int main(void) {
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
         cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v4),
         cmocka_unit_test(test_v3_growth_provenance_save_reopen),
+        cmocka_unit_test(test_resize_limits_and_allocation_failures_are_atomic),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

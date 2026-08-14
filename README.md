@@ -210,6 +210,7 @@ Closing the inspector clears that persistent selection.
 | `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector / surface submenu |
 | `L` | Place an undoable point light at the aimed cell center (wall face uses the adjacent cell) |
 | `Up` / `Down` | Move through the active inspector/menu level |
+| `Ctrl` + arrow keys | Extend a surface multiselect along the same visible wall/floor/ceiling axis (up to 8 faces) |
 | `Left` / `Right` | Edit the selected point-light or decal field (surface inspectors and submenus use Enter) |
 | `Enter` | Open/apply a surface submenu or modal, execute construction, commit a typed value, or confirm |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
@@ -270,6 +271,9 @@ the initial no-document chooser to the main menu.
   and surface-local U/V position are edited in bounded steps; Remove asks for
   confirmation. All decal edits share the scene undo/redo history and persist in
   native Save/Open.
+- Structural editing is bounded: maps are limited to `512 × 256`, surface
+  multiselect is limited to 8 faces, and retained undo/redo history is limited to
+  16 MiB. Limit rejection is visible and never partially applies a batch.
 - A scene whose decal or authored surface references a missing asset commits in visible
   repair mode: the authored reference is preserved, a conspicuous fallback is
   shown, and normal Save is blocked until the reference is explicitly replaced. Missing

@@ -14,6 +14,38 @@ static void cmd_default_free(void *ptr) { free(ptr); }
 static CmdReallocFn g_cmd_realloc = cmd_default_realloc;
 static CmdFreeFn g_cmd_free = cmd_default_free;
 
+static bool history_next_capacity(const CommandHistory *history,
+                                  size_t *out_capacity) {
+    size_t capacity;
+    if (!history || !out_capacity) return false;
+    if (history->cursor < history->capacity) {
+        *out_capacity = history->capacity;
+        return true;
+    }
+    capacity = history->capacity ? history->capacity * 2U : 8U;
+    if (capacity < history->capacity ||
+        capacity > SIZE_MAX / sizeof(*history->commands)) return false;
+    *out_capacity = capacity;
+    return true;
+}
+
+size_t command_history_retained_bytes(const CommandHistory *history) {
+    size_t bytes;
+    size_t i;
+    if (!history || history->capacity > SIZE_MAX / sizeof(*history->commands))
+        return SIZE_MAX;
+    bytes = history->capacity * sizeof(*history->commands);
+    for (i = 0U; i < history->count; i++) {
+        size_t count = history->commands[i].removed_decal_count;
+        size_t added;
+        if (count > SIZE_MAX / sizeof(EditorRemovedDecal)) return SIZE_MAX;
+        added = count * sizeof(EditorRemovedDecal);
+        if (bytes > SIZE_MAX - added) return SIZE_MAX;
+        bytes += added;
+    }
+    return bytes;
+}
+
 void command_history_set_allocator_for_test(
     void *(*alloc_fn)(size_t), void *(*realloc_fn)(void *, size_t),
     void (*free_fn)(void *)) {
@@ -30,9 +62,7 @@ static bool history_reserve_one(CommandHistory *history) {
     size_t new_capacity;
     EditorCommand *grown;
     if (history->cursor < history->capacity) return true;
-    new_capacity = history->capacity ? history->capacity * 2U : 8U;
-    if (new_capacity < history->capacity ||
-        new_capacity > SIZE_MAX / sizeof(*history->commands)) return false;
+    if (!history_next_capacity(history, &new_capacity)) return false;
     grown = g_cmd_realloc(history->commands,
                           new_capacity * sizeof(*history->commands));
     if (!grown) return false;
@@ -240,7 +270,8 @@ static bool mutations_target_same_field(
         return a_id == b_id;
     }
     if (a->type == EDITOR_MUTATION_INSERT_DECAL &&
-        b->type == EDITOR_MUTATION_INSERT_DECAL) return true;
+        b->type == EDITOR_MUTATION_INSERT_DECAL)
+        return a->data.insert_decal.value.id == b->data.insert_decal.value.id;
     if (mutation_is_resize(a->type) && mutation_is_resize(b->type)) return true;
     return false;
 }
@@ -597,6 +628,41 @@ CommandResult command_history_execute_group_checked(
     }
     if (command.mutation_count == 0U) return CMD_RESULT_NO_CHANGE;
     if (!collect_removed_decals(document, &command)) return CMD_RESULT_OUT_OF_MEMORY;
+    {
+        size_t retained = 0U;
+        size_t prospective_capacity;
+        size_t added;
+        size_t i;
+        if (!history_next_capacity(history, &prospective_capacity)) {
+            g_cmd_free(command.removed_decals);
+            return CMD_RESULT_HISTORY_LIMIT;
+        }
+        retained = prospective_capacity * sizeof(*history->commands);
+        for (i = 0U; i < history->cursor; i++) {
+            size_t count = history->commands[i].removed_decal_count;
+            size_t snapshots;
+            if (count > SIZE_MAX / sizeof(EditorRemovedDecal)) {
+                g_cmd_free(command.removed_decals);
+                return CMD_RESULT_HISTORY_LIMIT;
+            }
+            snapshots = count * sizeof(EditorRemovedDecal);
+            if (retained > SIZE_MAX - snapshots) {
+                g_cmd_free(command.removed_decals);
+                return CMD_RESULT_HISTORY_LIMIT;
+            }
+            retained += snapshots;
+        }
+        if (command.removed_decal_count > SIZE_MAX / sizeof(EditorRemovedDecal)) {
+            g_cmd_free(command.removed_decals);
+            return CMD_RESULT_HISTORY_LIMIT;
+        }
+        added = command.removed_decal_count * sizeof(EditorRemovedDecal);
+        if (retained > COMMAND_HISTORY_MAX_RETAINED_BYTES ||
+            added > COMMAND_HISTORY_MAX_RETAINED_BYTES - retained) {
+            g_cmd_free(command.removed_decals);
+            return CMD_RESULT_HISTORY_LIMIT;
+        }
+    }
     validation = preflight_command(document, &command, true, context);
     if (validation != CMD_RESULT_OK) { g_cmd_free(command.removed_decals); return validation; }
     if (history->next_state_id == UINT64_MAX) {
@@ -852,6 +918,38 @@ CommandResult command_history_insert_decal(
     }
     if (out_id) *out_id = allocated;
     return CMD_RESULT_OK;
+}
+
+CommandResult command_history_insert_decals(
+    CommandHistory *history, SceneDocument *document,
+    const SceneDecalInstance *prototypes, size_t prototype_count
+) {
+    EditorMutationRequest requests[EDITOR_COMMAND_MAX_MUTATIONS] = {0};
+    SceneInstanceId next_before;
+    size_t i;
+    CommandResult result;
+    if (!history || !document || !prototypes || prototype_count == 0U ||
+        prototype_count > EDITOR_COMMAND_MAX_MUTATIONS ||
+        prototype_count > SCENE_MAX_DECALS - document->decal_count)
+        return CMD_RESULT_INVALID_TARGET;
+    next_before = document->next_instance_id;
+    for (i = 0U; i < prototype_count; i++) {
+        SceneInstanceId allocated;
+        SceneIdAllocateResult alloc_result =
+            scene_document_internal_allocate_instance_id(document, &allocated);
+        if (alloc_result != SCENE_ID_ALLOCATE_OK) {
+            document->next_instance_id = next_before;
+            return alloc_result == SCENE_ID_ALLOCATE_EXHAUSTED
+                ? CMD_RESULT_STATE_ID_EXHAUSTED : CMD_RESULT_INVALID_TARGET;
+        }
+        requests[i].type = EDITOR_MUTATION_INSERT_DECAL;
+        requests[i].data.insert_decal.value = prototypes[i];
+        requests[i].data.insert_decal.value.id = allocated;
+    }
+    result = command_history_execute_group(
+        history, document, requests, prototype_count);
+    if (result != CMD_RESULT_OK) document->next_instance_id = next_before;
+    return result;
 }
 
 CommandResult command_history_remove_decal(

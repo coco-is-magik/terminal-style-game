@@ -70,6 +70,14 @@ static void test_key_and_editor_shortcuts(void **state) {
     assert_true(input.editor_open_pressed);
     input_begin_frame(&input);
     assert_false(input.editor_open_pressed);
+    event.key = INPUT_KEY_RIGHT;
+    event.ctrl = true;
+    event.repeat = false;
+    input_apply_event(&input, &event, false);
+    assert_true(input.ctrl_right);
+    assert_false(input.editor_increase_pressed);
+    input_begin_frame(&input);
+    assert_false(input.ctrl_right);
     event.key = INPUT_KEY_UP;
     event.repeat = true;
     input_apply_event(&input, &event, false);

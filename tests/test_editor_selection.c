@@ -442,6 +442,42 @@ static void test_horizontal_selection_validation(void **state) {
     map_destroy(map);
 }
 
+static void test_selection_set_primary_capacity_and_revalidate(void **state) {
+    EditorSelectionSet set;
+    Map *map = map_create(10, 2);
+    SelectionTarget target;
+    size_t i;
+    (void)state;
+    assert_non_null(map);
+    for (i = 0U; i < 9U; i++) map_set(map, (int)i, 0, 1);
+    target = wall_selection(0, 0, WALL_FACE_NORTH);
+    assert_true(editor_selection_set_reset(&set, target));
+    for (i = 1U; i < EDITOR_SELECTION_SET_CAPACITY; i++) {
+        target = wall_selection((int)i, 0, WALL_FACE_NORTH);
+        assert_true(editor_selection_set_add(&set, target));
+    }
+    assert_int_equal(set.count, EDITOR_SELECTION_SET_CAPACITY);
+    assert_int_equal(editor_selection_set_primary(&set)->value.wall_face.map_x, 7);
+    assert_false(editor_selection_set_add(
+        &set, wall_selection(8, 0, WALL_FACE_NORTH)));
+    assert_true(editor_selection_set_add(
+        &set, wall_selection(3, 0, WALL_FACE_NORTH)));
+    assert_int_equal(set.count, EDITOR_SELECTION_SET_CAPACITY);
+    assert_int_equal(editor_selection_set_primary(&set)->value.wall_face.map_x, 3);
+    map_set(map, 3, 0, 0);
+    editor_selection_set_revalidate(&set, map);
+    assert_int_equal(set.count, EDITOR_SELECTION_SET_CAPACITY - 1U);
+    assert_non_null(editor_selection_set_primary(&set));
+    assert_int_not_equal(editor_selection_set_primary(&set)->value.wall_face.map_x, 3);
+    set.primary_index = set.count - 1U;
+    map_set(map, set.members[set.primary_index].value.wall_face.map_x, 0, 0);
+    editor_selection_set_revalidate(&set, map);
+    assert_int_equal(set.count, EDITOR_SELECTION_SET_CAPACITY - 2U);
+    assert_int_equal(editor_selection_set_primary(&set)->value.wall_face.map_x,
+                     set.members[set.count - 1U].value.wall_face.map_x);
+    map_destroy(map);
+}
+
 /* ===================================================================
  *  Runner
  * =================================================================== */
@@ -469,6 +505,7 @@ int main(void) {
         cmocka_unit_test(test_horizontal_pick_horizon_bounds_range_and_invalid),
         cmocka_unit_test(test_horizontal_pick_occlusion_and_precedence),
         cmocka_unit_test(test_horizontal_selection_validation),
+        cmocka_unit_test(test_selection_set_primary_capacity_and_revalidate),
     };
 
     return cmocka_run_group_tests(tests, group_setup, NULL);

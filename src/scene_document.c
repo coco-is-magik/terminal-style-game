@@ -32,6 +32,22 @@
 #include <sys/stat.h>
 #include <unistd.h>   /* close(), mkstemp() */
 
+typedef void *(*SceneResizeCallocFn)(size_t, size_t);
+typedef void (*SceneResizeFreeFn)(void *);
+static SceneResizeCallocFn g_resize_calloc = calloc;
+static SceneResizeFreeFn g_resize_free = free;
+
+void scene_document_set_resize_allocator_for_test(
+    void *(*calloc_fn)(size_t, size_t), void (*free_fn)(void *)
+) {
+    g_resize_calloc = calloc_fn ? calloc_fn : calloc;
+    g_resize_free = free_fn ? free_fn : free;
+}
+
+void scene_document_reset_resize_allocator_for_test(void) {
+    g_resize_calloc = calloc;
+    g_resize_free = free;
+}
 
 /* ===================================================================
  *  Internal helpers
@@ -1671,11 +1687,11 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
     new_height = old_height + (!east ? (grow ? 1 : -1) : 0);
     if (!checked_size_2d(new_width, new_height, &new_count))
         return SCENE_RESIZE_INVALID;
-    cells = calloc(new_count, sizeof(*cells));
-    map_cells = calloc(new_count, sizeof(*map_cells));
-    light_map = calloc(new_count, sizeof(*light_map));
+    cells = g_resize_calloc(new_count, sizeof(*cells));
+    map_cells = g_resize_calloc(new_count, sizeof(*map_cells));
+    light_map = g_resize_calloc(new_count, sizeof(*light_map));
     if (!cells || !map_cells || !light_map) {
-        free(cells); free(map_cells); free(light_map);
+        g_resize_free(cells); g_resize_free(map_cells); g_resize_free(light_map);
         return SCENE_RESIZE_OUT_OF_MEMORY;
     }
     for (y = 0; y < new_height; y++) {
@@ -1692,9 +1708,9 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
             light_map[target] = document->map.light_map[source];
         }
     }
-    free(document->authored_cells);
-    free(document->map.cells);
-    free(document->map.light_map);
+    g_resize_free(document->authored_cells);
+    g_resize_free(document->map.cells);
+    g_resize_free(document->map.light_map);
     document->authored_cells = cells;
     document->authored_cell_count = new_count;
     document->map.cells = map_cells;
