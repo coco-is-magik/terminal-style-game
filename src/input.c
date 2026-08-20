@@ -53,6 +53,7 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_increase_pressed);
     RESET_FIELD(editor_overwrite_pressed);
     RESET_FIELD(editor_place_light_pressed);
+    RESET_FIELD(editor_jump_pressed);
     RESET_FIELD(ui_scale_increase_pressed);
     RESET_FIELD(ui_scale_decrease_pressed);
     RESET_FIELD(ui_scale_reset_pressed);
@@ -133,7 +134,10 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
                 input->editor_increase_pressed = true;
             }
             break;
-        case INPUT_KEY_SPACE: input->place = true; break;
+        case INPUT_KEY_SPACE:
+            input->place = true;
+            input->editor_jump_pressed = true;
+            break;
         case INPUT_KEY_BACKSPACE:
             input->erase = true;
             input->editor_text_backspace_pressed = true;

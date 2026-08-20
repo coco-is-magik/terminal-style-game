@@ -253,7 +253,7 @@ static void test_decal_rendering_wall(void **state) {
     lighting_update(m, &world);
     raycast_render(g, m, &cam, &assets, &world, NULL);
     
-    int dx, dy;
+    int dx = 0, dy = 0;
     assert_true(find_grid_glyph(g, 'D', &dx, &dy));
     Cell c;
     grid_get(g, dx, dy, &c);

@@ -108,6 +108,7 @@ typedef struct {
     bool editor_increase_pressed;    /* Right — increase inspector field */
     bool editor_overwrite_pressed;   /* O — choose overwrite in an editor modal */
     bool editor_place_light_pressed; /* L — place a point light at hovered cell */
+    bool editor_jump_pressed;        /* Space — jump in editor walk mode */
 
   /* Held state — physically depressed this frame.
 

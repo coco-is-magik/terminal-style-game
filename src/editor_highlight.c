@@ -1,4 +1,6 @@
 #include "editor_highlight.h"
+#include "height_projection.h"
+#include "heightfield_trace.h"
 
 #include "config.h"
 #include "editor_selection.h"
@@ -112,7 +114,8 @@ static void draw_outline_columns(Grid *grid, const HighlightColumn *columns,
 }
 
 static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
-                                      SelectionTarget target, HighlightStyle style) {
+                                      SelectionTarget target, HighlightStyle style,
+                                      const SceneHeightView *heights) {
     HighlightColumn columns[EDITOR_HIGHLIGHT_COLUMN_CHUNK];
     int first;
     if ((target.type != SELECTION_FLOOR && target.type != SELECTION_CEILING) ||
@@ -122,6 +125,12 @@ static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
         int local_x;
         if (count > EDITOR_HIGHLIGHT_COLUMN_CHUNK) count = EDITOR_HIGHLIGHT_COLUMN_CHUNK;
         for (local_x = 0; local_x < count; local_x++) {
+            HeightfieldTraceColumn trace_column;
+            bool trace_prepared = scene_height_view_is_valid(
+                heights, map->width, map->height) &&
+                heightfield_trace_prepare_column(
+                    &trace_column, camera, map, heights, grid->width, grid->height,
+                    first + local_x, config_get()->raycast_max_distance);
             int y;
             columns[local_x] = (HighlightColumn){0};
             for (y = 0; y < grid->height; y++) {
@@ -131,7 +140,23 @@ static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
                 double camera_x;
                 double ray_angle;
                 RayResult wall;
-                if (!editor_project_horizontal_cell(camera, grid->width, grid->height,
+                if (trace_prepared) {
+                    HeightfieldHit traced = heightfield_trace_prepared_sample(
+                        &trace_column, y);
+                    HeightfieldHitKind wanted = target.type == SELECTION_FLOOR
+                        ? HEIGHTFIELD_HIT_FLOOR : HEIGHTFIELD_HIT_CEILING;
+                    if (!traced.hit || traced.kind != wanted ||
+                        traced.map_x != target.value.horizontal.map_x ||
+                        traced.map_y != target.value.horizontal.map_y) continue;
+                    if (!columns[local_x].visible) {
+                        columns[local_x].visible = true;
+                        columns[local_x].draw_start = y;
+                    }
+                    columns[local_x].draw_end = y;
+                    continue;
+                }
+                if (!editor_project_horizontal_cell_height(
+                        camera, heights, grid->width, grid->height,
                         first + local_x, y, target.type, &distance, &map_x, &map_y) ||
                     distance > config_get()->raycast_max_distance ||
                     map_x != target.value.horizontal.map_x ||
@@ -153,6 +178,7 @@ static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
 
 static void collect_target_columns(Grid *grid, Map *map, Camera *camera,
                                    WallFaceRef target,
+                                   const SceneHeightView *heights,
                                    HighlightColumn *columns,
                                    int first_column,
                                    int column_count) {
@@ -188,10 +214,30 @@ static void collect_target_columns(Grid *grid, Map *map, Camera *camera,
                 perpendicular = 0.001;
             }
             line_height = (int)(grid->height / perpendicular);
-            draw_start = -line_height / 2 + grid->height / 2 +
-                         (int)camera->pitch;
-            draw_end = line_height / 2 + grid->height / 2 +
-                       (int)camera->pitch;
+            if (scene_height_view_is_valid(heights, map->width, map->height)) {
+                size_t index = (size_t)ray.map_y * (size_t)map->width +
+                               (size_t)ray.map_x;
+                const SceneAuthoredCell *cell = &heights->cells[index];
+                draw_start = camera->z == 0.5 &&
+                    cell->floor_height_step == SCENE_DEFAULT_FLOOR_HEIGHT_STEP &&
+                    cell->ceiling_height_step == SCENE_DEFAULT_CEILING_HEIGHT_STEP
+                    ? -line_height / 2 + grid->height / 2 + (int)camera->pitch
+                    : (int)floor(height_project_y(
+                          camera, grid->height,
+                          scene_height_world(cell->ceiling_height_step), perpendicular));
+                draw_end = camera->z == 0.5 &&
+                    cell->floor_height_step == SCENE_DEFAULT_FLOOR_HEIGHT_STEP &&
+                    cell->ceiling_height_step == SCENE_DEFAULT_CEILING_HEIGHT_STEP
+                    ? line_height / 2 + grid->height / 2 + (int)camera->pitch
+                    : (int)floor(height_project_y(
+                          camera, grid->height,
+                          scene_height_world(cell->floor_height_step), perpendicular));
+            } else {
+                draw_start = -line_height / 2 + grid->height / 2 +
+                             (int)camera->pitch;
+                draw_end = line_height / 2 + grid->height / 2 +
+                           (int)camera->pitch;
+            }
             if (draw_start < 0) {
                 draw_start = 0;
             }
@@ -209,7 +255,8 @@ static void collect_target_columns(Grid *grid, Map *map, Camera *camera,
 
 static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
                                 SelectionTarget target,
-                                HighlightStyle style) {
+                                HighlightStyle style,
+                                const SceneHeightView *heights) {
     HighlightColumn columns[EDITOR_HIGHLIGHT_COLUMN_CHUNK + 2];
     int chunk_start;
 
@@ -236,7 +283,7 @@ static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
         if (chunk_start + chunk_count < grid->width) {
             collected_count++;
         }
-        collect_target_columns(grid, map, camera, target.value.wall_face,
+        collect_target_columns(grid, map, camera, target.value.wall_face, heights,
                                columns, collected_first, collected_count);
 
         for (local_x = 0; local_x < chunk_count; local_x++) {
@@ -352,20 +399,29 @@ static void render_light_marker(Grid *grid, Map *map, Camera *camera,
 
 static void render_target(Grid *grid, Map *map, Camera *camera,
                           const SceneLight *lights, size_t light_count,
-                          SelectionTarget target, HighlightStyle style) {
+                          SelectionTarget target, HighlightStyle style,
+                          const SceneHeightView *heights) {
     if (target.type == SELECTION_WALL_FACE) {
-        render_wall_outline(grid, map, camera, target, style);
+        render_wall_outline(grid, map, camera, target, style, heights);
     } else if (target.type == SELECTION_LIGHT) {
         render_light_marker(grid, map, camera, lights, light_count, target, style);
     } else if (target.type == SELECTION_FLOOR ||
                target.type == SELECTION_CEILING) {
-        render_horizontal_surface(grid, map, camera, target, style);
+        render_horizontal_surface(grid, map, camera, target, style, heights);
     }
 }
 
 void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
                              const SceneLight *lights, size_t light_count,
                              SelectionTarget selection, EditorHit hover) {
+    editor_highlight_render_height(grid, map, camera, lights, light_count,
+                                   selection, hover, NULL);
+}
+
+void editor_highlight_render_height(Grid *grid, Map *map, Camera *camera,
+                                    const SceneLight *lights, size_t light_count,
+                                    SelectionTarget selection, EditorHit hover,
+                                    const SceneHeightView *heights) {
     bool hover_matches_selection;
 
     if (!grid || !map || !camera || grid->width <= 0 || grid->height <= 0) {
@@ -376,10 +432,10 @@ void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
         selection_targets_equal(selection, hover.target);
     if (hover.valid && !hover_matches_selection) {
         render_target(grid, map, camera, lights, light_count, hover.target,
-                      HIGHLIGHT_STYLE_HOVER);
+                      HIGHLIGHT_STYLE_HOVER, heights);
     }
     render_target(grid, map, camera, lights, light_count, selection,
-                  HIGHLIGHT_STYLE_SELECTED);
+                  HIGHLIGHT_STYLE_SELECTED, heights);
 }
 
 void editor_highlight_render_set(Grid *grid, Map *map, Camera *camera,
@@ -387,6 +443,17 @@ void editor_highlight_render_set(Grid *grid, Map *map, Camera *camera,
                                  const SelectionTarget *selections,
                                  size_t selection_count, size_t primary_index,
                                  EditorHit hover) {
+    editor_highlight_render_set_height(
+        grid, map, camera, lights, light_count, selections, selection_count,
+        primary_index, hover, NULL);
+}
+
+void editor_highlight_render_set_height(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneLight *lights, size_t light_count,
+    const SelectionTarget *selections, size_t selection_count,
+    size_t primary_index, EditorHit hover, const SceneHeightView *heights
+) {
     size_t i;
     bool hover_matches = false;
     if (!grid || !map || !camera || grid->width <= 0 || grid->height <= 0) return;
@@ -395,14 +462,14 @@ void editor_highlight_render_set(Grid *grid, Map *map, Camera *camera,
             hover_matches = true;
     if (hover.valid && !hover_matches)
         render_target(grid, map, camera, lights, light_count, hover.target,
-                      HIGHLIGHT_STYLE_HOVER);
+                      HIGHLIGHT_STYLE_HOVER, heights);
     for (i = 0U; i < selection_count; i++)
         if (i != primary_index)
             render_target(grid, map, camera, lights, light_count, selections[i],
-                          HIGHLIGHT_STYLE_HOVER);
+                          HIGHLIGHT_STYLE_HOVER, heights);
     if (selections && primary_index < selection_count)
         render_target(grid, map, camera, lights, light_count,
-                      selections[primary_index], HIGHLIGHT_STYLE_SELECTED);
+                      selections[primary_index], HIGHLIGHT_STYLE_SELECTED, heights);
 }
 
 void editor_crosshair_render(Grid *grid) {

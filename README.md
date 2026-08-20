@@ -211,7 +211,7 @@ Closing the inspector clears that persistent selection.
 | `L` | Place an undoable point light at the aimed cell center (wall face uses the adjacent cell) |
 | `Up` / `Down` | Move through the active inspector/menu level |
 | `Ctrl` + arrow keys | Extend a surface multiselect along the same visible wall/floor/ceiling axis (up to 8 faces) |
-| `Left` / `Right` | Edit the selected point-light or decal field (surface inspectors and submenus use Enter) |
+| `Left` / `Right` | Edit point-light/decal fields, selected floor/ceiling height and gravity, or the active movement parameter |
 | `Enter` | Open/apply a surface submenu or modal, execute construction, commit a typed value, or confirm |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
@@ -237,13 +237,22 @@ loaded and leaves the workflow open with a visible error. Escape returns one
 level: dirty prompt to chooser, in-editor chooser to the current document, and
 the initial no-document chooser to the main menu.
 
+Floor and ceiling inspectors expose signed `-8..+8` height editing in 0.25-unit
+steps, remove/restore, per-cell gravity controls, and a nested per-map Movement
+menu. Existing `Ctrl`+arrow multiselects can apply one height or presence change
+across up to eight surfaces as one undo step. Removed floors open downward to
+darkness and removed ceilings open upward; cells missing either finite surface are
+not traversable. The HUD reports whether a finite selected cell is flat/down,
+step-sized, jumpable, or blocked by height/clearance.
+
 ### Current editor limits
 
-- Native v3 scenes store independent occupancy plus one wall, floor, and ceiling
-  material reference per cell. Floor and ceiling cells can now be selected and
-  highlighted through the fixed-plane editor view. Surface inspectors edit materials,
-  Place/Remove Wall, and ambient. In-bounds floor/ceiling cells render their authored
-  materials with scalar lighting; out-of-bounds samples retain constant backgrounds.
+- Native v5 scenes store independent occupancy, wall/floor/ceiling materials,
+  signed fixed-point floor/ceiling heights, explicit surface-presence and gravity
+  overrides, plus per-map movement parameters. Rendering, selection, and
+  highlights share bounded per-cell tracing, including generated vertical faces at
+  finite height discontinuities. The exact legacy path is retained for flat-default
+  scenes.
 - Floor/ceiling hover and selection use the same border-only `.`/`#` vocabulary as
   walls, leaving the authored material visible. East/south boundary removal grows by
   copying the prior edge outward; west/north removal is visibly unavailable. Refilling

@@ -54,7 +54,7 @@ bool editor_domain_inspector_presentation(
         *out_presentation = (EditorInspectorPresentation){
             kind == EDITOR_INSPECTOR_FLOOR_SURFACE ? "floor surface" : "ceiling surface",
             "Up/Down=choose  Enter=open/apply  Esc=back",
-            "Fixed-height surface; construction places one wall cell",
+            "Heightfield cell; changes are one undo step",
             EDITOR_SURFACE_FIELD_COUNT};
         return true;
     }
@@ -91,8 +91,27 @@ bool editor_domain_inspector_field_presentation(
             *out_presentation = (EditorInspectorFieldPresentation){
                 "Ambient", EDITOR_INSPECTOR_FIELD_NUMBER,
                 0.0, 1.0, EDITOR_AMBIENT_STEP, 2U};
-        } else *out_presentation = (EditorInspectorFieldPresentation){
-            "Decals", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_DECALS) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Decals", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_HEIGHT) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Height", EDITOR_INSPECTOR_FIELD_NUMBER, -8.0, 8.0, 0.25, 2U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_REMOVE) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Remove/Restore", EDITOR_INSPECTOR_FIELD_CHOICE,
+                0.0, 1.0, 1.0, 0U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 6.0, 1.0, 0U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_GRAVITY_SCALE) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Gravity scale", EDITOR_INSPECTOR_FIELD_NUMBER,
+                0.0, 255.996, 0.25, 2U};
+        } else {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Movement", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+        }
         return true;
     }
     if (kind != EDITOR_INSPECTOR_LIGHT ||
@@ -312,6 +331,166 @@ bool editor_domain_make_ambient_step_request(
     if (value < 0.0) value = 0.0;
     if (value > 1.0) value = 1.0;
     return editor_domain_make_ambient_value_request(value, out_request);
+}
+
+static bool selected_horizontal_cell(
+    SelectionTarget target, int *out_x, int *out_y
+) {
+    if (!out_x || !out_y ||
+        (target.type != SELECTION_FLOOR && target.type != SELECTION_CEILING))
+        return false;
+    *out_x = target.value.horizontal.map_x;
+    *out_y = target.value.horizontal.map_y;
+    return true;
+}
+
+static bool begin_cell_vertical_request(
+    const SceneDocument *document, SelectionTarget target,
+    SceneCellVertical *out_value, EditorMutationRequest *out_request
+) {
+    int map_x;
+    int map_y;
+    if (!document || !out_value || !out_request ||
+        !selected_horizontal_cell(target, &map_x, &map_y) ||
+        !scene_document_get_cell_vertical(
+            document, map_x, map_y, out_value)) return false;
+    memset(out_request, 0, sizeof(*out_request));
+    out_request->type = EDITOR_MUTATION_SET_CELL_VERTICAL;
+    out_request->data.cell_vertical.map_x = map_x;
+    out_request->data.cell_vertical.map_y = map_y;
+    return true;
+}
+
+bool editor_domain_make_height_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+) {
+    SceneCellVertical value;
+    int height;
+    if ((direction != -1 && direction != 1) ||
+        !begin_cell_vertical_request(document, target, &value, out_request))
+        return false;
+    height = target.type == SELECTION_FLOOR
+        ? (int)value.floor_height_step : (int)value.ceiling_height_step;
+    height += direction * 64;
+    if (height < (int)SCENE_HEIGHT_MIN_STEP ||
+        height > (int)SCENE_HEIGHT_MAX_STEP) return false;
+    if (target.type == SELECTION_FLOOR) {
+        value.floor_height_step = (int16_t)height;
+        value.floor_present = true;
+    } else {
+        value.ceiling_height_step = (int16_t)height;
+        value.ceiling_present = true;
+    }
+    out_request->data.cell_vertical.value = value;
+    return true;
+}
+
+bool editor_domain_make_surface_presence_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorMutationRequest *out_request
+) {
+    SceneCellVertical value;
+    if (!begin_cell_vertical_request(document, target, &value, out_request))
+        return false;
+    if (target.type == SELECTION_FLOOR)
+        value.floor_present = !value.floor_present;
+    else
+        value.ceiling_present = !value.ceiling_present;
+    out_request->data.cell_vertical.value = value;
+    return true;
+}
+
+bool editor_domain_make_gravity_direction_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+) {
+    SceneCellVertical value;
+    int orientation;
+    if ((direction != -1 && direction != 1) ||
+        !begin_cell_vertical_request(document, target, &value, out_request))
+        return false;
+    orientation = value.gravity_orientation + direction;
+    if (orientation < SCENE_GRAVITY_INHERIT) orientation = SCENE_GRAVITY_WEST;
+    if (orientation > SCENE_GRAVITY_WEST) orientation = SCENE_GRAVITY_INHERIT;
+    value.gravity_orientation = (uint8_t)orientation;
+    out_request->data.cell_vertical.value = value;
+    return true;
+}
+
+bool editor_domain_make_gravity_scale_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+) {
+    SceneCellVertical value;
+    int scale;
+    if ((direction != -1 && direction != 1) ||
+        !begin_cell_vertical_request(document, target, &value, out_request))
+        return false;
+    scale = (int)value.gravity_scale_step + direction * 64;
+    if (scale < 0 || scale > (int)UINT16_MAX) return false;
+    value.gravity_scale_step = (uint16_t)scale;
+    out_request->data.cell_vertical.value = value;
+    return true;
+}
+
+bool editor_domain_movement_field_presentation(
+    EditorMovementField field, EditorInspectorFieldPresentation *out
+) {
+    if (!out) return false;
+    switch (field) {
+        case EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE:
+            *out = (EditorInspectorFieldPresentation){"Gravity", EDITOR_INSPECTOR_FIELD_NUMBER, 0.1, 256.0, 0.5, 2U}; break;
+        case EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION:
+            *out = (EditorInspectorFieldPresentation){"Gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 1.0, 6.0, 1.0, 0U}; break;
+        case EDITOR_MOVEMENT_FIELD_STEP_HEIGHT:
+            *out = (EditorInspectorFieldPresentation){"Step height", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0625, 1.0, 0.0625, 4U}; break;
+        case EDITOR_MOVEMENT_FIELD_JUMP_IMPULSE:
+            *out = (EditorInspectorFieldPresentation){"Jump impulse", EDITOR_INSPECTOR_FIELD_NUMBER, 0.1, 16.0, 0.25, 2U}; break;
+        case EDITOR_MOVEMENT_FIELD_AIR_CONTROL:
+            *out = (EditorInspectorFieldPresentation){"Air control", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0, 1.0, 0.05, 2U}; break;
+        case EDITOR_MOVEMENT_FIELD_EYE_HEIGHT:
+            *out = (EditorInspectorFieldPresentation){"Eye height", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0625, 8.0, 0.0625, 4U}; break;
+        case EDITOR_MOVEMENT_FIELD_HEAD_CLEARANCE:
+            *out = (EditorInspectorFieldPresentation){"Head clearance", EDITOR_INSPECTOR_FIELD_NUMBER, 0.25, 8.0, 0.0625, 4U}; break;
+        default: return false;
+    }
+    return true;
+}
+
+bool editor_domain_make_movement_step_request(
+    const SceneDocument *document, EditorMovementField field, int direction,
+    EditorMutationRequest *out_request
+) {
+    EditorInspectorFieldPresentation metadata;
+    SceneMovementParameters value;
+    double *number = NULL;
+    if (!document || !out_request || (direction != -1 && direction != 1) ||
+        !editor_domain_movement_field_presentation(field, &metadata)) return false;
+    value = document->movement;
+    if (field == EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION) {
+        int orientation = value.gravity_orientation + direction;
+        if (orientation < SCENE_GRAVITY_DOWN) orientation = SCENE_GRAVITY_WEST;
+        if (orientation > SCENE_GRAVITY_WEST) orientation = SCENE_GRAVITY_DOWN;
+        value.gravity_orientation = (SceneGravityOrientation)orientation;
+    } else {
+        switch (field) {
+            case EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE: number = &value.gravity_magnitude; break;
+            case EDITOR_MOVEMENT_FIELD_STEP_HEIGHT: number = &value.step_height; break;
+            case EDITOR_MOVEMENT_FIELD_JUMP_IMPULSE: number = &value.jump_impulse; break;
+            case EDITOR_MOVEMENT_FIELD_AIR_CONTROL: number = &value.air_control_scale; break;
+            case EDITOR_MOVEMENT_FIELD_EYE_HEIGHT: number = &value.eye_height; break;
+            case EDITOR_MOVEMENT_FIELD_HEAD_CLEARANCE: number = &value.head_clearance; break;
+            default: return false;
+        }
+        *number += direction * metadata.step;
+        if (*number < metadata.minimum) *number = metadata.minimum;
+        if (*number > metadata.maximum) *number = metadata.maximum;
+    }
+    memset(out_request, 0, sizeof(*out_request));
+    out_request->type = EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS;
+    out_request->data.movement.value = value;
+    return true;
 }
 
 bool editor_domain_make_wall_material_request(

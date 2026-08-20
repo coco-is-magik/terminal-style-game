@@ -223,7 +223,7 @@ Do not create empty review directories or placeholder review files.
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Verified |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
-| R8 | Vertical-world implementation | R1 decision; R4; R7 semantics | Heights, slopes, vertical movement, true pitch if chosen | Decision-blocked |
+| R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Active |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Research track |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
@@ -649,29 +649,40 @@ and exactly undoable; large-map and allocation-failure tests pass; Q1–Q3 pass.
 
 ## R8 — Vertical-world implementation
 
-**Status:** Decision-blocked
+**Status:** Active — Q1 passed on 2026-08-19; Increments I1–I4 are complete and
+verified. The blocking decisions were resolved on 2026-08-19
+and are locked in [`R8_DECISION_RECORD_2026-08-19.md`](R8_DECISION_RECORD_2026-08-19.md).
 
 **Purpose:** Implement the world model selected in R1 rather than patching Z
 behavior incrementally into incompatible 2D assumptions.
 
-**Prerequisites:** R1 world decision, R4 surface model, and R7 structural
-semantics. A dedicated research/requirements/implementation plan is mandatory.
+**Prerequisites:** R1 world contract, R4 surface model, and R7 structural
+semantics, plus the resolved R8 decisions above. The mandatory dedicated
+requirements and implementation plan (`R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_*`)
+must still pass Q1 before any R8 code.
 
-**Candidate outcomes, subject to R1 decisions:**
+**Resolved scope (locked in the R8 decision record):**
 
-1. Camera/player Z and vertical collision/physics.
-2. Authored floor/ceiling heights and vertical wall segments.
-3. Ramps/slopes and explicit climb/step/slide rules.
-4. Height-aware rendering, selection, and highlights.
+1. Camera/player Z and a continuous per-cell heightfield: authored floor and
+   ceiling heights with vertical wall spans between them.
+2. Cell-aligned ramps only; arbitrary inclined planes are excluded.
+3. Fall/gravity, step-up, jump, head-clearance, and ladders within a single
+   traversable interval, with per-map runtime-tunable parameters as versioned
+   scene data.
+4. Height-aware rendering, selection, and highlights composed through the
+   existing horizon-offset view (eye-height composition; **no angular pitch**).
 5. Height-aware decals, lights, objects, and editor handles.
-6. True angular pitch if required by the chosen world model.
+6. No renderer rewrite; per-column height math in the existing pipeline.
 
-**Data-first opportunities:** Heights, slope definitions, climbability, sector or
-cell topology, and movement properties must be versioned scene data.
+**Data-first opportunities:** per-cell floor/ceiling height grids, ramp edge
+delta limits, and a versioned per-map movement-parameter block are authored
+scene data owned by `SceneDocument`; no cell topology, sector graph, or voxel
+model.
 
-**Forbidden shortcuts:**
+**Forbidden shortcuts:** (binding; reaffirmed in the R8 decision record)
 
-- No implicit choice between heightfield, sectors, voxels, or full geometry.
+- No implicit choice between heightfield, sectors, voxels, or full geometry —
+  the heightfield representation is now explicit.
 - No second incompatible coordinate model for editor versus renderer.
 - No fake “unlimited pitch” presented as true vertical viewing.
 - No stacked-space claim from a model that cannot represent stacked spaces.
@@ -905,7 +916,12 @@ until that evidence exists.
 
 ## Next action
 
-**R0–R7 are Verified.** The scoped R7 plan and locked
-decisions are in `R7_DECISION_RECORD_2026-08-13.md` and
-`R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`. R8 (Vertical-world
-implementation) remains Decision-blocked pending the R1 world decision.
+**R0–R7 are Verified.** The R7 plan and locked decisions are in
+`R7_DECISION_RECORD_2026-08-13.md` and
+`R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`.
+
+R8 (Vertical-world implementation) is **Active**: Q1 passed on 2026-08-19,
+decisions are locked in `R8_DECISION_RECORD_2026-08-19.md`, I1 establishes the
+canonical v5 schema, I2 completes height-aware projection, I3 completes the
+vertical movement core, and I4 completes jump/air-control/ladder traversal. I5
+(editor authoring and parameter tuning) is next.

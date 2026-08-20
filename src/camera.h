@@ -28,6 +28,7 @@ typedef struct {
     Entity transform;      /* Position + yaw angle */
     double fov;            /* Horizontal field of view (radians) */
     double pitch;          /* 2.5D horizon offset in logical grid rows */
+    double z;              /* Runtime eye Z in world units; not authored. */
 } Camera;
 
 double camera_clamp_horizon_offset(double offset, int viewport_rows);

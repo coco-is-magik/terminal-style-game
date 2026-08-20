@@ -710,6 +710,92 @@ static void test_v4_hex_blocks_high_ids_and_nulls(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v5_migration_round_trip_and_validation(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneFormatBuffer second = {0};
+    SceneDiagnostic diagnostic;
+    char *bad;
+    char *bad_relation;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_to_v5(&candidate, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V5);
+    candidate.authored_cells[3].wall_material = 0U;
+    candidate.authored_cells[3].floor_height_step = INT16_C(-0x0080);
+    candidate.authored_cells[3].ceiling_height_step = UINT16_C(0x0180);
+    candidate.authored_cells[3].gravity_scale_step = UINT16_C(0x0080);
+    candidate.authored_cells[3].gravity_orientation = SCENE_GRAVITY_UP;
+    candidate.authored_cells[3].floor_present = false;
+    candidate.movement.air_control_scale = 0.5;
+
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "scene_version = 5\n"));
+    assert_non_null(strstr(buffer.data, "[movement]\n"));
+    assert_non_null(strstr(buffer.data, "[floor_heights]\n"));
+    assert_non_null(strstr(buffer.data, "[floor_presence]\n"));
+    assert_non_null(strstr(buffer.data, "[ceiling_presence]\n"));
+    assert_non_null(strstr(buffer.data, "FF80"));
+    assert_non_null(strstr(buffer.data, "[gravity_orientations]\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v5.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.authored_cells[3].floor_height_step,
+                     INT16_C(-0x0080));
+    assert_int_equal(reparsed.authored_cells[3].gravity_orientation,
+                     SCENE_GRAVITY_UP);
+    assert_false(reparsed.authored_cells[3].floor_present);
+    assert_true(reparsed.authored_cells[3].ceiling_present);
+    assert_true(reparsed.movement.air_control_scale == 0.5);
+    assert_int_equal(scene_format_serialize(&reparsed, &second, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(second.size, buffer.size);
+    assert_memory_equal(second.data, buffer.data, buffer.size);
+
+    bad = replace_once(buffer.data, "0000 FF80\n\n[ceiling_heights]",
+                       "0000 0801\n\n[ceiling_heights]");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RANGE);
+    free(bad);
+    bad_relation = replace_once(buffer.data, "0100 0180\n\n[floor_presence]",
+                                "0100 FF80\n\n[floor_presence]");
+    bad = replace_once(bad_relation, "1 0\n\n[ceiling_presence]",
+                       "1 1\n\n[ceiling_presence]");
+    free(bad_relation);
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RELATION);
+    free(bad);
+    bad = replace_once(buffer.data, "air_control_scale = 0.5",
+                       "air_control_scale = 2");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_MOVEMENT);
+    free(bad);
+    bad = replace_once(buffer.data, "air_control_scale = 0.5\n", "");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_MOVEMENT);
+    free(bad);
+    bad = replace_once(buffer.data, "0 2\n", "0 7\n");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_GRAVITY);
+    free(bad);
+    bad = replace_once(buffer.data, "1 0\n\n[ceiling_presence]",
+                       "1 2\n\n[ceiling_presence]");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+
+    scene_format_buffer_destroy(&second);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -728,7 +814,8 @@ int main(void) {
         cmocka_unit_test(test_v2_rejects_missing_duplicate_and_malformed_grids),
         cmocka_unit_test(test_v3_growth_metadata_round_trips_and_is_versioned),
         cmocka_unit_test(test_scene_block_codec),
-        cmocka_unit_test(test_v4_hex_blocks_high_ids_and_nulls)
+        cmocka_unit_test(test_v4_hex_blocks_high_ids_and_nulls),
+        cmocka_unit_test(test_v5_migration_round_trip_and_validation)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

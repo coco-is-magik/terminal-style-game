@@ -16,6 +16,7 @@
 #include "scene_diagnostic.h"
 #include "scene_types.h"
 #include "surface_view.h"
+#include "height_view.h"
 #include "world.h"
 
 #include <stdbool.h>
@@ -30,6 +31,7 @@ typedef struct {
     double spawn_x;
     double spawn_y;
     double spawn_angle;
+    SceneMovementParameters movement;
     SceneLight *lights;
     size_t light_count;
     size_t light_capacity;
@@ -159,6 +161,10 @@ bool scene_document_get_surface_view(
     const SceneDocument *document,
     SceneSurfaceView *out_view
 );
+bool scene_document_get_height_view(
+    const SceneDocument *document,
+    SceneHeightView *out_view
+);
 
 bool scene_document_get_wall_material(
     const SceneDocument *document,
@@ -177,6 +183,10 @@ bool scene_document_get_cell_occupancy(
     int map_x,
     int map_y,
     SceneCellOccupancy *out_occupancy
+);
+bool scene_document_get_cell_vertical(
+    const SceneDocument *document, int map_x, int map_y,
+    SceneCellVertical *out_value
 );
 bool scene_document_cell_has_wall_decal(
     const SceneDocument *document,

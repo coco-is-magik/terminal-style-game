@@ -101,19 +101,20 @@ Open decisions:
 Incremental E follows this idea only in the sense that missing authored surfaces
 need an explicit render fallback; the block schema itself is deliberately parked.
 
-### Height-aware 2.5D versus stacked/full 3D — **Needs product decision**
+### Height-aware 2.5D world questions — **Resolved 2026-08-19**
 
-A height-aware grid can support ramps, pits, raised floors, and variable
-ceilings. It cannot naturally represent bridges over tunnels or multiple rooms
-at one X/Y coordinate.
+These questions were answered in `R8_DECISION_RECORD_2026-08-19.md`:
 
-Questions:
-
-- Are stacked rooms required?
-- Is true unrestricted vertical rotation required?
-- Are slopes cell-aligned ramps or arbitrary planes?
-- Does the long-term renderer remain a raycaster, use sectors/portals or voxels,
-  or become conventional 3D geometry?
+- Stacked rooms are **not** required; one traversable interval per X/Y remains
+  authoritative (R1 contract).
+- True unrestricted vertical rotation is **not** an R8 requirement: the
+  horizon-offset pitch is kept and true angular pitch is deferred as a future
+  option (record Decision 3).
+- Slopes are **cell-aligned ramps only**, never arbitrary inclined planes
+  (record Decision 2).
+- The long-term renderer **remains a ray caster** with a continuous per-cell
+  heightfield representation; sectors/portals, voxels, and full-3D geometry
+  remain rejected (record Decision 1).
 
 ### Geometry, collision, and appearance separation — **Needs design**
 
@@ -434,18 +435,24 @@ Define expected behavior near straight up/down, extreme-pitch safety, decal
 coherence, sensitivity/inversion, and avoid calling a wider horizon offset
 “unlimited pitch.”
 
-## Verticality and inclined-surface climbing — **Needs major decisions**
+## Verticality and inclined-surface climbing — **Decisions locked 2026-08-19**
 
 **Wanted:** Raised/lowered areas and traversable ramps/slopes.
 
-A height-aware 2.5D model likely needs camera/player Z, vertical physics,
-per-cell/sector floor and ceiling heights, slope representation, step/climb/
-slide/head-clearance rules, vertical wall segments, height-aware rendering,
-selection, decals, lights, collision, editor handles, and format validation.
+The verticality decisions are resolved in `R8_DECISION_RECORD_2026-08-19.md`:
 
-Decide stacked rooms, ramps versus arbitrary slopes, jumping/falling/crouching/
-ladders, slope continuity, migration heights, and acceptable renderer rewrite/
-performance budget. Keep this separate from basic floor/ceiling materials.
+- continuous per-cell floor/ceiling heights (heightfield); ramps are cell-aligned
+  only;
+- movement scope: fall/gravity, step-up, jump, head-clearance, and ladders, with
+  per-map runtime-tunable parameters as versioned scene data;
+- renderer stays a ray caster with per-column height math (no rewrite), the view
+  composed through the horizon-offset pitch plus eye height;
+- v4 → v5 heightfield migration reuses the proven v1 → v2 → v3 → v4 machinery.
+
+The future R8 requirements/implementation plan still specifies exact schema
+fields and limits, interpolation/edge-delta constants, parameter validation
+ranges, editor workflows, and the renderer performance budget. This remains
+separate from the per-surface floor/ceiling materials already authored in v3.
 
 ---
 

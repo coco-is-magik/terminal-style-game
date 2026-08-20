@@ -1490,7 +1490,7 @@ static void test_native_load_light_map_is_populated_by_lighting_update(void **st
     asset_registry_clear(&assets);
 }
 
-static void test_v1_migration_save_emits_v4_and_reopens_clean(void **state) {
+static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     char source[512];
     char destination[512];
     SceneDocument doc;
@@ -1521,11 +1521,13 @@ static void test_v1_migration_save_emits_v4_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 4\n"));
+    assert_non_null(strstr(saved, "scene_version = 5\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
     assert_non_null(strstr(saved, "[floor_materials]\n"));
+    assert_non_null(strstr(saved, "[floor_heights]\n"));
+    assert_non_null(strstr(saved, "[movement]\n"));
     assert_non_null(strstr(saved, "0001 0001 0001\n"));
     assert_null(strstr(saved, "[cells]\n"));
     free(saved);
@@ -1592,7 +1594,7 @@ static void test_v2_surface_missing_repair_and_explicit_replacement(void **state
     asset_registry_clear(&assets);
 }
 
-static void test_checked_in_r4_v3_fixture_migrates_to_v4(void **state) {
+static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
     char destination[512];
     char *fixture_text;
@@ -1636,7 +1638,7 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v4(void **state) {
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
     assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 4\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 5\n"));
     assert_non_null(strstr(saved_text, "0001 0002 0003 0004"));
     assert_false(document.migration_pending);
     assert_false(scene_document_is_dirty(&document));
@@ -1646,6 +1648,51 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v4(void **state) {
     scene_document_destroy(&document);
     asset_registry_clear(&assets);
     remove(destination);
+}
+
+static void test_v5_defaults_height_view_and_resize_copy(void **state) {
+    SceneDocument doc;
+    SceneHeightView view;
+    int old_width;
+    size_t source;
+    size_t copied;
+    (void)state;
+
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_create_new(&doc), SCENE_LOAD_OK);
+    assert_true(scene_document_get_height_view(&doc, &view));
+    assert_int_equal(view.cell_count, (size_t)(doc.map.width * doc.map.height));
+    assert_true(view.cells == doc.authored_cells);
+    assert_true(view.movement.gravity_magnitude == 9.8);
+    for (size_t i = 0U; i < view.cell_count; i++) {
+        assert_int_equal(view.cells[i].floor_height_step,
+                         SCENE_DEFAULT_FLOOR_HEIGHT_STEP);
+        assert_int_equal(view.cells[i].ceiling_height_step,
+                         SCENE_DEFAULT_CEILING_HEIGHT_STEP);
+        assert_true(view.cells[i].floor_present);
+        assert_true(view.cells[i].ceiling_present);
+        assert_int_equal(view.cells[i].gravity_scale_step, 0U);
+        assert_int_equal(view.cells[i].gravity_orientation, SCENE_GRAVITY_INHERIT);
+    }
+
+    old_width = doc.map.width;
+    source = (size_t)1 * (size_t)old_width + (size_t)(old_width - 1);
+    doc.authored_cells[source].floor_height_step = UINT16_C(0x0080);
+    doc.authored_cells[source].ceiling_height_step = UINT16_C(0x0180);
+    doc.authored_cells[source].gravity_scale_step = UINT16_C(0x0040);
+    doc.authored_cells[source].gravity_orientation = SCENE_GRAVITY_UP;
+    assert_int_equal(scene_document_internal_resize_east(&doc, true, 1),
+                     SCENE_RESIZE_OK);
+    copied = (size_t)1 * (size_t)doc.map.width + (size_t)(doc.map.width - 1);
+    assert_int_equal(doc.authored_cells[copied].floor_height_step, UINT16_C(0x0080));
+    assert_int_equal(doc.authored_cells[copied].ceiling_height_step, UINT16_C(0x0180));
+    assert_int_equal(doc.authored_cells[copied].gravity_scale_step, UINT16_C(0x0040));
+    assert_int_equal(doc.authored_cells[copied].gravity_orientation, SCENE_GRAVITY_UP);
+
+    memset(&view, 0xA5, sizeof(view));
+    assert_false(scene_document_get_height_view(NULL, &view));
+    assert_null(view.cells);
+    scene_document_destroy(&doc);
 }
 
 static void test_resize_limits_and_allocation_failures_are_atomic(void **state) {
@@ -1788,9 +1835,10 @@ int main(void) {
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
         cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
-        cmocka_unit_test(test_v1_migration_save_emits_v4_and_reopens_clean),
+        cmocka_unit_test(test_v1_migration_save_emits_v5_and_reopens_clean),
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
-        cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v4),
+        cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v5),
+        cmocka_unit_test(test_v5_defaults_height_view_and_resize_copy),
         cmocka_unit_test(test_v3_growth_provenance_save_reopen),
         cmocka_unit_test(test_resize_limits_and_allocation_failures_are_atomic),
     };

@@ -16,6 +16,7 @@
 #include "assets.h"    /* AssetRegistry — palettes and materials */
 #include "world.h"     /* WorldState — lights and decals */
 #include "surface_view.h"
+#include "height_view.h"
 
 /**
  * RayResult — The result of firing a single ray into the map
@@ -72,5 +73,11 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  */
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
                     WorldState *world, const SceneSurfaceView *surfaces);
+
+/** Height-aware variant; invalid/NULL heights preserve the legacy render path. */
+void raycast_render_height(Grid *grid, Map *map, Camera *cam,
+                           AssetRegistry *assets, WorldState *world,
+                           const SceneSurfaceView *surfaces,
+                           const SceneHeightView *heights);
 
 #endif /* RAYCAST_H */

@@ -585,6 +585,91 @@ static void test_valid_surface_view_preserves_out_of_bounds_backgrounds(void **s
     grid_destroy(grid);
 }
 
+static void test_height_view_flat_parity_and_authored_difference(void **state) {
+    Grid *legacy = grid_create(41, 25);
+    Grid *height = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    SceneAuthoredCell cells[81] = {0};
+    SceneSurfaceView surfaces = {cells, 81U, 9, 9};
+    SceneHeightView heights = {
+        cells, 81U, 9, 9, {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75}
+    };
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    uint64_t flat_checksum;
+    (void)state;
+    assert_non_null(legacy);
+    assert_non_null(height);
+    assert_non_null(map);
+    camera_init(&camera, 4.5, 4.5, 0.0, PI / 2.0);
+    assert_true(asset_registry_init(&assets));
+    world_init(&world);
+    mark_test_material_loaded(&assets, 1, 1, "#x:.");
+    for (int y = 0; y < map->height; y++) {
+        for (int x = 0; x < map->width; x++) {
+            size_t index = (size_t)y * (size_t)map->width + (size_t)x;
+            bool wall = x == 0 || y == 0 || x == map->width - 1 ||
+                        y == map->height - 1 || x == 7;
+            map_set(map, x, y, wall ? 1 : 0);
+            map->light_map[index] = 1.0;
+            cells[index].occupancy = wall ? SCENE_CELL_OCCUPANCY_WALL
+                                          : SCENE_CELL_OCCUPANCY_EMPTY;
+            cells[index].wall_material = wall ? 1U : 0U;
+            cells[index].floor_material = 1U;
+            cells[index].ceiling_material = 1U;
+            cells[index].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+            cells[index].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+            cells[index].floor_present = true;
+            cells[index].ceiling_present = true;
+        }
+    }
+
+    raycast_render(legacy, map, &camera, &assets, &world, &surfaces);
+    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
+    flat_checksum = grid_checksum(legacy);
+    assert_int_equal(grid_checksum(height), flat_checksum);
+    assert_memory_equal(height->cells, legacy->cells,
+                        (size_t)height->width * (size_t)height->height *
+                            sizeof(*height->cells));
+
+    for (int y = 0; y < map->height; y++) {
+        size_t index = (size_t)y * (size_t)map->width + 7U;
+        cells[index].floor_height_step = UINT16_C(0x0080);
+        cells[index].ceiling_height_step = UINT16_C(0x0180);
+    }
+    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
+    assert_int_not_equal(grid_checksum(height), flat_checksum);
+    {
+        uint64_t raised_checksum = grid_checksum(height);
+        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+                              &heights);
+        assert_int_equal(grid_checksum(height), raised_checksum);
+        camera.z = 0.75;
+        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+                              &heights);
+        assert_int_not_equal(grid_checksum(height), raised_checksum);
+    }
+
+    {
+        SceneHeightView invalid = heights;
+        invalid.cell_count--;
+        camera.z = 0.5;
+        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+                              &invalid);
+        raycast_render(legacy, map, &camera, &assets, &world, &surfaces);
+        assert_memory_equal(height->cells, legacy->cells,
+                            (size_t)height->width * (size_t)height->height *
+                                sizeof(*height->cells));
+    }
+
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(height);
+    grid_destroy(legacy);
+}
+
 static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **state) {
     Grid *ambient_grid = grid_create(41, 25);
     Grid *lit_grid = grid_create(41, 25);
@@ -1290,6 +1375,7 @@ int main(void) {
         cmocka_unit_test(test_missing_horizontal_material_is_obvious_and_unlit),
         cmocka_unit_test(test_invalid_surface_view_preserves_constant_backgrounds),
         cmocka_unit_test(test_valid_surface_view_preserves_out_of_bounds_backgrounds),
+        cmocka_unit_test(test_height_view_flat_parity_and_authored_difference),
         cmocka_unit_test(test_rendered_point_light_affects_ceiling_walls_and_floor),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_config_transactional_valid_override),

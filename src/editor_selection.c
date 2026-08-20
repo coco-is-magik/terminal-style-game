@@ -12,6 +12,8 @@
  */
 
 #include "editor_selection.h"
+#include "height_projection.h"
+#include "heightfield_trace.h"
 #include "config.h"
 #include "raycast.h"
 
@@ -264,6 +266,14 @@ EditorHit editor_pick_horizontal_surface_selection(
     int viewport_rows,
     double max_distance
 ) {
+    return editor_pick_horizontal_surface_selection_height(
+        camera, map, NULL, existing_hit, viewport_rows, max_distance);
+}
+
+EditorHit editor_pick_horizontal_surface_selection_height(
+    const Camera *camera, const Map *map, const SceneHeightView *heights,
+    EditorHit existing_hit, int viewport_rows, double max_distance
+) {
     EditorHit result = existing_hit;
     double distance;
     int map_x;
@@ -275,8 +285,27 @@ EditorHit editor_pick_horizontal_surface_selection(
         !isfinite(camera->transform.pos.y) ||
         !isfinite(camera->transform.angle) || !isfinite(camera->pitch) ||
         !isfinite(max_distance) || max_distance <= 0.0) return result;
+    if (scene_height_view_is_valid(heights, map->width, map->height)) {
+        HeightfieldHit traced = heightfield_trace_screen_sample(
+            camera, map, heights, 1, viewport_rows, 0, viewport_rows / 2,
+            max_distance);
+        SelectionType traced_type;
+        if (!traced.hit ||
+            (traced.kind != HEIGHTFIELD_HIT_FLOOR &&
+             traced.kind != HEIGHTFIELD_HIT_CEILING)) return result;
+        traced_type = traced.kind == HEIGHTFIELD_HIT_FLOOR
+            ? SELECTION_FLOOR : SELECTION_CEILING;
+        if (existing_hit.valid && (!isfinite(existing_hit.distance) ||
+            existing_hit.distance <= traced.distance)) return result;
+        result.valid = true;
+        result.distance = traced.distance;
+        result.target.type = traced_type;
+        result.target.value.horizontal.map_x = traced.map_x;
+        result.target.value.horizontal.map_y = traced.map_y;
+        return result;
+    }
     type = camera->pitch < 0.0 ? SELECTION_FLOOR : SELECTION_CEILING;
-    if (!editor_project_horizontal_cell(camera, 1, viewport_rows, 0,
+    if (!editor_project_horizontal_cell_height(camera, heights, 1, viewport_rows, 0,
             viewport_rows / 2, type, &distance, &map_x, &map_y) ||
         distance > max_distance) return result;
     if (existing_hit.valid && (!isfinite(existing_hit.distance) ||
@@ -295,6 +324,16 @@ bool editor_project_horizontal_cell(
     const Camera *camera, int viewport_width, int viewport_height,
     int screen_x, int screen_y, SelectionType type,
     double *out_distance, int *out_map_x, int *out_map_y
+) {
+    return editor_project_horizontal_cell_height(
+        camera, NULL, viewport_width, viewport_height, screen_x, screen_y, type,
+        out_distance, out_map_x, out_map_y);
+}
+
+bool editor_project_horizontal_cell_height(
+    const Camera *camera, const SceneHeightView *heights,
+    int viewport_width, int viewport_height, int screen_x, int screen_y,
+    SelectionType type, double *out_distance, int *out_map_x, int *out_map_y
 ) {
     double camera_x;
     double ray_angle;
@@ -323,6 +362,25 @@ bool editor_project_horizontal_cell(
     distance = current_distance / correction;
     world_x = camera->transform.pos.x + distance * cos(ray_angle);
     world_y = camera->transform.pos.y + distance * sin(ray_angle);
+    if (scene_height_view_is_valid(heights, heights ? heights->width : 0,
+                                   heights ? heights->height : 0)) {
+        int map_x = (int)floor(world_x);
+        int map_y = (int)floor(world_y);
+        if (map_x >= 0 && map_x < heights->width &&
+            map_y >= 0 && map_y < heights->height) {
+            const SceneAuthoredCell *cell = &heights->cells[
+                (size_t)map_y * (size_t)heights->width + (size_t)map_x];
+            double plane_z = scene_height_world(type == SELECTION_FLOOR
+                ? cell->floor_height_step : cell->ceiling_height_step);
+            double vertical_delta = type == SELECTION_FLOOR
+                ? camera->z - plane_z : plane_z - camera->z;
+            if (vertical_delta <= 0.0 || !isfinite(vertical_delta)) return false;
+            current_distance = 2.0 * vertical_delta * viewport_height / denominator;
+            distance = current_distance / correction;
+            world_x = camera->transform.pos.x + distance * cos(ray_angle);
+            world_y = camera->transform.pos.y + distance * sin(ray_angle);
+        }
+    }
     if (!isfinite(distance) || distance <= 0.0 ||
         !isfinite(world_x) || !isfinite(world_y)) return false;
     *out_distance = distance;

@@ -9,15 +9,17 @@
 #define SCENE_TYPES_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #define SCENE_VERSION_V1 1U
 #define SCENE_VERSION_V2 2U
 #define SCENE_VERSION_V3 3U
 #define SCENE_VERSION_V4 4U
-/* Canonical writes use v4; v1/v2/v3 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V4
-#define SCENE_FILE_MAX_BYTES (2U * 1024U * 1024U)
+#define SCENE_VERSION_V5 5U
+/* Canonical writes use v5; v1-v4 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V5
+#define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
 #define SCENE_PATH_MAX 1024U
@@ -34,12 +36,65 @@ typedef enum {
     SCENE_CELL_OCCUPANCY_WALL
 } SceneCellOccupancy;
 
+#define SCENE_HEIGHT_STEPS_PER_UNIT 256
+#define SCENE_HEIGHT_MIN_STEP INT16_C(-0x0800)
+#define SCENE_HEIGHT_MAX_STEP INT16_C(0x0800)
+#define SCENE_DEFAULT_FLOOR_HEIGHT_STEP INT16_C(0x0000)
+#define SCENE_DEFAULT_CEILING_HEIGHT_STEP INT16_C(0x0100)
+#define SCENE_MIN_CLEARANCE_STEP INT16_C(0x0040)
+
+typedef enum {
+    SCENE_GRAVITY_INHERIT = 0,
+    SCENE_GRAVITY_DOWN,
+    SCENE_GRAVITY_UP,
+    SCENE_GRAVITY_NORTH,
+    SCENE_GRAVITY_SOUTH,
+    SCENE_GRAVITY_EAST,
+    SCENE_GRAVITY_WEST
+} SceneGravityOrientation;
+
 typedef struct {
-    SceneCellOccupancy occupancy;
+    double gravity_magnitude;
+    SceneGravityOrientation gravity_orientation;
+    double step_height;
+    double jump_impulse;
+    double air_control_scale;
+    double eye_height;
+    double head_clearance;
+} SceneMovementParameters;
+
+typedef struct {
+    uint8_t occupancy; /* SceneCellOccupancy value; byte storage keeps cells compact. */
+    uint8_t gravity_orientation;
+    bool floor_present;
+    bool ceiling_present;
     uint16_t wall_material;
     uint16_t floor_material;
     uint16_t ceiling_material;
+    int16_t floor_height_step;
+    int16_t ceiling_height_step;
+    uint16_t gravity_scale_step;
 } SceneAuthoredCell;
+
+typedef struct {
+    int16_t floor_height_step;
+    int16_t ceiling_height_step;
+    uint16_t gravity_scale_step;
+    uint8_t gravity_orientation;
+    bool floor_present;
+    bool ceiling_present;
+    uint8_t reserved;
+} SceneCellVertical;
+
+_Static_assert(sizeof(SceneAuthoredCell) == 16U,
+               "SceneAuthoredCell layout is part of the R8 memory budget");
+
+static inline SceneMovementParameters scene_movement_parameters_default(void) {
+    SceneMovementParameters parameters = {
+        9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75
+    };
+    return parameters;
+}
 
 typedef enum {
     SCENE_SURFACE_WALL = 0,

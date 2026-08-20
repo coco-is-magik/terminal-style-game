@@ -14,6 +14,7 @@
 #include "grid.h"
 #include "map.h"
 #include "scene_types.h"
+#include "height_view.h"
 
 #define EDITOR_HIGHLIGHT_SELECTED_GLYPH ((uint8_t)'#')
 #define EDITOR_HIGHLIGHT_HOVER_GLYPH ((uint8_t)'.')
@@ -39,12 +40,25 @@ void editor_highlight_render(
     SelectionTarget selection,
     EditorHit hover
 );
+void editor_highlight_render_height(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneLight *lights, size_t light_count,
+    SelectionTarget selection, EditorHit hover,
+    const SceneHeightView *heights
+);
 
 void editor_highlight_render_set(
     Grid *grid, Map *map, Camera *camera,
     const SceneLight *lights, size_t light_count,
     const SelectionTarget *selections, size_t selection_count,
     size_t primary_index, EditorHit hover
+);
+void editor_highlight_render_set_height(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneLight *lights, size_t light_count,
+    const SelectionTarget *selections, size_t selection_count,
+    size_t primary_index, EditorHit hover,
+    const SceneHeightView *heights
 );
 
 /** Draw the editor center-ray reticle above world highlights. */

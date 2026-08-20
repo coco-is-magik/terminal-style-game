@@ -25,6 +25,7 @@ typedef struct {
     double spawn_x;
     double spawn_y;
     double spawn_angle;
+    SceneMovementParameters movement;
     SceneLight *lights;
     size_t light_count;
     SceneDecalInstance *decals;
@@ -62,6 +63,12 @@ void scene_format_reset_allocator_for_test(void);
 SceneFormatResult scene_format_migrate_v1_to_v2(
     SceneFormatCandidate *candidate,
     unsigned int default_material,
+    SceneDiagnostic *out_diagnostic
+);
+
+/* Applies v5 height/movement defaults in place to an already parsed v1-v4 candidate. */
+SceneFormatResult scene_format_migrate_to_v5(
+    SceneFormatCandidate *candidate,
     SceneDiagnostic *out_diagnostic
 );
 

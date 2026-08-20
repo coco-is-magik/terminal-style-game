@@ -99,6 +99,21 @@ static bool decals_equal(
     return memcmp(a, b, sizeof(*a)) == 0;
 }
 
+static bool cell_vertical_equal(const SceneCellVertical *a,
+                                const SceneCellVertical *b) {
+    return a->floor_height_step == b->floor_height_step &&
+        a->ceiling_height_step == b->ceiling_height_step &&
+        a->gravity_scale_step == b->gravity_scale_step &&
+        a->gravity_orientation == b->gravity_orientation &&
+        a->floor_present == b->floor_present &&
+        a->ceiling_present == b->ceiling_present;
+}
+
+static bool movement_equal(const SceneMovementParameters *a,
+                           const SceneMovementParameters *b) {
+    return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 static bool decal_value_common_is_valid(
     const SceneDocument *document, const SceneDecalInstance *value
 ) {
@@ -223,10 +238,7 @@ static bool shrink_ring_matches_source(const SceneDocument *document, bool east,
         if (i == trigger) expected.occupancy = SCENE_CELL_OCCUPANCY_WALL;
         {
             const SceneAuthoredCell *actual = &document->authored_cells[outer_index];
-            if (expected.occupancy != actual->occupancy ||
-                expected.wall_material != actual->wall_material ||
-                expected.floor_material != actual->floor_material ||
-                expected.ceiling_material != actual->ceiling_material) return false;
+            if (memcmp(&expected, actual, sizeof(expected)) != 0) return false;
         }
     }
     return true;
@@ -272,6 +284,12 @@ static bool mutations_target_same_field(
     if (a->type == EDITOR_MUTATION_INSERT_DECAL &&
         b->type == EDITOR_MUTATION_INSERT_DECAL)
         return a->data.insert_decal.value.id == b->data.insert_decal.value.id;
+    if (a->type == EDITOR_MUTATION_SET_CELL_VERTICAL &&
+        b->type == EDITOR_MUTATION_SET_CELL_VERTICAL)
+        return a->data.cell_vertical.map_x == b->data.cell_vertical.map_x &&
+               a->data.cell_vertical.map_y == b->data.cell_vertical.map_y;
+    if (a->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS &&
+        b->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS) return true;
     if (mutation_is_resize(a->type) && mutation_is_resize(b->type)) return true;
     return false;
 }
@@ -323,6 +341,32 @@ static bool prepare_mutation(
         mutation->data.ambient.before = scene_document_get_ambient_intensity(document);
         mutation->data.ambient.after = after;
         *changed = mutation->data.ambient.before != after;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_CELL_VERTICAL) {
+        SceneCellVertical before;
+        if (!scene_document_get_cell_vertical(
+                document, request->data.cell_vertical.map_x,
+                request->data.cell_vertical.map_y, &before) ||
+            !scene_document_internal_cell_vertical_is_valid(
+                document, request->data.cell_vertical.map_x,
+                request->data.cell_vertical.map_y,
+                &request->data.cell_vertical.value)) return false;
+        mutation->data.cell_vertical.map_x = request->data.cell_vertical.map_x;
+        mutation->data.cell_vertical.map_y = request->data.cell_vertical.map_y;
+        mutation->data.cell_vertical.before = before;
+        mutation->data.cell_vertical.after = request->data.cell_vertical.value;
+        *changed = !cell_vertical_equal(
+            &before, &request->data.cell_vertical.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS) {
+        if (!scene_document_internal_movement_is_valid(
+                document, &request->data.movement.value)) return false;
+        mutation->data.movement.before = document->movement;
+        mutation->data.movement.after = request->data.movement.value;
+        *changed = !movement_equal(&document->movement,
+                                  &request->data.movement.value);
         return true;
     }
     if (mutation_is_occupancy(request->type)) {
@@ -437,6 +481,19 @@ static CommandResult validate_transition(
                 return CMD_RESULT_PLAYER_BLOCKED;
         }
     }
+    if (mutation->type == EDITOR_MUTATION_SET_CELL_VERTICAL && context &&
+        context->has_player_cell &&
+        mutation->data.cell_vertical.map_x == context->player_map_x &&
+        mutation->data.cell_vertical.map_y == context->player_map_y) {
+        const SceneCellVertical *value = after
+            ? &mutation->data.cell_vertical.after
+            : &mutation->data.cell_vertical.before;
+        double clearance = (double)(value->ceiling_height_step -
+            value->floor_height_step) / SCENE_HEIGHT_STEPS_PER_UNIT;
+        if (!value->floor_present || !value->ceiling_present ||
+            clearance < document->movement.head_clearance)
+            return CMD_RESULT_PLAYER_BLOCKED;
+    }
     return CMD_RESULT_OK;
 }
 
@@ -456,6 +513,16 @@ static bool apply_mutation(
         return scene_document_internal_set_ambient_intensity(
             document, after ? mutation->data.ambient.after
                             : mutation->data.ambient.before);
+    if (mutation->type == EDITOR_MUTATION_SET_CELL_VERTICAL)
+        return scene_document_internal_set_cell_vertical(
+            document, mutation->data.cell_vertical.map_x,
+            mutation->data.cell_vertical.map_y,
+            after ? &mutation->data.cell_vertical.after
+                  : &mutation->data.cell_vertical.before);
+    if (mutation->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS)
+        return scene_document_internal_set_movement(
+            document, after ? &mutation->data.movement.after
+                            : &mutation->data.movement.before);
     if (mutation_is_occupancy(mutation->type)) {
         SceneCellOccupancy occupancy = after ? mutation->data.occupancy.after
                                              : mutation->data.occupancy.before;
@@ -726,6 +793,32 @@ CommandResult command_history_set_surface_material(
     }
     return command_history_execute_group_checked(
         history, document, &request, 1U, context);
+}
+
+CommandResult command_history_set_cell_vertical(
+    CommandHistory *history, SceneDocument *document,
+    int map_x, int map_y, const SceneCellVertical *value,
+    const CommandExecutionContext *context
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_CELL_VERTICAL;
+    request.data.cell_vertical.map_x = map_x;
+    request.data.cell_vertical.map_y = map_y;
+    request.data.cell_vertical.value = *value;
+    return command_history_execute_group_checked(
+        history, document, &request, 1U, context);
+}
+
+CommandResult command_history_set_movement_parameters(
+    CommandHistory *history, SceneDocument *document,
+    const SceneMovementParameters *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS;
+    request.data.movement.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
 }
 
 CommandResult command_history_set_wall_material(

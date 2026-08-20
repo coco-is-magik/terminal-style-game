@@ -19,7 +19,7 @@
 
 #define BENCHMARK_ITERATIONS 200U
 #define STABILITY_ITERATIONS 1000U
-#define SURFACE_RENDER_PASS_MS 8.0
+#define SURFACE_RENDER_PASS_MS 6.0
 
 static double now_ms(void) {
     struct timespec value;
@@ -54,12 +54,15 @@ static void mark_material_loaded(AssetRegistry *assets, int id, int palette_id,
 
 static double measure(Grid *grid, Map *map, Camera *camera,
                       AssetRegistry *assets, WorldState *world,
-                      const SceneSurfaceView *surfaces, uint64_t iterations,
+                      const SceneSurfaceView *surfaces,
+                      const SceneHeightView *heights, uint64_t iterations,
                       uint64_t expected_checksum, bool *deterministic) {
     double elapsed = 0.0;
     for (uint64_t i = 0U; i < iterations; i++) {
         double start = now_ms();
-        raycast_render(grid, map, camera, assets, world, surfaces);
+        if (heights)
+            raycast_render_height(grid, map, camera, assets, world, surfaces, heights);
+        else raycast_render(grid, map, camera, assets, world, surfaces);
         double end = now_ms();
         if (start < 0.0 || end < start ||
             grid_checksum(grid) != expected_checksum) {
@@ -78,13 +81,21 @@ int main(int argc, char **argv) {
     Map *map = NULL;
     SceneAuthoredCell cells[20U * 12U] = {0};
     SceneSurfaceView surfaces = {cells, 20U * 12U, 20, 12};
+    SceneHeightView heights = {
+        cells, 20U * 12U, 20, 12,
+        {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75}
+    };
     AssetRegistry assets;
     WorldState world;
     Camera camera;
     uint64_t null_checksum;
     uint64_t surface_checksum;
+    uint64_t flat_height_checksum;
+    uint64_t raised_height_checksum;
     double null_average;
     double surface_average;
+    double flat_height_average;
+    double raised_height_average;
     double occluded_decal_average;
     uint64_t occluded_decal_checksum;
     bool deterministic = true;
@@ -122,6 +133,10 @@ int main(int argc, char **argv) {
             map->light_map[index] = 0.75;
             cells[index].floor_material = 1U;
             cells[index].ceiling_material = 2U;
+            cells[index].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+            cells[index].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+            cells[index].floor_present = true;
+            cells[index].ceiling_present = true;
         }
     }
 
@@ -130,11 +145,30 @@ int main(int argc, char **argv) {
     raycast_render(grid, map, &camera, &assets, &world, &surfaces);
     surface_checksum = grid_checksum(grid);
     if (null_checksum == surface_checksum) goto cleanup;
-    null_average = measure(grid, map, &camera, &assets, &world, NULL,
+    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    flat_height_checksum = grid_checksum(grid);
+    if (flat_height_checksum != surface_checksum) goto cleanup;
+    null_average = measure(grid, map, &camera, &assets, &world, NULL, NULL,
                            iterations, null_checksum, &deterministic);
-    surface_average = measure(grid, map, &camera, &assets, &world, &surfaces,
+    surface_average = measure(grid, map, &camera, &assets, &world, &surfaces, NULL,
                               iterations, surface_checksum, &deterministic);
-    if (null_average < 0.0 || surface_average < 0.0) goto cleanup;
+    flat_height_average = measure(
+        grid, map, &camera, &assets, &world, &surfaces, &heights,
+        iterations, flat_height_checksum, &deterministic);
+    if (null_average < 0.0 || surface_average < 0.0 ||
+        flat_height_average < 0.0) goto cleanup;
+    for (int y = 0; y < map->height; y++) {
+        size_t index = (size_t)y * (size_t)map->width + 12U;
+        cells[index].floor_height_step = UINT16_C(0x0080);
+        cells[index].ceiling_height_step = UINT16_C(0x0180);
+    }
+    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    raised_height_checksum = grid_checksum(grid);
+    if (raised_height_checksum == flat_height_checksum) goto cleanup;
+    raised_height_average = measure(
+        grid, map, &camera, &assets, &world, &surfaces, &heights,
+        iterations, raised_height_checksum, &deterministic);
+    if (raised_height_average < 0.0) goto cleanup;
     {
         Decal decal = {0};
         decal.surface = DECAL_SURFACE_FLOOR;
@@ -149,11 +183,11 @@ int main(int argc, char **argv) {
             goto cleanup;
         }
     }
-    raycast_render(grid, map, &camera, &assets, &world, &surfaces);
+    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
     occluded_decal_checksum = grid_checksum(grid);
-    if (occluded_decal_checksum != surface_checksum) goto cleanup;
+    if (occluded_decal_checksum != raised_height_checksum) goto cleanup;
     occluded_decal_average = measure(
-        grid, map, &camera, &assets, &world, &surfaces, iterations,
+        grid, map, &camera, &assets, &world, &surfaces, &heights, iterations,
         occluded_decal_checksum, &deterministic);
     if (occluded_decal_average < 0.0) goto cleanup;
 
@@ -165,22 +199,30 @@ int main(int argc, char **argv) {
     printf("  \"authored_view_avg_ms\": %.6f,\n", surface_average);
     printf("  \"authored_overhead_ms\": %.6f,\n",
            surface_average - null_average);
+    printf("  \"flat_height_avg_ms\": %.6f,\n", flat_height_average);
+    printf("  \"raised_height_avg_ms\": %.6f,\n", raised_height_average);
     printf("  \"occluded_decal_avg_ms\": %.6f,\n", occluded_decal_average);
     printf("  \"occluded_decal_overhead_ms\": %.6f,\n",
-           occluded_decal_average - surface_average);
+           occluded_decal_average - raised_height_average);
     printf("  \"pass_budget_ms\": %.3f,\n", SURFACE_RENDER_PASS_MS);
     printf("  \"null_checksum\": %llu,\n",
            (unsigned long long)null_checksum);
     printf("  \"authored_checksum\": %llu,\n",
            (unsigned long long)surface_checksum);
+    printf("  \"flat_height_checksum\": %llu,\n",
+           (unsigned long long)flat_height_checksum);
+    printf("  \"raised_height_checksum\": %llu,\n",
+           (unsigned long long)raised_height_checksum);
     printf("  \"occluded_decal_checksum\": %llu,\n",
            (unsigned long long)occluded_decal_checksum);
     printf("  \"deterministic\": %s,\n", deterministic ? "true" : "false");
     printf("  \"result\": \"%s\"\n",
-           deterministic && surface_average <= SURFACE_RENDER_PASS_MS
+            deterministic && flat_height_average <= SURFACE_RENDER_PASS_MS &&
+                raised_height_average <= SURFACE_RENDER_PASS_MS
                ? "pass" : "fail");
     printf("}\n");
-    result = deterministic && surface_average <= SURFACE_RENDER_PASS_MS ? 0 : 1;
+    result = deterministic && flat_height_average <= SURFACE_RENDER_PASS_MS &&
+        raised_height_average <= SURFACE_RENDER_PASS_MS ? 0 : 1;
 
 cleanup:
     grid_destroy(grid);

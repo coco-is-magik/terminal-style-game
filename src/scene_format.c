@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <locale.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,13 @@ typedef enum {
     SECTION_WALL_MATERIALS,
     SECTION_FLOOR_MATERIALS,
     SECTION_CEILING_MATERIALS,
+    SECTION_FLOOR_HEIGHTS,
+    SECTION_CEILING_HEIGHTS,
+    SECTION_FLOOR_PRESENCE,
+    SECTION_CEILING_PRESENCE,
+    SECTION_GRAVITY_SCALES,
+    SECTION_GRAVITY_ORIENTATIONS,
+    SECTION_MOVEMENT,
     SECTION_LIGHT,
     SECTION_DECAL
 } SectionKind;
@@ -107,6 +115,7 @@ void scene_format_candidate_init(SceneFormatCandidate *candidate) {
     if (!candidate) return;
     memset(candidate, 0, sizeof(*candidate));
     candidate->next_instance_id = 1U;
+    candidate->movement = scene_movement_parameters_default();
 }
 
 void scene_format_candidate_destroy(SceneFormatCandidate *candidate) {
@@ -339,6 +348,27 @@ static bool parse_header(char *text, SectionHeader *header) {
         header->id = 0U;
         return true;
     }
+    if (strcmp(inside, "floor_heights") == 0) {
+        header->kind = SECTION_FLOOR_HEIGHTS; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "ceiling_heights") == 0) {
+        header->kind = SECTION_CEILING_HEIGHTS; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "floor_presence") == 0) {
+        header->kind = SECTION_FLOOR_PRESENCE; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "ceiling_presence") == 0) {
+        header->kind = SECTION_CEILING_PRESENCE; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "gravity_scales") == 0) {
+        header->kind = SECTION_GRAVITY_SCALES; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "gravity_orientations") == 0) {
+        header->kind = SECTION_GRAVITY_ORIENTATIONS; header->id = 0U; return true;
+    }
+    if (strcmp(inside, "movement") == 0) {
+        header->kind = SECTION_MOVEMENT; header->id = 0U; return true;
+    }
     space = strchr(inside, ' ');
     if (!space || strchr(space + 1, ' ')) return false;
     *space++ = '\0';
@@ -427,10 +457,41 @@ SceneFormatResult scene_format_migrate_v1_to_v2(
             : (unsigned int)material);
         cells[i].floor_material = (uint16_t)default_material;
         cells[i].ceiling_material = (uint16_t)default_material;
+        cells[i].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cells[i].floor_present = true;
+        cells[i].ceiling_present = true;
     }
     candidate->authored_cells = cells;
     candidate->authored_cell_count = count;
     candidate->source_version = SCENE_VERSION_V2;
+    return SCENE_FORMAT_OK;
+}
+
+SceneFormatResult scene_format_migrate_to_v5(
+    SceneFormatCandidate *candidate, SceneDiagnostic *diagnostic
+) {
+    size_t i;
+    SceneFormatResult result;
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate || candidate->source_version < SCENE_VERSION_V2 ||
+        candidate->source_version >= SCENE_VERSION_V5 ||
+        !candidate->authored_cells) {
+        return SCENE_FORMAT_INVALID_ARGUMENT;
+    }
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    for (i = 0U; i < candidate->authored_cell_count; i++) {
+        SceneAuthoredCell *cell = &candidate->authored_cells[i];
+        cell->floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cell->ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cell->gravity_scale_step = 0U;
+        cell->gravity_orientation = SCENE_GRAVITY_INHERIT;
+        cell->floor_present = true;
+        cell->ceiling_present = true;
+    }
+    candidate->movement = scene_movement_parameters_default();
+    candidate->source_version = SCENE_VERSION_V5;
     return SCENE_FORMAT_OK;
 }
 
@@ -476,6 +537,61 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                               "authored_cells", NULL,
                               "invalid v2 occupancy or material reference", 0U, 0U);
+            }
+        }
+    }
+    if (candidate->source_version >= SCENE_VERSION_V5) {
+        const SceneMovementParameters *movement = &candidate->movement;
+        if (!isfinite(movement->gravity_magnitude) ||
+            !isfinite(movement->step_height) ||
+            !isfinite(movement->jump_impulse) ||
+            !isfinite(movement->air_control_scale) ||
+            !isfinite(movement->eye_height) ||
+            !isfinite(movement->head_clearance) ||
+            movement->gravity_magnitude <= 0.0 ||
+            movement->gravity_magnitude > 256.0 ||
+            movement->gravity_orientation < SCENE_GRAVITY_DOWN ||
+            movement->gravity_orientation > SCENE_GRAVITY_WEST ||
+            movement->step_height < 0.0625 || movement->step_height > 1.0 ||
+            movement->jump_impulse <= 0.0 || movement->jump_impulse > 16.0 ||
+            movement->air_control_scale < 0.0 || movement->air_control_scale > 1.0 ||
+            movement->eye_height <= 0.0 || movement->eye_height > 8.0 ||
+            movement->head_clearance < 0.25 || movement->head_clearance > 8.0) {
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_MOVEMENT, path,
+                          "movement", NULL,
+                          "movement parameter is non-finite or out of range", 0U, 0U);
+        }
+        for (i = 0U; i < count; i++) {
+            const SceneAuthoredCell *cell = &candidate->authored_cells[i];
+            if (cell->floor_height_step < SCENE_HEIGHT_MIN_STEP ||
+                cell->floor_height_step > SCENE_HEIGHT_MAX_STEP ||
+                cell->ceiling_height_step < SCENE_HEIGHT_MIN_STEP ||
+                cell->ceiling_height_step > SCENE_HEIGHT_MAX_STEP) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RANGE,
+                              path, "authored_cells", NULL,
+                              "height outside signed -0800..0800", 0U, 0U);
+            }
+            if (cell->floor_present && cell->ceiling_present &&
+                (cell->ceiling_height_step <= cell->floor_height_step ||
+                 cell->ceiling_height_step - cell->floor_height_step <
+                     SCENE_MIN_CLEARANCE_STEP)) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RELATION,
+                              path, "authored_cells", NULL,
+                              "floor/ceiling relation violates minimum clearance",
+                              0U, 0U);
+            }
+            if (cell->gravity_orientation > SCENE_GRAVITY_WEST) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_GRAVITY,
+                              path, "gravity_orientations", NULL,
+                              "gravity orientation outside 0..6", 0U, 0U);
+            }
+            if (cell->gravity_scale_step != 0U &&
+                movement->gravity_magnitude *
+                    ((double)cell->gravity_scale_step /
+                     (double)SCENE_HEIGHT_STEPS_PER_UNIT) > 256.0) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_GRAVITY,
+                              path, "gravity_scales", NULL,
+                              "effective gravity exceeds 256", 0U, 0U);
             }
         }
     }
@@ -711,7 +827,8 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
         case META_VERSION:
             if (!parse_uint_range(value, UINT_MAX, &parsed) ||
                  (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
-                  parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4))
+                   parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4 &&
+                   parsed != SCENE_VERSION_V5))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -903,6 +1020,162 @@ static SceneFormatResult parse_v2_row(SceneFormatCandidate *candidate,
     return SCENE_FORMAT_OK;
 }
 
+static const char *section_name(SectionKind section) {
+    switch (section) {
+        case SECTION_FLOOR_HEIGHTS: return "floor_heights";
+        case SECTION_CEILING_HEIGHTS: return "ceiling_heights";
+        case SECTION_FLOOR_PRESENCE: return "floor_presence";
+        case SECTION_CEILING_PRESENCE: return "ceiling_presence";
+        case SECTION_GRAVITY_SCALES: return "gravity_scales";
+        case SECTION_GRAVITY_ORIENTATIONS: return "gravity_orientations";
+        default: return "";
+    }
+}
+
+static SceneFormatResult parse_v5_row(SceneFormatCandidate *candidate,
+                                      SectionKind section, char *text, size_t row,
+                                      const char *path, size_t line,
+                                      SceneDiagnostic *diagnostic) {
+    size_t column = 0U;
+    char *cursor = text;
+    while (*cursor) {
+        unsigned value;
+        size_t index;
+        while (*cursor == ' ' || *cursor == '\t') cursor++;
+        if (*cursor == '\0') break;
+        if (section == SECTION_FLOOR_HEIGHTS ||
+            section == SECTION_CEILING_HEIGHTS ||
+            section == SECTION_GRAVITY_SCALES) {
+            char block[SCENE_BLOCK_TEXT_SIZE];
+            uint16_t parsed;
+            if (strlen(cursor) < SCENE_BLOCK_HEX_DIGITS ||
+                (cursor[SCENE_BLOCK_HEX_DIGITS] != '\0' &&
+                 cursor[SCENE_BLOCK_HEX_DIGITS] != ' ' &&
+                 cursor[SCENE_BLOCK_HEX_DIGITS] != '\t')) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                              section_name(section), NULL,
+                              "v5 grid requires XXXX block", line, 0U);
+            }
+            memcpy(block, cursor, SCENE_BLOCK_HEX_DIGITS);
+            block[SCENE_BLOCK_HEX_DIGITS] = '\0';
+            if (!scene_block_parse(block, &parsed)) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                              section_name(section), NULL,
+                              "invalid v5 hexadecimal block", line, 0U);
+            }
+            value = parsed;
+            cursor += SCENE_BLOCK_HEX_DIGITS;
+        } else {
+            size_t length = strcspn(cursor, " \t");
+            char token[4];
+            unsigned maximum = (section == SECTION_FLOOR_PRESENCE ||
+                                section == SECTION_CEILING_PRESENCE) ? 1U : 6U;
+            if (length == 0U || length >= sizeof(token)) {
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path,
+                              section_name(section), NULL,
+                              "invalid v5 decimal grid token", line, 0U);
+            }
+            memcpy(token, cursor, length); token[length] = '\0';
+            if (!parse_uint_range(token, maximum, &value)) {
+                return reject(diagnostic,
+                              (section == SECTION_FLOOR_PRESENCE ||
+                               section == SECTION_CEILING_PRESENCE)
+                                  ? SCENE_DIAGNOSTIC_INPUT_NUMERIC
+                                  : SCENE_DIAGNOSTIC_INPUT_GRAVITY,
+                              path, section_name(section), NULL,
+                              "v5 grid value is out of range", line, 0U);
+            }
+            cursor += length;
+        }
+        if (column >= (size_t)candidate->map.width) {
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                          section_name(section), NULL,
+                          "too many v5 grid cells in row", line, 0U);
+        }
+        index = row * (size_t)candidate->map.width + column++;
+        if (section == SECTION_FLOOR_HEIGHTS) {
+            int16_t height = (int16_t)(uint16_t)value;
+            if (height < SCENE_HEIGHT_MIN_STEP || height > SCENE_HEIGHT_MAX_STEP)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RANGE,
+                              path, section_name(section), NULL,
+                              "height outside signed -0800..0800", line, 0U);
+            candidate->authored_cells[index].floor_height_step = height;
+        } else if (section == SECTION_CEILING_HEIGHTS) {
+            int16_t height = (int16_t)(uint16_t)value;
+            if (height < SCENE_HEIGHT_MIN_STEP || height > SCENE_HEIGHT_MAX_STEP)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_HEIGHT_RANGE,
+                              path, section_name(section), NULL,
+                              "height outside signed -0800..0800", line, 0U);
+            candidate->authored_cells[index].ceiling_height_step = height;
+        } else if (section == SECTION_FLOOR_PRESENCE) {
+            candidate->authored_cells[index].floor_present = value != 0U;
+        } else if (section == SECTION_CEILING_PRESENCE) {
+            candidate->authored_cells[index].ceiling_present = value != 0U;
+        } else if (section == SECTION_GRAVITY_SCALES) {
+            candidate->authored_cells[index].gravity_scale_step = (uint16_t)value;
+        } else {
+            candidate->authored_cells[index].gravity_orientation = (uint8_t)value;
+        }
+    }
+    if (column != (size_t)candidate->map.width) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                      section_name(section), NULL,
+                      "wrong v5 grid cell count", line, 0U);
+    }
+    return SCENE_FORMAT_OK;
+}
+
+static SceneGravityOrientation parse_gravity_orientation(const char *value) {
+    if (strcmp(value, "down") == 0) return SCENE_GRAVITY_DOWN;
+    if (strcmp(value, "up") == 0) return SCENE_GRAVITY_UP;
+    if (strcmp(value, "north") == 0) return SCENE_GRAVITY_NORTH;
+    if (strcmp(value, "south") == 0) return SCENE_GRAVITY_SOUTH;
+    if (strcmp(value, "east") == 0) return SCENE_GRAVITY_EAST;
+    if (strcmp(value, "west") == 0) return SCENE_GRAVITY_WEST;
+    return SCENE_GRAVITY_INHERIT;
+}
+
+static SceneFormatResult parse_movement_field(SceneMovementParameters *movement,
+                                              unsigned *seen, const char *key,
+                                              const char *value, const char *path,
+                                              size_t line,
+                                              SceneDiagnostic *diagnostic) {
+    static const char *const keys[] = {
+        "gravity_magnitude", "gravity_orientation", "step_height",
+        "jump_impulse", "air_control_scale", "eye_height", "head_clearance"
+    };
+    size_t i;
+    double parsed;
+    for (i = 0U; i < sizeof(keys) / sizeof(keys[0]); i++)
+        if (strcmp(key, keys[i]) == 0) break;
+    if (i == sizeof(keys) / sizeof(keys[0]))
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_MOVEMENT, path,
+                      "movement", key, "unknown movement field", line, 0U);
+    if ((*seen & (1U << i)) != 0U)
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_MOVEMENT, path,
+                      "movement", key, "duplicate movement field", line, 0U);
+    *seen |= 1U << i;
+    if (i == 1U) {
+        movement->gravity_orientation = parse_gravity_orientation(value);
+        if (movement->gravity_orientation == SCENE_GRAVITY_INHERIT) goto invalid;
+        return SCENE_FORMAT_OK;
+    }
+    if (!parse_double_c(value, &parsed)) goto invalid;
+    switch (i) {
+        case 0U: movement->gravity_magnitude = parsed; break;
+        case 2U: movement->step_height = parsed; break;
+        case 3U: movement->jump_impulse = parsed; break;
+        case 4U: movement->air_control_scale = parsed; break;
+        case 5U: movement->eye_height = parsed; break;
+        case 6U: movement->head_clearance = parsed; break;
+        default: goto invalid;
+    }
+    return SCENE_FORMAT_OK;
+invalid:
+    return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_MOVEMENT, path,
+                  "movement", key, "invalid movement field value", line, 0U);
+}
+
 static SceneFormatResult parse_light_field(SceneLight *light, unsigned *seen,
                                            char *key, char *value, const char *path,
                                            size_t line, SceneDiagnostic *diagnostic) {
@@ -1011,7 +1284,8 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                                           const char *path, size_t line,
                                           SceneDiagnostic *diagnostic) {
     unsigned required;
-    if (header.kind == SECTION_LIGHT) required = 15U;
+    if (header.kind == SECTION_MOVEMENT) required = 127U;
+    else if (header.kind == SECTION_LIGHT) required = 15U;
     else if (header.kind == SECTION_DECAL) {
         bool wall = decal_surface == SCENE_DECAL_SURFACE_WALL;
         unsigned placement = seen & (8U | 16U | 32U);
@@ -1024,7 +1298,11 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                           header.id);
     } else return SCENE_FORMAT_OK;
     if ((seen & required) != required)
-        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path,
+        return reject(diagnostic,
+                      header.kind == SECTION_MOVEMENT
+                          ? SCENE_DIAGNOSTIC_INPUT_MOVEMENT
+                          : SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path,
+                      header.kind == SECTION_MOVEMENT ? "movement" :
                       header.kind == SECTION_LIGHT ? "light" : "decal_instance",
                       NULL, "required section field is missing", line, header.id);
     return SCENE_FORMAT_OK;
@@ -1043,12 +1321,16 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     size_t light_count = 0U, decal_count = 0U, cells_sections = 0U;
     size_t occupancy_sections = 0U, wall_sections = 0U;
     size_t floor_sections = 0U, ceiling_sections = 0U;
+    size_t floor_height_sections = 0U, ceiling_height_sections = 0U;
+    size_t floor_presence_sections = 0U, ceiling_presence_sections = 0U;
+    size_t gravity_scale_sections = 0U;
+    size_t gravity_orientation_sections = 0U, movement_sections = 0U;
     SceneFormatResult result = SCENE_FORMAT_OK;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     if (!source || !out_candidate) return SCENE_FORMAT_INVALID_ARGUMENT;
     if (source_size > SCENE_FILE_MAX_BYTES)
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
-                      NULL, "scene file exceeds 2 MiB", 0U, 0U);
+                      NULL, "scene file exceeds 8 MiB", 0U, 0U);
     if (memchr(source, '\0', source_size))
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_SYNTAX, path, NULL,
                       NULL, "embedded NUL byte", 0U, 0U);
@@ -1088,10 +1370,21 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             else if (current == SECTION_WALL_MATERIALS) wall_sections++;
             else if (current == SECTION_FLOOR_MATERIALS) floor_sections++;
             else if (current == SECTION_CEILING_MATERIALS) ceiling_sections++;
+            else if (current == SECTION_FLOOR_HEIGHTS) floor_height_sections++;
+            else if (current == SECTION_CEILING_HEIGHTS) ceiling_height_sections++;
+            else if (current == SECTION_FLOOR_PRESENCE) floor_presence_sections++;
+            else if (current == SECTION_CEILING_PRESENCE) ceiling_presence_sections++;
+            else if (current == SECTION_GRAVITY_SCALES) gravity_scale_sections++;
+            else if (current == SECTION_GRAVITY_ORIENTATIONS) gravity_orientation_sections++;
+            else if (current == SECTION_MOVEMENT) movement_sections++;
             else if (current == SECTION_LIGHT) light_count++;
             else if (current == SECTION_DECAL) decal_count++;
             if (cells_sections > 1U || occupancy_sections > 1U || wall_sections > 1U ||
-                floor_sections > 1U || ceiling_sections > 1U) {
+                floor_sections > 1U || ceiling_sections > 1U ||
+                floor_height_sections > 1U || ceiling_height_sections > 1U ||
+                floor_presence_sections > 1U || ceiling_presence_sections > 1U ||
+                gravity_scale_sections > 1U ||
+                gravity_orientation_sections > 1U || movement_sections > 1U) {
                 result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
                                 NULL, NULL, "duplicate grid section", line.number, 0U);
                 goto done;
@@ -1130,6 +1423,12 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             if (result != SCENE_FORMAT_OK) goto done;
         }
     }
+    if (temporary.source_version >= SCENE_VERSION_V5 && movement_sections != 1U) {
+        result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_MOVEMENT, path,
+                        "movement", NULL, "required movement section is missing",
+                        0U, 0U);
+        goto done;
+    }
     if ((metadata_seen & (temporary.source_version >= SCENE_VERSION_V3
                               ? META_V3_REQUIRED : META_REQUIRED)) !=
             (temporary.source_version >= SCENE_VERSION_V3
@@ -1141,7 +1440,16 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
           floor_sections || ceiling_sections)) ||
         (temporary.source_version >= SCENE_VERSION_V2 &&
          (cells_sections || occupancy_sections != 1U || wall_sections != 1U ||
-          floor_sections != 1U || ceiling_sections != 1U))) {
+           floor_sections != 1U || ceiling_sections != 1U)) ||
+        (temporary.source_version < SCENE_VERSION_V5 &&
+          (floor_height_sections || ceiling_height_sections || floor_presence_sections ||
+           ceiling_presence_sections ||
+          gravity_scale_sections || gravity_orientation_sections || movement_sections)) ||
+        (temporary.source_version >= SCENE_VERSION_V5 &&
+         (floor_height_sections != 1U || ceiling_height_sections != 1U ||
+           floor_presence_sections != 1U || ceiling_presence_sections != 1U ||
+           gravity_scale_sections != 1U ||
+          gravity_orientation_sections != 1U || movement_sections != 1U))) {
         result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path, NULL,
                         NULL, "required metadata or versioned grids are missing", 0U, 0U);
         goto done;
@@ -1156,7 +1464,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     {
         SectionHeader header = {SECTION_NONE, 0U};
         unsigned fields_seen = 0U;
-        size_t rows[5] = {0U, 0U, 0U, 0U, 0U};
+        size_t rows[11] = {0U};
         size_t light_index = 0U, decal_index = 0U;
         while (line_reader_next(&reader, &line)) {
             char *text = trim(line.text);
@@ -1213,6 +1521,18 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 result = parse_v2_row(&temporary, current, text,
                                       rows[row_index]++, path, line.number,
                                       diagnostic);
+            } else if (current >= SECTION_FLOOR_HEIGHTS &&
+                       current <= SECTION_GRAVITY_ORIENTATIONS) {
+                size_t row_index = (size_t)(current - SECTION_FLOOR_HEIGHTS) + 5U;
+                if (rows[row_index] >= (size_t)temporary.map.height) {
+                    result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS,
+                                    path, section_name(current), NULL,
+                                    "too many v5 grid rows", line.number, 0U);
+                    goto done;
+                }
+                result = parse_v5_row(&temporary, current, text,
+                                      rows[row_index]++, path, line.number,
+                                      diagnostic);
             } else {
                 char *key, *value;
                 if (!split_property(text, &key, &value)) {
@@ -1221,7 +1541,11 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                                     NULL, "malformed section property", line.number,
                                     header.id); goto done;
                 }
-                if (current == SECTION_LIGHT)
+                if (current == SECTION_MOVEMENT)
+                    result = parse_movement_field(&temporary.movement, &fields_seen,
+                                                  key, value, path, line.number,
+                                                  diagnostic);
+                else if (current == SECTION_LIGHT)
                     result = parse_light_field(&temporary.lights[light_index - 1U],
                                                &fields_seen, key, value, path,
                                                line.number, diagnostic);
@@ -1245,7 +1569,14 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
              (rows[1] != (size_t)temporary.map.height ||
               rows[2] != (size_t)temporary.map.height ||
               rows[3] != (size_t)temporary.map.height ||
-              rows[4] != (size_t)temporary.map.height))) {
+               rows[4] != (size_t)temporary.map.height)) ||
+            (temporary.source_version >= SCENE_VERSION_V5 &&
+             (rows[5] != (size_t)temporary.map.height ||
+              rows[6] != (size_t)temporary.map.height ||
+              rows[7] != (size_t)temporary.map.height ||
+              rows[8] != (size_t)temporary.map.height ||
+               rows[9] != (size_t)temporary.map.height ||
+               rows[10] != (size_t)temporary.map.height))) {
             result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
                             NULL, NULL, "wrong number of versioned grid rows", 0U, 0U);
             goto done;
@@ -1346,6 +1677,18 @@ static int compare_decal_ptrs(const void *left, const void *right) {
     return a->id < b->id ? -1 : a->id > b->id;
 }
 
+static const char *gravity_orientation_name(SceneGravityOrientation orientation) {
+    switch (orientation) {
+        case SCENE_GRAVITY_DOWN: return "down";
+        case SCENE_GRAVITY_UP: return "up";
+        case SCENE_GRAVITY_NORTH: return "north";
+        case SCENE_GRAVITY_SOUTH: return "south";
+        case SCENE_GRAVITY_EAST: return "east";
+        case SCENE_GRAVITY_WEST: return "west";
+        default: return "";
+    }
+}
+
 SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
                                          SceneFormatBuffer *out,
                                          SceneDiagnostic *diagnostic) {
@@ -1403,6 +1746,23 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         APPEND(writer_quoted(&writer, candidate->legacy_source_path));
         APPEND(writer_append(&writer, "\n"));
     }
+    if (output_version >= SCENE_VERSION_V5) {
+        const SceneMovementParameters *movement = &candidate->movement;
+        APPEND(writer_append(&writer, "\n[movement]\ngravity_magnitude = "));
+        APPEND(writer_double(&writer, movement->gravity_magnitude));
+        APPEND(writer_printf(&writer, "\ngravity_orientation = %s\nstep_height = ",
+                             gravity_orientation_name(movement->gravity_orientation)));
+        APPEND(writer_double(&writer, movement->step_height));
+        APPEND(writer_append(&writer, "\njump_impulse = "));
+        APPEND(writer_double(&writer, movement->jump_impulse));
+        APPEND(writer_append(&writer, "\nair_control_scale = "));
+        APPEND(writer_double(&writer, movement->air_control_scale));
+        APPEND(writer_append(&writer, "\neye_height = "));
+        APPEND(writer_double(&writer, movement->eye_height));
+        APPEND(writer_append(&writer, "\nhead_clearance = "));
+        APPEND(writer_double(&writer, movement->head_clearance));
+        APPEND(writer_append(&writer, "\n"));
+    }
     if (output_version >= SCENE_VERSION_V2) {
         const SectionKind sections[] = {
             SECTION_OCCUPANCY, SECTION_WALL_MATERIALS,
@@ -1437,6 +1797,51 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
                     }
                 }
                 APPEND(writer_append(&writer, "\n"));
+            }
+        }
+        if (output_version >= SCENE_VERSION_V5) {
+            const SectionKind sections[] = {
+                SECTION_FLOOR_HEIGHTS, SECTION_CEILING_HEIGHTS,
+                SECTION_FLOOR_PRESENCE, SECTION_CEILING_PRESENCE,
+                SECTION_GRAVITY_SCALES,
+                SECTION_GRAVITY_ORIENTATIONS
+            };
+            const char *names[] = {
+                "floor_heights", "ceiling_heights", "floor_presence",
+                "ceiling_presence",
+                "gravity_scales", "gravity_orientations"
+            };
+            size_t section_index;
+            for (section_index = 0U; section_index < 6U; section_index++) {
+                APPEND(writer_printf(&writer, "\n[%s]\n", names[section_index]));
+                for (y = 0U; y < (size_t)candidate->map.height; y++) {
+                    for (x = 0U; x < (size_t)candidate->map.width; x++) {
+                        const SceneAuthoredCell *cell = &candidate->authored_cells[
+                            y * (size_t)candidate->map.width + x];
+                        unsigned value;
+                        if (sections[section_index] == SECTION_FLOOR_HEIGHTS)
+                            value = cell->floor_height_step;
+                        else if (sections[section_index] == SECTION_CEILING_HEIGHTS)
+                            value = cell->ceiling_height_step;
+                        else if (sections[section_index] == SECTION_FLOOR_PRESENCE)
+                            value = cell->floor_present ? 1U : 0U;
+                        else if (sections[section_index] == SECTION_CEILING_PRESENCE)
+                            value = cell->ceiling_present ? 1U : 0U;
+                        else if (sections[section_index] == SECTION_GRAVITY_SCALES)
+                            value = cell->gravity_scale_step;
+                        else value = cell->gravity_orientation;
+                        if (sections[section_index] == SECTION_FLOOR_HEIGHTS ||
+                            sections[section_index] == SECTION_CEILING_HEIGHTS ||
+                            sections[section_index] == SECTION_GRAVITY_SCALES) {
+                            char block[SCENE_BLOCK_TEXT_SIZE];
+                            APPEND(scene_block_format((uint16_t)value, block));
+                            APPEND(writer_printf(&writer, x ? " %s" : "%s", block));
+                        } else {
+                            APPEND(writer_printf(&writer, x ? " %u" : "%u", value));
+                        }
+                    }
+                    APPEND(writer_append(&writer, "\n"));
+                }
             }
         }
     } else {
@@ -1491,7 +1896,7 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     if (writer.size > SCENE_FILE_MAX_BYTES) {
         free(writer.data);
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, NULL, NULL,
-                      NULL, "canonical scene exceeds 2 MiB", 0U, 0U);
+                      NULL, "canonical scene exceeds 8 MiB", 0U, 0U);
     }
     scene_format_buffer_destroy(out);
     out->data = writer.data; out->size = writer.size;

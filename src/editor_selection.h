@@ -12,6 +12,7 @@
 #include "editor_types.h"
 #include "map.h"
 #include "scene_types.h"
+#include "height_view.h"
 
 #define EDITOR_SELECTION_SET_CAPACITY 8U
 
@@ -50,6 +51,14 @@ EditorHit editor_pick_horizontal_surface_selection(
     int viewport_rows,
     double max_distance
 );
+EditorHit editor_pick_horizontal_surface_selection_height(
+    const Camera *camera,
+    const Map *map,
+    const SceneHeightView *heights,
+    EditorHit existing_hit,
+    int viewport_rows,
+    double max_distance
+);
 
 WallFace editor_calculate_wall_face(
     int side,
@@ -68,6 +77,18 @@ bool editor_selection_is_valid_for_map(
 
 bool editor_project_horizontal_cell(
     const Camera *camera,
+    int viewport_width,
+    int viewport_height,
+    int screen_x,
+    int screen_y,
+    SelectionType type,
+    double *out_distance,
+    int *out_map_x,
+    int *out_map_y
+);
+bool editor_project_horizontal_cell_height(
+    const Camera *camera,
+    const SceneHeightView *heights,
     int viewport_width,
     int viewport_height,
     int screen_x,

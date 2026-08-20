@@ -34,6 +34,8 @@
                                  side_shadow_attenuation */
 #include "smc_render_opt.h"  /* SMC-generated hot-path wrappers */
 #include "decal_projection.h"
+#include "height_projection.h"
+#include "heightfield_trace.h"
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
                                  sqrt(), floor() */
 #include "math.h"             /* PI, normalize_angle() */
@@ -79,8 +81,7 @@ static bool project_world_point(Grid *grid, Camera *cam,
     if (transform_y <= 0.001) return false;
 
     *screen_x = (grid->width / 2.0) * (1.0 + transform_x / transform_y);
-    *screen_y = grid->height / 2.0 + cam->pitch +
-                (0.5 - world_z) * grid->height / transform_y;
+    *screen_y = height_project_y(cam, grid->height, world_z, transform_y);
     *depth = transform_y;
 
     return true;
@@ -107,10 +108,101 @@ static double decal_light_level(Map *map, const Decal *d,
     return light_level;
 }
 
+static double horizontal_true_distance(const SceneHeightView *heights,
+                                       bool heights_valid, const Camera *cam,
+                                       int viewport_height, double denominator,
+                                       double legacy_distance, double ray_angle,
+                                       bool floor_surface, int map_x, int map_y) {
+    const SceneAuthoredCell *cell;
+    double plane_z;
+    double vertical_delta;
+    double current_distance;
+    if (!heights_valid || map_x < 0 || map_y < 0 ||
+        map_x >= heights->width || map_y >= heights->height) {
+        return legacy_distance;
+    }
+    cell = &heights->cells[(size_t)map_y * (size_t)heights->width + (size_t)map_x];
+    if (cam->z == 0.5 &&
+        ((floor_surface && cell->floor_height_step == SCENE_DEFAULT_FLOOR_HEIGHT_STEP) ||
+         (!floor_surface &&
+          cell->ceiling_height_step == SCENE_DEFAULT_CEILING_HEIGHT_STEP))) {
+        return legacy_distance;
+    }
+    plane_z = scene_height_world(floor_surface
+        ? cell->floor_height_step : cell->ceiling_height_step);
+    vertical_delta = floor_surface ? cam->z - plane_z : plane_z - cam->z;
+    if (!isfinite(vertical_delta) || vertical_delta <= 0.0) return legacy_distance;
+    current_distance = 2.0 * vertical_delta * viewport_height / denominator;
+    return smc_true_distance(current_distance, ray_angle, cam->transform.angle);
+}
+
+static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
+                                       AssetRegistry *assets,
+                                       const SceneHeightView *heights,
+                                       double *z_buffer) {
+    const SDL_Color darkness = {0, 0, 0, 255};
+    int x;
+    for (x = 0; x < grid->width; x++) {
+        HeightfieldTraceColumn column;
+        int y;
+        if (!heightfield_trace_prepare_column(
+                &column, cam, map, heights, grid->width, grid->height, x,
+                config_get()->raycast_max_distance)) continue;
+        z_buffer[x] = config_get()->raycast_max_distance;
+        for (size_t i = 0U; i < column.interval_count; i++) {
+            int next_x = column.interval_next_x[i];
+            int next_y = column.interval_next_y[i];
+            if (map_in_bounds(map, next_x, next_y)) {
+                size_t index = (size_t)next_y * (size_t)map->width + (size_t)next_x;
+                if (map->cells[index].material_id != 0 ||
+                    heights->cells[index].occupancy == SCENE_CELL_OCCUPANCY_WALL) {
+                    z_buffer[x] = column.interval_exit[i] * column.correction;
+                    break;
+                }
+            }
+        }
+        for (y = 0; y < grid->height; y++) {
+            HeightfieldHit hit = heightfield_trace_prepared_sample(&column, y);
+            uint8_t glyph = ' ';
+            SDL_Color foreground = darkness;
+            SDL_Color background = darkness;
+            if (hit.hit && material_id_is_loaded(assets, hit.material)) {
+                const Material *material = &assets->materials[hit.material];
+                double light_level = 1.0;
+                int glyph_index = hit.distance > 10.0 ? 3 :
+                    hit.distance > 7.0 ? 2 : hit.distance > 4.0 ? 1 : 0;
+                if (map->light_map && map_in_bounds(map, hit.map_x, hit.map_y)) {
+                    light_level = map->light_map[
+                        (size_t)hit.map_y * (size_t)map->width + (size_t)hit.map_x];
+                    if (light_level > 1.0) light_level = 1.0;
+                    if (light_level < 0.0) light_level = 0.0;
+                }
+                if ((hit.kind == HEIGHTFIELD_HIT_WALL || hit.generated_boundary) &&
+                    hit.side == 1) {
+                    light_level *= config_get()->side_shadow_attenuation;
+                }
+                glyph = material->glyphs[glyph_index];
+                foreground = palette_sample(
+                    &assets->palettes[material->palette_id], hit.distance, light_level);
+            } else if (hit.hit) {
+                glyph = '.';
+                foreground = darkness;
+                background = (SDL_Color){128, 0, 255, 255};
+            }
+            {
+                Cell *output = &grid->cells[
+                    (size_t)y * (size_t)grid->width + (size_t)x];
+                output->glyph = glyph;
+                output->fg = foreground;
+                output->bg = background;
+            }
+        }
+    }
+}
+
 static void render_decals(Grid *grid, Map *map, Camera *cam,
                           AssetRegistry *assets, WorldState *world,
                           const double *z_buffer, int z_count) {
-    const double camera_z = 0.5;
     static double decal_depth[1024 * 1024];
     static int decal_order[1024 * 1024];
     int cell_count = grid->width * grid->height;
@@ -131,7 +223,7 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
 
         double view_x = cam->transform.pos.x - d->x;
         double view_y = cam->transform.pos.y - d->y;
-        double view_z = camera_z - d->z;
+        double view_z = cam->z - d->z;
         if (view_x * basis.normal[0] + view_y * basis.normal[1] +
             view_z * basis.normal[2] <= 0.0) continue;
 
@@ -332,9 +424,12 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  * @param surfaces Optional borrowed authored floor/ceiling material view. NULL
  *                 preserves constant legacy backgrounds.
  */
-void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
-                    WorldState *world, const SceneSurfaceView *surfaces) {
+void raycast_render_height(Grid *grid, Map *map, Camera *cam,
+                           AssetRegistry *assets, WorldState *world,
+                           const SceneSurfaceView *surfaces,
+                           const SceneHeightView *heights) {
     bool surfaces_valid;
+    bool heights_valid;
     if (!grid || !map || !cam || !assets || !world) return;
 
     surfaces_valid = surfaces && surfaces->cells &&
@@ -342,12 +437,19 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
         surfaces->width > 0 && surfaces->height > 0 &&
         surfaces->cell_count ==
             (size_t)surfaces->width * (size_t)surfaces->height;
+    heights_valid = scene_height_view_is_valid(heights, map->width, map->height);
 
     /* Grid-owned workspace avoids both a hidden width cap and per-frame allocation. */
     double *z_buffer = grid->column_depths;
     int max_x_idx = grid->width;
 
     if (!z_buffer) return;
+
+    if (heights_valid &&
+        !heightfield_view_is_flat_default(heights, map->width, map->height)) {
+        render_heightfield_samples(grid, map, cam, assets, heights, z_buffer);
+        goto render_overlays;
+    }
 
     /* ================================================================
      *  MAIN RAYCASTING LOOP — one iteration per screen column
@@ -384,6 +486,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
         int line_height = 0;
         int material_id = 0;
         double perp_dist = ray.distance;
+        double wall_floor = 0.0;
+        double wall_ceiling = 1.0;
+        bool default_wall_span = true;
 
         /* ---- c. Compute wall slice properties ---- */
         if (ray.hit) {
@@ -406,6 +511,18 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
 
             /* Wall slice height in cells: taller = closer */
             line_height = (int)(grid->height / perp_dist);
+            if (heights_valid) {
+                size_t index = (size_t)ray.map_y * (size_t)map->width +
+                               (size_t)ray.map_x;
+                wall_floor = scene_height_world(heights->cells[index].floor_height_step);
+                wall_ceiling = scene_height_world(
+                    heights->cells[index].ceiling_height_step);
+                default_wall_span = cam->z == 0.5 &&
+                    heights->cells[index].floor_height_step ==
+                        SCENE_DEFAULT_FLOOR_HEIGHT_STEP &&
+                    heights->cells[index].ceiling_height_step ==
+                        SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+            }
         }
 
         /* Store in z-buffer for decal/light occlusion checks */
@@ -413,9 +530,13 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
 
         /* ---- Vertical bounds of the wall slice ---- */
         /* Centre the wall vertically and apply camera pitch (looking up/down) */
-        int draw_start = -line_height / 2 + grid->height / 2 + (int)cam->pitch;
+        int draw_start = heights_valid && ray.hit && !default_wall_span
+            ? (int)floor(height_project_y(cam, grid->height, wall_ceiling, perp_dist))
+            : -line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_start < 0) draw_start = 0;
-        int draw_end = line_height / 2 + grid->height / 2 + (int)cam->pitch;
+        int draw_end = heights_valid && ray.hit && !default_wall_span
+            ? (int)floor(height_project_y(cam, grid->height, wall_floor, perp_dist))
+            : line_height / 2 + grid->height / 2 + (int)cam->pitch;
         if (draw_end >= grid->height) draw_end = grid->height - 1;
 
         /* ================================================================
@@ -478,6 +599,13 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
 
             int map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
             int map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
+            trueDist = horizontal_true_distance(
+                heights, heights_valid, cam, grid->height, denom, trueDist,
+                ray_angle, false, map_x, map_y);
+            curX = cam->transform.pos.x + trueDist * dir_x;
+            curY = cam->transform.pos.y + trueDist * dir_y;
+            map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
+            map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
             bool in_bounds = map_in_bounds(map, map_x, map_y);
             uint8_t glyph = ' ';
             SDL_Color fg = {255, 255, 255, 255};
@@ -542,6 +670,13 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
 
             int map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
             int map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
+            trueDist = horizontal_true_distance(
+                heights, heights_valid, cam, grid->height, denom, trueDist,
+                ray_angle, true, map_x, map_y);
+            curX = cam->transform.pos.x + trueDist * dir_x;
+            curY = cam->transform.pos.y + trueDist * dir_y;
+            map_x = surfaces_valid ? (int)floor(curX) : (int)curX;
+            map_y = surfaces_valid ? (int)floor(curY) : (int)curY;
             bool in_bounds = map_in_bounds(map, map_x, map_y);
             uint8_t glyph = ' ';
             SDL_Color fg = {255, 255, 255, 255};
@@ -590,6 +725,7 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
         }
     }
 
+render_overlays:
     render_decals(grid, map, cam, assets, world, z_buffer, max_x_idx);
 
     /* ================================================================
@@ -639,4 +775,9 @@ void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
             }
         }
     }
+}
+
+void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
+                    WorldState *world, const SceneSurfaceView *surfaces) {
+    raycast_render_height(grid, map, cam, assets, world, surfaces, NULL);
 }

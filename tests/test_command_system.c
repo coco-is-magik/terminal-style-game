@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "../src/command_system.h"
+#include "../src/scene_document_internal.h"
 #include "../src/scene_document.h"
 #include "../src/config.h"
 
@@ -924,6 +925,64 @@ static void test_ambient_command_range_and_history(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_vertical_and_movement_commands_undo_redo_and_validate(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    CommandExecutionContext context = {0};
+    SceneCellVertical before;
+    SceneCellVertical after;
+    SceneMovementParameters movement;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&history, doc.current_state);
+    assert_true(scene_document_get_cell_vertical(&doc, 1, 1, &before));
+    after = before;
+    after.floor_height_step = UINT16_C(0x0040);
+    after.ceiling_height_step = UINT16_C(0x0140);
+    after.gravity_scale_step = UINT16_C(0x0080);
+    after.gravity_orientation = SCENE_GRAVITY_UP;
+    assert_int_equal(command_history_set_cell_vertical(
+        &history, &doc, 1, 1, &after, &context), CMD_RESULT_OK);
+    assert_memory_equal(&doc.authored_cells[3].floor_height_step,
+                        &after.floor_height_step, sizeof(after.floor_height_step));
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    {
+        SceneCellVertical restored;
+        assert_true(scene_document_get_cell_vertical(&doc, 1, 1, &restored));
+        assert_memory_equal(&restored, &before, sizeof(before));
+    }
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+
+    after.ceiling_height_step = after.floor_height_step;
+    assert_int_equal(command_history_set_cell_vertical(
+        &history, &doc, 1, 1, &after, &context), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(history.cursor, 1U);
+
+    movement = doc.movement;
+    movement.gravity_magnitude = 4.0;
+    movement.air_control_scale = 0.5;
+    assert_int_equal(command_history_set_movement_parameters(
+        &history, &doc, &movement), CMD_RESULT_OK);
+    assert_true(doc.movement.gravity_magnitude == 4.0);
+    assert_true(doc.movement.air_control_scale == 0.5);
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(doc.movement.gravity_magnitude == 9.8);
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+    movement.air_control_scale = 2.0;
+    assert_int_equal(command_history_set_movement_parameters(
+        &history, &doc, &movement), CMD_RESULT_INVALID_TARGET);
+
+    context.has_player_cell = true;
+    context.player_map_x = 1;
+    context.player_map_y = 1;
+    assert_true(scene_document_get_cell_vertical(&doc, 1, 1, &after));
+    after.ceiling_height_step = after.floor_height_step + SCENE_MIN_CLEARANCE_STEP;
+    assert_int_equal(command_history_set_cell_vertical(
+        &history, &doc, 1, 1, &after, &context), CMD_RESULT_PLAYER_BLOCKED);
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
 static void test_place_remove_preserve_latent_surfaces(void **state) {
     SceneDocument doc;
     CommandHistory h;
@@ -986,6 +1045,13 @@ static void test_east_edge_growth_shrink_undo_redo_and_content_guard(void **stat
     assert_int_equal(command_history_redo_checked(&h, &doc, &context), CMD_RESULT_OK);
     assert_int_equal(doc.map.width, 3);
     assert_int_equal(read_occupancy(&doc, 1, 0), SCENE_CELL_OCCUPANCY_EMPTY);
+
+    doc.authored_cells[2].floor_height_step = UINT16_C(0x0040);
+    assert_int_equal(command_history_place_wall(&h, &doc, 1, 0, &context),
+                     CMD_RESULT_RESIZE_BLOCKED);
+    assert_int_equal(doc.map.width, 3);
+    doc.authored_cells[2].floor_height_step =
+        doc.authored_cells[1].floor_height_step;
 
     doc.lights = calloc(1U, sizeof(*doc.lights));
     assert_non_null(doc.lights);
@@ -1436,6 +1502,7 @@ int main(void) {
         cmocka_unit_test(test_typed_surfaces_restore_exactly),
         cmocka_unit_test(test_wall_material_never_changes_occupancy),
         cmocka_unit_test(test_ambient_command_range_and_history),
+        cmocka_unit_test(test_vertical_and_movement_commands_undo_redo_and_validate),
         cmocka_unit_test(test_place_remove_preserve_latent_surfaces),
         cmocka_unit_test(test_east_edge_growth_shrink_undo_redo_and_content_guard),
         cmocka_unit_test(test_construction_spawn_player_and_attachment_safety),

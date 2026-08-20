@@ -597,6 +597,52 @@ static void test_horizontal_highlight_composes_over_authored_material(void **sta
     grid_destroy(grid);
 }
 
+static void test_height_aware_wall_outline_matches_raised_span(void **state) {
+    Grid *legacy = grid_create(41, 25);
+    Grid *raised = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    SceneAuthoredCell cells[81] = {0};
+    SceneHeightView heights = {
+        cells, 81U, 9, 9,
+        {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75}
+    };
+    Camera camera;
+    SelectionTarget wall = wall_target(7, 4, WALL_FACE_WEST);
+    SDL_Color dark = {0, 0, 0, 255};
+    int legacy_count;
+    int raised_count;
+    (void)state;
+    assert_non_null(legacy);
+    assert_non_null(raised);
+    assert_non_null(map);
+    camera_init(&camera, 4.5, 4.5, 0.0, PI / 2.0);
+    map_set(map, 7, 4, 1);
+    for (size_t i = 0U; i < 81U; i++) {
+        cells[i].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cells[i].floor_present = true;
+        cells[i].ceiling_present = true;
+    }
+    fill_grid(legacy, ' ', dark, dark);
+    fill_grid(raised, ' ', dark, dark);
+    editor_highlight_render(legacy, map, &camera, NULL, 0U, wall, (EditorHit){0});
+    legacy_count = count_glyph(legacy, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
+    cells[4U * 9U + 7U].floor_height_step = UINT16_C(0x0080);
+    cells[4U * 9U + 7U].ceiling_height_step = UINT16_C(0x0180);
+    editor_highlight_render_height(
+        raised, map, &camera, NULL, 0U, wall, (EditorHit){0}, &heights);
+    raised_count = count_glyph(raised, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
+    assert_true(legacy_count > 0);
+    assert_true(raised_count > 0);
+    assert_int_equal(raised_count, legacy_count);
+    assert_memory_not_equal(
+        raised->cells, legacy->cells,
+        (size_t)raised->width * (size_t)raised->height * sizeof(*raised->cells));
+    map_destroy(map);
+    grid_destroy(raised);
+    grid_destroy(legacy);
+}
+
 static void test_null_inputs_are_safe(void **state) {
     SelectionTarget none = {0};
     EditorHit hover = {0};
@@ -625,6 +671,7 @@ int main(void) {
         cmocka_unit_test(test_horizontal_selected_and_hover_are_distinct),
         cmocka_unit_test(test_horizontal_highlight_occlusion_invalid_and_borrowed_inputs),
         cmocka_unit_test(test_horizontal_highlight_composes_over_authored_material),
+        cmocka_unit_test(test_height_aware_wall_outline_matches_raised_span),
         cmocka_unit_test(test_null_inputs_are_safe),
     };
 

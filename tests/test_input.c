@@ -64,12 +64,17 @@ static void test_key_and_editor_shortcuts(void **state) {
     input_apply_event(&input, &event, false);
     assert_true(input.confirm);
     assert_true(input.editor_confirm_pressed);
+    event.key = INPUT_KEY_SPACE;
+    input_apply_event(&input, &event, false);
+    assert_true(input.place);
+    assert_true(input.editor_jump_pressed);
     event.key = INPUT_KEY_O;
     event.ctrl = true;
     input_apply_event(&input, &event, false);
     assert_true(input.editor_open_pressed);
     input_begin_frame(&input);
     assert_false(input.editor_open_pressed);
+    assert_false(input.editor_jump_pressed);
     event.key = INPUT_KEY_RIGHT;
     event.ctrl = true;
     event.repeat = false;

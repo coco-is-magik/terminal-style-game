@@ -31,7 +31,9 @@ typedef enum {
     EDITOR_MUTATION_GROW_EAST,
     EDITOR_MUTATION_GROW_SOUTH,
     EDITOR_MUTATION_SHRINK_EAST,
-    EDITOR_MUTATION_SHRINK_SOUTH
+    EDITOR_MUTATION_SHRINK_SOUTH,
+    EDITOR_MUTATION_SET_CELL_VERTICAL,
+    EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS
 } EditorMutationType;
 
 typedef struct {
@@ -81,6 +83,12 @@ typedef struct {
             SceneInstanceId id;
         } remove_decal;
         struct { int trigger; } resize;
+        struct {
+            int map_x;
+            int map_y;
+            SceneCellVertical value;
+        } cell_vertical;
+        struct { SceneMovementParameters value; } movement;
     } data;
 } EditorMutationRequest;
 
@@ -142,6 +150,16 @@ typedef struct {
             SceneDecalInstance removed_value;
         } remove_decal;
         struct { int trigger; } resize;
+        struct {
+            int map_x;
+            int map_y;
+            SceneCellVertical before;
+            SceneCellVertical after;
+        } cell_vertical;
+        struct {
+            SceneMovementParameters before;
+            SceneMovementParameters after;
+        } movement;
     } data;
 } EditorMutation;
 
@@ -219,6 +237,15 @@ CommandResult command_history_set_ambient_intensity(
     CommandHistory *history,
     SceneDocument *document,
     double intensity
+);
+CommandResult command_history_set_cell_vertical(
+    CommandHistory *history, SceneDocument *document,
+    int map_x, int map_y, const SceneCellVertical *value,
+    const CommandExecutionContext *context
+);
+CommandResult command_history_set_movement_parameters(
+    CommandHistory *history, SceneDocument *document,
+    const SceneMovementParameters *value
 );
 
 CommandResult command_history_place_wall(

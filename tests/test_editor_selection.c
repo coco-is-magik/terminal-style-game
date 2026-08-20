@@ -358,6 +358,77 @@ static void test_horizontal_pick_floor_ceiling_and_cardinal_directions(void **st
     map_destroy(map);
 }
 
+static void test_height_aware_horizontal_projection_uses_authored_plane(void **state) {
+    Map *map = map_create(12, 12);
+    SceneAuthoredCell cells[12U * 12U] = {0};
+    SceneHeightView heights = {
+        cells, 12U * 12U, 12, 12,
+        {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75}
+    };
+    Camera camera;
+    EditorHit flat;
+    EditorHit raised;
+    size_t raised_index;
+    (void)state;
+    assert_non_null(map);
+    camera_init(&camera, 5.5, 5.5, 0.0, PI / 2.0);
+    camera.pitch = -10.0;
+    for (size_t i = 0U; i < 12U * 12U; i++) {
+        cells[i].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cells[i].floor_present = true;
+        cells[i].ceiling_present = true;
+    }
+    flat = editor_pick_horizontal_surface_selection_height(
+        &camera, map, &heights, no_wall_hit(), 40, 20.0);
+    assert_true(flat.valid);
+    assert_int_equal(flat.target.type, SELECTION_FLOOR);
+    raised_index = (size_t)flat.target.value.horizontal.map_y * 12U +
+                   (size_t)flat.target.value.horizontal.map_x;
+    cells[raised_index].floor_height_step = UINT16_C(0x0040);
+    raised = editor_pick_horizontal_surface_selection_height(
+        &camera, map, &heights, no_wall_hit(), 40, 20.0);
+    assert_true(raised.valid);
+    assert_true(raised.distance < flat.distance);
+    assert_int_equal(raised.target.value.horizontal.map_x,
+                     flat.target.value.horizontal.map_x);
+    assert_int_equal(raised.target.value.horizontal.map_y,
+                     flat.target.value.horizontal.map_y);
+    map_destroy(map);
+}
+
+static void test_removed_surfaces_open_to_darkness_and_are_not_pickable(void **state) {
+    Map *map = map_create(12, 12);
+    SceneAuthoredCell cells[12U * 12U] = {0};
+    SceneHeightView heights = {
+        cells, 12U * 12U, 12, 12,
+        {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75}
+    };
+    Camera camera;
+    EditorHit hit;
+    (void)state;
+    assert_non_null(map);
+    for (size_t i = 0U; i < 12U * 12U; i++) {
+        cells[i].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cells[i].ceiling_present = true;
+    }
+    camera_init(&camera, 5.5, 5.5, 0.0, PI / 2.0);
+    camera.pitch = -10.0;
+    hit = editor_pick_horizontal_surface_selection_height(
+        &camera, map, &heights, no_wall_hit(), 40, 20.0);
+    assert_false(hit.valid);
+    for (size_t i = 0U; i < 12U * 12U; i++) {
+        cells[i].floor_present = true;
+        cells[i].ceiling_present = false;
+    }
+    camera.pitch = 10.0;
+    hit = editor_pick_horizontal_surface_selection_height(
+        &camera, map, &heights, no_wall_hit(), 40, 20.0);
+    assert_false(hit.valid);
+    map_destroy(map);
+}
+
 static void test_horizontal_pick_horizon_bounds_range_and_invalid(void **state) {
     Map *map = map_create(5, 5);
     Camera camera;
@@ -502,6 +573,8 @@ int main(void) {
         cmocka_unit_test(test_face_to_material_ref_drops_face),
         cmocka_unit_test(test_selection_validation_rejects_oob_and_empty),
         cmocka_unit_test(test_horizontal_pick_floor_ceiling_and_cardinal_directions),
+        cmocka_unit_test(test_height_aware_horizontal_projection_uses_authored_plane),
+        cmocka_unit_test(test_removed_surfaces_open_to_darkness_and_are_not_pickable),
         cmocka_unit_test(test_horizontal_pick_horizon_bounds_range_and_invalid),
         cmocka_unit_test(test_horizontal_pick_occlusion_and_precedence),
         cmocka_unit_test(test_horizontal_selection_validation),

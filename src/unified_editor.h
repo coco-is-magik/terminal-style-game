@@ -20,6 +20,7 @@
 #include "map_catalog.h"
 #include "material_document.h"
 #include "scene_document.h"
+#include "vertical_physics.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -152,6 +153,7 @@ typedef struct {
     bool has_player_cell;
     int player_map_x;
     int player_map_y;
+    VerticalPhysicsState vertical_physics;
 
     bool inspector_open;
     EditorInspectorKind inspector_kind;
@@ -160,6 +162,8 @@ typedef struct {
     EditorSurfaceField surface_field;
     bool material_picker_open;
     bool decal_menu_open;
+    bool movement_menu_open;
+    EditorMovementField movement_field;
     EditorDecalMenuStage decal_menu_stage;
     size_t decal_menu_index;
     size_t decal_pattern_index;
@@ -289,6 +293,21 @@ bool unified_editor_extend_selection(
 CommandResult unified_editor_set_ambient_intensity(
     UnifiedEditorState *editor,
     double intensity
+);
+CommandResult unified_editor_step_selected_height(
+    UnifiedEditorState *editor, int direction
+);
+CommandResult unified_editor_toggle_selected_surface_presence(
+    UnifiedEditorState *editor
+);
+CommandResult unified_editor_step_selected_gravity_direction(
+    UnifiedEditorState *editor, int direction
+);
+CommandResult unified_editor_step_selected_gravity_scale(
+    UnifiedEditorState *editor, int direction
+);
+CommandResult unified_editor_step_movement_parameter(
+    UnifiedEditorState *editor, EditorMovementField field, int direction
 );
 CommandResult unified_editor_place_wall(
     UnifiedEditorState *editor,

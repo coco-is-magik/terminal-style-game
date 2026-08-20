@@ -371,8 +371,12 @@ static bool load_named_material(AssetRegistry *reg, const char *filepath,
     }
 
     asset_registry_set_material(reg, id, pal_id, glyphs);
-    strncpy(reg->material_names[id], basename, 63);
-    reg->material_names[id][63] = '\0';
+    {
+        size_t name_length = strlen(basename);
+        if (name_length > 63U) name_length = 63U;
+        memcpy(reg->material_names[id], basename, name_length);
+        reg->material_names[id][name_length] = '\0';
+    }
     reg->material_count++;
     return true;
 }
@@ -678,7 +682,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         if (baselen >= 64) continue;
 
         char base[64];
-        strncpy(base, name, baselen);
+        memcpy(base, name, baselen);
         base[baselen] = '\0';
 
         if (basename_is_numeric(base)) {
@@ -700,7 +704,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         size_t len     = strlen(numeric[i]);
         size_t baselen = len - 4;
         char base[64];
-        strncpy(base, numeric[i], baselen);
+        memcpy(base, numeric[i], baselen);
         base[baselen] = '\0';
 
         int id;
@@ -718,7 +722,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         size_t len     = strlen(named[i]);
         size_t baselen = len - 4;
         char base[64];
-        strncpy(base, named[i], baselen);
+        memcpy(base, named[i], baselen);
         base[baselen] = '\0';
 
         if (strlen(materials_dir) + 1 + strlen(named[i]) < sizeof(filepath)) {

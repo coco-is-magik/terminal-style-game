@@ -66,7 +66,11 @@ different meaning.
 | `TSG-SCENE-INPUT-0011` | Reusable asset reference cannot be resolved | Commit repairable candidate with visible fallback; preserve authored reference; block normal Save |
 | `TSG-SCENE-INPUT-0012` | Normal Save requested while unresolved asset diagnostics remain | Refuse Save; preserve destination and dirty/repair state |
 | `TSG-SCENE-INPUT-0013` | Legacy map import is malformed or exceeds accepted legacy limits | Reject imported candidate; preserve legacy source and live document |
-| `TSG-SCENE-INPUT-0014` | Height-aware schema has invalid clearance or floor/ceiling relation | Reject candidate; preserve live document; reserved for the schema that introduces heights |
+| `TSG-SCENE-INPUT-0014` **Active** | v5 heightfield has invalid clearance or floor/ceiling relation | `scene_format_validate`; reject candidate and preserve live document; `test_v5_migration_round_trip_and_validation` |
+| `TSG-SCENE-INPUT-0015` **Active** | v5 height token is outside `0000..0800` | `scene_format` v5 row parse/validation; reject candidate and preserve live document; focused v5 format test |
+| `TSG-SCENE-INPUT-0016` **Active** | v5 movement block has an unknown, duplicate, missing, non-finite, or out-of-range value | `scene_format` movement parse/validation; reject candidate and preserve live document; focused v5 format test |
+| `TSG-SCENE-INPUT-0017` **Reserved** | Invalid v5 surface-presence relationship requiring a dedicated diagnostic | Preserve stable diagnostic numbering; current `0`/`1` token failures use numeric validation |
+| `TSG-SCENE-INPUT-0018` **Active** | v5 gravity override orientation or effective magnitude is out of bounds | `scene_format_validate`; reject candidate and preserve live document; focused v5 validation test |
 
 ### Scene environment/resource failures
 

@@ -28,8 +28,24 @@ typedef enum {
     EDITOR_SURFACE_FIELD_CONSTRUCTION,
     EDITOR_SURFACE_FIELD_AMBIENT,
     EDITOR_SURFACE_FIELD_DECALS,
+    EDITOR_SURFACE_FIELD_HEIGHT,
+    EDITOR_SURFACE_FIELD_REMOVE,
+    EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION,
+    EDITOR_SURFACE_FIELD_GRAVITY_SCALE,
+    EDITOR_SURFACE_FIELD_MOVEMENT,
     EDITOR_SURFACE_FIELD_COUNT
 } EditorSurfaceField;
+
+typedef enum {
+    EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE = 0,
+    EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION,
+    EDITOR_MOVEMENT_FIELD_STEP_HEIGHT,
+    EDITOR_MOVEMENT_FIELD_JUMP_IMPULSE,
+    EDITOR_MOVEMENT_FIELD_AIR_CONTROL,
+    EDITOR_MOVEMENT_FIELD_EYE_HEIGHT,
+    EDITOR_MOVEMENT_FIELD_HEAD_CLEARANCE,
+    EDITOR_MOVEMENT_FIELD_COUNT
+} EditorMovementField;
 
 typedef struct {
     double minimum;
@@ -132,6 +148,30 @@ bool editor_domain_make_ambient_step_request(
 );
 bool editor_domain_make_ambient_value_request(
     double value,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_height_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_surface_presence_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_gravity_direction_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_gravity_scale_step_request(
+    const SceneDocument *document, SelectionTarget target, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_movement_field_presentation(
+    EditorMovementField field,
+    EditorInspectorFieldPresentation *out_presentation
+);
+bool editor_domain_make_movement_step_request(
+    const SceneDocument *document, EditorMovementField field, int direction,
     EditorMutationRequest *out_request
 );
 

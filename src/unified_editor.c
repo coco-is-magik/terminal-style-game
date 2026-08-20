@@ -70,6 +70,8 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->material_picker_open = false;
     editor->decal_menu_open = false;
     editor->decal_menu_open = false;
+    editor->movement_menu_open = false;
+    editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
     editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
     editor->decal_menu_index = 0U;
     editor->decal_pattern_index = 0U;
@@ -604,6 +606,7 @@ bool unified_editor_init(
     world_init(&editor->runtime_world);
     command_history_init(&editor->history, 1);
     map_catalog_init(&editor->map_catalog);
+    vertical_physics_init(&editor->vertical_physics);
     editor->assets = assets;
     editor_reset_session_ui(editor);
     editor->active = true;
@@ -871,6 +874,7 @@ SceneLoadResult unified_editor_load_scene(
     world_clear(&editor->runtime_world);
     editor->document = candidate_document;
     editor->runtime_world = candidate_runtime;
+    vertical_physics_init(&editor->vertical_physics);
 
     command_history_destroy(&editor->history);
     command_history_init(&editor->history, editor->document.current_state);
@@ -920,6 +924,7 @@ static SceneLoadResult editor_replace_document(UnifiedEditorState *editor,
     world_clear(&editor->runtime_world);
     editor->document = candidate_document;
     editor->runtime_world = candidate_runtime;
+    vertical_physics_init(&editor->vertical_physics);
     command_history_destroy(&editor->history);
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
@@ -959,6 +964,7 @@ SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
     world_clear(&editor->runtime_world);
     editor->document = candidate_document;
     editor->runtime_world = candidate_runtime;
+    vertical_physics_init(&editor->vertical_physics);
     command_history_destroy(&editor->history);
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
@@ -1000,6 +1006,7 @@ SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor) {
     world_clear(&editor->runtime_world);
     editor->document = candidate_document;
     editor->runtime_world = candidate_runtime;
+    vertical_physics_init(&editor->vertical_physics);
     command_history_destroy(&editor->history);
     command_history_init(&editor->history, editor->document.current_state);
     editor_clear_selection(editor);
@@ -1106,6 +1113,97 @@ CommandResult unified_editor_set_surface_material(
         }
     }
     return result;
+}
+
+static CommandResult editor_execute_vertical_request(
+    UnifiedEditorState *editor, const EditorMutationRequest *request
+) {
+    CommandExecutionContext context;
+    CommandResult result;
+    if (!editor || !request) return CMD_RESULT_INVALID_TARGET;
+    context = editor_command_context(editor);
+    result = command_history_execute_group_checked(
+        &editor->history, &editor->document, request, 1U, &context);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK) vertical_physics_init(&editor->vertical_physics);
+    return result;
+}
+
+static CommandResult editor_execute_selection_group(
+    UnifiedEditorState *editor, const EditorMutationRequest *requests,
+    size_t request_count, bool refresh_runtime, bool clear_after
+);
+
+CommandResult unified_editor_step_selected_height(
+    UnifiedEditorState *editor, int direction
+) {
+    EditorMutationRequest requests[EDITOR_SELECTION_SET_CAPACITY];
+    size_t count;
+    size_t i;
+    CommandResult result;
+    if (!editor) return CMD_RESULT_INVALID_TARGET;
+    count = editor->selection_set.count > 0U ? editor->selection_set.count : 1U;
+    if (count > EDITOR_SELECTION_SET_CAPACITY) return CMD_RESULT_INVALID_TARGET;
+    for (i = 0U; i < count; i++) {
+        SelectionTarget target = editor->selection_set.count > 0U
+            ? editor->selection_set.members[i] : editor->selection;
+        if (!editor_domain_make_height_step_request(
+                &editor->document, target, direction, &requests[i]))
+            return CMD_RESULT_INVALID_TARGET;
+    }
+    result = editor_execute_selection_group(editor, requests, count, false, false);
+    if (result == CMD_RESULT_OK) vertical_physics_init(&editor->vertical_physics);
+    return result;
+}
+
+CommandResult unified_editor_toggle_selected_surface_presence(UnifiedEditorState *editor) {
+    EditorMutationRequest requests[EDITOR_SELECTION_SET_CAPACITY];
+    size_t count;
+    size_t i;
+    CommandResult result;
+    if (!editor) return CMD_RESULT_INVALID_TARGET;
+    count = editor->selection_set.count > 0U ? editor->selection_set.count : 1U;
+    if (count > EDITOR_SELECTION_SET_CAPACITY) return CMD_RESULT_INVALID_TARGET;
+    for (i = 0U; i < count; i++) {
+        SelectionTarget target = editor->selection_set.count > 0U
+            ? editor->selection_set.members[i] : editor->selection;
+        if (!editor_domain_make_surface_presence_request(
+                &editor->document, target, &requests[i]))
+            return CMD_RESULT_INVALID_TARGET;
+    }
+    result = editor_execute_selection_group(editor, requests, count, false, false);
+    if (result == CMD_RESULT_OK) vertical_physics_init(&editor->vertical_physics);
+    return result;
+}
+
+CommandResult unified_editor_step_selected_gravity_direction(
+    UnifiedEditorState *editor, int direction
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_gravity_direction_step_request(
+            &editor->document, editor->selection, direction, &request))
+        return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_vertical_request(editor, &request);
+}
+
+CommandResult unified_editor_step_selected_gravity_scale(
+    UnifiedEditorState *editor, int direction
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_gravity_scale_step_request(
+            &editor->document, editor->selection, direction, &request))
+        return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_vertical_request(editor, &request);
+}
+
+CommandResult unified_editor_step_movement_parameter(
+    UnifiedEditorState *editor, EditorMovementField field, int direction
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_movement_step_request(
+            &editor->document, field, direction, &request))
+        return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_vertical_request(editor, &request);
 }
 
 static CommandResult editor_execute_selection_group(
@@ -1759,6 +1857,7 @@ CommandResult unified_editor_undo(UnifiedEditorState *editor) {
     editor_revalidate_selection(editor);
     if (result == CMD_RESULT_OK && refresh_runtime)
         (void)editor_refresh_runtime(editor);
+    if (result == CMD_RESULT_OK) vertical_physics_init(&editor->vertical_physics);
     return result;
 }
 
@@ -1783,6 +1882,7 @@ CommandResult unified_editor_redo(UnifiedEditorState *editor) {
     editor_revalidate_selection(editor);
     if (result == CMD_RESULT_OK && refresh_runtime)
         (void)editor_refresh_runtime(editor);
+    if (result == CMD_RESULT_OK) vertical_physics_init(&editor->vertical_physics);
     return result;
 }
 
@@ -1854,6 +1954,12 @@ static void editor_handle_escape(
     if (editor->material_picker_open) {
         editor->material_picker_open = false;
         editor->material_collision_id = 0U;
+        editor_mark_keyboard(consumed);
+        return;
+    }
+
+    if (editor->movement_menu_open) {
+        editor->movement_menu_open = false;
         editor_mark_keyboard(consumed);
         return;
     }
@@ -1999,6 +2105,7 @@ bool unified_editor_extend_selection(
         editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->material_picker_open = false;
     editor->decal_menu_open = false;
+    editor->movement_menu_open = false;
     editor->status = EDITOR_STATUS_NONE;
     editor_rebuild_picker_for_selection(editor);
     return true;
@@ -2224,7 +2331,10 @@ static void editor_step_surface_field(UnifiedEditorState *editor, int direction)
     } while ((editor->surface_field == EDITOR_SURFACE_FIELD_CONSTRUCTION &&
               editor_construction_is_disabled(editor)) ||
              (editor->selection_set.count > 1U &&
-              editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT));
+               (editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT ||
+                editor->surface_field > EDITOR_SURFACE_FIELD_HEIGHT)) ||
+             (editor->selection.type == SELECTION_WALL_FACE &&
+               editor->surface_field >= EDITOR_SURFACE_FIELD_HEIGHT));
 }
 
 static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
@@ -2250,8 +2360,25 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
         editor->light_value_editing = true;
         editor->light_value_text_length = 0U;
         editor->light_value_text[0] = '\0';
+    } else if (editor->surface_field == EDITOR_SURFACE_FIELD_REMOVE) {
+        (void)unified_editor_toggle_selected_surface_presence(editor);
+    } else if (editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT) {
+        editor->movement_menu_open = true;
+        editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
     } else if (!editor_construction_is_disabled(editor)) {
         editor_handle_confirm_apply(editor);
+    }
+}
+
+static void editor_step_movement_field(UnifiedEditorState *editor, int direction) {
+    if (direction < 0) {
+        editor->movement_field = editor->movement_field ==
+            EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE
+            ? (EditorMovementField)(EDITOR_MOVEMENT_FIELD_COUNT - 1)
+            : (EditorMovementField)(editor->movement_field - 1);
+    } else {
+        editor->movement_field = (EditorMovementField)(
+            (editor->movement_field + 1) % EDITOR_MOVEMENT_FIELD_COUNT);
     }
 }
 
@@ -3037,9 +3164,50 @@ EditorInputConsumption unified_editor_update(
         }
 
         /* 5. Walk mode: camera moves; edit mode: freeze movement/look. */
+        if (unified_editor_has_document(editor) && rmap && camera &&
+            !editor->vertical_physics.initialized) {
+            SceneHeightView initial_height_view;
+            if (scene_document_get_height_view(
+                    &editor->document, &initial_height_view)) {
+                (void)vertical_physics_reset(
+                    &editor->vertical_physics, camera, rmap, &initial_height_view);
+            }
+        }
         if (editor->mode == EDITOR_MODE_WALK &&
             unified_editor_has_document(editor) && rmap) {
-            camera_update(camera, rmap, input, delta_seconds, viewport_rows);
+            SceneHeightView height_view;
+            double previous_x = camera->transform.pos.x;
+            double previous_y = camera->transform.pos.y;
+            bool forward = input->forward;
+            bool backward = input->backward;
+            bool left = input->left;
+            bool right = input->right;
+            if (scene_document_get_height_view(&editor->document, &height_view)) {
+                VerticalPhysicsResult physics_result;
+                if (input->editor_jump_pressed)
+                    (void)vertical_physics_jump(
+                        &editor->vertical_physics, camera, rmap, &height_view);
+                camera_update(camera, rmap, input, delta_seconds, viewport_rows);
+                if (!editor->vertical_physics.grounded) {
+                    double scale = height_view.movement.air_control_scale;
+                    camera->transform.pos.x = previous_x +
+                        (camera->transform.pos.x - previous_x) * scale;
+                    camera->transform.pos.y = previous_y +
+                        (camera->transform.pos.y - previous_y) * scale;
+                }
+                physics_result = vertical_physics_step(
+                    &editor->vertical_physics, camera, rmap, &height_view,
+                    previous_x, previous_y, delta_seconds);
+                input->forward = forward; input->backward = backward;
+                input->left = left; input->right = right;
+                if (physics_result == VERTICAL_PHYSICS_BLOCKED_STEP ||
+                    physics_result == VERTICAL_PHYSICS_BLOCKED_CLEARANCE) {
+                    editor->status = EDITOR_STATUS_PLAYER_BLOCKED;
+                } else if (physics_result == VERTICAL_PHYSICS_OK &&
+                           editor->status == EDITOR_STATUS_PLAYER_BLOCKED) {
+                    editor->status = EDITOR_STATUS_NONE;
+                }
+            }
         } else {
             consumed.pointer_consumed = true;
         }
@@ -3047,6 +3215,9 @@ EditorInputConsumption unified_editor_update(
         /* 6. Hover ray every frame (both modes; aim freezes in edit). */
         if (unified_editor_has_document(editor) && cmap) {
             EditorHit hit = editor_raycast_selection(camera, cmap);
+            SceneHeightView height_view;
+            const SceneHeightView *heights = scene_document_get_height_view(
+                &editor->document, &height_view) ? &height_view : NULL;
             size_t light_count = 0U;
             const SceneLight *lights = scene_document_get_lights(
                 &editor->document, &light_count);
@@ -3055,8 +3226,8 @@ EditorInputConsumption unified_editor_update(
             editor->hover = editor_pick_light_selection(
                 camera, lights, light_count, hit, max_distance,
                 EDITOR_LIGHT_PICK_RADIUS);
-            editor->hover = editor_pick_horizontal_surface_selection(
-                camera, cmap, editor->hover, viewport_rows, max_distance);
+            editor->hover = editor_pick_horizontal_surface_selection_height(
+                camera, cmap, heights, editor->hover, viewport_rows, max_distance);
         }
     }
 
@@ -3075,7 +3246,25 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
+        if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
+            input->editor_previous_pressed) {
+            editor_step_movement_field(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
+                   input->editor_next_pressed) {
+            editor_step_movement_field(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
+                   input->editor_decrease_pressed) {
+            (void)unified_editor_step_movement_parameter(
+                editor, editor->movement_field, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
+                   input->editor_increase_pressed) {
+            (void)unified_editor_step_movement_parameter(
+                editor, editor->movement_field, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->decal_menu_open &&
             input->editor_previous_pressed) {
             editor_step_decal_menu(editor, -1);
             editor_mark_keyboard(&consumed);
@@ -3123,6 +3312,36 @@ EditorInputConsumption unified_editor_update(
         } else if (editor_is_surface_inspector(editor) &&
                    editor->material_picker_open && input->editor_next_pressed) {
             editor_handle_picker_next(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_decrease_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_HEIGHT) {
+            (void)unified_editor_step_selected_height(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_increase_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_HEIGHT) {
+            (void)unified_editor_step_selected_height(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_decrease_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION) {
+            (void)unified_editor_step_selected_gravity_direction(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_increase_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION) {
+            (void)unified_editor_step_selected_gravity_direction(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_decrease_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE) {
+            (void)unified_editor_step_selected_gravity_scale(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) &&
+                   input->editor_increase_pressed &&
+                   editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE) {
+            (void)unified_editor_step_selected_gravity_scale(editor, 1);
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && input->editor_previous_pressed) {
             editor_step_surface_field(editor, -1);
@@ -3489,6 +3708,115 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row++, line,
                        editor->surface_field == EDITOR_SURFACE_FIELD_DECALS ? hi : dim,
                        bg);
+            if (editor->selection.type == SELECTION_FLOOR ||
+                editor->selection.type == SELECTION_CEILING) {
+                int map_x = editor->selection.value.horizontal.map_x;
+                int map_y = editor->selection.value.horizontal.map_y;
+                size_t cell_index = (size_t)map_y * (size_t)editor->document.map.width +
+                                    (size_t)map_x;
+                const SceneAuthoredCell *cell = &editor->document.authored_cells[cell_index];
+                double height = (editor->selection.type == SELECTION_FLOOR
+                    ? cell->floor_height_step : cell->ceiling_height_step) /
+                    (double)SCENE_HEIGHT_STEPS_PER_UNIT;
+                static const char *const gravity_names[] = {
+                    "inherit", "down", "up", "north", "south", "east", "west"
+                };
+                double gravity_scale = cell->gravity_scale_step == 0U ? 0.0 :
+                    cell->gravity_scale_step / (double)SCENE_HEIGHT_STEPS_PER_UNIT;
+                snprintf(line, sizeof(line), " %s Height      %.2f  Left/Right",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_HEIGHT ? ">" : " ",
+                         height);
+                grid_print(grid, 1, row++, line,
+                           editor->surface_field == EDITOR_SURFACE_FIELD_HEIGHT ? hi : dim,
+                           bg);
+                snprintf(line, sizeof(line), " %s Surface     %s  Enter=toggle",
+                          editor->surface_field == EDITOR_SURFACE_FIELD_REMOVE ? ">" : " ",
+                          (editor->selection.type == SELECTION_FLOOR
+                               ? cell->floor_present : cell->ceiling_present)
+                              ? "present" : "removed");
+                grid_print(grid, 1, row++, line,
+                            editor->surface_field == EDITOR_SURFACE_FIELD_REMOVE ? hi : dim,
+                           bg);
+                snprintf(line, sizeof(line), " %s Gravity dir %s  Left/Right",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? ">" : " ",
+                         gravity_names[cell->gravity_orientation]);
+                grid_print(grid, 1, row++, line,
+                           editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? hi : dim,
+                           bg);
+                snprintf(line, sizeof(line), " %s Gravity x   %s%.2f  Left/Right",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? ">" : " ",
+                         cell->gravity_scale_step == 0U ? "inherit " : "", gravity_scale);
+                grid_print(grid, 1, row++, line,
+                           editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? hi : dim,
+                           bg);
+                snprintf(line, sizeof(line), " %s Movement... Enter=open",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT &&
+                             !editor->movement_menu_open ? ">" : " ");
+                grid_print(grid, 1, row++, line,
+                           editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT ? hi : dim,
+                           bg);
+                if (editor->has_player_cell &&
+                    map_in_bounds(&editor->document.map, editor->player_map_x,
+                                  editor->player_map_y)) {
+                    size_t player_index = (size_t)editor->player_map_y *
+                        (size_t)editor->document.map.width +
+                        (size_t)editor->player_map_x;
+                    const SceneAuthoredCell *player_cell =
+                        &editor->document.authored_cells[player_index];
+                    double delta = ((double)cell->floor_height_step -
+                        (double)player_cell->floor_height_step) /
+                        SCENE_HEIGHT_STEPS_PER_UNIT;
+                    double clearance = (cell->ceiling_height_step -
+                        cell->floor_height_step) /
+                        (double)SCENE_HEIGHT_STEPS_PER_UNIT;
+                    const char *traversal;
+                    if (clearance < editor->document.movement.head_clearance)
+                        traversal = "blocked (clearance)";
+                    else if (delta <= 0.0) traversal = "flat/down";
+                    else if (delta <= editor->document.movement.step_height)
+                        traversal = "ramp/step";
+                    else {
+                        double apex = editor->document.movement.jump_impulse *
+                            editor->document.movement.jump_impulse /
+                            (2.0 * editor->document.movement.gravity_magnitude);
+                        traversal = delta <= apex ? "jump" : "blocked (height)";
+                    }
+                    snprintf(line, sizeof(line), "   Traversal: %s", traversal);
+                    grid_print(grid, 1, row++, line,
+                               strstr(traversal, "blocked") ? warn : fg, bg);
+                }
+                if (editor->movement_menu_open) {
+                    const SceneMovementParameters *movement = &editor->document.movement;
+                    double values[EDITOR_MOVEMENT_FIELD_COUNT] = {
+                        movement->gravity_magnitude,
+                        (double)movement->gravity_orientation,
+                        movement->step_height, movement->jump_impulse,
+                        movement->air_control_scale, movement->eye_height,
+                        movement->head_clearance
+                    };
+                    grid_print(grid, 1, row++,
+                               "   MOVEMENT  Up/Down  Left/Right=edit  Esc=back",
+                               fg, bg);
+                    for (i = 0U; i < EDITOR_MOVEMENT_FIELD_COUNT; i++) {
+                        EditorInspectorFieldPresentation metadata;
+                        (void)editor_domain_movement_field_presentation(
+                            (EditorMovementField)i, &metadata);
+                        if (i == EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION) {
+                            snprintf(line, sizeof(line), " %s %s: %s",
+                                     editor->movement_field == (EditorMovementField)i ? ">" : " ",
+                                     metadata.label,
+                                     gravity_names[movement->gravity_orientation]);
+                        } else {
+                            snprintf(line, sizeof(line), " %s %s: %.4g",
+                                     editor->movement_field == (EditorMovementField)i ? ">" : " ",
+                                     metadata.label, values[i]);
+                        }
+                        grid_print(grid, 1, row++, line,
+                                   editor->movement_field == (EditorMovementField)i ? hi : dim,
+                                   bg);
+                    }
+                }
+            }
             if (editor->decal_menu_open) {
                 if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
                     size_t decals = editor_surface_decal_count(editor);

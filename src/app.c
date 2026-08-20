@@ -792,6 +792,10 @@ int app_main(int argc, char* argv[]) {
                 input.editor_text_backspace_pressed = false;
                 input.editor_previous_pressed = false;
                 input.editor_next_pressed = false;
+                input.editor_decrease_pressed = false;
+                input.editor_increase_pressed = false;
+                input.editor_place_light_pressed = false;
+                input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {
                 input.mouse_dx = 0.0f;
@@ -891,24 +895,28 @@ int app_main(int argc, char* argv[]) {
                     : NULL;
                 if (ed_map && ed_map->cells && ed_map->width > 0 && ed_map->height > 0) {
                     SceneSurfaceView surface_view;
+                    SceneHeightView height_view;
                     const SceneSurfaceView *surfaces =
                         scene_document_get_surface_view(&ued.document, &surface_view)
                             ? &surface_view : NULL;
+                    const SceneHeightView *heights =
+                        scene_document_get_height_view(&ued.document, &height_view)
+                            ? &height_view : NULL;
                     size_t editor_light_count = 0U;
                     const SceneLight *editor_lights = scene_document_get_lights(
                         &ued.document, &editor_light_count);
                     lighting_update(ed_map, &ued.runtime_world);
-                    raycast_render(grid, ed_map, &cam, &assets, &ued.runtime_world,
-                                   surfaces);
+                    raycast_render_height(grid, ed_map, &cam, &assets,
+                                          &ued.runtime_world, surfaces, heights);
                     if (ued.selection_set.count > 0U) {
-                        editor_highlight_render_set(
+                        editor_highlight_render_set_height(
                             grid, ed_map, &cam, editor_lights, editor_light_count,
                             ued.selection_set.members, ued.selection_set.count,
-                            ued.selection_set.primary_index, ued.hover);
+                            ued.selection_set.primary_index, ued.hover, heights);
                     } else {
-                        editor_highlight_render(grid, ed_map, &cam,
-                                                editor_lights, editor_light_count,
-                                                ued.selection, ued.hover);
+                        editor_highlight_render_height(
+                            grid, ed_map, &cam, editor_lights, editor_light_count,
+                            ued.selection, ued.hover, heights);
                     }
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};

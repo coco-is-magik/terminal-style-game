@@ -557,7 +557,7 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
         trim(val);
 
         if (strcmp(key, "name") == 0) {
-            strncpy(layout->name, val, sizeof(layout->name) - 1);
+            (void)snprintf(layout->name, sizeof(layout->name), "%s", val);
         } else if (strcmp(key, "elements") == 0) {
             char names[UI_LAYOUT_MAX_ELEMS][UI_ELE_NAME_MAX];
             int count = split_csv(names, UI_LAYOUT_MAX_ELEMS, val);
@@ -567,7 +567,12 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
                 }
             }
         } else if (strncmp(key, "slot_", 5) == 0 && layout->slot_count < UI_LAYOUT_MAX_SLOTS) {
-            strncpy(layout->slot_names[layout->slot_count], key + 5, UI_ELE_NAME_MAX - 1);
+            size_t slot_name_length = strlen(key + 5);
+            if (slot_name_length >= UI_ELE_NAME_MAX)
+                slot_name_length = UI_ELE_NAME_MAX - 1U;
+            memcpy(layout->slot_names[layout->slot_count], key + 5,
+                   slot_name_length);
+            layout->slot_names[layout->slot_count][slot_name_length] = '\0';
             layout->slot_elements[layout->slot_count] = ui_cache_get(cache, val);
             layout->slot_count++;
         }

@@ -30,6 +30,8 @@ const char *scene_diagnostic_id(SceneDiagnosticCode code) {
         "TSG-SCENE-INPUT-0009", "TSG-SCENE-INPUT-0010",
         "TSG-SCENE-INPUT-0011", "TSG-SCENE-INPUT-0012",
         "TSG-SCENE-INPUT-0013", "TSG-SCENE-INPUT-0014",
+        "TSG-SCENE-INPUT-0015", "TSG-SCENE-INPUT-0016",
+        "TSG-SCENE-INPUT-0017", "TSG-SCENE-INPUT-0018",
         "TSG-SCENE-ENV-0001", "TSG-SCENE-ENV-0002",
         "TSG-SCENE-ENV-0003", "TSG-SCENE-ENV-0004",
         "TSG-SCENE-ENV-0005", "TSG-SCENE-ENV-0006",
@@ -45,7 +47,7 @@ const char *scene_diagnostic_id(SceneDiagnosticCode code) {
 
 SceneDiagnosticCategory scene_diagnostic_category(SceneDiagnosticCode code) {
     if (code >= SCENE_DIAGNOSTIC_INPUT_SYNTAX &&
-        code <= SCENE_DIAGNOSTIC_INPUT_HEIGHT_RELATION) {
+        code <= SCENE_DIAGNOSTIC_INPUT_GRAVITY) {
         return SCENE_DIAGNOSTIC_CATEGORY_INPUT;
     }
     if (code >= SCENE_DIAGNOSTIC_ENV_ALLOCATION &&

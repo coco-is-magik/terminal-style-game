@@ -96,6 +96,7 @@ static void scene_authored_defaults(SceneDocument *document) {
     document->spawn_x = 1.5;
     document->spawn_y = 1.5;
     document->spawn_angle = 0.0;
+    document->movement = scene_movement_parameters_default();
     document->next_instance_id = UINT64_C(1);
 }
 
@@ -345,6 +346,10 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
         scene_format_candidate_destroy(&candidate);
         return SCENE_LOAD_OUT_OF_MEMORY;
     }
+    if (scene_format_migrate_to_v5(&candidate, NULL) != SCENE_FORMAT_OK) {
+        scene_format_candidate_destroy(&candidate);
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
     scene_document_commit_candidate(document, &candidate, NULL, true, false,
                                     NULL, 0U);
     scene_format_candidate_destroy(&candidate);
@@ -441,6 +446,7 @@ static SceneLoadResult scene_document_commit_candidate(
     document->spawn_x = candidate->spawn_x;
     document->spawn_y = candidate->spawn_y;
     document->spawn_angle = candidate->spawn_angle;
+    document->movement = candidate->movement;
     document->lights = candidate->lights;
     document->light_count = candidate->light_count;
     document->light_capacity = candidate->light_count;
@@ -697,7 +703,15 @@ SceneLoadResult scene_document_load_native_with_assets(
         }
         migration_pending = true;
     }
-    if (candidate.source_version < SCENE_VERSION_V4) migration_pending = true;
+    if (candidate.source_version < SCENE_VERSION_V5) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_to_v5(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return parse_result == SCENE_FORMAT_OUT_OF_MEMORY
+                ? SCENE_LOAD_OUT_OF_MEMORY : SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -784,6 +798,10 @@ SceneLoadResult scene_document_import_legacy(SceneDocument *document,
     if (scene_format_migrate_v1_to_v2(
             &candidate, (unsigned)config_get()->default_material_id,
             diagnostic) != SCENE_FORMAT_OK) {
+        scene_format_candidate_destroy(&candidate);
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    if (scene_format_migrate_to_v5(&candidate, diagnostic) != SCENE_FORMAT_OK) {
         scene_format_candidate_destroy(&candidate);
         return SCENE_LOAD_VALIDATION_FAILED;
     }
@@ -973,7 +991,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
 
     scene_format_candidate_init(&candidate);
     candidate.map = document->map;
-    candidate.source_version = SCENE_VERSION_V4;
+    candidate.source_version = SCENE_VERSION_V5;
     candidate.authored_cells = document->authored_cells;
     candidate.authored_cell_count = document->authored_cell_count;
     memcpy(candidate.name, name, strlen(name) + 1U);
@@ -981,6 +999,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.spawn_x = document->spawn_x;
     candidate.spawn_y = document->spawn_y;
     candidate.spawn_angle = document->spawn_angle;
+    candidate.movement = document->movement;
     candidate.lights = document->lights;
     candidate.light_count = document->light_count;
     candidate.decals = document->decals;
@@ -1174,6 +1193,24 @@ bool scene_document_get_surface_view(
     out_view->cell_count = document->authored_cell_count;
     out_view->width = document->map.width;
     out_view->height = document->map.height;
+    return true;
+}
+
+bool scene_document_get_height_view(
+    const SceneDocument *document,
+    SceneHeightView *out_view
+) {
+    size_t expected;
+    if (out_view) memset(out_view, 0, sizeof(*out_view));
+    if (!document || !out_view || !document->authored_cells ||
+        document->map.width <= 0 || document->map.height <= 0) return false;
+    expected = (size_t)document->map.width * (size_t)document->map.height;
+    if (document->authored_cell_count != expected) return false;
+    out_view->cells = document->authored_cells;
+    out_view->cell_count = document->authored_cell_count;
+    out_view->width = document->map.width;
+    out_view->height = document->map.height;
+    out_view->movement = document->movement;
     return true;
 }
 
@@ -1510,6 +1547,107 @@ bool scene_document_internal_set_cell_occupancy(
     cell->occupancy = occupancy;
     map_set(&document->map, map_x, map_y,
             occupancy == SCENE_CELL_OCCUPANCY_WALL ? cell->wall_material : 0);
+    return true;
+}
+
+bool scene_document_get_cell_vertical(
+    const SceneDocument *document, int map_x, int map_y,
+    SceneCellVertical *out_value
+) {
+    size_t index;
+    const SceneAuthoredCell *cell;
+    if (!document || !out_value || !document->authored_cells ||
+        !map_in_bounds(&document->map, map_x, map_y)) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    cell = &document->authored_cells[index];
+    *out_value = (SceneCellVertical){
+        cell->floor_height_step, cell->ceiling_height_step,
+        cell->gravity_scale_step, cell->gravity_orientation,
+        cell->floor_present, cell->ceiling_present, 0U
+    };
+    return true;
+}
+
+bool scene_document_internal_cell_vertical_is_valid(
+    const SceneDocument *document, int map_x, int map_y,
+    const SceneCellVertical *value
+) {
+    size_t index;
+    const SceneAuthoredCell *cell;
+    double effective_gravity;
+    if (!document || !value || !document->authored_cells ||
+        !map_in_bounds(&document->map, map_x, map_y) ||
+        value->floor_height_step < SCENE_HEIGHT_MIN_STEP ||
+        value->floor_height_step > SCENE_HEIGHT_MAX_STEP ||
+        value->ceiling_height_step < SCENE_HEIGHT_MIN_STEP ||
+        value->ceiling_height_step > SCENE_HEIGHT_MAX_STEP ||
+        (value->floor_present && value->ceiling_present &&
+         (value->ceiling_height_step <= value->floor_height_step ||
+          value->ceiling_height_step - value->floor_height_step <
+              SCENE_MIN_CLEARANCE_STEP)) ||
+        value->gravity_orientation > SCENE_GRAVITY_WEST) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    if (index >= document->authored_cell_count) return false;
+    cell = &document->authored_cells[index];
+    (void)cell;
+    effective_gravity = document->movement.gravity_magnitude *
+        (value->gravity_scale_step == 0U ? 1.0 :
+         (double)value->gravity_scale_step /
+             (double)SCENE_HEIGHT_STEPS_PER_UNIT);
+    return isfinite(effective_gravity) && effective_gravity <= 256.0;
+}
+
+bool scene_document_internal_set_cell_vertical(
+    SceneDocument *document, int map_x, int map_y,
+    const SceneCellVertical *value
+) {
+    size_t index;
+    SceneAuthoredCell *cell;
+    if (!scene_document_internal_cell_vertical_is_valid(
+            document, map_x, map_y, value)) return false;
+    index = (size_t)map_y * (size_t)document->map.width + (size_t)map_x;
+    cell = &document->authored_cells[index];
+    cell->floor_height_step = value->floor_height_step;
+    cell->ceiling_height_step = value->ceiling_height_step;
+    cell->gravity_scale_step = value->gravity_scale_step;
+    cell->gravity_orientation = value->gravity_orientation;
+    cell->floor_present = value->floor_present;
+    cell->ceiling_present = value->ceiling_present;
+    return true;
+}
+
+bool scene_document_internal_movement_is_valid(
+    const SceneDocument *document, const SceneMovementParameters *value
+) {
+    size_t i;
+    if (!document || !value || !isfinite(value->gravity_magnitude) ||
+        !isfinite(value->step_height) || !isfinite(value->jump_impulse) ||
+        !isfinite(value->air_control_scale) || !isfinite(value->eye_height) ||
+        !isfinite(value->head_clearance) ||
+        value->gravity_magnitude <= 0.0 || value->gravity_magnitude > 256.0 ||
+        value->gravity_orientation < SCENE_GRAVITY_DOWN ||
+        value->gravity_orientation > SCENE_GRAVITY_WEST ||
+        value->step_height < 0.0625 || value->step_height > 1.0 ||
+        value->jump_impulse <= 0.0 || value->jump_impulse > 16.0 ||
+        value->air_control_scale < 0.0 || value->air_control_scale > 1.0 ||
+        value->eye_height <= 0.0 || value->eye_height > 8.0 ||
+        value->head_clearance < 0.25 || value->head_clearance > 8.0) return false;
+    for (i = 0U; i < document->authored_cell_count; i++) {
+        uint16_t scale = document->authored_cells[i].gravity_scale_step;
+        double effective = value->gravity_magnitude *
+            (scale == 0U ? 1.0 :
+             (double)scale / (double)SCENE_HEIGHT_STEPS_PER_UNIT);
+        if (!isfinite(effective) || effective > 256.0) return false;
+    }
+    return true;
+}
+
+bool scene_document_internal_set_movement(
+    SceneDocument *document, const SceneMovementParameters *value
+) {
+    if (!scene_document_internal_movement_is_valid(document, value)) return false;
+    document->movement = *value;
     return true;
 }
 

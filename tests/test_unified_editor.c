@@ -112,6 +112,8 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "open_b.tscene");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "r8_i5.tscene");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -1783,6 +1785,164 @@ static void test_init_destroy(void **state) {
     assert_ptr_equal(ed.assets, &g_assets);
     unified_editor_destroy(&ed);
     assert_false(ed.active);
+}
+
+static void test_r8_i3_walk_step_block_and_document_reset(void **state) {
+    UnifiedEditorState ed;
+    Camera camera;
+    InputState input;
+    size_t first;
+    size_t second;
+    (void)state;
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    camera_init(&camera, 2.98, 2.5, 0.0, PI / 2.0);
+    first = 2U * (size_t)ed.document.map.width + 3U;
+    second = 2U * (size_t)ed.document.map.width + 4U;
+    ed.document.authored_cells[first].floor_height_step = UINT16_C(0x0040);
+    ed.document.authored_cells[first].ceiling_height_step = UINT16_C(0x0140);
+    ed.document.authored_cells[second].floor_height_step = UINT16_C(0x00C0);
+    ed.document.authored_cells[second].ceiling_height_step = UINT16_C(0x01C0);
+    memset(&input, 0, sizeof(input));
+    input.forward = true;
+    (void)unified_editor_update(&ed, &input, &camera, 0.016);
+    assert_true(camera.transform.pos.x > 3.0);
+    assert_float_equal(camera.z, 0.75, 0.000001);
+    assert_true(ed.vertical_physics.grounded);
+
+    camera.transform.pos.x = 3.98;
+    (void)unified_editor_update(&ed, &input, &camera, 0.016);
+    assert_float_equal(camera.transform.pos.x, 3.98, 0.000001);
+    assert_float_equal(camera.z, 0.75, 0.000001);
+    assert_int_equal(ed.status, EDITOR_STATUS_PLAYER_BLOCKED);
+
+    ed.vertical_physics.velocity_z = -4.0;
+    ed.vertical_physics.initialized = true;
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    assert_false(ed.vertical_physics.initialized);
+    assert_float_equal(ed.vertical_physics.velocity_z, 0.0, 0.000001);
+    unified_editor_destroy(&ed);
+}
+
+static void test_r8_i4_jump_and_air_control_adapter(void **state) {
+    UnifiedEditorState ed;
+    Camera camera;
+    InputState input;
+    double before_x;
+    double first_velocity;
+    (void)state;
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    ed.document.movement.air_control_scale = 0.5;
+    memset(&input, 0, sizeof(input));
+    input.forward = true;
+    input.editor_jump_pressed = true;
+    before_x = camera.transform.pos.x;
+    (void)unified_editor_update(&ed, &input, &camera, 0.016);
+    assert_false(ed.vertical_physics.grounded);
+    assert_true(camera.z > 0.5);
+    assert_float_equal(camera.transform.pos.x - before_x, 0.024, 0.000001);
+    first_velocity = ed.vertical_physics.velocity_z;
+    (void)unified_editor_update(&ed, &input, &camera, 0.016);
+    assert_true(ed.vertical_physics.velocity_z < first_velocity);
+
+    unified_editor_destroy(&ed);
+}
+
+static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **state) {
+    UnifiedEditorState editor;
+    UnifiedEditorState reopened;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    char path[512];
+    size_t index;
+    (void)state;
+    assert_true(unified_editor_init(&editor, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&editor), SCENE_LOAD_OK);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_surface_direct(&editor, SELECTION_FLOOR, 3, 2);
+    index = 2U * (size_t)editor.document.map.width + 3U;
+    editor.document.authored_cells[index].wall_material = 0U;
+
+    editor.surface_field = EDITOR_SURFACE_FIELD_HEIGHT;
+    memset(&input, 0, sizeof(input));
+    input.editor_increase_pressed = true;
+    assert_true(unified_editor_update(&editor, &input, &camera, 0.016)
+                    .keyboard_consumed);
+    assert_int_equal(editor.document.authored_cells[index].floor_height_step,
+                     UINT16_C(0x0040));
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_int_equal(editor.document.authored_cells[index].floor_height_step,
+                     SCENE_DEFAULT_FLOOR_HEIGHT_STEP);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+
+    add_horizontal_selection(&editor, SELECTION_FLOOR, 4, 2);
+    assert_int_equal(unified_editor_step_selected_height(&editor, 1), CMD_RESULT_OK);
+    assert_int_equal(editor.document.authored_cells[index].floor_height_step,
+                     UINT16_C(0x0080));
+    assert_int_equal(editor.document.authored_cells[index + 1U].floor_height_step,
+                     UINT16_C(0x0040));
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_int_equal(editor.document.authored_cells[index].floor_height_step,
+                     UINT16_C(0x0040));
+    assert_int_equal(editor.document.authored_cells[index + 1U].floor_height_step,
+                     SCENE_DEFAULT_FLOOR_HEIGHT_STEP);
+    select_surface_direct(&editor, SELECTION_FLOOR, 3, 2);
+
+    editor.surface_field = EDITOR_SURFACE_FIELD_REMOVE;
+    memset(&input, 0, sizeof(input));
+    input.editor_confirm_pressed = true;
+    (void)unified_editor_update(&editor, &input, &camera, 0.016);
+    assert_false(editor.document.authored_cells[index].floor_present);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(editor.document.authored_cells[index].floor_present);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+    assert_false(editor.document.authored_cells[index].floor_present);
+
+    editor.surface_field = EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION;
+    memset(&input, 0, sizeof(input));
+    input.editor_increase_pressed = true;
+    (void)unified_editor_update(&editor, &input, &camera, 0.016);
+    assert_int_equal(editor.document.authored_cells[index].gravity_orientation,
+                     SCENE_GRAVITY_DOWN);
+    editor.surface_field = EDITOR_SURFACE_FIELD_GRAVITY_SCALE;
+    (void)unified_editor_update(&editor, &input, &camera, 0.016);
+    assert_int_equal(editor.document.authored_cells[index].gravity_scale_step,
+                     UINT16_C(0x0040));
+
+    editor.surface_field = EDITOR_SURFACE_FIELD_MOVEMENT;
+    memset(&input, 0, sizeof(input));
+    input.editor_confirm_pressed = true;
+    (void)unified_editor_update(&editor, &input, &camera, 0.016);
+    assert_true(editor.movement_menu_open);
+    memset(&input, 0, sizeof(input));
+    input.editor_decrease_pressed = true;
+    (void)unified_editor_update(&editor, &input, &camera, 0.016);
+    assert_true(editor.document.movement.gravity_magnitude == 9.3);
+
+    grid = grid_create(260, 80);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Height      0.25"));
+    assert_true(grid_contains_text(grid, "Surface     removed"));
+    assert_true(grid_contains_text(grid, "MOVEMENT"));
+    assert_true(grid_contains_text(grid, "Traversal:"));
+    grid_destroy(grid);
+
+    path_in_tmpdir(path, sizeof(path), "r8_i5.tscene");
+    assert_int_equal(unified_editor_save_as(&editor, path, "r8_i5"), SCENE_SAVE_OK);
+    assert_true(unified_editor_init(&reopened, &g_assets));
+    assert_int_equal(unified_editor_open_native(&reopened, path), SCENE_LOAD_OK);
+    assert_int_equal(reopened.document.authored_cells[index].floor_height_step,
+                     UINT16_C(0x0040));
+    assert_false(reopened.document.authored_cells[index].floor_present);
+    assert_int_equal(reopened.document.authored_cells[index].gravity_scale_step,
+                     UINT16_C(0x0040));
+    assert_true(reopened.document.movement.gravity_magnitude == 9.3);
+    unified_editor_destroy(&reopened);
+    unified_editor_destroy(&editor);
 }
 
 static void test_init_null_rejects(void **state) {
@@ -3690,6 +3850,9 @@ int main(void) {
         cmocka_unit_test(test_overlay_marks_unloaded_selected_material_missing),
         /* Phase 4 */
         cmocka_unit_test(test_init_destroy),
+        cmocka_unit_test(test_r8_i3_walk_step_block_and_document_reset),
+        cmocka_unit_test(test_r8_i4_jump_and_air_control_adapter),
+        cmocka_unit_test(test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip),
         cmocka_unit_test(test_init_null_rejects),
         cmocka_unit_test(test_load_success_resets_history_and_selection),
         cmocka_unit_test(test_load_failure_preserves_state),

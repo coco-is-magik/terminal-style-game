@@ -65,12 +65,20 @@ static void test_update_recovers_non_finite_offset(void **state) {
     map_destroy(map);
 }
 
+static void test_init_sets_flat_world_eye_height(void **state) {
+    Camera camera;
+    (void)state;
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    assert_float_equal(camera.z, 0.5, 0.0001);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_clamp_policy),
         cmocka_unit_test(test_invalid_policy_inputs_level_view),
         cmocka_unit_test(test_update_preserves_direction_sensitivity_and_clamps),
         cmocka_unit_test(test_update_recovers_non_finite_offset),
+        cmocka_unit_test(test_init_sets_flat_world_eye_height),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

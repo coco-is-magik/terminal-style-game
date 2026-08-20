@@ -355,6 +355,66 @@ static void test_decal_inspector_fields_and_typed_requests(void **state) {
     scene_document_destroy(&document);
 }
 
+static void test_vertical_and_movement_domain_requests(void **state) {
+    SceneDocument document;
+    SelectionTarget floor = surface_target(SELECTION_FLOOR, 1, 1);
+    SelectionTarget ceiling = surface_target(SELECTION_CEILING, 1, 1);
+    EditorMutationRequest request;
+    EditorInspectorFieldPresentation field;
+    (void)state;
+    init_document(&document);
+    document.authored_cells = calloc(20U, sizeof(*document.authored_cells));
+    assert_non_null(document.authored_cells);
+    document.authored_cell_count = 20U;
+    for (size_t i = 0U; i < 20U; i++) {
+        document.authored_cells[i].floor_height_step =
+            SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        document.authored_cells[i].ceiling_height_step =
+            SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        document.authored_cells[i].floor_present = true;
+        document.authored_cells[i].ceiling_present = true;
+    }
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_FLOOR_SURFACE, EDITOR_SURFACE_FIELD_HEIGHT,
+        &document.map, &field));
+    assert_string_equal(field.label, "Height");
+    assert_true(field.step == 0.25);
+    assert_true(editor_domain_make_height_step_request(
+        &document, floor, 1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_CELL_VERTICAL);
+    assert_int_equal(request.data.cell_vertical.value.floor_height_step,
+                     UINT16_C(0x0040));
+    assert_true(editor_domain_make_height_step_request(
+        &document, ceiling, 1, &request));
+    assert_int_equal(request.data.cell_vertical.value.ceiling_height_step,
+                     UINT16_C(0x0140));
+    assert_true(editor_domain_make_surface_presence_request(
+        &document, floor, &request));
+    assert_false(request.data.cell_vertical.value.floor_present);
+    assert_true(editor_domain_make_gravity_direction_step_request(
+        &document, floor, -1, &request));
+    assert_int_equal(request.data.cell_vertical.value.gravity_orientation,
+                     SCENE_GRAVITY_WEST);
+    assert_true(editor_domain_make_gravity_scale_step_request(
+        &document, floor, 1, &request));
+    assert_int_equal(request.data.cell_vertical.value.gravity_scale_step,
+                     UINT16_C(0x0040));
+    assert_true(editor_domain_movement_field_presentation(
+        EDITOR_MOVEMENT_FIELD_AIR_CONTROL, &field));
+    assert_string_equal(field.label, "Air control");
+    assert_true(editor_domain_make_movement_step_request(
+        &document, EDITOR_MOVEMENT_FIELD_AIR_CONTROL, -1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS);
+    assert_true(request.data.movement.value.air_control_scale == 0.95);
+    assert_true(editor_domain_make_movement_step_request(
+        &document, EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION, -1, &request));
+    assert_int_equal(request.data.movement.value.gravity_orientation,
+                     SCENE_GRAVITY_WEST);
+    assert_false(editor_domain_make_height_step_request(
+        &document, (SelectionTarget){0}, 1, &request));
+    scene_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dispatch_and_wall_request),
@@ -366,6 +426,7 @@ int main(void) {
         cmocka_unit_test(test_surface_dispatch_metadata_and_requests),
         cmocka_unit_test(test_ambient_metadata_format_step_and_value),
         cmocka_unit_test(test_decal_inspector_fields_and_typed_requests),
+        cmocka_unit_test(test_vertical_and_movement_domain_requests),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

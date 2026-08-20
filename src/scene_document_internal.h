@@ -32,6 +32,21 @@ bool scene_document_internal_set_cell_occupancy(
     SceneCellOccupancy occupancy
 );
 
+bool scene_document_internal_cell_vertical_is_valid(
+    const SceneDocument *document, int map_x, int map_y,
+    const SceneCellVertical *value
+);
+bool scene_document_internal_set_cell_vertical(
+    SceneDocument *document, int map_x, int map_y,
+    const SceneCellVertical *value
+);
+bool scene_document_internal_movement_is_valid(
+    const SceneDocument *document, const SceneMovementParameters *value
+);
+bool scene_document_internal_set_movement(
+    SceneDocument *document, const SceneMovementParameters *value
+);
+
 bool scene_document_internal_remove_decal(
     SceneDocument *document,
     size_t index,

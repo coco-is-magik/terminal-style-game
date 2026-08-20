@@ -49,6 +49,7 @@ void camera_init(Camera *cam, double x, double y, double angle, double fov) {
     cam->transform.angle = angle;
     cam->fov = fov;
     cam->pitch = 0.0;    /* Start level — no upward/downward tilt */
+    cam->z = 0.5;        /* Flat-world eye height; I3 updates this dynamically. */
 }
 
 /**
