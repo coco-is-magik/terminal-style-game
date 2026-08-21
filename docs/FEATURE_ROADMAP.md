@@ -696,7 +696,9 @@ performance bounds, and Q1–Q3.
 
 **Review checkpoint:** Review G before implementation and again before R8 is
 Verified. Both checkpoints are complete; the final real-video acceptance was
-recorded 2026-08-21 (see `reviews/2026-08-20-roadmap-r8-review-g.md`).
+recorded 2026-08-21 (see `reviews/2026-08-20-roadmap-r8-review-g.md`). The
+continuing full-Q4 phase closeout is recorded in
+`reviews/2026-08-21-roadmap-r8-phase-closeout.md`.
 
 ## R9 — Layered optical rendering
 
@@ -858,6 +860,9 @@ integrated.
 | G | Before and after R8 | Renderer/physics/world architecture and performance |
 | H | Before and after R9 | Layering, recursion, optical correctness/performance |
 | Continuing | Every later major phase | Full Q4 review and roadmap reassessment |
+
+Continuing reviews completed: after R8 on 2026-08-21 (see
+`reviews/2026-08-21-roadmap-r8-phase-closeout.md`).
 
 A review may add a blocker, split a phase, combine phases, or reorder future
 work. Such changes are expected maintenance of the roadmap, not a failure to

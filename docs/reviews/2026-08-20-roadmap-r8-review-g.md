@@ -32,7 +32,10 @@ the real-video acceptance pass was recorded on 2026-08-21.
   gate passed.
 - Exact flat-default framebuffer checksum parity retained.
 - `make leak`: skipped because valgrind is unavailable in the verification
-  environment; ASan remains the completed memory-safety evidence.
+  environment. Formalized in the 2026-08-21 phase closeout: the full ASan suite
+  (which includes LeakSanitizer under the `asan` target) is the recorded accepted
+  memory-safety evidence, and `make leak` remains available for re-run in any
+  valgrind-equipped environment.
 
 ## Remaining phase-level acceptance
 

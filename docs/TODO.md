@@ -44,12 +44,14 @@ These labels describe readiness, not priority.
 
 ## Build and performance maintenance
 
-- [ ] **Research track — explicit optimized build profiles:** evaluate separate
-  strict `-O2` and `-O3` Make profiles only after resolving all optimization-only
-  diagnostics under `-Werror`. Verify framebuffer checksums, aggregate tests,
-  sanitizers, tracker modes, and native renderer/layered benchmarks independently.
-  Do not replace the current strict unoptimized default or use optimization to
-  conceal algorithmic regressions.
+- [ ] **Research track — explicit `-O3` build profile:** the strict default is
+  now `-O2` (set during the 2026-08-21 heightfield performance work; the earlier
+  "strict unoptimized default" guidance is superseded). All optimization-only
+  diagnostics exposed by `-O2 -Werror` were resolved without suppression.
+  Remaining research: evaluate a separate strict `-O3` Make profile, verifying
+  framebuffer checksums, aggregate tests, sanitizers, tracker modes, and renderer
+  benchmarks independently. Do not use optimization to conceal algorithmic
+  regressions.
 
 ## Cross-cutting decisions for later discussion
 
