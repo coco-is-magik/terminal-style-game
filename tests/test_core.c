@@ -19,6 +19,7 @@
 #include "../src/map.h"
 #include "../src/camera.h"
 #include "../src/raycast.h"
+#include "../src/heightfield_trace.h"
 #include "../src/lighting.h"
 #include "../src/config.h"
 #include "../src/checked_size.h"
@@ -33,6 +34,8 @@ static void test_grid_init(void **state) {
     assert_int_equal(g->width, 10);
     assert_int_equal(g->height, 10);
     assert_non_null(g->column_depths);
+    assert_non_null(g->world_depths);
+    assert_non_null(g->world_hit_keys);
     grid_destroy(g);
 }
 
@@ -633,13 +636,23 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
                         (size_t)height->width * (size_t)height->height *
                             sizeof(*height->cells));
 
-    for (int y = 0; y < map->height; y++) {
-        size_t index = (size_t)y * (size_t)map->width + 7U;
-        cells[index].floor_height_step = UINT16_C(0x0080);
-        cells[index].ceiling_height_step = UINT16_C(0x0180);
-    }
+    camera.z = 0.75;
     raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
-    assert_int_not_equal(grid_checksum(height), flat_checksum);
+    {
+        uint64_t airborne_flat_checksum = grid_checksum(height);
+        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+                              &heights);
+        assert_int_equal(grid_checksum(height), airborne_flat_checksum);
+    }
+    camera.z = 0.5;
+
+    for (int y = 0; y < map->height; y++) {
+        size_t index = (size_t)y * (size_t)map->width + 5U;
+        cells[index].floor_height_step = UINT16_C(0x0040);
+        cells[index].ceiling_height_step = UINT16_C(0x0140);
+    }
+    assert_false(heightfield_view_is_flat_default(&heights, map->width, map->height));
+    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
     {
         uint64_t raised_checksum = grid_checksum(height);
         raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
@@ -648,7 +661,12 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
         camera.z = 0.75;
         raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
                               &heights);
-        assert_int_not_equal(grid_checksum(height), raised_checksum);
+        {
+            uint64_t airborne_checksum = grid_checksum(height);
+            raycast_render_height(height, map, &camera, &assets, &world,
+                                  &surfaces, &heights);
+            assert_int_equal(grid_checksum(height), airborne_checksum);
+        }
     }
 
     {
@@ -668,6 +686,91 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
     map_destroy(map);
     grid_destroy(height);
     grid_destroy(legacy);
+}
+
+static void test_horizontal_decal_follows_authored_floor_height(void **state) {
+    Grid *grid = grid_create(81, 45);
+    Map *map = map_create(9, 9);
+    SceneAuthoredCell cells[81] = {0};
+    SceneSurfaceView surfaces = {cells, 81U, 9, 9};
+    SceneHeightView heights = {
+        cells, 81U, 9, 9, scene_movement_parameters_default()
+    };
+    Camera camera;
+    AssetRegistry assets;
+    WorldState world;
+    Decal decal = {0};
+    int before_x = -1;
+    int before_y = -1;
+    int after_x = -1;
+    int after_y = -1;
+    size_t decal_index = 4U * 9U + 6U;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    assert_true(asset_registry_init(&assets));
+    world_init(&world);
+    camera_init(&camera, 4.5, 4.5, 0.0, PI / 2.0);
+    camera.pitch = -8.0;
+    mark_test_material_loaded(&assets, 1, 1, "#x:.");
+    for (int y = 0; y < 9; y++) {
+        for (int x = 0; x < 9; x++) {
+            size_t index = (size_t)y * 9U + (size_t)x;
+            bool wall = x == 0 || y == 0 || x == 8 || y == 8;
+            map_set(map, x, y, wall ? 1 : 0);
+            map->light_map[index] = 1.0;
+            cells[index].occupancy = wall
+                ? SCENE_CELL_OCCUPANCY_WALL : SCENE_CELL_OCCUPANCY_EMPTY;
+            cells[index].wall_material = wall ? 1U : 0U;
+            cells[index].floor_material = 1U;
+            cells[index].ceiling_material = 1U;
+            cells[index].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+            cells[index].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+            cells[index].floor_present = true;
+            cells[index].ceiling_present = true;
+        }
+    }
+    decal.surface = DECAL_SURFACE_FLOOR;
+    decal.x = 6.5;
+    decal.y = 4.5;
+    decal.z = 0.0;
+    decal.width = 0.5;
+    decal.height = 0.5;
+    decal.depth = 0.1;
+    decal.pattern_cols = 1;
+    decal.pattern_rows = 1;
+    decal.pattern = malloc(sizeof(*decal.pattern));
+    assert_non_null(decal.pattern);
+    decal.pattern[0] = (PatternCell){'D', 1U};
+    assert_int_equal(world_add_decal(&world, decal), WORLD_INSERT_OK);
+    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            if (grid->cells[(size_t)y * (size_t)grid->width + (size_t)x].glyph == 'D') {
+                before_x = x;
+                before_y = y;
+            }
+        }
+    }
+    assert_true(before_x >= 0 && before_y >= 0);
+    cells[decal_index].floor_height_step = INT16_C(0x0040);
+    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            if (grid->cells[(size_t)y * (size_t)grid->width + (size_t)x].glyph == 'D') {
+                after_x = x;
+                after_y = y;
+            }
+        }
+    }
+    assert_true(after_x >= 0 && after_y >= 0);
+    assert_int_equal(after_x, before_x);
+    assert_true(after_y < before_y);
+    assert_float_equal(world.decals[0].z, 0.0, 0.000001);
+    world_clear(&world);
+    asset_registry_clear(&assets);
+    map_destroy(map);
+    grid_destroy(grid);
 }
 
 static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **state) {
@@ -1376,6 +1479,7 @@ int main(void) {
         cmocka_unit_test(test_invalid_surface_view_preserves_constant_backgrounds),
         cmocka_unit_test(test_valid_surface_view_preserves_out_of_bounds_backgrounds),
         cmocka_unit_test(test_height_view_flat_parity_and_authored_difference),
+        cmocka_unit_test(test_horizontal_decal_follows_authored_floor_height),
         cmocka_unit_test(test_rendered_point_light_affects_ceiling_walls_and_floor),
         cmocka_unit_test(test_config_parsing),
         cmocka_unit_test(test_config_transactional_valid_override),

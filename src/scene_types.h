@@ -91,7 +91,7 @@ _Static_assert(sizeof(SceneAuthoredCell) == 16U,
 
 static inline SceneMovementParameters scene_movement_parameters_default(void) {
     SceneMovementParameters parameters = {
-        9.8, SCENE_GRAVITY_DOWN, 0.25, 3.0, 1.0, 0.5, 0.75
+        9.8, SCENE_GRAVITY_DOWN, 0.25, 3.2, 1.0, 0.5, 0.75
     };
     return parameters;
 }

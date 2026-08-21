@@ -1928,6 +1928,8 @@ static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **s
     assert_true(grid_contains_text(grid, "Height      0.25"));
     assert_true(grid_contains_text(grid, "Surface     removed"));
     assert_true(grid_contains_text(grid, "MOVEMENT"));
+    assert_true(grid_contains_text(grid, "Cell grav dir"));
+    assert_true(grid_contains_text(grid, "Map movement"));
     assert_true(grid_contains_text(grid, "Traversal:"));
     grid_destroy(grid);
 

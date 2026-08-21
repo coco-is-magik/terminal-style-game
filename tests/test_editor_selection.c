@@ -14,6 +14,7 @@
 #include <math.h>
 
 #include "../src/editor_selection.h"
+#include "../src/heightfield_trace.h"
 #include "../src/camera.h"
 #include "../src/map.h"
 #include "../src/config.h"
@@ -429,6 +430,45 @@ static void test_removed_surfaces_open_to_darkness_and_are_not_pickable(void **s
     map_destroy(map);
 }
 
+static void test_wall_face_closes_lower_floor_and_raised_ceiling_gaps(void **state) {
+    Map *map = map_create(7, 5);
+    SceneAuthoredCell cells[35] = {0};
+    SceneHeightView heights = {
+        cells, 35U, 7, 5,
+        {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.2, 1.0, 0.5, 0.75}
+    };
+    Camera camera;
+    HeightfieldHit lower;
+    HeightfieldHit upper;
+    (void)state;
+    assert_non_null(map);
+    for (size_t i = 0U; i < 35U; i++) {
+        cells[i].floor_present = true;
+        cells[i].ceiling_present = true;
+        cells[i].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;
+        cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
+        cells[i].floor_material = 1U;
+        cells[i].ceiling_material = 1U;
+    }
+    cells[2U * 7U + 3U].floor_height_step = INT16_C(-0x0080);
+    cells[2U * 7U + 3U].ceiling_height_step = INT16_C(0x0180);
+    cells[2U * 7U + 4U].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+    cells[2U * 7U + 4U].wall_material = 2U;
+    map_set(map, 4, 2, 2);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    lower = heightfield_trace_screen_sample(
+        &camera, map, &heights, 1, 40, 0, 39, 20.0);
+    upper = heightfield_trace_screen_sample(
+        &camera, map, &heights, 1, 40, 0, 0, 20.0);
+    assert_true(lower.hit);
+    assert_int_equal(lower.kind, HEIGHTFIELD_HIT_WALL);
+    assert_int_equal(lower.material, 2U);
+    assert_true(upper.hit);
+    assert_int_equal(upper.kind, HEIGHTFIELD_HIT_WALL);
+    assert_int_equal(upper.material, 2U);
+    map_destroy(map);
+}
+
 static void test_horizontal_pick_horizon_bounds_range_and_invalid(void **state) {
     Map *map = map_create(5, 5);
     Camera camera;
@@ -575,6 +615,7 @@ int main(void) {
         cmocka_unit_test(test_horizontal_pick_floor_ceiling_and_cardinal_directions),
         cmocka_unit_test(test_height_aware_horizontal_projection_uses_authored_plane),
         cmocka_unit_test(test_removed_surfaces_open_to_darkness_and_are_not_pickable),
+        cmocka_unit_test(test_wall_face_closes_lower_floor_and_raised_ceiling_gaps),
         cmocka_unit_test(test_horizontal_pick_horizon_bounds_range_and_invalid),
         cmocka_unit_test(test_horizontal_pick_occlusion_and_precedence),
         cmocka_unit_test(test_horizontal_selection_validation),

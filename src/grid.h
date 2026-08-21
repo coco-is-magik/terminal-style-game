@@ -36,6 +36,7 @@ typedef struct {
  * height — Number of rows (vertical cells)
  * cells  — Linear array of Cells in row-major order (index = y * width + x)
  * column_depths — Reusable width-sized world-render depth workspace
+ * world_depths/world_hit_keys — Reusable per-cell bounded-render occlusion data
  */
 typedef struct {
     int width;               /* Grid width in cells */
@@ -43,6 +44,8 @@ typedef struct {
     Cell *cells;             /* Cell data (heap-allocated, width × height) */
     Cell *prev_cells;        /* Previous frame cells (for dirty tracking) */
     double *column_depths;   /* Per-column world depth; owned by Grid */
+    double *world_depths;    /* Per-cell nearest bounded-world depth; owned by Grid */
+    uint64_t *world_hit_keys;/* Per-cell packed hit identity; owned by Grid */
 } Grid;
 
 /* ---- Grid API ---- */

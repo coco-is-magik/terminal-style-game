@@ -204,6 +204,18 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
     assert_string_equal(field.label, "Remove");
     assert_int_equal(field.kind, EDITOR_INSPECTOR_FIELD_CHOICE);
     assert_true(field.minimum == 0.0 && field.maximum == 0.0 && field.step == 0.0);
+
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_FLOOR_SURFACE, EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION,
+        &document.map, &field));
+    assert_string_equal(field.label, "Cell gravity dir");
+    assert_true(editor_domain_inspector_field_presentation(
+        EDITOR_INSPECTOR_FLOOR_SURFACE, EDITOR_SURFACE_FIELD_MOVEMENT,
+        &document.map, &field));
+    assert_string_equal(field.label, "Map movement");
+    assert_true(editor_domain_movement_field_presentation(
+        EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE, &field));
+    assert_string_equal(field.label, "Map gravity");
     assert_string_equal(inspector.controls,
                         "Up/Down=choose  Enter=open/apply  Esc=back");
     assert_non_null(inspector.note);

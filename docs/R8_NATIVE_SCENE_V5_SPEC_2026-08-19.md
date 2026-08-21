@@ -136,7 +136,7 @@ metadata and before the first grid section. Keys are lowercase, one per line,
 gravity_magnitude = 9.8
 gravity_orientation = down
 step_height = 0.25
-jump_impulse = 3.0
+jump_impulse = 3.2
 air_control_scale = 1.0
 eye_height = 0.5
 head_clearance = 0.75
@@ -149,7 +149,7 @@ head_clearance = 0.75
 | `gravity_magnitude` | double | 9.8 | `(0, 256]`, finite | Map-wide gravitational acceleration magnitude (world-units/s²) |
 | `gravity_orientation` | enum | down | down, up, north, south, east, west | Map-wide gravity direction |
 | `step_height` | double | 0.25 | `[0.0625, 1]` | Max floor delta auto-stepped without a jump |
-| `jump_impulse` | double | 3.0 | `(0, 16]` | Launch speed applied opposite the effective gravity vector |
+| `jump_impulse` | double | 3.2 | `(0, 16]` | Launch speed applied opposite the effective gravity vector; default apex is about 0.52 world units at normal gravity |
 | `air_control_scale` | double | 1.0 | `[0, 1]` | Horizontal control factor while airborne |
 | `eye_height` | double | 0.5 | `(0, 8]`, finite | Eye height above `floor_h` used by the horizon view |
 | `head_clearance` | double | 0.75 | `[SCENE_MIN_CLEARANCE, 8]` | Runtime minimum standing room; must be ≥ the fixed structural minimum |

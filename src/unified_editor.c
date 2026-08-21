@@ -3737,19 +3737,19 @@ void unified_editor_render_text_overlay(
                 grid_print(grid, 1, row++, line,
                             editor->surface_field == EDITOR_SURFACE_FIELD_REMOVE ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Gravity dir %s  Left/Right",
+                snprintf(line, sizeof(line), " %s Cell grav dir %s  Left/Right",
                          editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? ">" : " ",
                          gravity_names[cell->gravity_orientation]);
                 grid_print(grid, 1, row++, line,
                            editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Gravity x   %s%.2f  Left/Right",
+                snprintf(line, sizeof(line), " %s Cell grav x %s%.2f  Left/Right",
                          editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? ">" : " ",
                          cell->gravity_scale_step == 0U ? "inherit " : "", gravity_scale);
                 grid_print(grid, 1, row++, line,
                            editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Movement... Enter=open",
+                snprintf(line, sizeof(line), " %s Map movement... Enter=open",
                          editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT &&
                              !editor->movement_menu_open ? ">" : " ");
                 grid_print(grid, 1, row++, line,

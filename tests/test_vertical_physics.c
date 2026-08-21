@@ -58,6 +58,16 @@ static SceneAuthoredCell *cell(Fixture *fixture, int x, int y) {
     return &fixture->cells[(size_t)y * 6U + (size_t)x];
 }
 
+static void test_default_jump_clears_two_step_heights(void **state) {
+    SceneMovementParameters movement = scene_movement_parameters_default();
+    double apex = movement.jump_impulse * movement.jump_impulse /
+        (2.0 * movement.gravity_magnitude);
+    (void)state;
+    assert_true(apex >= 0.5);
+    assert_true(apex > 2.0 * movement.step_height);
+    assert_float_equal(movement.jump_impulse, 3.2, 0.000001);
+}
+
 static void test_reset_and_flat_grounding(void **state) {
     Fixture *fixture = *state;
     fixture->camera.z = 7.0;
@@ -351,6 +361,7 @@ static void test_airborne_lateral_entry_requires_body_fit(void **state) {
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_default_jump_clears_two_step_heights),
         cmocka_unit_test_setup_teardown(test_reset_and_flat_grounding, setup, teardown),
         cmocka_unit_test_setup_teardown(test_step_up_and_blocked_step_rolls_back, setup, teardown),
         cmocka_unit_test_setup_teardown(test_lower_floor_fall_and_land, setup, teardown),

@@ -103,14 +103,14 @@ bool editor_domain_inspector_field_presentation(
                 0.0, 1.0, 1.0, 0U};
         } else if (field_index == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION) {
             *out_presentation = (EditorInspectorFieldPresentation){
-                "Gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 6.0, 1.0, 0U};
+                "Cell gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 6.0, 1.0, 0U};
         } else if (field_index == EDITOR_SURFACE_FIELD_GRAVITY_SCALE) {
             *out_presentation = (EditorInspectorFieldPresentation){
-                "Gravity scale", EDITOR_INSPECTOR_FIELD_NUMBER,
+                "Cell gravity scale", EDITOR_INSPECTOR_FIELD_NUMBER,
                 0.0, 255.996, 0.25, 2U};
         } else {
             *out_presentation = (EditorInspectorFieldPresentation){
-                "Movement", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+                "Map movement", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
         }
         return true;
     }
@@ -440,9 +440,9 @@ bool editor_domain_movement_field_presentation(
     if (!out) return false;
     switch (field) {
         case EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE:
-            *out = (EditorInspectorFieldPresentation){"Gravity", EDITOR_INSPECTOR_FIELD_NUMBER, 0.1, 256.0, 0.5, 2U}; break;
+            *out = (EditorInspectorFieldPresentation){"Map gravity", EDITOR_INSPECTOR_FIELD_NUMBER, 0.1, 256.0, 0.5, 2U}; break;
         case EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION:
-            *out = (EditorInspectorFieldPresentation){"Gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 1.0, 6.0, 1.0, 0U}; break;
+            *out = (EditorInspectorFieldPresentation){"Map gravity dir", EDITOR_INSPECTOR_FIELD_CHOICE, 1.0, 6.0, 1.0, 0U}; break;
         case EDITOR_MOVEMENT_FIELD_STEP_HEIGHT:
             *out = (EditorInspectorFieldPresentation){"Step height", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0625, 1.0, 0.0625, 4U}; break;
         case EDITOR_MOVEMENT_FIELD_JUMP_IMPULSE:

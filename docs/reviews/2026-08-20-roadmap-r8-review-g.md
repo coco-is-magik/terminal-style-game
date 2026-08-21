@@ -42,3 +42,40 @@ A human must repeat the interactive checklist in
 confirming visual ergonomics and control discoverability. This is an evidence
 gap, not a known implementation defect. R8 must not be marked Verified until it
 is recorded.
+
+## Manual-review follow-up — 2026-08-21
+
+The first remediation review found five additional issues; all are now addressed:
+
+- Default jump impulse is `3.2`, giving an uncapped normal-gravity apex of about
+  `0.52` world units (more than two default `0.25` steps).
+- Wall faces extend across neighboring lowered-floor and raised-ceiling gaps, so
+  those edits no longer expose the map exterior beside a wall.
+- Airborne flat-default scenes use bounded height tracing, preventing distant
+  ceiling bands from switching gray or appearing camera-relative during jumps.
+- Floor and ceiling decal glyphs resolve their Z from the current authored cell
+  surface each frame and disappear when that surface is absent.
+- The editor now labels per-cell overrides as `Cell gravity` and the nested
+  map-wide controls as `Map movement` / `Map gravity`, removing the ambiguous
+  duplicate presentation while retaining both scopes.
+
+Fresh evidence: clean `make check`, full ASan, and full UBSan pass. Surface
+benchmark/stability remain deterministic and below the 6 ms gate (4.96 ms / 4.83
+ms raised-height path), with exact flat checksum parity retained. A final human
+real-video confirmation of these five fixes is still required before R8 is marked
+Verified.
+
+### Decal occlusion follow-up
+
+The remaining decal issue was not projection: adjusted-surface Z already projected
+to the correct screen row. The defect was the legacy per-column wall-only depth
+test, which had no depth for generated height-discontinuity faces or bounded
+horizontal surfaces. The bounded renderer now records its exact nearest hit depth
+and owning surface identity for every screen cell. Decals compare against that
+per-cell frontier, allowing decals on the visible owning surface while rejecting
+decals behind generated faces, walls, and nearer floor/ceiling geometry. The
+legacy flat path retains its existing column-depth behavior.
+
+Regression evidence covers both sides: the surface benchmark's decal behind an
+adjusted-height strip leaves the framebuffer checksum unchanged, while the
+horizontal-decal adhesion test remains visible and follows its edited floor.

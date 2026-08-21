@@ -47,11 +47,17 @@ Grid* grid_create(int width, int height) {
     size_t cell_count;
     size_t bytes;
     size_t depth_bytes;
+    size_t world_depth_bytes;
+    size_t world_key_bytes;
     if (!checked_size_2d(width, height, &cell_count) ||
         !checked_size_bytes(cell_count, sizeof(Cell), &bytes) ||
-        !checked_size_bytes((size_t)width, sizeof(double), &depth_bytes)) return NULL;
+        !checked_size_bytes((size_t)width, sizeof(double), &depth_bytes) ||
+        !checked_size_bytes(cell_count, sizeof(double), &world_depth_bytes) ||
+        !checked_size_bytes(cell_count, sizeof(uint64_t), &world_key_bytes)) return NULL;
     (void)bytes;
     (void)depth_bytes;
+    (void)world_depth_bytes;
+    (void)world_key_bytes;
 
     /* Allocate the Grid struct itself */
     Grid *grid = malloc(sizeof(Grid));
@@ -64,10 +70,15 @@ Grid* grid_create(int width, int height) {
     grid->cells = calloc(cell_count, sizeof(Cell));
     grid->prev_cells = calloc(cell_count, sizeof(Cell));
     grid->column_depths = calloc((size_t)width, sizeof(double));
-    if (!grid->cells || !grid->prev_cells || !grid->column_depths) {
+    grid->world_depths = calloc(cell_count, sizeof(double));
+    grid->world_hit_keys = calloc(cell_count, sizeof(uint64_t));
+    if (!grid->cells || !grid->prev_cells || !grid->column_depths ||
+        !grid->world_depths || !grid->world_hit_keys) {
         free(grid->cells);
         free(grid->prev_cells);
         free(grid->column_depths);
+        free(grid->world_depths);
+        free(grid->world_hit_keys);
         free(grid);
         return NULL;
     }
@@ -91,6 +102,8 @@ void grid_destroy(Grid *grid) {
         free(grid->prev_cells);  /* Free the previous frame buffer */
     }
     free(grid->column_depths);
+    free(grid->world_depths);
+    free(grid->world_hit_keys);
     free(grid);                  /* Free the Grid struct */
 }
 

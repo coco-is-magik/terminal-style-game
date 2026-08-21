@@ -80,8 +80,10 @@ static bool boundary_span(
     double from_ceiling = upper_bound(from);
     double to_ceiling = upper_bound(to);
     if (!to || to->occupancy == SCENE_CELL_OCCUPANCY_WALL) {
-        if (z >= lower_bound(to) - TRACE_EPSILON &&
-            z <= upper_bound(to) + TRACE_EPSILON) {
+        double wall_bottom = to ? fmin(from_floor, to_floor) : from_floor;
+        double wall_top = to ? fmax(from_ceiling, to_ceiling) : from_ceiling;
+        if (z >= wall_bottom - TRACE_EPSILON &&
+            z <= wall_top + TRACE_EPSILON) {
             *kind = HEIGHTFIELD_HIT_WALL;
             *material = to ? to->wall_material : from->wall_material;
             *owner_is_to = to != NULL;

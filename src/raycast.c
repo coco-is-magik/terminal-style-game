@@ -36,6 +36,7 @@
 #include "decal_projection.h"
 #include "height_projection.h"
 #include "heightfield_trace.h"
+#include <float.h>
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
                                  sqrt(), floor() */
 #include "math.h"             /* PI, normalize_angle() */
@@ -56,6 +57,32 @@
  * the step between adjacent anchors would span a full fraction of the
  * 3-D decal footprint and produce large visible gaps in the terminal. */
 #define DEFAULT_DECAL_GLYPH_COMPRESSION 8.0
+#define DECAL_OCCLUSION_EPSILON 0.01
+
+#define WORLD_HIT_VALID_BIT (UINT64_C(1) << 63)
+#define WORLD_HIT_GENERATED_BIT (UINT64_C(1) << 62)
+#define WORLD_HIT_KIND_SHIFT 60U
+#define WORLD_HIT_X_SHIFT 9U
+#define WORLD_HIT_COORD_MASK UINT64_C(0x1FF)
+
+static uint64_t world_hit_key(const HeightfieldHit *hit) {
+    if (!hit || !hit->hit || hit->map_x < 0 || hit->map_y < 0) return 0U;
+    return WORLD_HIT_VALID_BIT |
+        (hit->generated_boundary ? WORLD_HIT_GENERATED_BIT : 0U) |
+        ((uint64_t)hit->kind << WORLD_HIT_KIND_SHIFT) |
+        (((uint64_t)(unsigned int)hit->map_x & WORLD_HIT_COORD_MASK) <<
+            WORLD_HIT_X_SHIFT) |
+        ((uint64_t)(unsigned int)hit->map_y & WORLD_HIT_COORD_MASK);
+}
+
+static bool world_hit_is_surface(uint64_t key, HeightfieldHitKind kind,
+                                 int map_x, int map_y, bool allow_generated) {
+    return (key & WORLD_HIT_VALID_BIT) != 0U &&
+        (allow_generated || (key & WORLD_HIT_GENERATED_BIT) == 0U) &&
+        ((key >> WORLD_HIT_KIND_SHIFT) & UINT64_C(3)) == (uint64_t)kind &&
+        (int)((key >> WORLD_HIT_X_SHIFT) & WORLD_HIT_COORD_MASK) == map_x &&
+        (int)(key & WORLD_HIT_COORD_MASK) == map_y;
+}
 
 /* ===================================================================
  *  Decal projection helpers
@@ -163,6 +190,7 @@ static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
         }
         for (y = 0; y < grid->height; y++) {
             HeightfieldHit hit = heightfield_trace_prepared_sample(&column, y);
+            size_t output_index = (size_t)y * (size_t)grid->width + (size_t)x;
             uint8_t glyph = ' ';
             SDL_Color foreground = darkness;
             SDL_Color background = darkness;
@@ -190,11 +218,13 @@ static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
                 background = (SDL_Color){128, 0, 255, 255};
             }
             {
-                Cell *output = &grid->cells[
-                    (size_t)y * (size_t)grid->width + (size_t)x];
+                Cell *output = &grid->cells[output_index];
                 output->glyph = glyph;
                 output->fg = foreground;
                 output->bg = background;
+                grid->world_depths[output_index] = hit.hit
+                    ? hit.perpendicular_distance : DBL_MAX;
+                grid->world_hit_keys[output_index] = world_hit_key(&hit);
             }
         }
     }
@@ -202,7 +232,9 @@ static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
 
 static void render_decals(Grid *grid, Map *map, Camera *cam,
                           AssetRegistry *assets, WorldState *world,
-                          const double *z_buffer, int z_count) {
+                          const double *z_buffer, int z_count,
+                          const SceneHeightView *heights,
+                          bool bounded_occlusion) {
     static double decal_depth[1024 * 1024];
     static int decal_order[1024 * 1024];
     int cell_count = grid->width * grid->height;
@@ -216,14 +248,31 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
 
     for (int i = 0; i < world->num_decals; i++) {
         Decal *d = &world->decals[i];
+        Decal projected;
         if (!d->pattern || d->pattern_cols <= 0 || d->pattern_rows <= 0) continue;
         if (d->width <= 0.0 || d->height <= 0.0) continue;
 
-        DecalBasis basis = decal_projection_basis(d);
+        projected = *d;
+        if (d->surface != DECAL_SURFACE_WALL &&
+            scene_height_view_is_valid(heights, map->width, map->height)) {
+            int anchor_x = (int)floor(d->x);
+            int anchor_y = (int)floor(d->y);
+            const SceneAuthoredCell *cell;
+            if (!map_in_bounds(map, anchor_x, anchor_y)) continue;
+            cell = &heights->cells[
+                (size_t)anchor_y * (size_t)map->width + (size_t)anchor_x];
+            if ((d->surface == DECAL_SURFACE_FLOOR && !cell->floor_present) ||
+                (d->surface == DECAL_SURFACE_CEILING && !cell->ceiling_present))
+                continue;
+            projected.z = scene_height_world(d->surface == DECAL_SURFACE_FLOOR
+                ? cell->floor_height_step : cell->ceiling_height_step);
+        }
 
-        double view_x = cam->transform.pos.x - d->x;
-        double view_y = cam->transform.pos.y - d->y;
-        double view_z = cam->z - d->z;
+        DecalBasis basis = decal_projection_basis(&projected);
+
+        double view_x = cam->transform.pos.x - projected.x;
+        double view_y = cam->transform.pos.y - projected.y;
+        double view_z = cam->z - projected.z;
         if (view_x * basis.normal[0] + view_y * basis.normal[1] +
             view_z * basis.normal[2] <= 0.0) continue;
 
@@ -233,9 +282,26 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 if (pc.glyph == ' ' || pc.glyph == '\0') continue;
 
                 double world_x, world_y, world_z;
-                decal_projection_glyph_world(d, &basis, px, py,
+                decal_projection_glyph_world(&projected, &basis, px, py,
                                              DEFAULT_DECAL_GLYPH_COMPRESSION,
                                              &world_x, &world_y, &world_z);
+                if (projected.surface != DECAL_SURFACE_WALL &&
+                    scene_height_view_is_valid(heights, map->width, map->height)) {
+                    int glyph_map_x = (int)floor(world_x);
+                    int glyph_map_y = (int)floor(world_y);
+                    const SceneAuthoredCell *cell;
+                    if (!map_in_bounds(map, glyph_map_x, glyph_map_y)) continue;
+                    cell = &heights->cells[
+                        (size_t)glyph_map_y * (size_t)map->width +
+                        (size_t)glyph_map_x];
+                    if ((projected.surface == DECAL_SURFACE_FLOOR &&
+                         !cell->floor_present) ||
+                        (projected.surface == DECAL_SURFACE_CEILING &&
+                         !cell->ceiling_present)) continue;
+                    world_z = scene_height_world(
+                        projected.surface == DECAL_SURFACE_FLOOR
+                            ? cell->floor_height_step : cell->ceiling_height_step);
+                }
                 double screen_x_f, screen_y_f, depth;
 
                 if (!project_world_point(grid, cam, world_x, world_y, world_z,
@@ -251,9 +317,27 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                     continue;
                 }
                 if (screen_x >= z_count) continue;
-                if (depth > z_buffer[screen_x] + 0.001) continue;
 
                 int cell_index = screen_y * grid->width + screen_x;
+                if (bounded_occlusion) {
+                    HeightfieldHitKind surface_kind = projected.surface ==
+                        DECAL_SURFACE_FLOOR ? HEIGHTFIELD_HIT_FLOOR :
+                        projected.surface == DECAL_SURFACE_CEILING
+                            ? HEIGHTFIELD_HIT_CEILING : HEIGHTFIELD_HIT_WALL;
+                    int surface_x = projected.surface == DECAL_SURFACE_WALL
+                        ? projected.map_x : (int)floor(world_x);
+                    int surface_y = projected.surface == DECAL_SURFACE_WALL
+                        ? projected.map_y : (int)floor(world_y);
+                    bool own_surface = world_hit_is_surface(
+                        grid->world_hit_keys[cell_index], surface_kind,
+                        surface_x, surface_y,
+                        projected.surface == DECAL_SURFACE_WALL);
+                    if (!own_surface &&
+                        grid->world_depths[cell_index] + DECAL_OCCLUSION_EPSILON <
+                            depth) continue;
+                } else if (depth > z_buffer[screen_x] + 0.001) {
+                    continue;
+                }
                 int source_order = i * 1000000 + py * d->pattern_cols + px;
                 if (depth > decal_depth[cell_index] + 0.000001) continue;
                 if (fabs(depth - decal_depth[cell_index]) <= 0.000001 &&
@@ -265,7 +349,7 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 if (!grid_get(grid, screen_x, screen_y, &existing)) continue;
 
                 Material *d_mat = &assets->materials[pc.material_id];
-                double light_level = decal_light_level(map, d, world_x, world_y,
+                double light_level = decal_light_level(map, &projected, world_x, world_y,
                                                        basis.normal[1]);
                 SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
                                                depth, light_level);
@@ -430,6 +514,7 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
                            const SceneHeightView *heights) {
     bool surfaces_valid;
     bool heights_valid;
+    bool bounded_occlusion = false;
     if (!grid || !map || !cam || !assets || !world) return;
 
     surfaces_valid = surfaces && surfaces->cells &&
@@ -446,7 +531,9 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
     if (!z_buffer) return;
 
     if (heights_valid &&
-        !heightfield_view_is_flat_default(heights, map->width, map->height)) {
+        (!heightfield_view_is_flat_default(heights, map->width, map->height) ||
+         fabs(cam->z - 0.5) > 0.000001)) {
+        bounded_occlusion = true;
         render_heightfield_samples(grid, map, cam, assets, heights, z_buffer);
         goto render_overlays;
     }
@@ -726,7 +813,8 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
     }
 
 render_overlays:
-    render_decals(grid, map, cam, assets, world, z_buffer, max_x_idx);
+    render_decals(grid, map, cam, assets, world, z_buffer, max_x_idx,
+                  heights_valid ? heights : NULL, bounded_occlusion);
 
     /* ================================================================
      *  POST-PASS: LIGHT SOURCE RENDERING
