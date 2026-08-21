@@ -118,12 +118,13 @@ These questions were answered in `R8_DECISION_RECORD_2026-08-19.md`:
   heightfield representation; sectors/portals, voxels, and full-3D geometry
   remain rejected (record Decision 1).
 
-### Geometry, collision, and appearance separation — **Needs design**
+### Geometry, collision, and appearance separation — **Needs design; scoped in the R9 research plan**
 
 Mirrors, glass, invisible collision, and pass-through surfaces require separate
 properties for occupancy, player collision, ray/light interaction, visual
 material, opacity, and reflectivity. These must not remain encoded by the
-special meaning of material ID `0`.
+special meaning of material ID `0`. Scoped as RQ1/P1 in
+`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`.
 
 ### Stable IDs and atomic command groups — **Needs design**
 
@@ -464,7 +465,7 @@ floor/ceiling materials already authored in v3.
 
 # Optical and advanced rendering
 
-## Mirrors — **Research track**
+## Mirrors — **Research track; scoped in the R9 research plan**
 
 **Wanted:** Reflective surfaces showing the world behind the viewer.
 
@@ -472,7 +473,9 @@ Needs reflected secondary rays/views, recursion limits, depth/occlusion,
 reflected entities/lights/decals, reflectivity separate from occupancy, and a
 performance strategy (bounded resolution/update rate or stylization). Decide
 surface types, bounce count, mirror-facing-mirror behavior, visual quality, and
-interaction with translucency/invisible geometry.
+interaction with translucency/invisible geometry. Scoped as RQ4/P4 in
+`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md` (single bounded bounce first;
+mirror-facing-mirror stays out of the prototype).
 
 ## Translucent materials — **Needs design and renderer research**
 
@@ -489,7 +492,9 @@ dither, colored transmission/refraction, and partially transparent glyph cells.
 Do not use one ambiguous “invisible” flag. Distinguish invisible solid
 collision, invisible passable markers, editor-hidden geometry, ray-transparent
 barriers, and light-blocking/passing geometry. The editor needs a reveal toggle
-and highlight so hidden geometry remains editable.
+and highlight so hidden geometry remains editable. Scoped as RQ1/P1 in
+`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`, which requires ray, light, and player
+interaction to be independent typed fields rather than one flag.
 
 ---
 

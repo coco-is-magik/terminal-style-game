@@ -702,7 +702,8 @@ continuing full-Q4 phase closeout is recorded in
 
 ## R9 — Layered optical rendering
 
-**Status:** Research track
+**Status:** Research track — research plan recorded 2026-08-21
+([`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md)).
 
 **Purpose:** Establish explicit layered visibility before adding translucency and
 bounded reflections.
