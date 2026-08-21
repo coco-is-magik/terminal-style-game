@@ -2,9 +2,13 @@
 
 ## Status
 
-**Complete and verified.** R8 remains Active. I1's canonical v5 authored data is
+**Complete and verified.** R8 is Active. I1's canonical v5 authored data is
 now consumed by the renderer, editor selection, and editor highlights through a
 borrowed, read-only `SceneHeightView`.
+
+> Historical record from 2026-08-19; the current heightfield renderer is the
+> bounded per-cell tracer from the 2026-08-20 remediation, and R8 is now
+> **Verified (2026-08-21)**.
 
 ## Implemented scope
 

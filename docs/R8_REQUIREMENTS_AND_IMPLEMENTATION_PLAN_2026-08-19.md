@@ -2,9 +2,12 @@
 
 ## Status
 
-**Active; heightfield remediation implemented on 2026-08-20. Automated gates must
-remain green and a new real-video manual acceptance pass is required before R8 can
-become Verified. Prior I1–I5 verification claims are superseded.** All current product and architecture decisions are
+**Verified (2026-08-21).** The heightfield remediation was implemented on
+2026-08-20, all automated gates are green, and the real-video manual acceptance
+pass for the amended checklist was recorded on 2026-08-21. Prior I1–I5
+verification claims remain superseded by the remediation; current acceptance is
+recorded in this document and `docs/reviews/2026-08-20-roadmap-r8-review-g.md`.
+All current product and architecture decisions are
 locked in `R8_DECISION_RECORD_2026-08-19.md`. The schema is specified in
 `R8_NATIVE_SCENE_V5_SPEC_2026-08-19.md`. This plan passes the roadmap Q1 gate
 before any R8 source code; the increments below are the Q2/Q3 plan and the

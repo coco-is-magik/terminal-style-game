@@ -2,9 +2,12 @@
 
 ## Status
 
-**Complete and verified.** R8 remains Active. I3 adds deterministic heightfield
+**Complete and verified.** R8 is Active. I3 adds deterministic heightfield
 gravity, fall/landing, step-up, head-clearance, and cell-edge traversal behind a
 headless runtime boundary.
+
+> Historical record from 2026-08-19; the current physics boundary additionally
+> rejects cells missing a finite surface, and R8 is now **Verified (2026-08-21)**.
 
 ## Implemented scope
 

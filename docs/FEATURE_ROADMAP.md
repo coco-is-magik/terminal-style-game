@@ -223,7 +223,7 @@ Do not create empty review directories or placeholder review files.
 | R5 | Reusable asset-document foundation | R2–R3; material identity policy | Material/decal authoring | Verified |
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
-| R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Active |
+| R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Research track |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
@@ -649,9 +649,12 @@ and exactly undoable; large-map and allocation-failure tests pass; Q1–Q3 pass.
 
 ## R8 — Vertical-world implementation
 
-**Status:** Active — Q1 passed on 2026-08-19; Increments I1–I4 are complete and
-verified. The blocking decisions were resolved on 2026-08-19
-and are locked in [`R8_DECISION_RECORD_2026-08-19.md`](R8_DECISION_RECORD_2026-08-19.md).
+**Status:** **Verified (2026-08-21).** Q1 passed on 2026-08-19; increments were
+implemented, the 2026-08-20 heightfield remediation replaced the failed flat-plane
+implementation with bounded per-cell geometry, and all manual-review findings were
+closed and accepted through a real video session on 2026-08-21. The blocking
+decisions were resolved on 2026-08-19 and are locked in
+[`R8_DECISION_RECORD_2026-08-19.md`](R8_DECISION_RECORD_2026-08-19.md).
 
 **Purpose:** Implement the world model selected in R1 rather than patching Z
 behavior incrementally into incompatible 2D assumptions.
@@ -692,7 +695,8 @@ geometry/collision/render agreement, format migration, editor workflows,
 performance bounds, and Q1–Q3.
 
 **Review checkpoint:** Review G before implementation and again before R8 is
-Verified.
+Verified. Both checkpoints are complete; the final real-video acceptance was
+recorded 2026-08-21 (see `reviews/2026-08-20-roadmap-r8-review-g.md`).
 
 ## R9 — Layered optical rendering
 

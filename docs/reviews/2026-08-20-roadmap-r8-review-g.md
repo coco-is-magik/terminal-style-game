@@ -2,10 +2,9 @@
 
 ## Outcome
 
-**Superseded by the 2026-08-20 heightfield remediation. R8 remains Active.** The
-flat-plane implementation reviewed here failed real-video acceptance. Current
-acceptance requires bounded per-cell geometry, explicit darkness openings, updated
-automated evidence, and a new human-operated real-video pass.
+**Accepted; R8 now Verified (2026-08-21).** The heightfield remediation replaced
+the failed flat-plane implementation, all manual-review findings were closed, and
+the real-video acceptance pass was recorded on 2026-08-21.
 
 ## Superseding findings
 
@@ -16,7 +15,7 @@ automated evidence, and a new human-operated real-video pass.
   consumed by native-scene walk physics.
 - Full-cell shrink comparison closes the only I5 data-loss risk found in review.
 - Rendering, selection, and highlights now share bounded per-cell tracing.
-- Signed `-8..+8` heights and explicit floor/ceiling presence amend unreleased v5.
+- Signed `-8..+8` heights and explicit floor/ceiling presence amend released v5.
 - Removed floors open downward and removed ceilings upward; openings are terminal.
 - Climbing is deferred and removed from the active schema, editor, and physics.
 - Flat framebuffer parity and all timing gates pass.
@@ -43,6 +42,10 @@ confirming visual ergonomics and control discoverability. This is an evidence
 gap, not a known implementation defect. R8 must not be marked Verified until it
 is recorded.
 
+**Completed 2026-08-21.** The interactive checklist passed in a real video
+session, the manual-review follow-up items were accepted, and no other problems
+were found. R8 is **Verified**.
+
 ## Manual-review follow-up — 2026-08-21
 
 The first remediation review found five additional issues; all are now addressed:
@@ -61,9 +64,8 @@ The first remediation review found five additional issues; all are now addressed
 
 Fresh evidence: clean `make check`, full ASan, and full UBSan pass. Surface
 benchmark/stability remain deterministic and below the 6 ms gate (4.96 ms / 4.83
-ms raised-height path), with exact flat checksum parity retained. A final human
-real-video confirmation of these five fixes is still required before R8 is marked
-Verified.
+ms raised-height path), with exact flat checksum parity retained. The real-video
+confirmation of these fixes was recorded on 2026-08-21, closing R8 acceptance.
 
 ### Decal occlusion follow-up
 
@@ -79,3 +81,9 @@ legacy flat path retains its existing column-depth behavior.
 Regression evidence covers both sides: the surface benchmark's decal behind an
 adjusted-height strip leaves the framebuffer checksum unchanged, while the
 horizontal-decal adhesion test remains visible and follows its edited floor.
+
+Fresh automated evidence for this follow-up: clean `make check`, full ASan, and
+full UBSan pass; surface benchmark raised path 5.33 ms and stability raised path
+5.03 ms (both under the 6 ms gate, deterministic, flat checksum parity intact);
+the decal-occluded frame checksum exactly equals the no-decal raised-height
+frame. The real-video confirmation recorded 2026-08-21 found no other problems.

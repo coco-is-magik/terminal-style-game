@@ -3,8 +3,8 @@
 ## Status
 
 **Complete and verified.** I5 adds undoable vertical-world authoring and live
-per-map movement tuning to the unified editor. R8 remains Active only because a
-human-operated real-video acceptance pass is not available in this API session.
+per-map movement tuning to the unified editor. R8 was fully accepted in the
+real-video manual inspection on 2026-08-21 and is now **Verified**.
 
 ## Implemented
 

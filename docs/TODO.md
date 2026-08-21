@@ -428,7 +428,9 @@ Two different features are possible:
 
 **Decision 2026-07-30:** R0 uses option 1 with an exact
 `[-viewport_rows, +viewport_rows]` bound derived from the active logical grid.
-This remains a 2.5D horizon offset. True angular pitch remains deferred to R8.
+This remains a 2.5D horizon offset. True angular pitch was referred to R8 and,
+per `R8_DECISION_RECORD_2026-08-19.md`, remains deferred beyond R8 (not an R8
+requirement).
 See `R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`.
 
 Define expected behavior near straight up/down, extreme-pitch safety, decal
@@ -443,16 +445,18 @@ The verticality decisions are resolved in `R8_DECISION_RECORD_2026-08-19.md`:
 
 - continuous per-cell floor/ceiling heights (heightfield); ramps are cell-aligned
   only;
-- movement scope: fall/gravity, step-up, jump, head-clearance, and ladders, with
-  per-map runtime-tunable parameters as versioned scene data;
+- movement scope: fall/gravity, step-up, jump, and head-clearance, with per-map
+  runtime-tunable parameters as versioned scene data (ladders are deferred from
+  R8);
 - renderer stays a ray caster with per-column height math (no rewrite), the view
   composed through the horizon-offset pitch plus eye height;
 - v4 → v5 heightfield migration reuses the proven v1 → v2 → v3 → v4 machinery.
 
-The future R8 requirements/implementation plan still specifies exact schema
-fields and limits, interpolation/edge-delta constants, parameter validation
-ranges, editor workflows, and the renderer performance budget. This remains
-separate from the per-surface floor/ceiling materials already authored in v3.
+R8 is **Verified (2026-08-21)**. The requirements/implementation plan
+(`R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-19.md`) now specifies the schema
+fields, limits, parameter validation ranges, editor workflows, and renderer
+performance budget; the heightfield itself remains separate from the per-surface
+floor/ceiling materials already authored in v3.
 
 ---
 

@@ -5,6 +5,8 @@
 **Complete and verified.** R8 is Active and Q1 passed on 2026-08-19. This record
 closes I1 from `R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-19.md`.
 
+> Historical record from 2026-08-19; R8 is now **Verified (2026-08-21)**.
+
 ## Implemented scope
 
 1. **Canonical scene v5**

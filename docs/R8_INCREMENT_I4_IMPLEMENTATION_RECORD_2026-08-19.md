@@ -6,9 +6,13 @@
 
 ## Status
 
-**Complete and verified.** R8 remains Active. I4 completes the movement behavior
+**Complete and verified.** R8 is Active. I4 completes the movement behavior
 selected in the R8 decision record without changing authored ownership,
 projection, or the one-interval topology.
+
+> Historical record from 2026-08-19; the current jump default and physics are
+> those described in the review follow-up, ladder behavior is deferred, and R8
+> is now **Verified (2026-08-21)**.
 
 ## Implemented scope
 

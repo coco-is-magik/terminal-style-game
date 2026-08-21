@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Version 5 is the R8 heightfield format. This unreleased version is amended by the
-2026-08-20 heightfield remediation. It retains every v4 contract and adds:
+Version 5 is the R8 heightfield format, released with R8 on 2026-08-21. The
+2026-08-20 heightfield remediation amended the originally planned v5. It retains
+every v4 contract and adds:
 
 1. Per-cell `floor_heights` and `ceiling_heights` grids (fixed-point ⅟₂₅₆ world
    unit steps).

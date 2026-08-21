@@ -4,6 +4,8 @@
 > authority is the amended native-v5 spec and requirements plan. In particular,
 > heights are signed `-8..+8`, floor/ceiling presence is explicit, bounded-cell
 > tracing replaces flat-plane correction, and ladders are deferred from R8.
+> R8 was accepted in the real-video manual inspection and is **Verified
+> (2026-08-21)**.
 
 ## Authority
 
