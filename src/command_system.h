@@ -33,7 +33,9 @@ typedef enum {
     EDITOR_MUTATION_SHRINK_EAST,
     EDITOR_MUTATION_SHRINK_SOUTH,
     EDITOR_MUTATION_SET_CELL_VERTICAL,
-    EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS
+    EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS,
+    EDITOR_MUTATION_SET_OPTICAL_MATERIAL,
+    EDITOR_MUTATION_SET_OPTICAL_CELL
 } EditorMutationType;
 
 typedef struct {
@@ -89,6 +91,14 @@ typedef struct {
             SceneCellVertical value;
         } cell_vertical;
         struct { SceneMovementParameters value; } movement;
+        struct {
+            uint16_t material_id;
+            OpticalExtension value;
+        } optical_material;
+        struct {
+            size_t cell_index;
+            OpticalExtension value;
+        } optical_cell;
     } data;
 } EditorMutationRequest;
 
@@ -160,6 +170,16 @@ typedef struct {
             SceneMovementParameters before;
             SceneMovementParameters after;
         } movement;
+        struct {
+            uint16_t material_id;
+            OpticalExtension before;
+            OpticalExtension after;
+        } optical_material;
+        struct {
+            size_t cell_index;
+            OpticalExtension before;
+            OpticalExtension after;
+        } optical_cell;
     } data;
 } EditorMutation;
 
@@ -246,6 +266,14 @@ CommandResult command_history_set_cell_vertical(
 CommandResult command_history_set_movement_parameters(
     CommandHistory *history, SceneDocument *document,
     const SceneMovementParameters *value
+);
+CommandResult command_history_set_optical_material_extension(
+    CommandHistory *history, SceneDocument *document, uint16_t material_id,
+    const OpticalExtension *value
+);
+CommandResult command_history_set_optical_cell_extension(
+    CommandHistory *history, SceneDocument *document, size_t cell_index,
+    const OpticalExtension *value
 );
 
 CommandResult command_history_place_wall(

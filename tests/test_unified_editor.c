@@ -3816,6 +3816,97 @@ static void test_r7_ctrl_arrow_axis_and_occlusion(void **state) {
     unified_editor_destroy(&ed);
 }
 
+static void test_r9_i6_optical_authoring_undo_save_reopen(void **state) {
+    UnifiedEditorState editor;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    OpticalExtension extension;
+    char path[512];
+    (void)state;
+    assert_int_equal(load_editor(&editor, "i6_optical_source.txt"), 0);
+    select_surface_direct(&editor, SELECTION_FLOOR, 2, 2);
+    editor.optical_scope = EDITOR_OPTICAL_SCOPE_CELL;
+    editor.optical_field = EDITOR_OPTICAL_FIELD_OPACITY;
+    assert_int_equal(unified_editor_step_selected_optical(&editor, 1), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.opacity, 16U);
+    assert_true(scene_document_is_dirty(&editor.document));
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.override_mask, 0U);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.opacity, 16U);
+
+    editor.optical_scope = EDITOR_OPTICAL_SCOPE_MATERIAL;
+    editor.optical_field = EDITOR_OPTICAL_FIELD_RAY_BLOCKS;
+    assert_int_equal(unified_editor_step_selected_optical(&editor, -1), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(
+        &editor.document, 1U, &extension));
+    assert_int_equal(extension.ray_blocks, 0U);
+    assert_int_equal(unified_editor_toggle_selected_optical_inherit(&editor),
+                     CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(
+        &editor.document, 1U, &extension));
+    assert_int_equal(extension.override_mask, 0U);
+
+    path_in_tmpdir(path, sizeof(path), "i6_optical_saved.tscene");
+    assert_int_equal(unified_editor_save_as(
+        &editor, path, "i6_optical"), SCENE_SAVE_OK);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_load_native(
+        &reopened, path, &diagnostic), SCENE_LOAD_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &reopened, 12U, &extension));
+    assert_int_equal(extension.opacity, 16U);
+    scene_document_destroy(&reopened);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
+static void test_r9_i6_optical_submenu_input_and_overlay(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    OpticalExtension extension;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "i6_optical_input.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_surface_direct(&editor, SELECTION_FLOOR, 2, 2);
+    editor.surface_field = EDITOR_SURFACE_FIELD_OPTICS;
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.optical_menu_open);
+    zero_input(&input);
+    input.editor_next_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.optical_menu_index, 1U);
+    zero_input(&input);
+    input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.player_blocks, 1U);
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.override_mask, 0U);
+    grid = grid_create(160, 80);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "OPTICS"));
+    assert_true(grid_contains_text(grid, "Scope: cell override"));
+    grid_destroy(grid);
+    unified_editor_destroy(&editor);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -3900,6 +3991,8 @@ int main(void) {
         cmocka_unit_test(test_r7_multiselect_batch_material_and_construction),
         cmocka_unit_test(test_r7_multiselect_batch_decals_one_undo_step),
         cmocka_unit_test(test_r7_ctrl_arrow_axis_and_occlusion),
+        cmocka_unit_test(test_r9_i6_optical_authoring_undo_save_reopen),
+        cmocka_unit_test(test_r9_i6_optical_submenu_input_and_overlay),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

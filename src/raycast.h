@@ -17,6 +17,7 @@
 #include "world.h"     /* WorldState — lights and decals */
 #include "surface_view.h"
 #include "height_view.h"
+#include "optical_runtime_view.h"
 
 /**
  * RayResult — The result of firing a single ray into the map
@@ -79,5 +80,18 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
                            AssetRegistry *assets, WorldState *world,
                            const SceneSurfaceView *surfaces,
                            const SceneHeightView *heights);
+
+/**
+ * Height-aware optical variant using a borrowed current runtime view.
+ * Invalid optical inputs preserve compatibility rendering.
+ */
+void raycast_render_height_optical(
+    Grid *grid, Map *map, Camera *cam,
+    AssetRegistry *assets, WorldState *world,
+    const SceneSurfaceView *surfaces,
+    const SceneHeightView *heights,
+    const OpticalRuntimeView *optical_view,
+    uint32_t source_generation
+);
 
 #endif /* RAYCAST_H */

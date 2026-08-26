@@ -107,6 +107,41 @@ static void test_intensity_radius_and_saturation_are_quantified(void **state) {
     map_destroy(map);
 }
 
+static void test_optical_light_blocking_is_independent(void **state) {
+    Map *map = map_create(5, 3);
+    WorldState world;
+    SDL_Color white = {255, 255, 255, 255};
+    OpticalExtension materials[2] = {0};
+    OpticalRuntimeView view;
+    double transmitting;
+    double blocking;
+    (void)state;
+    assert_non_null(map);
+    world_init(&world);
+    world.has_authored_ambient = true;
+    world.ambient_intensity = 0.0;
+    assert_int_equal(world_add_light(
+        &world, 0.5, 1.5, white, 1.0, 5.0), WORLD_INSERT_OK);
+    map_set(map, 2, 1, 1);
+    materials[1].override_mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
+                                 OPTICAL_OVERRIDE_LIGHT_BLOCKS;
+    materials[1].ray_blocks = 1U;
+    materials[1].light_blocks = 0U;
+    assert_true(optical_runtime_view_init(
+        &view, 15U, materials, 2U, NULL, 0U, 9U));
+    lighting_update_optical(map, &world, &view, 9U);
+    transmitting = map->light_map[1U * 5U + 4U];
+    materials[1].ray_blocks = 0U;
+    materials[1].light_blocks = 1U;
+    lighting_update_optical(map, &world, &view, 9U);
+    blocking = map->light_map[1U * 5U + 4U];
+    assert_true(transmitting > blocking);
+    lighting_update_optical(map, &world, &view, 10U);
+    assert_true(map->light_map[1U * 5U + 4U] == blocking);
+    world_clear(&world);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ambient_and_null_inputs),
@@ -114,6 +149,7 @@ int main(void) {
         cmocka_unit_test(test_invalid_structures_are_unchanged),
         cmocka_unit_test(test_authored_runtime_ambient_overrides_config),
         cmocka_unit_test(test_intensity_radius_and_saturation_are_quantified),
+        cmocka_unit_test(test_optical_light_blocking_is_independent),
     };
     config_init_defaults();
     return cmocka_run_group_tests(tests, NULL, NULL);

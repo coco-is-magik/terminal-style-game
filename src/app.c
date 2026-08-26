@@ -902,12 +902,27 @@ int app_main(int argc, char* argv[]) {
                     const SceneHeightView *heights =
                         scene_document_get_height_view(&ued.document, &height_view)
                             ? &height_view : NULL;
+                    OpticalRuntimeView optical_view;
+                    uint32_t optical_generation = 0U;
+                    bool has_optical_view = scene_document_get_optical_view(
+                        &ued.document, &optical_view, &optical_generation);
                     size_t editor_light_count = 0U;
                     const SceneLight *editor_lights = scene_document_get_lights(
                         &ued.document, &editor_light_count);
-                    lighting_update(ed_map, &ued.runtime_world);
-                    raycast_render_height(grid, ed_map, &cam, &assets,
-                                          &ued.runtime_world, surfaces, heights);
+                    if (has_optical_view)
+                        lighting_update_optical(
+                            ed_map, &ued.runtime_world, &optical_view,
+                            optical_generation);
+                    else lighting_update(ed_map, &ued.runtime_world);
+                    if (has_optical_view) {
+                        raycast_render_height_optical(
+                            grid, ed_map, &cam, &assets, &ued.runtime_world,
+                            surfaces, heights, &optical_view,
+                            optical_generation);
+                    } else {
+                        raycast_render_height(grid, ed_map, &cam, &assets,
+                                              &ued.runtime_world, surfaces, heights);
+                    }
                     if (ued.selection_set.count > 0U) {
                         editor_highlight_render_set_height(
                             grid, ed_map, &cam, editor_lights, editor_light_count,

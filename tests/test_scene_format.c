@@ -796,6 +796,105 @@ static void test_v5_migration_round_trip_and_validation(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v6_optical_migration_canonical_round_trip_and_diagnostics(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneFormatBuffer second = {0};
+    SceneDiagnostic diagnostic;
+    OpticalResolved resolved;
+    OpticalRuntimeView view;
+    char *bad;
+    char *duplicate;
+    size_t duplicate_size;
+    (void)state;
+
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_to_v5(&candidate, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v5_to_v6(&candidate, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(candidate.source_version, SCENE_VERSION_V6);
+    assert_null(candidate.optical_material_defaults);
+    assert_null(candidate.optical_cell_overrides);
+
+    candidate.optical_material_capacity = 3U;
+    candidate.optical_material_defaults = calloc(
+        candidate.optical_material_capacity,
+        sizeof(*candidate.optical_material_defaults));
+    candidate.optical_cell_override_count = 1U;
+    candidate.optical_cell_overrides = calloc(
+        candidate.optical_cell_override_count,
+        sizeof(*candidate.optical_cell_overrides));
+    assert_non_null(candidate.optical_material_defaults);
+    assert_non_null(candidate.optical_cell_overrides);
+    candidate.optical_material_defaults[2].override_mask =
+        OPTICAL_OVERRIDE_RAY_BLOCKS | OPTICAL_OVERRIDE_OPACITY |
+        OPTICAL_OVERRIDE_TRANSMISSION;
+    candidate.optical_material_defaults[2].ray_blocks = 0U;
+    candidate.optical_material_defaults[2].opacity = 96U;
+    candidate.optical_material_defaults[2].transmission = 180U;
+    candidate.optical_cell_overrides[0].cell_index = 3U;
+    candidate.optical_cell_overrides[0].optical.override_mask =
+        OPTICAL_OVERRIDE_PLAYER_BLOCKS | OPTICAL_OVERRIDE_REFLECTIVITY;
+    candidate.optical_cell_overrides[0].optical.player_blocks = 0U;
+    candidate.optical_cell_overrides[0].optical.reflectivity = 64U;
+
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "scene_version = 6\n"));
+    assert_non_null(strstr(buffer.data,
+        "[optical_material 2]\nray_blocks = 0\nopacity = 96\n"
+        "transmission = 180\n"));
+    assert_non_null(strstr(buffer.data,
+        "[optical_cell 3]\nplayer_blocks = 0\nreflectivity = 64\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v6.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.optical_material_capacity, 3U);
+    assert_int_equal(reparsed.optical_cell_override_count, 1U);
+    assert_true(optical_runtime_view_init(
+        &view, reparsed.authored_cell_count,
+        reparsed.optical_material_defaults, reparsed.optical_material_capacity,
+        reparsed.optical_cell_overrides, reparsed.optical_cell_override_count, 7U));
+    assert_true(optical_runtime_view_resolve(&view, 0U, 2U, true, &resolved));
+    assert_false(resolved.ray_blocks);
+    assert_int_equal(resolved.opacity, 96U);
+    assert_int_equal(resolved.transmission, 180U);
+    assert_true(optical_runtime_view_resolve(&view, 3U, 2U, true, &resolved));
+    assert_false(resolved.player_blocks);
+    assert_int_equal(resolved.reflectivity, 64U);
+    assert_int_equal(scene_format_serialize(&reparsed, &second, &diagnostic),
+                     SCENE_FORMAT_OK);
+    assert_int_equal(second.size, buffer.size);
+    assert_memory_equal(second.data, buffer.data, buffer.size);
+
+    bad = replace_once(buffer.data, "[optical_cell 3]", "[optical_cell 4]");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+    bad = replace_once(buffer.data, "opacity = 96", "opacity = 256");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+    duplicate_size = buffer.size + strlen("\n[optical_material 2]\nopacity = 1\n");
+    duplicate = malloc(duplicate_size + 1U);
+    assert_non_null(duplicate);
+    memcpy(duplicate, buffer.data, buffer.size);
+    memcpy(duplicate + buffer.size, "\n[optical_material 2]\nopacity = 1\n",
+           strlen("\n[optical_material 2]\nopacity = 1\n") + 1U);
+    diagnostic = parse_rejected(duplicate, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_DUPLICATE);
+    free(duplicate);
+
+    scene_format_buffer_destroy(&second);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -815,7 +914,8 @@ int main(void) {
         cmocka_unit_test(test_v3_growth_metadata_round_trips_and_is_versioned),
         cmocka_unit_test(test_scene_block_codec),
         cmocka_unit_test(test_v4_hex_blocks_high_ids_and_nulls),
-        cmocka_unit_test(test_v5_migration_round_trip_and_validation)
+        cmocka_unit_test(test_v5_migration_round_trip_and_validation),
+        cmocka_unit_test(test_v6_optical_migration_canonical_round_trip_and_diagnostics)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

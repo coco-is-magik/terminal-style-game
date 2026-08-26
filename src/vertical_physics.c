@@ -9,7 +9,9 @@
 #define VERTICAL_PHYSICS_EPSILON 0.000001
 
 static bool cell_at(const Map *map, const SceneHeightView *heights,
-                    double x, double y, const SceneAuthoredCell **out_cell) {
+                    double x, double y, const SceneAuthoredCell **out_cell,
+                    const OpticalRuntimeView *optical_view,
+                    uint32_t optical_generation) {
     int map_x;
     int map_y;
     size_t index;
@@ -19,8 +21,16 @@ static bool cell_at(const Map *map, const SceneHeightView *heights,
     map_y = (int)floor(y);
     if (!map_in_bounds(map, map_x, map_y)) return false;
     index = (size_t)map_y * (size_t)map->width + (size_t)map_x;
-    if (map->cells[index].material_id != 0 ||
-        heights->cells[index].occupancy != SCENE_CELL_OCCUPANCY_EMPTY) return false;
+    if (optical_runtime_view_is_current(optical_view, optical_generation)) {
+        OpticalResolved resolved;
+        uint16_t material = heights->cells[index].wall_material;
+        bool legacy_blocks = heights->cells[index].occupancy ==
+            SCENE_CELL_OCCUPANCY_WALL;
+        if (!optical_runtime_view_resolve(
+                optical_view, index, material, legacy_blocks, &resolved) ||
+            resolved.player_blocks) return false;
+    } else if (map->cells[index].material_id != 0 ||
+               heights->cells[index].occupancy != SCENE_CELL_OCCUPANCY_EMPTY) return false;
     *out_cell = &heights->cells[index];
     return true;
 }
@@ -87,13 +97,15 @@ void vertical_physics_init(VerticalPhysicsState *state) {
     memset(state, 0, sizeof(*state));
 }
 
-VerticalPhysicsResult vertical_physics_reset(
+VerticalPhysicsResult vertical_physics_reset_optical(
     VerticalPhysicsState *state, Camera *camera, const Map *map,
-    const SceneHeightView *heights
+    const SceneHeightView *heights, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
 ) {
     const SceneAuthoredCell *cell;
     if (!state || !camera || !cell_at(map, heights,
-            camera->transform.pos.x, camera->transform.pos.y, &cell)) {
+            camera->transform.pos.x, camera->transform.pos.y, &cell,
+            optical_view, optical_generation)) {
         return VERTICAL_PHYSICS_INVALID_ARGUMENT;
     }
     if (!interval_allows(cell, &heights->movement))
@@ -105,16 +117,26 @@ VerticalPhysicsResult vertical_physics_reset(
     return VERTICAL_PHYSICS_OK;
 }
 
-VerticalPhysicsResult vertical_physics_jump(
+VerticalPhysicsResult vertical_physics_reset(
     VerticalPhysicsState *state, Camera *camera, const Map *map,
     const SceneHeightView *heights
+) {
+    return vertical_physics_reset_optical(
+        state, camera, map, heights, NULL, 0U);
+}
+
+VerticalPhysicsResult vertical_physics_jump_optical(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
 ) {
     const SceneAuthoredCell *cell;
     double gx, gy, gz;
     double magnitude;
     if (!state || !camera || !state->initialized || !state->grounded ||
         !cell_at(map, heights, camera->transform.pos.x,
-                 camera->transform.pos.y, &cell)) {
+                 camera->transform.pos.y, &cell,
+                 optical_view, optical_generation)) {
         return state && state->initialized
             ? VERTICAL_PHYSICS_NOT_GROUNDED
             : VERTICAL_PHYSICS_INVALID_ARGUMENT;
@@ -130,16 +152,26 @@ VerticalPhysicsResult vertical_physics_jump(
     return VERTICAL_PHYSICS_OK;
 }
 
+VerticalPhysicsResult vertical_physics_jump(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights
+) {
+    return vertical_physics_jump_optical(
+        state, camera, map, heights, NULL, 0U);
+}
+
 static VerticalPhysicsResult reconcile_ground_move(
     VerticalPhysicsState *state, Camera *camera, const Map *map,
-    const SceneHeightView *heights, double previous_x, double previous_y
+    const SceneHeightView *heights, double previous_x, double previous_y,
+    const OpticalRuntimeView *optical_view, uint32_t optical_generation
 ) {
     const SceneAuthoredCell *target;
     double base_z = camera->z - heights->movement.eye_height;
     double target_floor;
     double delta;
     if (!cell_at(map, heights, camera->transform.pos.x,
-                 camera->transform.pos.y, &target)) {
+                 camera->transform.pos.y, &target,
+                 optical_view, optical_generation)) {
         camera->transform.pos.x = previous_x;
         camera->transform.pos.y = previous_y;
         return VERTICAL_PHYSICS_BLOCKED_CLEARANCE;
@@ -170,7 +202,9 @@ static VerticalPhysicsResult reconcile_ground_move(
 
 static void integrate_airborne(VerticalPhysicsState *state, Camera *camera,
                                const Map *map, const SceneHeightView *heights,
-                               double seconds) {
+                               double seconds,
+                               const OpticalRuntimeView *optical_view,
+                               uint32_t optical_generation) {
     const SceneAuthoredCell *cell;
     double ax, ay, az;
     double proposed_x;
@@ -179,7 +213,8 @@ static void integrate_airborne(VerticalPhysicsState *state, Camera *camera,
     double base_z;
     SceneGravityOrientation orientation;
     if (!cell_at(map, heights, camera->transform.pos.x,
-                 camera->transform.pos.y, &cell)) return;
+                 camera->transform.pos.y, &cell,
+                 optical_view, optical_generation)) return;
     gravity_vector(cell, &heights->movement, &ax, &ay, &az);
     orientation = effective_orientation(cell, &heights->movement);
     proposed_x = camera->transform.pos.x + state->velocity_x * seconds +
@@ -193,7 +228,8 @@ static void integrate_airborne(VerticalPhysicsState *state, Camera *camera,
     state->velocity_z += az * seconds;
     {
         const SceneAuthoredCell *target;
-        if (cell_at(map, heights, proposed_x, proposed_y, &target) &&
+        if (cell_at(map, heights, proposed_x, proposed_y, &target,
+                    optical_view, optical_generation) &&
             body_fits_interval(target, &heights->movement, proposed_z)) {
             camera->transform.pos.x = proposed_x;
             camera->transform.pos.y = proposed_y;
@@ -223,10 +259,11 @@ static void integrate_airborne(VerticalPhysicsState *state, Camera *camera,
     }
 }
 
-VerticalPhysicsResult vertical_physics_step(
+VerticalPhysicsResult vertical_physics_step_optical(
     VerticalPhysicsState *state, Camera *camera, const Map *map,
     const SceneHeightView *heights, double previous_x, double previous_y,
-    double delta_seconds
+    double delta_seconds, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
 ) {
     VerticalPhysicsResult result = VERTICAL_PHYSICS_OK;
     double remaining;
@@ -241,19 +278,22 @@ VerticalPhysicsResult vertical_physics_step(
         double proposed_y = camera->transform.pos.y;
         camera->transform.pos.x = previous_x;
         camera->transform.pos.y = previous_y;
-        result = vertical_physics_reset(state, camera, map, heights);
+        result = vertical_physics_reset_optical(
+            state, camera, map, heights, optical_view, optical_generation);
         camera->transform.pos.x = proposed_x;
         camera->transform.pos.y = proposed_y;
         if (result != VERTICAL_PHYSICS_OK) return result;
     }
     if (state->grounded) {
         result = reconcile_ground_move(state, camera, map, heights,
-                                       previous_x, previous_y);
+                                       previous_x, previous_y,
+                                       optical_view, optical_generation);
         if (result != VERTICAL_PHYSICS_OK) return result;
     } else {
         const SceneAuthoredCell *target;
         if (!cell_at(map, heights, camera->transform.pos.x,
-                     camera->transform.pos.y, &target) ||
+                      camera->transform.pos.y, &target,
+                      optical_view, optical_generation) ||
             !body_fits_interval(target, &heights->movement, camera->z)) {
             camera->transform.pos.x = previous_x;
             camera->transform.pos.y = previous_y;
@@ -263,8 +303,19 @@ VerticalPhysicsResult vertical_physics_step(
     while (!state->grounded && remaining > 0.0) {
         double step = remaining > VERTICAL_PHYSICS_MAX_STEP_SECONDS
             ? VERTICAL_PHYSICS_MAX_STEP_SECONDS : remaining;
-        integrate_airborne(state, camera, map, heights, step);
+        integrate_airborne(state, camera, map, heights, step,
+                           optical_view, optical_generation);
         remaining -= step;
     }
     return result;
+}
+
+VerticalPhysicsResult vertical_physics_step(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights, double previous_x, double previous_y,
+    double delta_seconds
+) {
+    return vertical_physics_step_optical(
+        state, camera, map, heights, previous_x, previous_y,
+        delta_seconds, NULL, 0U);
 }

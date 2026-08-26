@@ -17,6 +17,7 @@
 #include "scene_types.h"
 #include "surface_view.h"
 #include "height_view.h"
+#include "optical_runtime_view.h"
 #include "world.h"
 
 #include <stdbool.h>
@@ -38,6 +39,13 @@ typedef struct {
     SceneDecalInstance *decals;
     size_t decal_count;
     size_t decal_capacity;
+    OpticalExtension *optical_material_defaults;
+    size_t optical_material_capacity;
+    size_t optical_material_storage_capacity;
+    OpticalCellOverride *optical_cell_overrides;
+    size_t optical_cell_override_count;
+    size_t optical_cell_override_capacity;
+    uint32_t optical_generation;
     int east_growth[SCENE_MAX_WIDTH];
     size_t east_growth_count;
     int south_growth[SCENE_MAX_HEIGHT];
@@ -164,6 +172,19 @@ bool scene_document_get_surface_view(
 bool scene_document_get_height_view(
     const SceneDocument *document,
     SceneHeightView *out_view
+);
+bool scene_document_get_optical_view(
+    const SceneDocument *document,
+    OpticalRuntimeView *out_view,
+    uint32_t *out_generation
+);
+bool scene_document_get_optical_material_extension(
+    const SceneDocument *document, uint16_t material_id,
+    OpticalExtension *out_extension
+);
+bool scene_document_get_optical_cell_extension(
+    const SceneDocument *document, size_t cell_index,
+    OpticalExtension *out_extension
 );
 
 bool scene_document_get_wall_material(

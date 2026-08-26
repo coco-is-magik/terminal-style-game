@@ -47,6 +47,19 @@ bool scene_document_internal_set_movement(
     SceneDocument *document, const SceneMovementParameters *value
 );
 
+bool scene_document_internal_set_optical_material_extension(
+    SceneDocument *document, uint16_t material_id,
+    const OpticalExtension *extension
+);
+bool scene_document_internal_set_optical_cell_extension(
+    SceneDocument *document, size_t cell_index,
+    const OpticalExtension *extension
+);
+void scene_document_set_optical_allocator_for_test(
+    void *(*realloc_fn)(void *, size_t)
+);
+void scene_document_reset_optical_allocator_for_test(void);
+
 bool scene_document_internal_remove_decal(
     SceneDocument *document,
     size_t index,

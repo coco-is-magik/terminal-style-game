@@ -72,6 +72,10 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->decal_menu_open = false;
     editor->movement_menu_open = false;
     editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
+    editor->optical_menu_open = false;
+    editor->optical_scope = EDITOR_OPTICAL_SCOPE_CELL;
+    editor->optical_field = EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS;
+    editor->optical_menu_index = 0U;
     editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
     editor->decal_menu_index = 0U;
     editor->decal_pattern_index = 0U;
@@ -1206,6 +1210,44 @@ CommandResult unified_editor_step_movement_parameter(
     return editor_execute_vertical_request(editor, &request);
 }
 
+static CommandResult editor_execute_optical_request(
+    UnifiedEditorState *editor, const EditorMutationRequest *request
+) {
+    CommandResult result;
+    if (!editor || !editor->active || !request) return CMD_RESULT_INVALID_TARGET;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, request, 1U);
+    editor_map_command_result(editor, result);
+    return result;
+}
+
+CommandResult unified_editor_step_selected_optical(
+    UnifiedEditorState *editor, int direction
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_optical_step_request(
+            &editor->document, editor->selection, editor->optical_scope,
+            editor->optical_field, direction, &request))
+        return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_optical_request(editor, &request);
+}
+
+CommandResult unified_editor_toggle_selected_optical_inherit(
+    UnifiedEditorState *editor
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_optical_inherit_toggle_request(
+            &editor->document, editor->selection, editor->optical_scope,
+            editor->optical_field, &request)) return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_optical_request(editor, &request);
+}
+
+void unified_editor_toggle_optical_scope(UnifiedEditorState *editor) {
+    if (!editor) return;
+    editor->optical_scope = editor->optical_scope == EDITOR_OPTICAL_SCOPE_CELL
+        ? EDITOR_OPTICAL_SCOPE_MATERIAL : EDITOR_OPTICAL_SCOPE_CELL;
+}
+
 static CommandResult editor_execute_selection_group(
     UnifiedEditorState *editor, const EditorMutationRequest *requests,
     size_t request_count, bool refresh_runtime, bool clear_after
@@ -1964,6 +2006,12 @@ static void editor_handle_escape(
         return;
     }
 
+    if (editor->optical_menu_open) {
+        editor->optical_menu_open = false;
+        editor_mark_keyboard(consumed);
+        return;
+    }
+
     if (editor->decal_menu_open) {
         if (editor->decal_menu_stage != EDITOR_DECAL_MENU_LIST) {
             editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
@@ -2333,8 +2381,11 @@ static void editor_step_surface_field(UnifiedEditorState *editor, int direction)
              (editor->selection_set.count > 1U &&
                (editor->surface_field == EDITOR_SURFACE_FIELD_AMBIENT ||
                 editor->surface_field > EDITOR_SURFACE_FIELD_HEIGHT)) ||
+             (editor->selection_set.count > 1U &&
+              editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS) ||
              (editor->selection.type == SELECTION_WALL_FACE &&
-               editor->surface_field >= EDITOR_SURFACE_FIELD_HEIGHT));
+              editor->surface_field >= EDITOR_SURFACE_FIELD_HEIGHT &&
+              editor->surface_field != EDITOR_SURFACE_FIELD_OPTICS));
 }
 
 static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
@@ -2365,6 +2416,11 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
     } else if (editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT) {
         editor->movement_menu_open = true;
         editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
+    } else if (editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS) {
+        editor->optical_menu_open = true;
+        editor->optical_scope = EDITOR_OPTICAL_SCOPE_CELL;
+        editor->optical_field = EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS;
+        editor->optical_menu_index = 0U;
     } else if (!editor_construction_is_disabled(editor)) {
         editor_handle_confirm_apply(editor);
     }
@@ -3167,15 +3223,24 @@ EditorInputConsumption unified_editor_update(
         if (unified_editor_has_document(editor) && rmap && camera &&
             !editor->vertical_physics.initialized) {
             SceneHeightView initial_height_view;
+            OpticalRuntimeView optical_view;
+            uint32_t optical_generation = 0U;
+            bool has_optical = scene_document_get_optical_view(
+                &editor->document, &optical_view, &optical_generation);
             if (scene_document_get_height_view(
                     &editor->document, &initial_height_view)) {
-                (void)vertical_physics_reset(
-                    &editor->vertical_physics, camera, rmap, &initial_height_view);
+                (void)vertical_physics_reset_optical(
+                    &editor->vertical_physics, camera, rmap, &initial_height_view,
+                    has_optical ? &optical_view : NULL, optical_generation);
             }
         }
         if (editor->mode == EDITOR_MODE_WALK &&
             unified_editor_has_document(editor) && rmap) {
             SceneHeightView height_view;
+            OpticalRuntimeView optical_view;
+            uint32_t optical_generation = 0U;
+            bool has_optical = scene_document_get_optical_view(
+                &editor->document, &optical_view, &optical_generation);
             double previous_x = camera->transform.pos.x;
             double previous_y = camera->transform.pos.y;
             bool forward = input->forward;
@@ -3185,9 +3250,12 @@ EditorInputConsumption unified_editor_update(
             if (scene_document_get_height_view(&editor->document, &height_view)) {
                 VerticalPhysicsResult physics_result;
                 if (input->editor_jump_pressed)
-                    (void)vertical_physics_jump(
-                        &editor->vertical_physics, camera, rmap, &height_view);
-                camera_update(camera, rmap, input, delta_seconds, viewport_rows);
+                    (void)vertical_physics_jump_optical(
+                        &editor->vertical_physics, camera, rmap, &height_view,
+                        has_optical ? &optical_view : NULL, optical_generation);
+                camera_update_optical(
+                    camera, rmap, input, delta_seconds, viewport_rows,
+                    has_optical ? &optical_view : NULL, optical_generation);
                 if (!editor->vertical_physics.grounded) {
                     double scale = height_view.movement.air_control_scale;
                     camera->transform.pos.x = previous_x +
@@ -3195,9 +3263,10 @@ EditorInputConsumption unified_editor_update(
                     camera->transform.pos.y = previous_y +
                         (camera->transform.pos.y - previous_y) * scale;
                 }
-                physics_result = vertical_physics_step(
+                physics_result = vertical_physics_step_optical(
                     &editor->vertical_physics, camera, rmap, &height_view,
-                    previous_x, previous_y, delta_seconds);
+                    previous_x, previous_y, delta_seconds,
+                    has_optical ? &optical_view : NULL, optical_generation);
                 input->forward = forward; input->backward = backward;
                 input->left = left; input->right = right;
                 if (physics_result == VERTICAL_PHYSICS_BLOCKED_STEP ||
@@ -3246,7 +3315,36 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
+        if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+            input->editor_previous_pressed) {
+            editor->optical_menu_index = editor->optical_menu_index == 0U
+                ? EDITOR_OPTICAL_FIELD_COUNT : editor->optical_menu_index - 1U;
+            if (editor->optical_menu_index > 0U)
+                editor->optical_field = (EditorOpticalField)(
+                    editor->optical_menu_index - 1U);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   input->editor_next_pressed) {
+            editor->optical_menu_index = (editor->optical_menu_index + 1U) %
+                (EDITOR_OPTICAL_FIELD_COUNT + 1U);
+            if (editor->optical_menu_index > 0U)
+                editor->optical_field = (EditorOpticalField)(
+                    editor->optical_menu_index - 1U);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   (input->editor_decrease_pressed || input->editor_increase_pressed)) {
+            int direction = input->editor_decrease_pressed ? -1 : 1;
+            if (editor->optical_menu_index == 0U)
+                unified_editor_toggle_optical_scope(editor);
+            else (void)unified_editor_step_selected_optical(editor, direction);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   input->editor_confirm_pressed) {
+            if (editor->optical_menu_index == 0U)
+                unified_editor_toggle_optical_scope(editor);
+            else (void)unified_editor_toggle_selected_optical_inherit(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
             input->editor_previous_pressed) {
             editor_step_movement_field(editor, -1);
             editor_mark_keyboard(&consumed);
@@ -3708,6 +3806,45 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row++, line,
                        editor->surface_field == EDITOR_SURFACE_FIELD_DECALS ? hi : dim,
                        bg);
+            if (editor->selection_set.count <= 1U) {
+                snprintf(line, sizeof(line), " %s Optics... Enter=open",
+                         editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS &&
+                             !editor->optical_menu_open ? ">" : " ");
+                grid_print(grid, 1, row++, line,
+                           editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS
+                               ? hi : dim, bg);
+            }
+            if (editor->optical_menu_open) {
+                OpticalExtension extension;
+                grid_print(grid, 1, row++,
+                           "   OPTICS  Up/Down  Left/Right=edit  Enter=inherit",
+                           fg, bg);
+                snprintf(line, sizeof(line), " %s Scope: %s",
+                         editor->optical_menu_index == 0U ? ">" : " ",
+                         editor->optical_scope == EDITOR_OPTICAL_SCOPE_CELL
+                         ? "cell override" : "material default");
+                grid_print(grid, 1, row++, line,
+                           editor->optical_menu_index == 0U ? hi : dim, bg);
+                if (editor_domain_get_optical_extension(
+                        &editor->document, editor->selection,
+                        editor->optical_scope, &extension, NULL, NULL)) {
+                    for (i = 0U; i < EDITOR_OPTICAL_FIELD_COUNT; i++) {
+                        EditorInspectorFieldPresentation metadata;
+                        char value[32];
+                        (void)editor_domain_optical_field_presentation(
+                        (EditorOpticalField)i, &metadata);
+                        (void)editor_domain_format_optical_field(
+                        &extension, (EditorOpticalField)i,
+                        value, sizeof(value));
+                        snprintf(line, sizeof(line), " %s %-14s %s",
+                             editor->optical_menu_index == i + 1U ? ">" : " ",
+                             metadata.label, value);
+                        grid_print(grid, 1, row++, line,
+                               editor->optical_menu_index == i + 1U
+                                   ? hi : dim, bg);
+                    }
+                }
+            }
             if (editor->selection.type == SELECTION_FLOOR ||
                 editor->selection.type == SELECTION_CEILING) {
                 int map_x = editor->selection.value.horizontal.map_x;

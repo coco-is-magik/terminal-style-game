@@ -36,6 +36,7 @@
 #include "decal_projection.h"
 #include "height_projection.h"
 #include "heightfield_trace.h"
+#include "raycast_internal.h"
 #include <float.h>
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
                                  sqrt(), floor() */
@@ -65,7 +66,7 @@
 #define WORLD_HIT_X_SHIFT 9U
 #define WORLD_HIT_COORD_MASK UINT64_C(0x1FF)
 
-static uint64_t world_hit_key(const HeightfieldHit *hit) {
+uint64_t raycast_world_hit_key(const HeightfieldHit *hit) {
     if (!hit || !hit->hit || hit->map_x < 0 || hit->map_y < 0) return 0U;
     return WORLD_HIT_VALID_BIT |
         (hit->generated_boundary ? WORLD_HIT_GENERATED_BIT : 0U) |
@@ -163,11 +164,65 @@ static double horizontal_true_distance(const SceneHeightView *heights,
     return smc_true_distance(current_distance, ray_angle, cam->transform.angle);
 }
 
+Cell raycast_sample_heightfield_hit(const Map *map,
+                                    const AssetRegistry *assets,
+                                    const HeightfieldHit *hit) {
+    const SDL_Color darkness = {0, 0, 0, 255};
+    Cell sampled = {' ', {0, 0, 0, 255}, {0, 0, 0, 255}};
+    if (!map || !assets || !hit || !hit->hit) return sampled;
+    if (material_id_is_loaded(assets, hit->material)) {
+        const Material *material = &assets->materials[hit->material];
+        double light_level = 1.0;
+        int glyph_index = hit->distance > 10.0 ? 3 :
+            hit->distance > 7.0 ? 2 : hit->distance > 4.0 ? 1 : 0;
+        if (map->light_map && map_in_bounds(map, hit->map_x, hit->map_y)) {
+            light_level = map->light_map[
+                (size_t)hit->map_y * (size_t)map->width + (size_t)hit->map_x];
+            if (light_level > 1.0) light_level = 1.0;
+            if (light_level < 0.0) light_level = 0.0;
+        }
+        if ((hit->kind == HEIGHTFIELD_HIT_WALL || hit->generated_boundary) &&
+            hit->side == 1) {
+            light_level *= config_get()->side_shadow_attenuation;
+        }
+        sampled.glyph = material->glyphs[glyph_index];
+        sampled.fg = palette_sample(
+            &assets->palettes[material->palette_id], hit->distance, light_level);
+        sampled.bg = darkness;
+    } else {
+        sampled.glyph = '.';
+        sampled.fg = darkness;
+        sampled.bg = (SDL_Color){128, 0, 255, 255};
+    }
+    return sampled;
+}
+
+double raycast_heightfield_column_depth(const HeightfieldTraceColumn *column) {
+    double depth;
+    size_t i;
+    if (!column || !column->valid) return DBL_MAX;
+    depth = column->max_distance;
+    for (i = 0U; i < column->interval_count; i++) {
+        int next_x = column->interval_next_x[i];
+        int next_y = column->interval_next_y[i];
+        if (map_in_bounds(column->map, next_x, next_y)) {
+            size_t index = (size_t)next_y * (size_t)column->map->width +
+                           (size_t)next_x;
+            if (column->map->cells[index].material_id != 0 ||
+                column->heights->cells[index].occupancy ==
+                    SCENE_CELL_OCCUPANCY_WALL) {
+                depth = column->interval_exit[i] * column->correction;
+                break;
+            }
+        }
+    }
+    return depth;
+}
+
 static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
                                        AssetRegistry *assets,
                                        const SceneHeightView *heights,
                                        double *z_buffer) {
-    const SDL_Color darkness = {0, 0, 0, 255};
     int x;
     for (x = 0; x < grid->width; x++) {
         HeightfieldTraceColumn column;
@@ -175,56 +230,17 @@ static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
         if (!heightfield_trace_prepare_column(
                 &column, cam, map, heights, grid->width, grid->height, x,
                 config_get()->raycast_max_distance)) continue;
-        z_buffer[x] = config_get()->raycast_max_distance;
-        for (size_t i = 0U; i < column.interval_count; i++) {
-            int next_x = column.interval_next_x[i];
-            int next_y = column.interval_next_y[i];
-            if (map_in_bounds(map, next_x, next_y)) {
-                size_t index = (size_t)next_y * (size_t)map->width + (size_t)next_x;
-                if (map->cells[index].material_id != 0 ||
-                    heights->cells[index].occupancy == SCENE_CELL_OCCUPANCY_WALL) {
-                    z_buffer[x] = column.interval_exit[i] * column.correction;
-                    break;
-                }
-            }
-        }
+        z_buffer[x] = raycast_heightfield_column_depth(&column);
         for (y = 0; y < grid->height; y++) {
             HeightfieldHit hit = heightfield_trace_prepared_sample(&column, y);
             size_t output_index = (size_t)y * (size_t)grid->width + (size_t)x;
-            uint8_t glyph = ' ';
-            SDL_Color foreground = darkness;
-            SDL_Color background = darkness;
-            if (hit.hit && material_id_is_loaded(assets, hit.material)) {
-                const Material *material = &assets->materials[hit.material];
-                double light_level = 1.0;
-                int glyph_index = hit.distance > 10.0 ? 3 :
-                    hit.distance > 7.0 ? 2 : hit.distance > 4.0 ? 1 : 0;
-                if (map->light_map && map_in_bounds(map, hit.map_x, hit.map_y)) {
-                    light_level = map->light_map[
-                        (size_t)hit.map_y * (size_t)map->width + (size_t)hit.map_x];
-                    if (light_level > 1.0) light_level = 1.0;
-                    if (light_level < 0.0) light_level = 0.0;
-                }
-                if ((hit.kind == HEIGHTFIELD_HIT_WALL || hit.generated_boundary) &&
-                    hit.side == 1) {
-                    light_level *= config_get()->side_shadow_attenuation;
-                }
-                glyph = material->glyphs[glyph_index];
-                foreground = palette_sample(
-                    &assets->palettes[material->palette_id], hit.distance, light_level);
-            } else if (hit.hit) {
-                glyph = '.';
-                foreground = darkness;
-                background = (SDL_Color){128, 0, 255, 255};
-            }
+            Cell sampled = raycast_sample_heightfield_hit(map, assets, &hit);
             {
                 Cell *output = &grid->cells[output_index];
-                output->glyph = glyph;
-                output->fg = foreground;
-                output->bg = background;
+                *output = sampled;
                 grid->world_depths[output_index] = hit.hit
                     ? hit.perpendicular_distance : DBL_MAX;
-                grid->world_hit_keys[output_index] = world_hit_key(&hit);
+                grid->world_hit_keys[output_index] = raycast_world_hit_key(&hit);
             }
         }
     }
@@ -361,6 +377,45 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                     printf("Decal Anchor: surface=%d px=%d py=%d world=(%.2f, %.2f, %.2f) screen=(%d, %d)\n",
                            d->surface, px, py, world_x, world_y, world_z, screen_x, screen_y);
                 }
+            }
+        }
+    }
+}
+
+void raycast_render_world_overlays(Grid *grid, Map *map, Camera *cam,
+                                   AssetRegistry *assets, WorldState *world,
+                                   const SceneHeightView *heights,
+                                   bool bounded_occlusion) {
+    double *z_buffer;
+    if (!grid || !map || !cam || !assets || !world || !grid->column_depths) return;
+    z_buffer = grid->column_depths;
+    render_decals(grid, map, cam, assets, world, z_buffer, grid->width,
+                  heights, bounded_occlusion);
+    for (int i = 0; i < world->num_lights; i++) {
+        Light *light = &world->lights[i];
+        double sprite_x = light->pos.x - cam->transform.pos.x;
+        double sprite_y = light->pos.y - cam->transform.pos.y;
+        double angle_to_light = atan2(sprite_y, sprite_x);
+        double angle_diff = angle_to_light - cam->transform.angle;
+        double distance;
+        double camera_x;
+        double perpendicular_distance;
+        int screen_x;
+        int draw_y;
+        while (angle_diff > PI) angle_diff -= 2.0 * PI;
+        while (angle_diff < -PI) angle_diff += 2.0 * PI;
+        if (cos(angle_diff) < 0.1) continue;
+        distance = sqrt(sprite_x * sprite_x + sprite_y * sprite_y);
+        camera_x = smc_light_screen_x(angle_diff, cam->fov);
+        screen_x = (int)((grid->width / 2.0) * (1.0 + camera_x));
+        if (screen_x < 0 || screen_x >= grid->width) continue;
+        perpendicular_distance = distance * cos(angle_diff);
+        if (perpendicular_distance >= z_buffer[screen_x]) continue;
+        draw_y = grid->height / 2 + (int)cam->pitch;
+        if (draw_y >= 0 && draw_y < grid->height) {
+            Cell existing;
+            if (grid_get(grid, screen_x, draw_y, &existing)) {
+                grid_set(grid, screen_x, draw_y, '*', light->color, existing.bg);
             }
         }
     }
@@ -813,56 +868,9 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
     }
 
 render_overlays:
-    render_decals(grid, map, cam, assets, world, z_buffer, max_x_idx,
-                  heights_valid ? heights : NULL, bounded_occlusion);
-
-    /* ================================================================
-     *  POST-PASS: LIGHT SOURCE RENDERING
-     *  Renders each light source as a '*' billboard in the world.
-     * ================================================================ */
-
-    for (int i = 0; i < world->num_lights; i++) {
-        Light *l = &world->lights[i];
-
-        /* Vector from camera to light */
-        double sprite_x = l->pos.x - cam->transform.pos.x;
-        double sprite_y = l->pos.y - cam->transform.pos.y;
-
-        /* Angle from camera forward direction to the light */
-        double angle_to_light = atan2(sprite_y, sprite_x);
-        double angle_diff = angle_to_light - cam->transform.angle;
-
-        /* Normalise angle difference to [-PI, PI] */
-        while (angle_diff > PI)  angle_diff -= 2.0 * PI;
-        while (angle_diff < -PI) angle_diff += 2.0 * PI;
-
-        /* Skip if the light is behind the camera or at an extreme angle */
-        if (cos(angle_diff) < 0.1) continue;
-
-        /* Distance and screen X projection */
-        double dist = sqrt(sprite_x * sprite_x + sprite_y * sprite_y);
-        /* SMC hot path: light billboard screen-X expression, once per
-         * visible light per frame. */
-        double camera_x = smc_light_screen_x(angle_diff, cam->fov);
-        int screen_x = (int)((grid->width / 2.0) * (1.0 + camera_x));
-
-        if (screen_x < 0 || screen_x >= grid->width) continue;
-
-        /* Z-buffer check */
-        double perp_dist = dist * cos(angle_diff);
-        if (perp_dist >= z_buffer[screen_x]) continue; /* Hidden behind a wall */
-
-        /* Render at eye-height (centre of screen + pitch) */
-        int draw_y = grid->height / 2 + (int)cam->pitch;
-
-        if (draw_y >= 0 && draw_y < grid->height) {
-            Cell existing;
-            if (grid_get(grid, screen_x, draw_y, &existing)) {
-                /* Draw '*' in the light's colour on top of whatever's already there */
-                grid_set(grid, screen_x, draw_y, '*', l->color, existing.bg);
-            }
-        }
-    }
+    raycast_render_world_overlays(
+        grid, map, cam, assets, world,
+        heights_valid ? heights : NULL, bounded_occlusion);
 }
 
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,

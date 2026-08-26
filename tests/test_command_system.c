@@ -191,6 +191,11 @@ static void *failing_realloc(void *ptr, size_t size) {
 
 static void *passthrough_alloc(size_t size) { return malloc(size); }
 static void passthrough_free(void *ptr) { free(ptr); }
+static int g_fail_optical_realloc = 0;
+static void *failing_optical_realloc(void *ptr, size_t size) {
+    if (g_fail_optical_realloc) return NULL;
+    return realloc(ptr, size);
+}
 
 /* ===================================================================
  *  Tests
@@ -1471,6 +1476,118 @@ static void test_history_memory_limit_is_bounded_and_atomic(void **state) {
     scene_document_destroy(&doc);
 }
 
+static OpticalExtension optical_opacity(uint8_t value) {
+    OpticalExtension extension = {0};
+    extension.override_mask = OPTICAL_OVERRIDE_OPACITY;
+    extension.opacity = value;
+    return extension;
+}
+
+static void test_optical_material_command_undo_redo_and_inherit(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    OpticalExtension value = optical_opacity(96U);
+    OpticalExtension inherited = {0};
+    OpticalExtension actual;
+    uint32_t generation;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&history, doc.current_state);
+    generation = doc.optical_generation;
+
+    assert_int_equal(command_history_set_optical_material_extension(
+        &history, &doc, 12U, &value), CMD_RESULT_OK);
+    assert_true(doc.optical_generation != generation);
+    assert_true(scene_document_get_optical_material_extension(&doc, 12U, &actual));
+    assert_memory_equal(&actual, &value, sizeof(value));
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(&doc, 12U, &actual));
+    assert_memory_equal(&actual, &inherited, sizeof(inherited));
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(&doc, 12U, &actual));
+    assert_memory_equal(&actual, &value, sizeof(value));
+    assert_int_equal(command_history_set_optical_material_extension(
+        &history, &doc, 12U, &inherited), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(&doc, 12U, &actual));
+    assert_int_equal(actual.override_mask, 0U);
+    {
+        OpticalRuntimeView view;
+        uint32_t view_generation;
+        assert_false(scene_document_get_optical_view(
+            &doc, &view, &view_generation));
+    }
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_material_extension(&doc, 12U, &actual));
+    assert_memory_equal(&actual, &value, sizeof(value));
+
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
+static void test_optical_cell_sparse_order_removal_and_allocation_failure(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    OpticalExtension first = optical_opacity(64U);
+    OpticalExtension second = optical_opacity(128U);
+    OpticalExtension inherited = {0};
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_state;
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&history, doc.current_state);
+
+    assert_int_equal(command_history_set_optical_cell_extension(
+        &history, &doc, 3U, &first), CMD_RESULT_OK);
+    assert_int_equal(command_history_set_optical_cell_extension(
+        &history, &doc, 1U, &second), CMD_RESULT_OK);
+    assert_int_equal(doc.optical_cell_override_count, 2U);
+    assert_int_equal(doc.optical_cell_overrides[0].cell_index, 1U);
+    assert_int_equal(doc.optical_cell_overrides[1].cell_index, 3U);
+    assert_int_equal(command_history_set_optical_cell_extension(
+        &history, &doc, 1U, &inherited), CMD_RESULT_OK);
+    assert_int_equal(doc.optical_cell_override_count, 1U);
+    assert_int_equal(doc.optical_cell_overrides[0].cell_index, 3U);
+    g_fail_optical_realloc = 1;
+    scene_document_set_optical_allocator_for_test(failing_optical_realloc);
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.optical_cell_override_count, 2U);
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+    assert_int_equal(doc.optical_cell_override_count, 1U);
+    old_count = history.count;
+    old_cursor = history.cursor;
+    old_state = doc.current_state;
+    assert_int_equal(command_history_set_optical_material_extension(
+        &history, &doc, UINT16_MAX, &first), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(history.count, old_count);
+    assert_int_equal(history.cursor, old_cursor);
+    assert_int_equal(doc.current_state, old_state);
+    g_fail_optical_realloc = 0;
+    scene_document_reset_optical_allocator_for_test();
+
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
+static void test_optical_command_invalid_values_are_atomic(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    OpticalExtension invalid = optical_opacity(1U);
+    OpticalExtension value = optical_opacity(1U);
+    (void)state;
+    load_fixture(&doc);
+    command_history_init(&history, doc.current_state);
+    invalid.override_mask |= UINT8_C(0x80);
+    assert_int_equal(command_history_set_optical_material_extension(
+        &history, &doc, 1U, &invalid), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(command_history_set_optical_cell_extension(
+        &history, &doc, 4U, &value), CMD_RESULT_INVALID_TARGET);
+    assert_int_equal(history.count, 0U);
+    assert_int_equal(doc.optical_cell_override_count, 0U);
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1515,6 +1632,9 @@ int main(void) {
         cmocka_unit_test(test_decal_insert_failure_does_not_consume_id),
         cmocka_unit_test(test_decal_batch_insert_is_one_step_and_rolls_back_ids),
         cmocka_unit_test(test_history_memory_limit_is_bounded_and_atomic),
+        cmocka_unit_test(test_optical_material_command_undo_redo_and_inherit),
+        cmocka_unit_test(test_optical_cell_sparse_order_removal_and_allocation_failure),
+        cmocka_unit_test(test_optical_command_invalid_values_are_atomic),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

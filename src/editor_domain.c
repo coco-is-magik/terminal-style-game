@@ -108,6 +108,9 @@ bool editor_domain_inspector_field_presentation(
             *out_presentation = (EditorInspectorFieldPresentation){
                 "Cell gravity scale", EDITOR_INSPECTOR_FIELD_NUMBER,
                 0.0, 255.996, 0.25, 2U};
+        } else if (field_index == EDITOR_SURFACE_FIELD_OPTICS) {
+            *out_presentation = (EditorInspectorFieldPresentation){
+                "Optics", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
         } else {
             *out_presentation = (EditorInspectorFieldPresentation){
                 "Map movement", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
@@ -491,6 +494,204 @@ bool editor_domain_make_movement_step_request(
     out_request->type = EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS;
     out_request->data.movement.value = value;
     return true;
+}
+
+static bool optical_field_parts(
+    OpticalExtension *extension, EditorOpticalField field,
+    uint8_t *out_bit, uint8_t **out_value, bool *out_boolean
+) {
+    uint8_t bit;
+    uint8_t *value;
+    bool boolean = false;
+    if (!extension || !out_bit || !out_value || !out_boolean) return false;
+    switch (field) {
+        case EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS:
+            bit = OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+            value = &extension->player_blocks;
+            boolean = true;
+            break;
+        case EDITOR_OPTICAL_FIELD_RAY_BLOCKS:
+            bit = OPTICAL_OVERRIDE_RAY_BLOCKS;
+            value = &extension->ray_blocks;
+            boolean = true;
+            break;
+        case EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS:
+            bit = OPTICAL_OVERRIDE_LIGHT_BLOCKS;
+            value = &extension->light_blocks;
+            boolean = true;
+            break;
+        case EDITOR_OPTICAL_FIELD_OPACITY:
+            bit = OPTICAL_OVERRIDE_OPACITY;
+            value = &extension->opacity;
+            break;
+        case EDITOR_OPTICAL_FIELD_TRANSMISSION:
+            bit = OPTICAL_OVERRIDE_TRANSMISSION;
+            value = &extension->transmission;
+            break;
+        case EDITOR_OPTICAL_FIELD_REFLECTIVITY:
+            bit = OPTICAL_OVERRIDE_REFLECTIVITY;
+            value = &extension->reflectivity;
+            break;
+        default: return false;
+    }
+    *out_bit = bit;
+    *out_value = value;
+    *out_boolean = boolean;
+    return true;
+}
+
+static bool optical_target(
+    const SceneDocument *document, SelectionTarget target,
+    int *out_x, int *out_y, SceneSurfaceKind *out_surface
+) {
+    if (!document || !out_x || !out_y || !out_surface) return false;
+    if (target.type == SELECTION_WALL_FACE) {
+        *out_x = target.value.wall_face.map_x;
+        *out_y = target.value.wall_face.map_y;
+        *out_surface = SCENE_SURFACE_WALL;
+    } else if (target.type == SELECTION_FLOOR || target.type == SELECTION_CEILING) {
+        *out_x = target.value.horizontal.map_x;
+        *out_y = target.value.horizontal.map_y;
+        *out_surface = target.type == SELECTION_FLOOR
+            ? SCENE_SURFACE_FLOOR : SCENE_SURFACE_CEILING;
+    } else return false;
+    return map_in_bounds(&document->map, *out_x, *out_y);
+}
+
+bool editor_domain_optical_field_presentation(
+    EditorOpticalField field, EditorInspectorFieldPresentation *out
+) {
+    static const char *const labels[] = {
+        "Player blocks", "Ray blocks", "Light blocks",
+        "Opacity", "Transmission", "Reflectivity"
+    };
+    if (!out || field < EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS ||
+        field >= EDITOR_OPTICAL_FIELD_COUNT) return false;
+    *out = (EditorInspectorFieldPresentation){
+        labels[field], field <= EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS
+            ? EDITOR_INSPECTOR_FIELD_CHOICE : EDITOR_INSPECTOR_FIELD_NUMBER,
+        0.0, field <= EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS ? 1.0 : 255.0,
+        field <= EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS ? 1.0 : 16.0, 0U};
+    return true;
+}
+
+bool editor_domain_get_optical_extension(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, OpticalExtension *out_extension,
+    uint16_t *out_material_id, size_t *out_cell_index
+) {
+    int x;
+    int y;
+    SceneSurfaceKind surface;
+    MaterialId material;
+    size_t cell_index;
+    if (!out_extension || !optical_target(document, target, &x, &y, &surface))
+        return false;
+    cell_index = (size_t)y * (size_t)document->map.width + (size_t)x;
+    if (!scene_document_get_surface_material(
+            document, x, y, surface, &material) || material < 0 ||
+        material > UINT16_MAX) return false;
+    if (out_material_id) *out_material_id = (uint16_t)material;
+    if (out_cell_index) *out_cell_index = cell_index;
+    if (scope == EDITOR_OPTICAL_SCOPE_MATERIAL)
+        return scene_document_get_optical_material_extension(
+            document, (uint16_t)material, out_extension);
+    if (scope == EDITOR_OPTICAL_SCOPE_CELL)
+        return scene_document_get_optical_cell_extension(
+            document, cell_index, out_extension);
+    return false;
+}
+
+bool editor_domain_format_optical_field(
+    const OpticalExtension *extension, EditorOpticalField field,
+    char *out_text, size_t out_size
+) {
+    OpticalExtension copy;
+    uint8_t bit;
+    uint8_t *value;
+    bool boolean;
+    if (!extension || !out_text || out_size == 0U) return false;
+    copy = *extension;
+    if (!optical_field_parts(&copy, field, &bit, &value, &boolean)) return false;
+    if ((copy.override_mask & bit) == 0U)
+        return snprintf(out_text, out_size, "inherit") >= 0;
+    if (boolean)
+        return snprintf(out_text, out_size, "%s", *value ? "yes" : "no") >= 0;
+    return snprintf(out_text, out_size, "%u", (unsigned)*value) >= 0;
+}
+
+static bool make_optical_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, OpticalExtension value,
+    EditorMutationRequest *out_request
+) {
+    uint16_t material_id;
+    size_t cell_index;
+    OpticalExtension ignored;
+    if (!out_request || !editor_domain_get_optical_extension(
+            document, target, scope, &ignored, &material_id, &cell_index)) return false;
+    memset(out_request, 0, sizeof(*out_request));
+    if (scope == EDITOR_OPTICAL_SCOPE_MATERIAL) {
+        out_request->type = EDITOR_MUTATION_SET_OPTICAL_MATERIAL;
+        out_request->data.optical_material.material_id = material_id;
+        out_request->data.optical_material.value = value;
+    } else {
+        out_request->type = EDITOR_MUTATION_SET_OPTICAL_CELL;
+        out_request->data.optical_cell.cell_index = cell_index;
+        out_request->data.optical_cell.value = value;
+    }
+    return true;
+}
+
+bool editor_domain_make_optical_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorOpticalField field, int direction,
+    EditorMutationRequest *out_request
+) {
+    OpticalExtension value;
+    uint8_t bit;
+    uint8_t *field_value;
+    bool boolean;
+    if ((direction != -1 && direction != 1) ||
+        !editor_domain_get_optical_extension(
+            document, target, scope, &value, NULL, NULL) ||
+        !optical_field_parts(&value, field, &bit, &field_value, &boolean)) return false;
+    if ((value.override_mask & bit) == 0U) {
+        value.override_mask = (uint8_t)(value.override_mask | bit);
+        *field_value = boolean ? (uint8_t)(direction > 0) :
+            (direction > 0 ? UINT8_C(16) : UINT8_MAX);
+    } else if (boolean) {
+        *field_value = (uint8_t)!*field_value;
+    } else {
+        int next = (int)*field_value + direction * 16;
+        if (next < 0) next = 0;
+        if (next > 255) next = 255;
+        *field_value = (uint8_t)next;
+    }
+    return make_optical_request(document, target, scope, value, out_request);
+}
+
+bool editor_domain_make_optical_inherit_toggle_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorOpticalField field,
+    EditorMutationRequest *out_request
+) {
+    OpticalExtension value;
+    uint8_t bit;
+    uint8_t *field_value;
+    bool boolean;
+    if (!editor_domain_get_optical_extension(
+            document, target, scope, &value, NULL, NULL) ||
+        !optical_field_parts(&value, field, &bit, &field_value, &boolean)) return false;
+    (void)boolean;
+    if ((value.override_mask & bit) != 0U) {
+        value.override_mask = (uint8_t)(value.override_mask & (uint8_t)~bit);
+        *field_value = 0U;
+    } else {
+        value.override_mask = (uint8_t)(value.override_mask | bit);
+        *field_value = 0U;
+    }
+    return make_optical_request(document, target, scope, value, out_request);
 }
 
 bool editor_domain_make_wall_material_request(

@@ -1521,7 +1521,7 @@ static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 5\n"));
+    assert_non_null(strstr(saved, "scene_version = 6\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
@@ -1638,8 +1638,8 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
     assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 5\n"));
-    assert_non_null(strstr(saved_text, "0001 0002 0003 0004"));
+    assert_non_null(strstr(saved_text, "scene_version = 6\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 6\n"));
     assert_false(document.migration_pending);
     assert_false(scene_document_is_dirty(&document));
     free(saved_text);
@@ -1693,6 +1693,69 @@ static void test_v5_defaults_height_view_and_resize_copy(void **state) {
     assert_false(scene_document_get_height_view(NULL, &view));
     assert_null(view.cells);
     scene_document_destroy(&doc);
+}
+
+static void test_v6_optical_document_persistence_and_borrowed_view(void **state) {
+    SceneDocument document;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    OpticalRuntimeView view;
+    OpticalResolved resolved;
+    uint32_t generation = 0U;
+    char path[512];
+    (void)state;
+
+    path_in_tmpdir(path, sizeof(path), "v6_optical.tscene");
+    scene_document_init(&document);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_create_new(&document), SCENE_LOAD_OK);
+    assert_false(scene_document_get_optical_view(&document, &view, &generation));
+    document.optical_material_capacity = 2U;
+    document.optical_material_defaults = calloc(
+        document.optical_material_capacity,
+        sizeof(*document.optical_material_defaults));
+    document.optical_cell_override_count = 1U;
+    document.optical_cell_overrides = calloc(
+        document.optical_cell_override_count,
+        sizeof(*document.optical_cell_overrides));
+    assert_non_null(document.optical_material_defaults);
+    assert_non_null(document.optical_cell_overrides);
+    document.optical_material_defaults[1].override_mask =
+        OPTICAL_OVERRIDE_RAY_BLOCKS | OPTICAL_OVERRIDE_OPACITY |
+        OPTICAL_OVERRIDE_TRANSMISSION;
+    document.optical_material_defaults[1].opacity = 64U;
+    document.optical_material_defaults[1].transmission = 192U;
+    document.optical_cell_overrides[0].cell_index = 11U;
+    document.optical_cell_overrides[0].optical.override_mask =
+        OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+    document.optical_cell_overrides[0].optical.player_blocks = 0U;
+
+    assert_int_equal(scene_document_save_as_native(
+                         &document, path, "v6_optical", &diagnostic),
+                     SCENE_SAVE_OK);
+    assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic),
+                     SCENE_LOAD_OK);
+    assert_true(scene_document_get_optical_view(&reopened, &view, &generation));
+    assert_true(optical_runtime_view_is_current(&view, generation));
+    assert_true(optical_runtime_view_resolve(&view, 11U, 1U, true, &resolved));
+    assert_false(resolved.player_blocks);
+    assert_false(resolved.ray_blocks);
+    assert_int_equal(resolved.opacity, 64U);
+    assert_int_equal(resolved.transmission, 192U);
+    assert_int_equal(scene_document_internal_resize_east(&reopened, true, 1),
+                     SCENE_RESIZE_OK);
+    assert_false(optical_runtime_view_is_current(
+        &view, reopened.optical_generation));
+    assert_true(scene_document_get_optical_view(&reopened, &view, &generation));
+    assert_int_equal(reopened.optical_cell_overrides[0].cell_index, 12U);
+    assert_true(optical_runtime_view_resolve(&view, 12U, 1U, true, &resolved));
+    assert_false(resolved.player_blocks);
+    assert_false(reopened.migration_pending);
+    assert_false(scene_document_is_dirty(&reopened));
+
+    scene_document_destroy(&reopened);
+    scene_document_destroy(&document);
+    remove(path);
 }
 
 static void test_resize_limits_and_allocation_failures_are_atomic(void **state) {
@@ -1839,6 +1902,7 @@ int main(void) {
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
         cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v5),
         cmocka_unit_test(test_v5_defaults_height_view_and_resize_copy),
+        cmocka_unit_test(test_v6_optical_document_persistence_and_borrowed_view),
         cmocka_unit_test(test_v3_growth_provenance_save_reopen),
         cmocka_unit_test(test_resize_limits_and_allocation_failures_are_atomic),
     };

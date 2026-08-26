@@ -135,11 +135,25 @@ TEST_VERTICAL_PHYSICS_RUNNER := $(BUILD_DIR)/test-vertical-physics
 TEST_MATERIAL_DOCUMENT_RUNNER := $(BUILD_DIR)/test-material-document
 TEST_DECAL_DOCUMENT_RUNNER := $(BUILD_DIR)/test-decal-document
 TEST_ASSET_REFRESH_RUNNER := $(BUILD_DIR)/test-asset-refresh
+TEST_R9_OPTICAL_SEMANTICS_RUNNER := $(BUILD_DIR)/test-r9-optical-semantics
+TEST_R9_MULTIHIT_TRACE_RUNNER := $(BUILD_DIR)/test-r9-multihit-trace
+BENCH_R9_MULTIHIT_TRACE_RUNNER := $(BUILD_DIR)/benchmark-r9-multihit-trace
+TEST_R9_OPTICAL_COMPOSITOR_RUNNER := $(BUILD_DIR)/test-r9-optical-compositor
+BENCH_R9_OPTICAL_COMPOSITOR_RUNNER := $(BUILD_DIR)/benchmark-r9-optical-compositor
+TEST_R9_MIRROR_TRACE_RUNNER := $(BUILD_DIR)/test-r9-mirror-trace
+BENCH_R9_MIRROR_TRACE_RUNNER := $(BUILD_DIR)/benchmark-r9-mirror-trace
+TEST_OPTICAL_RUNTIME_VIEW_RUNNER := $(BUILD_DIR)/test-optical-runtime-view
+BENCH_OPTICAL_RUNTIME_VIEW_RUNNER := $(BUILD_DIR)/benchmark-optical-runtime-view
+TEST_HEIGHTFIELD_SELECTIVE_RUNNER := $(BUILD_DIR)/test-heightfield-selective
+BENCH_HEIGHTFIELD_SELECTIVE_RUNNER := $(BUILD_DIR)/benchmark-heightfield-selective
+TEST_MIRROR_TRACE_RUNNER := $(BUILD_DIR)/test-mirror-trace
+TEST_OPTICAL_RENDER_RUNNER := $(BUILD_DIR)/test-optical-render
+BENCH_OPTICAL_RENDER_RUNNER := $(BUILD_DIR)/benchmark-optical-render
 
 
 
 
-.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
+.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
 
 
 all: $(APP)
@@ -177,9 +191,12 @@ SRC_MENU_STATE    := src/menu_state.c
 SRC_SCALE         := src/scale.c
 SRC_TIMING        := src/timing.c
 SRC_RAYCAST       := src/raycast.c src/decal_projection.c src/heightfield_trace.c src/smc_render_opt.c
+SRC_RAYCAST_OPTICAL := $(SRC_RAYCAST) src/raycast_optical.c \
+	src/heightfield_trace_selective.c src/optical_runtime_view.c \
+	src/optical_compositor.c src/mirror_trace.c
 SRC_LIGHTING      := src/lighting.c
 SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
-SRC_SCENE_DOCUMENT := src/scene_document.c
+SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
 SRC_SCENE_FORMAT := src/scene_format.c
 SRC_SCENE_BLOCK_CODEC := src/scene_block_codec.c
@@ -196,6 +213,7 @@ SRC_ASSET_DOCUMENT := src/asset_document.c
 SRC_MATERIAL_DOCUMENT := src/material_document.c
 SRC_DECAL_DOCUMENT := src/decal_document.c
 SRC_ASSET_REFRESH := src/asset_refresh.c
+SRC_OPTICAL_RUNTIME_VIEW := src/optical_runtime_view.c
 
 
 
@@ -327,6 +345,7 @@ TEST_CORE_SRC := \
 	$(SRC_MATH) \
 	$(SRC_MAP) \
 	$(SRC_CAMERA) \
+	$(SRC_OPTICAL_RUNTIME_VIEW) \
 	$(SRC_RAYCAST) \
 	$(SRC_LIGHTING) \
 	$(SRC_CONFIG) \
@@ -345,6 +364,7 @@ TEST_DECALS_SRC := \
 	$(SRC_GRID) \
 	$(SRC_MAP) \
 	$(SRC_CAMERA) \
+	$(SRC_OPTICAL_RUNTIME_VIEW) \
 	$(SRC_RAYCAST) \
 	$(SRC_ASSETS) \
 	$(SRC_WORLD) \
@@ -376,7 +396,8 @@ TEST_SCENE_FORMAT_SRC := \
 	$(SRC_CHECKED_SIZE) \
 	$(SRC_SCENE_DIAGNOSTIC) \
 	$(SRC_SCENE_FORMAT) \
-	$(SRC_SCENE_BLOCK_CODEC)
+	$(SRC_SCENE_BLOCK_CODEC) \
+	$(SRC_OPTICAL_RUNTIME_VIEW)
 
 TEST_COMMAND_SYSTEM_SRC := \
 	$(SRC_CHECKED_SIZE) \
@@ -396,6 +417,7 @@ TEST_EDITOR_SELECTION_SRC := \
 	$(SRC_EDITOR_SELECTION) \
 	$(SRC_RAYCAST) \
 	$(SRC_CAMERA) \
+	$(SRC_OPTICAL_RUNTIME_VIEW) \
 	$(SRC_MAP) \
 	$(SRC_CONFIG) \
 	$(SRC_MATH) \
@@ -410,6 +432,7 @@ TEST_EDITOR_HIGHLIGHT_SRC := \
 	$(SRC_EDITOR_SELECTION) \
 	$(SRC_RAYCAST) \
 	$(SRC_CAMERA) \
+	$(SRC_OPTICAL_RUNTIME_VIEW) \
 	$(SRC_MAP) \
 	$(SRC_CONFIG) \
 	$(SRC_MATH) \
@@ -527,10 +550,10 @@ $(BENCH_EDITOR_HIGHLIGHT_RUNNER): tests/benchmark_editor_highlight.c $(TEST_EDIT
 		tests/benchmark_editor_highlight.c $(TEST_EDITOR_HIGHLIGHT_SRC) $(TEST_FEATURE_EXTRA_SRC) \
 		-o $(BENCH_EDITOR_HIGHLIGHT_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
-$(BENCH_SURFACE_RENDER_RUNNER): tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
+$(BENCH_SURFACE_RENDER_RUNNER): tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
 	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
 		tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) \
-		$(SRC_CAMERA) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) \
+		$(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) \
 		$(TEST_FEATURE_EXTRA_SRC) -o $(BENCH_SURFACE_RENDER_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
 $(TEST_EDITOR_DOMAIN_RUNNER): tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SRC) | dirs
@@ -546,17 +569,17 @@ $(TEST_INPUT_RUNNER): tests/test_input.c $(SRC_INPUT) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_input.c $(SRC_INPUT) \
 		-o $(TEST_INPUT_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_CAMERA_RUNNER): tests/test_camera.c $(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_camera.c $(SRC_CAMERA) $(SRC_MAP) \
+$(TEST_CAMERA_RUNNER): tests/test_camera.c $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_camera.c $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) \
 		$(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) -o $(TEST_CAMERA_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_MAP_CATALOG_RUNNER): tests/test_map_catalog.c $(SRC_MAP_CATALOG) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_map_catalog.c $(SRC_MAP_CATALOG) \
 		-o $(TEST_MAP_CATALOG_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_VERTICAL_PHYSICS_RUNNER): tests/test_vertical_physics.c $(SRC_VERTICAL_PHYSICS) $(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
+$(TEST_VERTICAL_PHYSICS_RUNNER): tests/test_vertical_physics.c $(SRC_VERTICAL_PHYSICS) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_vertical_physics.c $(SRC_VERTICAL_PHYSICS) \
-		$(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) \
+		$(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) \
 		-o $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_GLYPH_CACHE_RUNNER): tests/test_glyph_block_cache.c src/glyph_block_cache.c | dirs
@@ -567,9 +590,9 @@ $(TEST_LIGHTING_CACHE_RUNNER): tests/test_lighting_cache.c src/lighting_cache.c 
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_lighting_cache.c src/lighting_cache.c \
 		-o $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_LIGHTING_RUNNER): tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) $(TEST_FEATURE_EXTRA_SRC) | dirs
+$(TEST_LIGHTING_RUNNER): tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) $(TEST_FEATURE_EXTRA_SRC) | dirs
 	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
-		tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) \
+		tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) \
 		$(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) \
 		$(TEST_FEATURE_EXTRA_SRC) -o $(TEST_LIGHTING_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
@@ -595,9 +618,9 @@ $(TEST_BENCHMARK_RUNNER): tests/test_benchmark_session.c src/benchmark_session.c
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_benchmark_session.c src/benchmark_session.c \
 		-o $(TEST_BENCHMARK_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/frame_dispatch.c src/grid.c src/camera.c src/math.c src/map.c src/checked_size.c | dirs
+$(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/frame_dispatch.c src/grid.c src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_modules.c src/menu_controller.c \
-		src/frame_dispatch.c src/grid.c src/camera.c src/math.c src/map.c src/checked_size.c \
+		src/frame_dispatch.c src/grid.c src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c \
 		-o $(TEST_APP_MODULES_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_DECAL_PROJECTION_RUNNER): tests/test_decal_projection.c src/decal_projection.c | dirs
@@ -632,6 +655,100 @@ $(TEST_ASSET_REFRESH_RUNNER): tests/test_asset_refresh.c $(SRC_ASSET_REFRESH) $(
 		$(SRC_WORLD) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) \
 		-o $(TEST_ASSET_REFRESH_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_R9_OPTICAL_SEMANTICS_RUNNER): tests/test_r9_optical_semantics.c src/r9_optical_semantics.c $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/test_r9_optical_semantics.c src/r9_optical_semantics.c $(SRC_CHECKED_SIZE) \
+		-o $(TEST_R9_OPTICAL_SEMANTICS_RUNNER) $(TEST_LIBS) $(RPATH)
+
+r9-p1-memory-report: $(TEST_R9_OPTICAL_SEMANTICS_RUNNER)
+	./$(TEST_R9_OPTICAL_SEMANTICS_RUNNER) --memory-report
+
+$(TEST_R9_MULTIHIT_TRACE_RUNNER): tests/test_r9_multihit_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/test_r9_multihit_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) \
+		-o $(TEST_R9_MULTIHIT_TRACE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_R9_MULTIHIT_TRACE_RUNNER): tests/benchmark_r9_multihit_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/benchmark_r9_multihit_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_CAMERA) \
+		$(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) \
+		-o $(BENCH_R9_MULTIHIT_TRACE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+benchmark-r9-multihit-trace: $(BENCH_R9_MULTIHIT_TRACE_RUNNER)
+	./$(BENCH_R9_MULTIHIT_TRACE_RUNNER)
+
+$(TEST_R9_OPTICAL_COMPOSITOR_RUNNER): tests/test_r9_optical_compositor.c src/r9_optical_compositor.c | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/test_r9_optical_compositor.c src/r9_optical_compositor.c \
+		-o $(TEST_R9_OPTICAL_COMPOSITOR_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_R9_OPTICAL_COMPOSITOR_RUNNER): tests/benchmark_r9_optical_compositor.c src/r9_optical_compositor.c | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/benchmark_r9_optical_compositor.c src/r9_optical_compositor.c \
+		-o $(BENCH_R9_OPTICAL_COMPOSITOR_RUNNER) $(TEST_LIBS) $(RPATH)
+
+benchmark-r9-optical-compositor: $(BENCH_R9_OPTICAL_COMPOSITOR_RUNNER)
+	./$(BENCH_R9_OPTICAL_COMPOSITOR_RUNNER)
+
+$(TEST_R9_MIRROR_TRACE_RUNNER): tests/test_r9_mirror_trace.c src/r9_mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/test_r9_mirror_trace.c src/r9_mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) -o $(TEST_R9_MIRROR_TRACE_RUNNER) \
+		$(TEST_LIBS) $(RPATH)
+
+$(BENCH_R9_MIRROR_TRACE_RUNNER): tests/benchmark_r9_mirror_trace.c src/r9_mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) -DR9_OPTICAL_RESEARCH=1 $(INCLUDES) \
+		tests/benchmark_r9_mirror_trace.c src/r9_mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) -o $(BENCH_R9_MIRROR_TRACE_RUNNER) \
+		$(TEST_LIBS) $(RPATH)
+
+benchmark-r9-mirror-trace: $(BENCH_R9_MIRROR_TRACE_RUNNER)
+	./$(BENCH_R9_MIRROR_TRACE_RUNNER)
+
+$(TEST_OPTICAL_RUNTIME_VIEW_RUNNER): tests/test_optical_runtime_view.c $(SRC_OPTICAL_RUNTIME_VIEW) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_optical_runtime_view.c $(SRC_OPTICAL_RUNTIME_VIEW) \
+		-o $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_OPTICAL_RUNTIME_VIEW_RUNNER): tests/benchmark_optical_runtime_view.c $(SRC_OPTICAL_RUNTIME_VIEW) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_optical_runtime_view.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) -o $(BENCH_OPTICAL_RUNTIME_VIEW_RUNNER) $(LIBS) $(RPATH)
+
+benchmark-optical-runtime-view: $(BENCH_OPTICAL_RUNTIME_VIEW_RUNNER)
+	./$(BENCH_OPTICAL_RUNTIME_VIEW_RUNNER)
+
+$(TEST_HEIGHTFIELD_SELECTIVE_RUNNER): tests/test_heightfield_selective.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_heightfield_selective.c src/heightfield_trace.c src/heightfield_trace_selective.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) \
+		-o $(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_MIRROR_TRACE_RUNNER): tests/test_mirror_trace.c src/mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_mirror_trace.c src/mirror_trace.c src/heightfield_trace.c src/heightfield_trace_selective.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) \
+		-o $(TEST_MIRROR_TRACE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_HEIGHTFIELD_SELECTIVE_RUNNER): tests/benchmark_heightfield_selective.c src/heightfield_trace.c src/heightfield_trace_selective.c $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_heightfield_selective.c src/heightfield_trace.c src/heightfield_trace_selective.c \
+		$(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_CAMERA) $(SRC_MAP) $(SRC_CHECKED_SIZE) \
+		$(SRC_MATH) $(SRC_INPUT) -o $(BENCH_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_LIBS) $(RPATH)
+
+benchmark-heightfield-selective: $(BENCH_HEIGHTFIELD_SELECTIVE_RUNNER)
+	./$(BENCH_HEIGHTFIELD_SELECTIVE_RUNNER)
+
+$(TEST_OPTICAL_RENDER_RUNNER): tests/test_optical_render.c $(SRC_RAYCAST_OPTICAL) $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_optical_render.c $(SRC_RAYCAST_OPTICAL) \
+		$(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) \
+		$(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) \
+		-o $(TEST_OPTICAL_RENDER_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_OPTICAL_RENDER_RUNNER): tests/benchmark_optical_render.c $(SRC_RAYCAST_OPTICAL) $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_optical_render.c $(SRC_RAYCAST_OPTICAL) \
+		$(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) \
+		$(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) \
+		-o $(BENCH_OPTICAL_RENDER_RUNNER) $(TEST_LIBS) $(RPATH)
+
+benchmark-optical-render: $(BENCH_OPTICAL_RENDER_RUNNER)
+	./$(BENCH_OPTICAL_RENDER_RUNNER)
+
 
 
 run: $(APP)
@@ -646,7 +763,7 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_CAMERA_RUNNER) $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) $(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_ASSET_REFRESH_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_CAMERA_RUNNER) $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) $(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_ASSET_REFRESH_RUNNER) $(TEST_R9_OPTICAL_SEMANTICS_RUNNER) $(TEST_R9_MULTIHIT_TRACE_RUNNER) $(TEST_R9_OPTICAL_COMPOSITOR_RUNNER) $(TEST_R9_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) $(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RENDER_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
 	./$(TEST_DECALS_RUNNER)
@@ -679,6 +796,14 @@ test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_
 	./$(TEST_MATERIAL_DOCUMENT_RUNNER)
 	./$(TEST_DECAL_DOCUMENT_RUNNER)
 	./$(TEST_ASSET_REFRESH_RUNNER)
+	./$(TEST_R9_OPTICAL_SEMANTICS_RUNNER)
+	./$(TEST_R9_MULTIHIT_TRACE_RUNNER)
+	./$(TEST_R9_OPTICAL_COMPOSITOR_RUNNER)
+	./$(TEST_R9_MIRROR_TRACE_RUNNER)
+	./$(TEST_OPTICAL_RUNTIME_VIEW_RUNNER)
+	./$(TEST_HEIGHTFIELD_SELECTIVE_RUNNER)
+	./$(TEST_MIRROR_TRACE_RUNNER)
+	./$(TEST_OPTICAL_RENDER_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
 check: all test

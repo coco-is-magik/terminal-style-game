@@ -427,6 +427,57 @@ static void test_vertical_and_movement_domain_requests(void **state) {
     scene_document_destroy(&document);
 }
 
+static void test_optical_domain_preserves_scope_and_inheritance(void **state) {
+    SceneDocument document;
+    SelectionTarget floor = surface_target(SELECTION_FLOOR, 2, 3);
+    EditorMutationRequest request;
+    EditorInspectorFieldPresentation field;
+    OpticalExtension extension = {0};
+    char text[32];
+    (void)state;
+    init_document(&document);
+    document.authored_cell_count = 20U;
+    document.authored_cells = calloc(20U, sizeof(*document.authored_cells));
+    assert_non_null(document.authored_cells);
+    document.authored_cells[17].floor_material = 12U;
+
+    assert_true(editor_domain_optical_field_presentation(
+        EDITOR_OPTICAL_FIELD_OPACITY, &field));
+    assert_string_equal(field.label, "Opacity");
+    assert_true(editor_domain_format_optical_field(
+        &extension, EDITOR_OPTICAL_FIELD_OPACITY, text, sizeof(text)));
+    assert_string_equal(text, "inherit");
+    assert_true(editor_domain_make_optical_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL,
+        EDITOR_OPTICAL_FIELD_OPACITY, 1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_OPTICAL_CELL);
+    assert_int_equal(request.data.optical_cell.cell_index, 17U);
+    assert_int_equal(request.data.optical_cell.value.opacity, 16U);
+    assert_true(editor_domain_make_optical_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_MATERIAL,
+        EDITOR_OPTICAL_FIELD_RAY_BLOCKS, -1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_OPTICAL_MATERIAL);
+    assert_int_equal(request.data.optical_material.material_id, 12U);
+    assert_int_equal(request.data.optical_material.value.ray_blocks, 0U);
+    extension = request.data.optical_material.value;
+    assert_true(editor_domain_format_optical_field(
+        &extension, EDITOR_OPTICAL_FIELD_RAY_BLOCKS, text, sizeof(text)));
+    assert_string_equal(text, "no");
+    document.optical_material_capacity = 13U;
+    document.optical_material_defaults = calloc(
+        13U, sizeof(*document.optical_material_defaults));
+    assert_non_null(document.optical_material_defaults);
+    document.optical_material_defaults[12] = extension;
+    assert_true(editor_domain_make_optical_inherit_toggle_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_MATERIAL,
+        EDITOR_OPTICAL_FIELD_RAY_BLOCKS, &request));
+    assert_int_equal(request.data.optical_material.value.override_mask, 0U);
+    assert_false(editor_domain_make_optical_step_request(
+        &document, (SelectionTarget){0}, EDITOR_OPTICAL_SCOPE_CELL,
+        EDITOR_OPTICAL_FIELD_OPACITY, 1, &request));
+    scene_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dispatch_and_wall_request),
@@ -439,6 +490,7 @@ int main(void) {
         cmocka_unit_test(test_ambient_metadata_format_step_and_value),
         cmocka_unit_test(test_decal_inspector_fields_and_typed_requests),
         cmocka_unit_test(test_vertical_and_movement_domain_requests),
+        cmocka_unit_test(test_optical_domain_preserves_scope_and_inheritance),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

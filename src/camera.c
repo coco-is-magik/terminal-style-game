@@ -82,8 +82,28 @@ void camera_init(Camera *cam, double x, double y, double angle, double fov) {
  * @param delta_time_sec   Time elapsed since the last frame (seconds)
  * @param viewport_rows    Active logical viewport height
  */
-void camera_update(Camera *cam, Map *map, InputState *input,
-                   double delta_time_sec, int viewport_rows) {
+static bool camera_cell_player_passable(
+    const Map *map, int x, int y, const OpticalRuntimeView *view,
+    uint32_t generation
+) {
+    MapCell *cell = map_get((Map *)map, x, y);
+    size_t index;
+    OpticalResolved resolved;
+    if (!cell) return false;
+    if (!optical_runtime_view_is_current(view, generation))
+        return cell->material_id == 0;
+    index = (size_t)y * (size_t)map->width + (size_t)x;
+    if (!optical_runtime_view_resolve(
+            view, index, (uint16_t)(cell->material_id > 0 ? cell->material_id : 0),
+            cell->material_id != 0, &resolved)) return cell->material_id == 0;
+    return !resolved.player_blocks;
+}
+
+void camera_update_optical(
+    Camera *cam, Map *map, InputState *input,
+    double delta_time_sec, int viewport_rows,
+    const OpticalRuntimeView *optical_view, uint32_t optical_generation
+) {
     if (!cam || !map || !input) return;
 
     /* ================================================================
@@ -162,8 +182,9 @@ void camera_update(Camera *cam, Map *map, InputState *input,
      *   - If the cell exists AND its material_id == 0 (empty/void),
      *     the move is allowed; otherwise it's blocked. */
     int map_x = (int)(cam->transform.pos.x + move_x + (move_x > 0 ? radius : -radius));
-    MapCell *cell_x = map_get(map, map_x, (int)cam->transform.pos.y);
-    if (cell_x && cell_x->material_id == 0) {
+    if (camera_cell_player_passable(
+            map, map_x, (int)cam->transform.pos.y,
+            optical_view, optical_generation)) {
         cam->transform.pos.x += move_x;
     }
     /* If blocked, move_x is discarded — no X movement this frame. */
@@ -173,9 +194,16 @@ void camera_update(Camera *cam, Map *map, InputState *input,
      *   - Because X and Y are checked separately, if X is blocked but Y
      *     is free, the player will slide along the wall in Y. */
     int map_y = (int)(cam->transform.pos.y + move_y + (move_y > 0 ? radius : -radius));
-    MapCell *cell_y = map_get(map, (int)cam->transform.pos.x, map_y);
-    if (cell_y && cell_y->material_id == 0) {
+    if (camera_cell_player_passable(
+            map, (int)cam->transform.pos.x, map_y,
+            optical_view, optical_generation)) {
         cam->transform.pos.y += move_y;
     }
     /* If blocked, move_y is discarded. */
+}
+
+void camera_update(Camera *cam, Map *map, InputState *input,
+                   double delta_time_sec, int viewport_rows) {
+    camera_update_optical(
+        cam, map, input, delta_time_sec, viewport_rows, NULL, 0U);
 }

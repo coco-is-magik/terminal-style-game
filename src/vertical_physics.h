@@ -10,6 +10,7 @@
 #include "camera.h"
 #include "height_view.h"
 #include "map.h"
+#include "optical_runtime_view.h"
 
 #include <stdbool.h>
 
@@ -38,6 +39,11 @@ VerticalPhysicsResult vertical_physics_reset(
     const Map *map,
     const SceneHeightView *heights
 );
+VerticalPhysicsResult vertical_physics_reset_optical(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
+);
 
 /**
  * Reconcile a camera movement proposal and advance gravity for delta seconds.
@@ -52,6 +58,12 @@ VerticalPhysicsResult vertical_physics_step(
     double previous_y,
     double delta_seconds
 );
+VerticalPhysicsResult vertical_physics_step_optical(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights, double previous_x, double previous_y,
+    double delta_seconds, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
+);
 
 /** Apply jump_impulse opposite the effective local gravity vector. */
 VerticalPhysicsResult vertical_physics_jump(
@@ -59,6 +71,11 @@ VerticalPhysicsResult vertical_physics_jump(
     Camera *camera,
     const Map *map,
     const SceneHeightView *heights
+);
+VerticalPhysicsResult vertical_physics_jump_optical(
+    VerticalPhysicsState *state, Camera *camera, const Map *map,
+    const SceneHeightView *heights, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
 );
 
 #endif /* VERTICAL_PHYSICS_H */

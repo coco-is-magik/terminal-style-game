@@ -359,6 +359,33 @@ static void test_airborne_lateral_entry_requires_body_fit(void **state) {
     assert_float_equal(fixture->camera.transform.pos.x, 2.5, 0.000001);
 }
 
+static void test_optical_player_nonblocking_wall_reconciles(void **state) {
+    Fixture *fixture = *state;
+    OpticalExtension materials[2] = {0};
+    OpticalRuntimeView optical;
+    size_t index = 2U * 6U + 3U;
+    map_set(fixture->map, 3, 2, 1);
+    fixture->cells[index].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+    fixture->cells[index].wall_material = 1U;
+    materials[1].override_mask = OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+    materials[1].player_blocks = 0U;
+    assert_true(optical_runtime_view_init(
+        &optical, 36U, materials, 2U, NULL, 0U, 3U));
+    assert_int_equal(vertical_physics_reset(
+        &fixture->physics, &fixture->camera, fixture->map, &fixture->view),
+        VERTICAL_PHYSICS_OK);
+    fixture->camera.transform.pos.x = 3.1;
+    assert_int_equal(vertical_physics_step_optical(
+        &fixture->physics, &fixture->camera, fixture->map, &fixture->view,
+        2.5, 2.5, 0.0, &optical, 3U), VERTICAL_PHYSICS_OK);
+    assert_float_equal(fixture->camera.transform.pos.x, 3.1, 0.000001);
+    fixture->camera.transform.pos.x = 3.1;
+    assert_int_equal(vertical_physics_step_optical(
+        &fixture->physics, &fixture->camera, fixture->map, &fixture->view,
+        2.5, 2.5, 0.0, &optical, 4U), VERTICAL_PHYSICS_BLOCKED_CLEARANCE);
+    assert_float_equal(fixture->camera.transform.pos.x, 2.5, 0.000001);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_default_jump_clears_two_step_heights),
@@ -373,7 +400,8 @@ int main(void) {
         cmocka_unit_test_setup_teardown(test_substep_determinism_and_invalid_inputs, setup, teardown),
         cmocka_unit_test_setup_teardown(test_jump_impulse_opposes_local_gravity, setup, teardown),
         cmocka_unit_test_setup_teardown(test_low_gravity_jump_is_higher_and_ceiling_caps, setup, teardown),
-        cmocka_unit_test_setup_teardown(test_airborne_lateral_entry_requires_body_fit, setup, teardown)
+        cmocka_unit_test_setup_teardown(test_airborne_lateral_entry_requires_body_fit, setup, teardown),
+        cmocka_unit_test_setup_teardown(test_optical_player_nonblocking_wall_reconciles, setup, teardown)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

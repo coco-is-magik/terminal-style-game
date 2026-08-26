@@ -33,8 +33,24 @@ typedef enum {
     EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION,
     EDITOR_SURFACE_FIELD_GRAVITY_SCALE,
     EDITOR_SURFACE_FIELD_MOVEMENT,
+    EDITOR_SURFACE_FIELD_OPTICS,
     EDITOR_SURFACE_FIELD_COUNT
 } EditorSurfaceField;
+
+typedef enum {
+    EDITOR_OPTICAL_SCOPE_CELL = 0,
+    EDITOR_OPTICAL_SCOPE_MATERIAL
+} EditorOpticalScope;
+
+typedef enum {
+    EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS = 0,
+    EDITOR_OPTICAL_FIELD_RAY_BLOCKS,
+    EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS,
+    EDITOR_OPTICAL_FIELD_OPACITY,
+    EDITOR_OPTICAL_FIELD_TRANSMISSION,
+    EDITOR_OPTICAL_FIELD_REFLECTIVITY,
+    EDITOR_OPTICAL_FIELD_COUNT
+} EditorOpticalField;
 
 typedef enum {
     EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE = 0,
@@ -172,6 +188,29 @@ bool editor_domain_movement_field_presentation(
 );
 bool editor_domain_make_movement_step_request(
     const SceneDocument *document, EditorMovementField field, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_optical_field_presentation(
+    EditorOpticalField field,
+    EditorInspectorFieldPresentation *out_presentation
+);
+bool editor_domain_get_optical_extension(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, OpticalExtension *out_extension,
+    uint16_t *out_material_id, size_t *out_cell_index
+);
+bool editor_domain_format_optical_field(
+    const OpticalExtension *extension, EditorOpticalField field,
+    char *out_text, size_t out_size
+);
+bool editor_domain_make_optical_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorOpticalField field, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_optical_inherit_toggle_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorOpticalField field,
     EditorMutationRequest *out_request
 );
 

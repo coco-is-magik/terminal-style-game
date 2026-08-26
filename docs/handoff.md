@@ -1,3 +1,410 @@
+# Active Handoff — R9 I7 Mirrors Complete — 2026-08-26
+
+## Current status
+
+**I1–I7 complete and verified. I8 preset work is not authorized.** The approved
+R9 plan and both Review H records are binding. R8 remains Verified; research
+prototypes remain gated behind `R9_OPTICAL_RESEARCH=1`.
+The prior SMC handoff below is historical and remains preserved.
+
+## I7 completion summary
+
+- Production one-bounce vertical-wall mirror reflection added behind authored
+  positive reflectivity.
+- A single reflected XY interval set is prepared per mirror-covered primary
+  screen column and reused for every reflected row on that mirror plane.
+- Second mirror plane in the same column, reflected mirror hits, reflected
+  openings/misses, and layer-cap exhaustion all fall back to darkness before
+  mixing with the direct mirror appearance.
+- No recursion, no reflected entities, no horizontal mirrors, no presets, and no
+  default-path enablement.
+- Reflectivity remains independently authored and does not affect collision,
+  sight blocking, light blocking, opacity, or transmission.
+- Focused runners: mirror trace 4/4, optical render 16/16.
+- Strict aggregate, ASan, UBSan, optimized application build, exact checksums,
+  zero render-loop allocation, and 6 ms stability gate pass.
+- Full record: `R9_INCREMENT_I7_IMPLEMENTATION_RECORD_2026-08-26.md`.
+
+## I8 stop boundary
+
+Do not begin preset work without separate authorization. I8 requires a fresh
+end-to-end coverage/performance assessment and representative scene evidence
+before any quality-preset names or thresholds are decided.
+
+## I6 completion summary
+
+- Shared wall/floor/ceiling inspectors expose cell-override and material-default
+  scopes for all six typed optical properties, with explicit `inherit` removal.
+- Every edit passes through command history; apply/undo/redo, sparse ordering,
+  generation invalidation, allocation failure, Save, and reopen are transactional.
+- Player collision, sight, scalar-light blocking, opacity, and transmission now
+  consume independent resolved semantics. Reflectivity now enables one-bounce
+  vertical-wall mirror reflection in the optical renderer.
+- Focused runners: command 41/41, domain 11/11, unified editor 78/78, camera 6/6,
+  vertical physics 14/14, lighting 6/6, I1 7/7, I2 9/9, I3 11/11, mirror trace 4/4,
+  optical render 16/16.
+- Strict aggregate, ASan, UBSan, optimized application build, exact checksums, zero
+  render-loop allocation, and 6 ms stability gate pass.
+- Full record: `R9_INCREMENT_I6_IMPLEMENTATION_RECORD_2026-08-26.md`.
+
+## I5 completion summary
+
+- Scene v6 persists typed material defaults and sparse per-cell optical overrides;
+  exact grammar is in `R9_NATIVE_SCENE_V6_SPEC_2026-08-25.md`.
+- v1–v5 remain accepted and migrate to exact allocation-free legacy optical
+  semantics; canonical document Save writes v6.
+- Validated nonempty v6 views conditionally consume the I1–I3 optical renderer;
+  absent/default optical data remains on `raycast_render_height()`.
+- Focused format/document runners pass 19/19 and 46/46; aggregate strict checks,
+  ASan, UBSan, application build, deterministic checksums, and stability budget pass.
+- Full record: `R9_INCREMENT_I5_IMPLEMENTATION_RECORD_2026-08-25.md`.
+
+## I6 authorization boundary (completed)
+
+I6 was subsequently authorized and completed under this boundary: material defaults
+and sparse cell overrides mutate transactionally, preserve generation invalidation
+and canonical ordering, and add no mirrors or presets.
+
+I7 was then authorized and completed. I8 preset work remains deferred.
+
+## I4 verification summary
+
+Review H's implemented-phase checkpoint passed. Evidence:
+
+- Focused runners: I1 7/7, I2 9/9, I3 11/11.
+- `make -j2 check`, `make asan`, `make ubsan`: pass.
+- Shipping surface benchmark raised path: **5.322599 ms**; occluded decal:
+  **5.401400 ms**.
+- Shipping surface stability raised path: **5.545941 ms**; occluded decal:
+  **5.639415 ms**.
+- Exact parity checksums retained:
+  - flat/default `5602340901454607159`;
+  - raised/decal-occlusion `16569300432624360523`.
+- Zero render-loop allocations in I2/I3 benchmarks.
+- `git --no-pager diff --check`: clean.
+- No `SceneDocument`/schema/editor/mirror/preset scope added.
+
+Review record: `docs/reviews/2026-08-25-roadmap-r9-review-h-implemented-phase.md`.
+
+## I5 locked boundary
+
+- Implement v6 scene persistence carrying typed optical authored data:
+  material defaults plus sparse per-cell overrides.
+- Preserve v1–v5 migration byte-equality; zero/default optical values must produce
+  exact current rendering, collision, and checksum behavior.
+- Add no optical editor authoring, mirror enablement, or preset work in I5.
+- Keep the application renderer calling `raycast_render_height()` until a v6 view
+  is loaded and validated.
+- Stop after v6 persistence/migration/diagnostics; do not begin I6 editor work
+  until separately authorized.
+
+## I4 stop-gate (completed)
+
+Review the I1–I3 runtime seams, performance evidence, and parity/determinism
+record before authorizing v6 schema work. If any gate fails, return to research or
+a controlled rework. Do not proceed to v6, editor authoring, mirrors, or presets
+until Review H records the disposition.
+
+## I3 locked boundary
+
+- Preserve `heightfield_trace_prepared_sample()` and all ordinary renderer consumers
+  byte-for-byte in behavior; I2 adds an opt-in production API only.
+- Reuse the existing prepared interval cache; no second DDA and no allocation.
+- Cursor order is horizontal intersection then same-interval boundary, then next
+  interval. Missing relevant floor/ceiling is a proven terminal opening.
+- Resolve every yielded hit through I1 using owner cell index and material ID.
+- Continue only when `!ray_blocks && transmission > 0`; include the terminal hit.
+- Return at most four layers. If the fourth layer transmits, report
+  `layer_cap_exhausted=true` without scanning for a fifth hit. Cap exhaustion is not
+  a proven opening.
+- Report a proven opening separately after any transmitting layers.
+- Invalid/stale views and invalid inputs reject transactionally.
+- I2 adds no compositor, v6, editor, mirror, or ordinary renderer wiring.
+
+## I2 implementation checkpoint
+
+- Added production `heightfield_trace_selective()` with retained hit + resolved
+  semantics, four-layer cap, surface/opening/cap terminal states, and transactional
+  invalid-input rejection.
+- Added `src/heightfield_trace_selective.c`, which cursors over prepared intervals;
+  it performs no DDA and allocates no memory.
+- Shared exact intersection formulas through private
+  `src/heightfield_trace_internal.h`; the ordinary nearest-hit API remains the
+  renderer path.
+- Isolated selective code in its own translation unit after A/B timing exposed an
+  uncalled-code layout effect. The shipping benchmark retains its exact pre-I2
+  `SRC_RAYCAST` module set.
+- Added `tests/test_heightfield_selective.c`: 9/9 strict focused tests pass.
+- Added `tests/benchmark_heightfield_selective.c` and
+  `make benchmark-heightfield-selective`: 41,600 samples/frame, 0/10/25/100%
+  coverage, zero timed-loop allocations, exact 0% checksum parity
+  `17812527538433777792`, and deterministic nonzero checksums.
+- Final clean shipping benchmark: 4.850771 ms raised; stability: 5.460252 ms
+  raised; both deterministic and below 6 ms. Existing checksum invariants remain
+  exact.
+- Clean strict `make -j2 check` and sequential full ASan/UBSan suites pass,
+  including I2 9/9.
+- No renderer/editor call site exists; manual acceptance remains not applicable.
+- Full verification record: `R9_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-25.md`.
+- I3 selective composition is pending and must not begin without confirmation.
+
+## I1 locked boundary
+
+- Add a production, borrowed, allocation-free `OpticalRuntimeView`; it owns nothing.
+- I1 does not add v6 fields to `SceneDocument`, `Material`, or `AssetRegistry`.
+- Optional future-v6 inputs are a direct-indexed material-extension array and a
+  strictly sorted sparse cell-override array. Absent inputs derive exact legacy
+  semantics from occupancy.
+- Material lookup is O(1); sparse override lookup is binary search.
+- Initialization validates cell count, pointers/counts, extension bytes,
+  strict cell-index ordering, and bounds transactionally.
+- Lookup resolves legacy → material extension → cell extension without allocation.
+- No renderer/tracer/collision consumer is wired until I2.
+- Focused tests and a 41,600-query benchmark must prove default parity and the
+  Review H ≤0.100 ms default-overhead target.
+
+## I1 implementation checkpoint
+
+- Added `src/optical_runtime_view.h/.c`, a production borrowed view that owns no
+  memory and performs no allocation during initialization or lookup.
+- Optional direct-indexed material extensions and strictly sorted sparse cell
+  overrides are validated transactionally; absent inputs derive exact legacy
+  semantics.
+- Resolution order is legacy defaults → material extension → sparse cell override.
+- Added generation metadata/currentness helper for borrowed-view invalidation.
+- Added `tests/test_optical_runtime_view.c`: 7/7 strict focused tests pass.
+- Added `tests/benchmark_optical_runtime_view.c` and
+  `make benchmark-optical-runtime-view`. Three 41,600-query/500-frame trials retain
+  exact checksum `17991526238798329539`, deterministic output, and pass the
+  ≤0.100 ms default-overhead gate. Negative measured deltas are treated only as no
+  measurable regression in this harness, not as a speedup claim.
+- Ordinary application build passes with the new production module, but no renderer,
+  tracer, collision, schema, or editor consumer is wired. I2 has not started.
+- Strict optimized `make -j2 check`: pass, including I1 7/7.
+- Shipping benchmark: 5.343303 ms raised; stability: 5.114752 ms raised; both
+  deterministic and below 6 ms. Exact flat/default and decal-occlusion checksum
+  equalities remain intact.
+- Sequential clean `make asan && make ubsan`: both full suites pass without
+  sanitizer diagnostics, including I1 7/7.
+- Added `docs/R9_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-24.md`; plan and
+  roadmap now mark I1 verified and I2 pending.
+
+## Locked synthesis boundary
+
+- Complete RQ5 policy, RQ6 budget synthesis, and Review H readiness only.
+- Add no ordering engine, quality-preset code, implementation plan, schema, or
+  shipping optical behavior.
+- Preserve the current two-domain order: depth-aware world-grid composition first,
+  then editor overlays, then separately ordered UI pixel layers.
+- Record future sprites/entities as reservations, not present behavior.
+- Distinguish direct measurements from linear projections and unmeasured optimized
+  selective designs.
+- D3 records four layers and one bounce as hard caps, but only opaque/no-mirror is
+  currently performance-validated. Do not invent medium/high presets unsupported
+  by end-to-end evidence.
+- Prepare Review H to decide whether constrained redesign evidence is sufficient
+  for architecture planning or whether another selective integration prototype is
+  required.
+
+## Synthesis completed files
+
+- Added `docs/R9_RQ5_RQ6_SYNTHESIS_2026-08-24.md`.
+- Added `docs/reviews/2026-08-24-roadmap-r9-review-h-readiness.md`.
+- Updated the R9 research plan, roadmap status text, and this handoff.
+
+## Synthesis conclusions
+
+- RQ5 records one policy with two explicit domains: depth-aware world cells
+  (geometry/reflection, decals, runtime light markers, editor annotations), then
+  z/insertion-ordered pixel UI. Current decal depth and `source_order` rules are
+  preserved; sprites/entities remain R11 reservations.
+- RQ6 records direct P2–P4 measurements separately from projections. Unconditional
+  multi-hit, unconditional full-screen composition, and per-cell reflected
+  preparation remain rejected.
+- D1 recommends v6. D2 recommends material defaults plus sparse authored cell
+  overrides with a profiled derived runtime representation.
+- D3 recommends hard caps of four layers and one bounce. Only compatibility/
+  default opaque/no-mirror behavior is currently performance-validated; medium/
+  high preset promises are deferred pending optimized end-to-end evidence.
+- Review H readiness criteria are complete. The readiness packet requests eight
+  explicit dispositions and recommends conditional architecture acceptance or one
+  additional selective-integration research loop.
+- Synthesis verification: strict optimized `make -j2 check` passes; latest shipping
+  benchmark is 5.222781 ms raised and stability is 4.885022 ms raised, both
+  deterministic and below 6 ms with exact checksum parity retained.
+
+## Review H execution checkpoint
+
+- Fresh `make -j2 check`: pass through P1–P4.
+- Fresh shipping benchmark: 5.332370 ms raised, deterministic, pass.
+- Fresh shipping stability: 5.266871 ms raised, deterministic, pass.
+- No pre-implementation manual visual gate is applicable: research APIs are gated
+  and produce no ordinary user-visible behavior. Manual optical acceptance is
+  deferred to the first visible implementation increment and assigned to the user.
+- Added `docs/reviews/2026-08-24-roadmap-r9-review-h.md` with accepted findings,
+  eight recorded decisions, mandatory plan order/stop gates, prohibited paths,
+  fresh verification evidence, and deferred manual acceptance.
+- Review H conditionally authorizes the next planning increment only. Shipping
+  implementation, v6/editor work, mirrors, and named presets are not authorized
+  by this increment.
+- Manual optical acceptance is assigned to the user at the first visible
+  implementation increment; the exact nine-item checklist is in the outcome.
+
+## P4 implemented files
+
+- Added `src/r9_mirror_trace.h/.c`.
+- Added `tests/test_r9_mirror_trace.c` and
+  `tests/benchmark_r9_mirror_trace.c`.
+- Updated `Makefile` with focused, benchmark, and aggregate targets.
+- Added `docs/R9_P4_MIRROR_FINDINGS_2026-08-24.md`.
+
+## P4 implementation checkpoint
+
+- Added gated vector reflection and real one-column prepared-tracer bounce with
+  `1e-6` reflected-direction origin offset, reflected eye Z, retained pitch, and
+  a fixed one-bounce result.
+- Added six focused fixtures for cardinal/oblique vectors, reflected wall,
+  reflected opening fallback, reflected-mirror terminal behavior, eligibility,
+  and transactional invalid inputs; 6/6 pass.
+- Initial 100-frame coverage benchmark over 41,600 samples: baseline 0.749926 ms;
+  10% 2.870521 ms (+2.120595), 25% 5.913958 ms (+5.164032), 50% 11.118994 ms
+  (+10.369068), 100% 22.893107 ms (+22.143181). Deterministic.
+- Initial result rejects per-cell reflected prepare+sample as affordable even at
+  10% coverage under the 6 ms whole-frame budget. This is research no-go evidence,
+  not a shipping regression.
+- Gate-off standalone compile and ordinary strict application build pass.
+- Three warmed trials confirm deterministic checksums and stable overhead near
+  1.8/4.5/9.1–9.5/18.4–18.5 ms for 10/25/50/100% coverage, excluding one
+  documented host-noise baseline/10% outlier.
+- At the P4 closeout checkpoint, P1–P4 evidence was complete and RQ5/RQ6 had not
+  yet started; the synthesis is now complete as recorded above.
+- Strict optimized aggregate `make -j2 check`: pass, including P1–P4 focused
+  runners. Shipping benchmark passes at 5.134157 ms raised. First shipping
+  stability run is deterministic but fails narrowly at 6.097629 ms raised versus
+  the 6 ms gate; P4 is dormant in that build. Repeated stability evidence is
+  required before P4 verification can close.
+- Three immediate stability retries pass deterministically at 4.901847,
+  4.852817, and 4.876414 ms raised, with unchanged checksums. The isolated first
+  failure is retained as host-variance evidence; no persistent shipping regression
+  is present.
+- Sequential clean `make asan && make ubsan`: both full suites pass without
+  sanitizer diagnostics, including P4 6/6.
+
+## P3 implemented files
+
+- Added `src/r9_optical_compositor.h/.c`.
+- Added `tests/test_r9_optical_compositor.c` and
+  `tests/benchmark_r9_optical_compositor.c`.
+- Updated `Makefile` with focused, benchmark, and aggregate targets.
+- Added `docs/R9_P3_OPTICAL_COMPOSITOR_FINDINGS_2026-08-24.md`.
+
+## P3 implementation checkpoint
+
+- Added gated, allocation-free terminal-cell compositor and independent sight/
+  light continuation helpers.
+- Added eight exact fixtures covering opaque parity, glass/wall, two glass
+  layers, opening darkness, generated discontinuity, glyph threshold/absorption,
+  independent continuation policy, and transactional invalid inputs; 8/8 pass.
+- Initial synthetic benchmark over 41,600 cells: matched baseline 0.507453 ms;
+  N=1 1.477218 ms, N=2 2.192425 ms, N=3 2.845412 ms, N=4 3.639870 ms;
+  deterministic with opaque N=1 checksum parity.
+- Gate-off standalone compile and ordinary strict application build pass.
+- API audit found that an all-transmissive list ending at a true opening was not
+  distinguishable from four-layer-cap exhaustion. Tightening the input/output
+  contract and adding a cap-exhaustion fixture before final measurements.
+- Final audited suite: 9/9 pass, including mutually exclusive surface/opening/cap
+  termination states.
+- Final three-trial benchmark: matched baseline about 0.496 ms; composition N=1
+  1.29–1.35 ms, N=2 1.90–1.93 ms, N=3 2.50–2.56 ms, N=4 3.10–3.11 ms. Opaque
+  N=1 checksum parity and all path checksums are deterministic.
+- At the P3 closeout checkpoint, its findings and plan marker were updated before
+  P4 began; P4 is now complete as recorded above.
+- Strict optimized `make -j2 check`: pass, including P1 6/6, P2 6/6, and P3
+  9/9.
+- Shipping surface benchmark: raised path 4.896944 ms; stability 5.200202 ms;
+  deterministic and below 6 ms. Exact flat-default parity and
+  occluded-decal/raised-height checksum equality remain intact.
+- Sequential clean `make asan && make ubsan`: both full suites pass without
+  sanitizer diagnostics, including P3 9/9.
+
+## Implemented files
+
+- Added `src/r9_optical_semantics.h/.c`.
+- Added `tests/test_r9_optical_semantics.c` (6 focused tests).
+- Updated `Makefile` with focused runner, aggregate-test membership, and
+  `r9-p1-memory-report`.
+- Added `docs/R9_P1_OPTICAL_SEMANTICS_FINDINGS_2026-08-21.md` with measured
+  memory/text-payload results, D1/D2 recommendations, limitations, and evidence.
+- Updated the R9 research plan progress marker and this active handoff.
+
+## P2 implemented files
+
+- Updated `src/heightfield_trace.h/.c` with gated collection types/API.
+- Added `tests/test_r9_multihit_trace.c` and
+  `tests/benchmark_r9_multihit_trace.c`.
+- Updated `Makefile` with focused, benchmark, and aggregate targets.
+- Added `docs/R9_P2_MULTIHIT_TRACE_FINDINGS_2026-08-24.md`.
+
+## P2 implementation checkpoint
+
+- Added gated `heightfield_trace_collect` with a four-hit fixed output, ordered
+  interval-cache traversal, transactional invalid-input rejection, truncation,
+  and terminal-opening reporting.
+- Added six focused fixtures and a prepared-sampling benchmark target.
+- Initial strict run: 5/6 fixtures passed. The two-wall fixture also reached the
+  map-edge boundary because geometry collection intentionally has no optical stop;
+  fixture corrected to use an explicit terminal opening behind the rear wall.
+- Initial benchmark (200 frames, 41,600 samples/frame): existing single hit
+  5.742501 ms; collect N=1 14.320294 ms; N=2 17.112437 ms; N=3 19.667826 ms;
+  N=4 21.042292 ms. Deterministic; N=1 checksum parity passed. This is current
+  no-go evidence for an unfiltered all-geometry collector, not a shipping gate.
+- Corrected focused suite: 6/6 pass. Gate-off strict compile and ordinary strict
+  application build pass.
+- Final warmed three-trial benchmark is recorded in
+  `docs/R9_P2_MULTIHIT_TRACE_FINDINGS_2026-08-24.md`: stable collector times are
+  approximately 12.9/14.5/17.7/17.6 ms for N=1–4. P2 rejects unconditional
+  collection and recommends selective continuation while retaining four only as
+  the bounded correctness cap.
+- At the P2 closeout checkpoint, its findings and plan marker were updated before
+  P3 began; P3 and P4 are now complete as recorded above.
+- Strict optimized `make -j2 check`: pass, including P1 6/6 and P2 6/6.
+- Shipping surface benchmark: raised path 5.140533 ms; stability 5.247474 ms;
+  deterministic and below 6 ms. Exact flat-default parity and
+  occluded-decal/raised-height checksum equality remain intact.
+- Sequential clean `make asan && make ubsan`: both full suites pass without
+  sanitizer diagnostics, including P2 6/6. An earlier parallel invocation is
+  discarded because both targets race by cleaning the shared `build/` directory.
+
+## Verification completed
+
+- `make build/test-r9-optical-semantics && ./build/test-r9-optical-semantics`:
+  6/6 pass under strict `-Werror` flags.
+- `make r9-p1-memory-report`: pass. At 512x256 and 65,536 material slots:
+  material extension 524,288 B; dense cells 1,048,576 B; 1,024 sparse records
+  12,288 B; material + 1,024 sparse records 536,576 B.
+- Gate-off translation-unit compile with strict flags: pass.
+- Strict optimized `make -j2 check`: pass, including P1 6/6.
+- `make benchmark-surface-render`: pass; raised path 5.170782 ms, deterministic.
+- `make stability-surface-render`: pass; raised path 5.076414 ms, deterministic.
+- Both surface gates remain under 6 ms. Exact flat-default framebuffer parity and
+  occluded-decal/raised-height checksum equality are retained.
+- Full `make asan`: pass without AddressSanitizer/LeakSanitizer diagnostics.
+- Full `make ubsan`: pass without UndefinedBehaviorSanitizer diagnostics.
+
+## Decisions/recommendations produced
+
+- D1 Review-H input: use v6 for future optical persistence. The existing v5
+  block codec is fixed-width token machinery, not optional-section support.
+- D2 Review-H input: material defaults plus sparse per-cell overrides, subject to
+  P2–P4 access-pattern evidence.
+- Detailed evidence: `docs/R9_P1_OPTICAL_SEMANTICS_FINDINGS_2026-08-21.md`.
+
+## Exact continuation point
+
+Begin I2 (selective continuation) only after confirmation. Preserve the nearest-hit opaque fast path, use the I1 view without allocation, stop at four layers, and do not start I3/v6/editor/mirror work in the same increment.
+
+---
+
 # SMC Renderer Integration — Handoff Document
 
 > **Historical / superseded:** This handoff stops during indexed-tracker work.

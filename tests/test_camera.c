@@ -72,6 +72,31 @@ static void test_init_sets_flat_world_eye_height(void **state) {
     assert_float_equal(camera.z, 0.5, 0.0001);
 }
 
+static void test_optical_player_blocking_is_independent_and_stale_safe(void **state) {
+    Map *map = map_create(4, 3);
+    Camera camera;
+    InputState input = {0};
+    OpticalExtension materials[2] = {0};
+    OpticalRuntimeView view;
+    (void)state;
+    assert_non_null(map);
+    map_set(map, 2, 1, 1);
+    materials[1].override_mask = OPTICAL_OVERRIDE_PLAYER_BLOCKS |
+                                 OPTICAL_OVERRIDE_RAY_BLOCKS;
+    materials[1].player_blocks = 0U;
+    materials[1].ray_blocks = 1U;
+    assert_true(optical_runtime_view_init(
+        &view, 12U, materials, 2U, NULL, 0U, 5U));
+    input.forward = true;
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    camera_update_optical(&camera, map, &input, 0.2, 40, &view, 5U);
+    assert_true(camera.transform.pos.x > 1.5);
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    camera_update_optical(&camera, map, &input, 0.2, 40, &view, 6U);
+    assert_true(camera.transform.pos.x == 1.5);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_clamp_policy),
@@ -79,6 +104,7 @@ int main(void) {
         cmocka_unit_test(test_update_preserves_direction_sensitivity_and_clamps),
         cmocka_unit_test(test_update_recovers_non_finite_offset),
         cmocka_unit_test(test_init_sets_flat_world_eye_height),
+        cmocka_unit_test(test_optical_player_blocking_is_independent_and_stale_safe),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

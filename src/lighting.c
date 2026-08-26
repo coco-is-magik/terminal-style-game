@@ -93,9 +93,52 @@ double lighting_total_time_ms = 0.0;
  *               allocated, same dimensions as the tile grid)
  * @param world  The WorldState containing all active PointLights
  */
-void lighting_update(Map *map, WorldState *world) {
+static bool lighting_ray_blocked_optical(
+    const Map *map, double start_x, double start_y, int target_x, int target_y,
+    const OpticalRuntimeView *view, uint32_t generation
+) {
+    (void)generation;
+    double target_center_x = target_x + 0.5;
+    double target_center_y = target_y + 0.5;
+    double dx = target_center_x - start_x;
+    double dy = target_center_y - start_y;
+    int map_x = (int)floor(start_x);
+    int map_y = (int)floor(start_y);
+    int step_x = dx < 0.0 ? -1 : 1;
+    int step_y = dy < 0.0 ? -1 : 1;
+    double delta_x = dx == 0.0 ? INFINITY : fabs(1.0 / dx);
+    double delta_y = dy == 0.0 ? INFINITY : fabs(1.0 / dy);
+    double side_x = dx < 0.0 ? (start_x - map_x) * delta_x
+                             : (map_x + 1.0 - start_x) * delta_x;
+    double side_y = dy < 0.0 ? (start_y - map_y) * delta_y
+                             : (map_y + 1.0 - start_y) * delta_y;
+    size_t limit = (size_t)map->width + (size_t)map->height + 2U;
+    for (size_t steps = 0U; steps < limit; steps++) {
+        size_t index;
+        OpticalResolved resolved;
+        const MapCell *cell;
+        if (side_x < side_y) { side_x += delta_x; map_x += step_x; }
+        else { side_y += delta_y; map_y += step_y; }
+        if (!map_in_bounds(map, map_x, map_y) ||
+            (map_x == target_x && map_y == target_y)) return false;
+        index = (size_t)map_y * (size_t)map->width + (size_t)map_x;
+        cell = &map->cells[index];
+        if (!optical_runtime_view_resolve(
+                view, index,
+                (uint16_t)(cell->material_id > 0 ? cell->material_id : 0),
+                cell->material_id != 0, &resolved)) return cell->material_id != 0;
+        if (resolved.light_blocks) return true;
+    }
+    return false;
+}
+
+void lighting_update_optical(
+    Map *map, WorldState *world, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
+) {
     size_t cell_count;
     int light_count;
+    bool optical_current;
 
     if (!map || !map->cells || !map->light_map || !world ||
         !checked_size_2d(map->width, map->height, &cell_count)) {
@@ -106,6 +149,8 @@ void lighting_update(Map *map, WorldState *world) {
     if (light_count < 0 || light_count > MAX_LIGHTS) {
         return;
     }
+    optical_current = optical_runtime_view_is_current(
+        optical_view, optical_generation);
 
     LIGHTING_TIME_START();
 
@@ -159,7 +204,7 @@ void lighting_update(Map *map, WorldState *world) {
                     key.target_tile_y = y;
                     
                     LightSampleResult cached;
-                    if (lighting_cache_lookup(key, &cached)) {
+                    if (!optical_current && lighting_cache_lookup(key, &cached)) {
                         /* Cache hit - use cached values */
                         map->light_map[y * map->width + x] += cached.intensity;
                         continue;
@@ -188,9 +233,14 @@ void lighting_update(Map *map, WorldState *world) {
                      * If the ray hits a wall at coordinates (map_x, map_y) that
                      * are NOT the tile we're checking, then some other wall is
                      * casting a shadow onto this tile. */
-                    RayResult res = raycast_fire(map, &dummy_cam, ray_angle, dist);
-                    if (res.hit && (res.map_x != x || res.map_y != y)) {
-                        blocked = true;
+                    if (optical_current) {
+                        blocked = lighting_ray_blocked_optical(
+                            map, l->pos.x, l->pos.y, x, y,
+                            optical_view, optical_generation);
+                    } else {
+                        RayResult res = raycast_fire(map, &dummy_cam, ray_angle, dist);
+                        if (res.hit && (res.map_x != x || res.map_y != y))
+                            blocked = true;
                     }
 
                     /* ---- Step 2d: Calculate and accumulate the light contribution ---- */
@@ -211,7 +261,7 @@ void lighting_update(Map *map, WorldState *world) {
                     result.distance = dist;
                     result.attenuation = intensity;
                     result.intensity = contribution;
-                    lighting_cache_store(key, result);
+                    if (!optical_current) lighting_cache_store(key, result);
 #endif
 
                     /* Accumulate into the map's light map.
@@ -224,4 +274,8 @@ void lighting_update(Map *map, WorldState *world) {
     }
 
     LIGHTING_TIME_END();
+}
+
+void lighting_update(Map *map, WorldState *world) {
+    lighting_update_optical(map, world, NULL, 0U);
 }

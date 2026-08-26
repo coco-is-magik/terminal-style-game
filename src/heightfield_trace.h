@@ -10,6 +10,7 @@
 #include "camera.h"
 #include "height_view.h"
 #include "map.h"
+#include "optical_runtime_view.h"
 
 typedef enum {
     HEIGHTFIELD_HIT_NONE = 0,
@@ -80,6 +81,70 @@ bool heightfield_trace_prepare_column(
 HeightfieldHit heightfield_trace_prepared_sample(
     const HeightfieldTraceColumn *column, int screen_y
 );
+
+#define HEIGHTFIELD_OPTICAL_MAX_LAYERS 4U
+
+typedef struct {
+    HeightfieldHit hit;
+    OpticalResolved optical;
+} HeightfieldOpticalLayer;
+
+typedef struct {
+    HeightfieldOpticalLayer layers[HEIGHTFIELD_OPTICAL_MAX_LAYERS];
+    size_t count;
+    bool terminated_by_surface;
+    bool reached_opening;
+    bool layer_cap_exhausted;
+} HeightfieldOpticalResult;
+
+/**
+ * Selectively continue through a prepared column using resolved optical semantics.
+ * The ordinary nearest-hit renderer path does not call this allocation-free API.
+ */
+bool heightfield_trace_selective(
+    const HeightfieldTraceColumn *column,
+    const OpticalRuntimeView *optical_view,
+    uint32_t source_generation,
+    int screen_y,
+    HeightfieldOpticalResult *out_result
+);
+
+/**
+ * Selective continuation when the caller already resolved the nearest hit.
+ * The known layer is retained as layer zero and the prepared cursor resumes after it.
+ */
+bool heightfield_trace_continue_after_nearest(
+    const HeightfieldTraceColumn *column,
+    const OpticalRuntimeView *optical_view,
+    uint32_t source_generation,
+    int screen_y,
+    const HeightfieldHit *nearest_hit,
+    const OpticalResolved *nearest_optical,
+    HeightfieldOpticalResult *out_result
+);
+
+#ifdef R9_OPTICAL_RESEARCH
+
+#define R9_HEIGHTFIELD_MAX_HITS 4U
+
+typedef struct {
+    HeightfieldHit hits[R9_HEIGHTFIELD_MAX_HITS];
+    size_t count;
+    bool truncated;
+    bool terminal_opening;
+} R9HeightfieldHitList;
+
+/**
+ * Collect ordered geometry intersections from one prepared column.
+ *
+ * capacity must be in [1, R9_HEIGHTFIELD_MAX_HITS]. The collector reuses the
+ * prepared interval cache and performs no allocation or additional DDA walk.
+ * Optical stopping and compositing are intentionally outside this P2 boundary.
+ */
+bool heightfield_trace_collect(const HeightfieldTraceColumn *column, int screen_y,
+                               size_t capacity, R9HeightfieldHitList *out_hits);
+
+#endif /* R9_OPTICAL_RESEARCH */
 
 HeightfieldHit heightfield_trace_screen_sample(
     const Camera *camera, const Map *map, const SceneHeightView *heights,

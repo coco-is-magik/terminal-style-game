@@ -164,6 +164,10 @@ typedef struct {
     bool decal_menu_open;
     bool movement_menu_open;
     EditorMovementField movement_field;
+    bool optical_menu_open;
+    EditorOpticalScope optical_scope;
+    EditorOpticalField optical_field;
+    size_t optical_menu_index;
     EditorDecalMenuStage decal_menu_stage;
     size_t decal_menu_index;
     size_t decal_pattern_index;
@@ -309,6 +313,13 @@ CommandResult unified_editor_step_selected_gravity_scale(
 CommandResult unified_editor_step_movement_parameter(
     UnifiedEditorState *editor, EditorMovementField field, int direction
 );
+CommandResult unified_editor_step_selected_optical(
+    UnifiedEditorState *editor, int direction
+);
+CommandResult unified_editor_toggle_selected_optical_inherit(
+    UnifiedEditorState *editor
+);
+void unified_editor_toggle_optical_scope(UnifiedEditorState *editor);
 CommandResult unified_editor_place_wall(
     UnifiedEditorState *editor,
     int map_x,

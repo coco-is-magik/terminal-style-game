@@ -13,6 +13,7 @@
 
 #include "map.h"       /* Map — provides the light_map array to write into */
 #include "world.h"     /* WorldState — provides the list of active lights */
+#include "optical_runtime_view.h"
 #include <stdint.h>    /* uint64_t */
 
 #ifdef __cplusplus
@@ -32,6 +33,10 @@ extern "C" {
  * @param world  The WorldState containing all active point lights
  */
 void lighting_update(Map *map, WorldState *world);
+void lighting_update_optical(
+    Map *map, WorldState *world, const OpticalRuntimeView *optical_view,
+    uint32_t optical_generation
+);
 
 /**
  * Profiling variables - exported for benchmark modes.

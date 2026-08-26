@@ -17,8 +17,9 @@
 #define SCENE_VERSION_V3 3U
 #define SCENE_VERSION_V4 4U
 #define SCENE_VERSION_V5 5U
-/* Canonical writes use v5; v1-v4 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V5
+#define SCENE_VERSION_V6 6U
+/* Canonical writes use v6; v1-v5 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V6
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U

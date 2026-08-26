@@ -11,6 +11,14 @@ again after the implemented optical phase. R9's prerequisites — R4
 geometry/appearance separation and the final R8 geometry — are satisfied
 (recorded in `reviews/2026-08-21-roadmap-r8-phase-closeout.md`).
 
+**Research evidence complete; pre-implementation Review H conditionally passed
+2026-08-24.** P1–P4 findings and the RQ5/RQ6 synthesis are complete. Review H
+authorizes a constrained requirements/implementation plan with mandatory early
+runtime and performance stop gates; it does not authorize shipping implementation
+in the planning increment. See
+`R9_RQ5_RQ6_SYNTHESIS_2026-08-24.md` and
+`reviews/2026-08-24-roadmap-r9-review-h.md`.
+
 ## Grounding: what the code provides today
 
 | Fact | Location | R9 relevance |
@@ -143,6 +151,19 @@ a design.
 Each prototype lands with its own focused test runner and a findings note under
 `docs/` recording measured numbers and go/no-go input for Review H.
 
+**Progress 2026-08-24:** P1–P4 and RQ5/RQ6 synthesis are complete. P1 recommends v6 persistence plus
+material defaults and sparse cell overrides. P2 rejects unconditional collection;
+P3 supports bounded composition only on selectively continued transmissive
+samples. P4 proves correct one-bounce vertical-wall reflection and darkness
+fallback, but rejects per-cell reflected preparation: stable overhead is about
+1.8/4.5/9.1–9.5/18.4–18.5 ms at 10/25/50/100% coverage. See the P1–P3 findings
+and `R9_P4_MIRROR_FINDINGS_2026-08-24.md`. The synthesis records the two-domain
+ordering policy, aggregate budget, D1–D3 recommendations, and rejected paths.
+Pre-implementation Review H conditionally passed. It accepts v6, material defaults
+plus sparse authored overrides, four layers/one bounce, the two-domain ordering
+policy, and the selective-continuation direction. Mirrors and quality presets
+remain gated/deferred as recorded in the outcome.
+
 ## Product decisions surfaced early
 
 These gate prototype design and should be settled during research, before
@@ -181,11 +202,12 @@ is only *reserved for* in the RQ5 policy table.
 
 Review H is scheduled when all of the following hold:
 
-- [ ] P1–P4 findings notes exist with measured numbers (no "estimated").
-- [ ] D1–D3 have recorded decisions with rationale.
-- [ ] The RQ6 budget table states the proposed implementation budget.
-- [ ] The RQ5 policy table reproduces current decal ordering on fixtures.
-- [ ] No shipping-path behavior changed during research (checksum parity
+- [x] P1–P4 findings notes exist with measured numbers.
+- [x] D1–D3 research recommendations are recorded with rationale for Review H.
+- [x] The RQ6 budget table states the proposed implementation budget.
+- [x] The RQ5 policy table reproduces current decal ordering/source rules and
+      fixture-protected behavior.
+- [x] No shipping-path behavior changed during research (checksum parity
       demonstrated by the gated builds).
 
 ## Deliverables and order
@@ -197,9 +219,15 @@ Review H is scheduled when all of the following hold:
 5. RQ5 policy table + RQ6 budget table.
 6. Findings summary feeding **Review H**.
 
+Items 1–6 and pre-implementation Review H are complete. The next action is to
+write the constrained R9 requirements and implementation plan; shipping
+implementation must not begin in the same increment.
+
 ## Cross-references
 
 - Roadmap: `docs/FEATURE_ROADMAP.md` (R9 section, review schedule).
 - Separation requirements: `docs/TODO.md` — "Geometry, collision, and appearance
   separation" and "Mirrors."
 - Closeout confirming R9 readiness: `docs/reviews/2026-08-21-roadmap-r8-phase-closeout.md`.
+- Pre-implementation Review H outcome:
+  `docs/reviews/2026-08-24-roadmap-r9-review-h.md`.

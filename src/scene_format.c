@@ -43,7 +43,9 @@ typedef enum {
     SECTION_GRAVITY_ORIENTATIONS,
     SECTION_MOVEMENT,
     SECTION_LIGHT,
-    SECTION_DECAL
+    SECTION_DECAL,
+    SECTION_OPTICAL_MATERIAL,
+    SECTION_OPTICAL_CELL
 } SectionKind;
 
 typedef struct {
@@ -59,6 +61,7 @@ typedef struct {
 
 typedef void *(*SceneCallocFn)(size_t count, size_t size);
 static SceneCallocFn g_scene_calloc = calloc;
+static int compare_optical_cell_overrides(const void *left, const void *right);
 
 void scene_format_set_allocator_for_test(
     void *(*calloc_fn)(size_t count, size_t size)
@@ -125,6 +128,8 @@ void scene_format_candidate_destroy(SceneFormatCandidate *candidate) {
     free(candidate->authored_cells);
     free(candidate->lights);
     free(candidate->decals);
+    free(candidate->optical_material_defaults);
+    free(candidate->optical_cell_overrides);
     free(candidate->legacy_source_path);
     scene_format_candidate_init(candidate);
 }
@@ -375,6 +380,10 @@ static bool parse_header(char *text, SectionHeader *header) {
     if (!parse_u64(space, &header->id)) return false;
     if (strcmp(inside, "light") == 0) header->kind = SECTION_LIGHT;
     else if (strcmp(inside, "decal_instance") == 0) header->kind = SECTION_DECAL;
+    else if (strcmp(inside, "optical_material") == 0)
+        header->kind = SECTION_OPTICAL_MATERIAL;
+    else if (strcmp(inside, "optical_cell") == 0)
+        header->kind = SECTION_OPTICAL_CELL;
     else return false;
     return true;
 }
@@ -492,6 +501,24 @@ SceneFormatResult scene_format_migrate_to_v5(
     }
     candidate->movement = scene_movement_parameters_default();
     candidate->source_version = SCENE_VERSION_V5;
+    return SCENE_FORMAT_OK;
+}
+
+SceneFormatResult scene_format_migrate_v5_to_v6(
+    SceneFormatCandidate *candidate, SceneDiagnostic *diagnostic
+) {
+    SceneFormatResult result;
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate || candidate->source_version != SCENE_VERSION_V5 ||
+        candidate->optical_material_defaults ||
+        candidate->optical_material_capacity != 0U ||
+        candidate->optical_cell_overrides ||
+        candidate->optical_cell_override_count != 0U) {
+        return SCENE_FORMAT_INVALID_ARGUMENT;
+    }
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    candidate->source_version = SCENE_VERSION_V6;
     return SCENE_FORMAT_OK;
 }
 
@@ -720,6 +747,8 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
 
 static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candidate,
                                                    size_t lights, size_t decals,
+                                                   size_t optical_material_capacity,
+                                                   size_t optical_cells,
                                                    const char *path,
                                                    SceneDiagnostic *diagnostic) {
     size_t count;
@@ -747,6 +776,18 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
     if (decals) {
         candidate->decals = calloc(decals, sizeof(*candidate->decals));
         if (!candidate->decals) goto allocation_failed;
+    }
+    if (optical_material_capacity) {
+        candidate->optical_material_defaults = calloc(
+            optical_material_capacity,
+            sizeof(*candidate->optical_material_defaults));
+        if (!candidate->optical_material_defaults) goto allocation_failed;
+        candidate->optical_material_capacity = optical_material_capacity;
+    }
+    if (optical_cells) {
+        candidate->optical_cell_overrides = calloc(
+            optical_cells, sizeof(*candidate->optical_cell_overrides));
+        if (!candidate->optical_cell_overrides) goto allocation_failed;
     }
     return SCENE_FORMAT_OK;
 allocation_failed:
@@ -828,7 +869,7 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
             if (!parse_uint_range(value, UINT_MAX, &parsed) ||
                  (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
                    parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4 &&
-                   parsed != SCENE_VERSION_V5))
+                   parsed != SCENE_VERSION_V5 && parsed != SCENE_VERSION_V6))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -1279,6 +1320,54 @@ numeric:
                   key, "invalid decal field value", line, decal->id);
 }
 
+static SceneFormatResult parse_optical_field(
+    OpticalExtension *optical, unsigned *seen, char *key, char *value,
+    const char *path, const char *section, size_t line, SceneInstanceId id,
+    SceneDiagnostic *diagnostic
+) {
+    unsigned bit;
+    unsigned number;
+    uint8_t *target;
+    unsigned maximum = 255U;
+    if (strcmp(key, "player_blocks") == 0) {
+        bit = OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+        target = &optical->player_blocks;
+        maximum = 1U;
+    } else if (strcmp(key, "ray_blocks") == 0) {
+        bit = OPTICAL_OVERRIDE_RAY_BLOCKS;
+        target = &optical->ray_blocks;
+        maximum = 1U;
+    } else if (strcmp(key, "light_blocks") == 0) {
+        bit = OPTICAL_OVERRIDE_LIGHT_BLOCKS;
+        target = &optical->light_blocks;
+        maximum = 1U;
+    } else if (strcmp(key, "opacity") == 0) {
+        bit = OPTICAL_OVERRIDE_OPACITY;
+        target = &optical->opacity;
+    } else if (strcmp(key, "transmission") == 0) {
+        bit = OPTICAL_OVERRIDE_TRANSMISSION;
+        target = &optical->transmission;
+    } else if (strcmp(key, "reflectivity") == 0) {
+        bit = OPTICAL_OVERRIDE_REFLECTIVITY;
+        target = &optical->reflectivity;
+    } else {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNKNOWN, path,
+                      section, key, "unknown optical field", line, id);
+    }
+    if ((*seen & bit) != 0U) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
+                      section, key, "duplicate optical field", line, id);
+    }
+    if (!parse_uint_range(value, maximum, &number)) {
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                      section, key, "invalid optical field value", line, id);
+    }
+    *seen |= bit;
+    optical->override_mask = (uint8_t)(optical->override_mask | bit);
+    *target = (uint8_t)number;
+    return SCENE_FORMAT_OK;
+}
+
 static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                                           SceneDecalSurface decal_surface,
                                           const char *path, size_t line,
@@ -1296,6 +1385,15 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                           "decal_instance", NULL,
                           "missing or surface-inapplicable placement field", line,
                           header.id);
+    } else if (header.kind == SECTION_OPTICAL_MATERIAL ||
+               header.kind == SECTION_OPTICAL_CELL) {
+        if (seen == 0U) {
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING,
+                          path, header.kind == SECTION_OPTICAL_MATERIAL
+                              ? "optical_material" : "optical_cell",
+                          NULL, "optical block has no fields", line, header.id);
+        }
+        return SCENE_FORMAT_OK;
     } else return SCENE_FORMAT_OK;
     if ((seen & required) != required)
         return reject(diagnostic,
@@ -1325,6 +1423,8 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     size_t floor_presence_sections = 0U, ceiling_presence_sections = 0U;
     size_t gravity_scale_sections = 0U;
     size_t gravity_orientation_sections = 0U, movement_sections = 0U;
+    size_t optical_cell_count = 0U;
+    size_t optical_material_capacity = 0U;
     SceneFormatResult result = SCENE_FORMAT_OK;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     if (!source || !out_candidate) return SCENE_FORMAT_INVALID_ARGUMENT;
@@ -1379,6 +1479,17 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             else if (current == SECTION_MOVEMENT) movement_sections++;
             else if (current == SECTION_LIGHT) light_count++;
             else if (current == SECTION_DECAL) decal_count++;
+            else if (current == SECTION_OPTICAL_MATERIAL) {
+                if (header.id >= OPTICAL_MATERIAL_CAPACITY_MAX) {
+                    result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC,
+                                    path, "optical_material", NULL,
+                                    "material ID exceeds 65535", line.number,
+                                    header.id);
+                    goto done;
+                }
+                if ((size_t)header.id + 1U > optical_material_capacity)
+                    optical_material_capacity = (size_t)header.id + 1U;
+            } else if (current == SECTION_OPTICAL_CELL) optical_cell_count++;
             if (cells_sections > 1U || occupancy_sections > 1U || wall_sections > 1U ||
                 floor_sections > 1U || ceiling_sections > 1U ||
                 floor_height_sections > 1U || ceiling_height_sections > 1U ||
@@ -1429,6 +1540,13 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                         0U, 0U);
         goto done;
     }
+    if (temporary.source_version < SCENE_VERSION_V6 &&
+        (optical_material_capacity != 0U || optical_cell_count != 0U)) {
+        result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
+                        path, NULL, "scene_version",
+                        "optical blocks require scene version 6", 0U, 0U);
+        goto done;
+    }
     if ((metadata_seen & (temporary.source_version >= SCENE_VERSION_V3
                               ? META_V3_REQUIRED : META_REQUIRED)) !=
             (temporary.source_version >= SCENE_VERSION_V3
@@ -1454,8 +1572,9 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                         NULL, "required metadata or versioned grids are missing", 0U, 0U);
         goto done;
     }
-    result = allocate_candidate_arrays(&temporary, light_count, decal_count, path,
-                                       diagnostic);
+    result = allocate_candidate_arrays(
+        &temporary, light_count, decal_count, optical_material_capacity,
+        optical_cell_count, path, diagnostic);
     if (result != SCENE_FORMAT_OK) goto done;
 
     memcpy(storage, source, source_size); storage[source_size] = '\0';
@@ -1465,7 +1584,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
         SectionHeader header = {SECTION_NONE, 0U};
         unsigned fields_seen = 0U;
         size_t rows[11] = {0U};
-        size_t light_index = 0U, decal_index = 0U;
+        size_t light_index = 0U, decal_index = 0U, optical_cell_index = 0U;
         while (line_reader_next(&reader, &line)) {
             char *text = trim(line.text);
             if (*text == '\0' || *text == '#') continue;
@@ -1493,6 +1612,32 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 } else if (current == SECTION_DECAL) {
                     temporary.decals[decal_index].id = header.id;
                     temporary.decal_count = ++decal_index;
+                } else if (current == SECTION_OPTICAL_MATERIAL) {
+                    OpticalExtension *extension =
+                        &temporary.optical_material_defaults[header.id];
+                    if (extension->override_mask != 0U) {
+                        result = reject(diagnostic,
+                                        SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
+                                        "optical_material", NULL,
+                                        "duplicate optical material block",
+                                        line.number, header.id);
+                        goto done;
+                    }
+                } else if (current == SECTION_OPTICAL_CELL) {
+                    size_t cell_count;
+                    if (!checked_size_2d(temporary.map.width,
+                                         temporary.map.height, &cell_count) ||
+                        header.id >= cell_count) {
+                        result = reject(diagnostic,
+                                        SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                                        "optical_cell", NULL,
+                                        "optical cell index is out of range",
+                                        line.number, header.id);
+                        goto done;
+                    }
+                    temporary.optical_cell_overrides[optical_cell_index].cell_index =
+                        (uint32_t)header.id;
+                    temporary.optical_cell_override_count = ++optical_cell_index;
                 }
                 continue;
             }
@@ -1549,9 +1694,25 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                     result = parse_light_field(&temporary.lights[light_index - 1U],
                                                &fields_seen, key, value, path,
                                                line.number, diagnostic);
-                else result = parse_decal_field(&temporary.decals[decal_index - 1U],
-                                                &fields_seen, key, value, path,
-                                                line.number, diagnostic);
+                else if (current == SECTION_DECAL)
+                    result = parse_decal_field(&temporary.decals[decal_index - 1U],
+                                               &fields_seen, key, value, path,
+                                               line.number, diagnostic);
+                else if (current == SECTION_OPTICAL_MATERIAL)
+                    result = parse_optical_field(
+                        &temporary.optical_material_defaults[header.id],
+                        &fields_seen, key, value, path, "optical_material",
+                        line.number, header.id, diagnostic);
+                else if (current == SECTION_OPTICAL_CELL)
+                    result = parse_optical_field(
+                        &temporary.optical_cell_overrides[
+                            optical_cell_index - 1U].optical,
+                        &fields_seen, key, value, path, "optical_cell",
+                        line.number, header.id, diagnostic);
+                else result = reject(
+                    diagnostic, SCENE_DIAGNOSTIC_INPUT_UNKNOWN, path, NULL,
+                    key, "property is not valid in this section",
+                    line.number, header.id);
             }
             if (result != SCENE_FORMAT_OK) goto done;
         }
@@ -1590,6 +1751,12 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 cell->occupancy == SCENE_CELL_OCCUPANCY_WALL
                     ? (int)cell->wall_material : 0;
         }
+    }
+    if (temporary.optical_cell_override_count > 1U) {
+        qsort(temporary.optical_cell_overrides,
+              temporary.optical_cell_override_count,
+              sizeof(*temporary.optical_cell_overrides),
+              compare_optical_cell_overrides);
     }
     result = scene_format_validate(&temporary, path, diagnostic);
     if (result == SCENE_FORMAT_OK) {
@@ -1677,6 +1844,12 @@ static int compare_decal_ptrs(const void *left, const void *right) {
     return a->id < b->id ? -1 : a->id > b->id;
 }
 
+static int compare_optical_cell_overrides(const void *left, const void *right) {
+    const OpticalCellOverride *a = left;
+    const OpticalCellOverride *b = right;
+    return a->cell_index < b->cell_index ? -1 : a->cell_index > b->cell_index;
+}
+
 static const char *gravity_orientation_name(SceneGravityOrientation orientation) {
     switch (orientation) {
         case SCENE_GRAVITY_DOWN: return "down";
@@ -1687,6 +1860,29 @@ static const char *gravity_orientation_name(SceneGravityOrientation orientation)
         case SCENE_GRAVITY_WEST: return "west";
         default: return "";
     }
+}
+
+static bool writer_optical_fields(TextWriter *writer,
+                                  const OpticalExtension *optical) {
+    if ((optical->override_mask & OPTICAL_OVERRIDE_PLAYER_BLOCKS) != 0U &&
+        !writer_printf(writer, "player_blocks = %u\n", optical->player_blocks))
+        return false;
+    if ((optical->override_mask & OPTICAL_OVERRIDE_RAY_BLOCKS) != 0U &&
+        !writer_printf(writer, "ray_blocks = %u\n", optical->ray_blocks))
+        return false;
+    if ((optical->override_mask & OPTICAL_OVERRIDE_LIGHT_BLOCKS) != 0U &&
+        !writer_printf(writer, "light_blocks = %u\n", optical->light_blocks))
+        return false;
+    if ((optical->override_mask & OPTICAL_OVERRIDE_OPACITY) != 0U &&
+        !writer_printf(writer, "opacity = %u\n", optical->opacity))
+        return false;
+    if ((optical->override_mask & OPTICAL_OVERRIDE_TRANSMISSION) != 0U &&
+        !writer_printf(writer, "transmission = %u\n", optical->transmission))
+        return false;
+    if ((optical->override_mask & OPTICAL_OVERRIDE_REFLECTIVITY) != 0U &&
+        !writer_printf(writer, "reflectivity = %u\n", optical->reflectivity))
+        return false;
+    return true;
 }
 
 SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
@@ -1890,6 +2086,22 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         APPEND(writer_double(&writer, decal->glyph_step_v)); APPEND(writer_append(&writer, "\ndepth = "));
         APPEND(writer_double(&writer, decal->depth)); APPEND(writer_append(&writer, "\nrotation = "));
         APPEND(writer_double(&writer, decal->rotation)); APPEND(writer_append(&writer, "\n"));
+    }
+    if (output_version >= SCENE_VERSION_V6) {
+        for (i = 0U; i < candidate->optical_material_capacity; i++) {
+            const OpticalExtension *optical =
+                &candidate->optical_material_defaults[i];
+            if (optical->override_mask == 0U) continue;
+            APPEND(writer_printf(&writer, "\n[optical_material %zu]\n", i));
+            APPEND(writer_optical_fields(&writer, optical));
+        }
+        for (i = 0U; i < candidate->optical_cell_override_count; i++) {
+            const OpticalCellOverride *override =
+                &candidate->optical_cell_overrides[i];
+            APPEND(writer_printf(&writer, "\n[optical_cell %u]\n",
+                                 override->cell_index));
+            APPEND(writer_optical_fields(&writer, &override->optical));
+        }
     }
 #undef APPEND
     uselocale(previous); freelocale(c_locale);

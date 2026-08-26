@@ -9,6 +9,7 @@
 #define SCENE_FORMAT_H
 
 #include "map.h"
+#include "optical_runtime_view.h"
 #include "scene_diagnostic.h"
 #include "scene_types.h"
 
@@ -30,6 +31,10 @@ typedef struct {
     size_t light_count;
     SceneDecalInstance *decals;
     size_t decal_count;
+    OpticalExtension *optical_material_defaults;
+    size_t optical_material_capacity;
+    OpticalCellOverride *optical_cell_overrides;
+    size_t optical_cell_override_count;
     SceneInstanceId next_instance_id;
     char *legacy_source_path;
     int east_growth[SCENE_MAX_WIDTH];
@@ -68,6 +73,12 @@ SceneFormatResult scene_format_migrate_v1_to_v2(
 
 /* Applies v5 height/movement defaults in place to an already parsed v1-v4 candidate. */
 SceneFormatResult scene_format_migrate_to_v5(
+    SceneFormatCandidate *candidate,
+    SceneDiagnostic *out_diagnostic
+);
+
+/* Adds the allocation-free legacy optical defaults to a parsed v5 candidate. */
+SceneFormatResult scene_format_migrate_v5_to_v6(
     SceneFormatCandidate *candidate,
     SceneDiagnostic *out_diagnostic
 );

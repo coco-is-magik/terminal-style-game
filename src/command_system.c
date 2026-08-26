@@ -114,6 +114,11 @@ static bool movement_equal(const SceneMovementParameters *a,
     return memcmp(a, b, sizeof(*a)) == 0;
 }
 
+static bool optical_extension_equal(const OpticalExtension *a,
+                                    const OpticalExtension *b) {
+    return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 static bool decal_value_common_is_valid(
     const SceneDocument *document, const SceneDecalInstance *value
 ) {
@@ -290,6 +295,13 @@ static bool mutations_target_same_field(
                a->data.cell_vertical.map_y == b->data.cell_vertical.map_y;
     if (a->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS &&
         b->type == EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS) return true;
+    if (a->type == EDITOR_MUTATION_SET_OPTICAL_MATERIAL &&
+        b->type == EDITOR_MUTATION_SET_OPTICAL_MATERIAL)
+        return a->data.optical_material.material_id ==
+               b->data.optical_material.material_id;
+    if (a->type == EDITOR_MUTATION_SET_OPTICAL_CELL &&
+        b->type == EDITOR_MUTATION_SET_OPTICAL_CELL)
+        return a->data.optical_cell.cell_index == b->data.optical_cell.cell_index;
     if (mutation_is_resize(a->type) && mutation_is_resize(b->type)) return true;
     return false;
 }
@@ -367,6 +379,33 @@ static bool prepare_mutation(
         mutation->data.movement.after = request->data.movement.value;
         *changed = !movement_equal(&document->movement,
                                   &request->data.movement.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_OPTICAL_MATERIAL) {
+        OpticalExtension before;
+        if (!optical_extension_is_valid(&request->data.optical_material.value) ||
+            !scene_document_get_optical_material_extension(
+                document, request->data.optical_material.material_id, &before))
+            return false;
+        mutation->data.optical_material.material_id =
+            request->data.optical_material.material_id;
+        mutation->data.optical_material.before = before;
+        mutation->data.optical_material.after = request->data.optical_material.value;
+        *changed = !optical_extension_equal(
+            &before, &request->data.optical_material.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_OPTICAL_CELL) {
+        OpticalExtension before;
+        if (!optical_extension_is_valid(&request->data.optical_cell.value) ||
+            !scene_document_get_optical_cell_extension(
+                document, request->data.optical_cell.cell_index, &before))
+            return false;
+        mutation->data.optical_cell.cell_index = request->data.optical_cell.cell_index;
+        mutation->data.optical_cell.before = before;
+        mutation->data.optical_cell.after = request->data.optical_cell.value;
+        *changed = !optical_extension_equal(
+            &before, &request->data.optical_cell.value);
         return true;
     }
     if (mutation_is_occupancy(request->type)) {
@@ -523,6 +562,16 @@ static bool apply_mutation(
         return scene_document_internal_set_movement(
             document, after ? &mutation->data.movement.after
                             : &mutation->data.movement.before);
+    if (mutation->type == EDITOR_MUTATION_SET_OPTICAL_MATERIAL)
+        return scene_document_internal_set_optical_material_extension(
+            document, mutation->data.optical_material.material_id,
+            after ? &mutation->data.optical_material.after
+                  : &mutation->data.optical_material.before);
+    if (mutation->type == EDITOR_MUTATION_SET_OPTICAL_CELL)
+        return scene_document_internal_set_optical_cell_extension(
+            document, mutation->data.optical_cell.cell_index,
+            after ? &mutation->data.optical_cell.after
+                  : &mutation->data.optical_cell.before);
     if (mutation_is_occupancy(mutation->type)) {
         SceneCellOccupancy occupancy = after ? mutation->data.occupancy.after
                                              : mutation->data.occupancy.before;
@@ -818,6 +867,30 @@ CommandResult command_history_set_movement_parameters(
     if (!value) return CMD_RESULT_INVALID_TARGET;
     request.type = EDITOR_MUTATION_SET_MOVEMENT_PARAMETERS;
     request.data.movement.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_optical_material_extension(
+    CommandHistory *history, SceneDocument *document, uint16_t material_id,
+    const OpticalExtension *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_OPTICAL_MATERIAL;
+    request.data.optical_material.material_id = material_id;
+    request.data.optical_material.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_optical_cell_extension(
+    CommandHistory *history, SceneDocument *document, size_t cell_index,
+    const OpticalExtension *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_OPTICAL_CELL;
+    request.data.optical_cell.cell_index = cell_index;
+    request.data.optical_cell.value = *value;
     return command_history_execute_group(history, document, &request, 1U);
 }
 

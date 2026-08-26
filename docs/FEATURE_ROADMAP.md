@@ -224,7 +224,7 @@ Do not create empty review directories or placeholder review files.
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
-| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Research track |
+| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Active; I1–I2 verified, I3 pending |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
@@ -702,8 +702,17 @@ continuing full-Q4 phase closeout is recorded in
 
 ## R9 — Layered optical rendering
 
-**Status:** Research track — research plan recorded 2026-08-21
-([`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md)).
+**Status:** Active; I1 derived optical runtime lookup verified 2026-08-24. I2 selective continuation is next.
+Research plan recorded 2026-08-21
+([`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md));
+P1–P4 and RQ5/RQ6 evidence completed 2026-08-24
+([`R9_RQ5_RQ6_SYNTHESIS_2026-08-24.md`](R9_RQ5_RQ6_SYNTHESIS_2026-08-24.md));
+Review H outcome:
+[`reviews/2026-08-24-roadmap-r9-review-h.md`](reviews/2026-08-24-roadmap-r9-review-h.md).
+Implementation plan:
+[`R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md`](R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md).
+I1 record:
+[`R9_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-24.md`](R9_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-24.md).
 
 **Purpose:** Establish explicit layered visibility before adding translucency and
 bounded reflections.
@@ -732,8 +741,21 @@ layer limits, and quality presets are typed material/scene/render data.
 **Exit gate:** Research prototypes establish correctness and performance bounds;
 a detailed implementation plan then satisfies Q1–Q3.
 
+**Research-gate result 2026-08-24:** P1–P4 correctness/measurement notes, the RQ5
+two-domain ordering policy, and RQ6 budget synthesis are complete. Straightforward
+unconditional multi-hit and per-cell mirror paths are rejected. Only default
+opaque/no-mirror behavior is currently end-to-end performance-validated.
+Pre-implementation Review H accepted constrained planning with mandatory early
+runtime lookup/selective-continuation stop gates; mirrors remain disabled pending
+coarser reuse evidence and quality presets remain deferred.
+
 **Review checkpoint:** Review H before architectural commitment and after the
 implemented optical phase.
+
+**Review H pre-implementation checkpoint:** conditionally passed 2026-08-24. The
+requirements/implementation plan is written. I1 proved the allocation-free derived
+lookup/default-parity gate; I2 must prove selective continuation before v6/editor
+work. A second Review H remains required after the implemented phase.
 
 ## R10 — Colored and expanded lighting
 
@@ -864,6 +886,9 @@ integrated.
 
 Continuing reviews completed: after R8 on 2026-08-21 (see
 `reviews/2026-08-21-roadmap-r8-phase-closeout.md`).
+
+Pre-implementation Review H for R9 conditionally passed on 2026-08-24 (see
+`reviews/2026-08-24-roadmap-r9-review-h.md`).
 
 A review may add a blocker, split a phase, combine phases, or reorder future
 work. Such changes are expected maintenance of the roadmap, not a failure to

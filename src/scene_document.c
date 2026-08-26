@@ -36,6 +36,18 @@ typedef void *(*SceneResizeCallocFn)(size_t, size_t);
 typedef void (*SceneResizeFreeFn)(void *);
 static SceneResizeCallocFn g_resize_calloc = calloc;
 static SceneResizeFreeFn g_resize_free = free;
+typedef void *(*SceneOpticalReallocFn)(void *, size_t);
+static SceneOpticalReallocFn g_optical_realloc = realloc;
+
+void scene_document_set_optical_allocator_for_test(
+    void *(*realloc_fn)(void *, size_t)
+) {
+    g_optical_realloc = realloc_fn ? realloc_fn : realloc;
+}
+
+void scene_document_reset_optical_allocator_for_test(void) {
+    g_optical_realloc = realloc;
+}
 
 void scene_document_set_resize_allocator_for_test(
     void *(*calloc_fn)(size_t, size_t), void (*free_fn)(void *)
@@ -68,6 +80,8 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     free(document->authored_cells);
     free(document->lights);
     free(document->decals);
+    free(document->optical_material_defaults);
+    free(document->optical_cell_overrides);
     free(document->legacy_source_path);
     free(document->repair_diagnostics);
     document->lights = NULL;
@@ -78,6 +92,12 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->decals = NULL;
     document->decal_count = 0U;
     document->decal_capacity = 0U;
+    document->optical_material_defaults = NULL;
+    document->optical_material_capacity = 0U;
+    document->optical_material_storage_capacity = 0U;
+    document->optical_cell_overrides = NULL;
+    document->optical_cell_override_count = 0U;
+    document->optical_cell_override_capacity = 0U;
     document->legacy_source_path = NULL;
     document->repair_diagnostics = NULL;
     document->repair_diagnostic_count = 0U;
@@ -87,6 +107,8 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->migration_pending = false;
     document->east_growth_count = 0U;
     document->south_growth_count = 0U;
+    document->optical_generation++;
+    if (document->optical_generation == 0U) document->optical_generation = 1U;
 }
 
 static void scene_authored_defaults(SceneDocument *document) {
@@ -98,6 +120,7 @@ static void scene_authored_defaults(SceneDocument *document) {
     document->spawn_angle = 0.0;
     document->movement = scene_movement_parameters_default();
     document->next_instance_id = UINT64_C(1);
+    if (document->optical_generation == 0U) document->optical_generation = 1U;
 }
 
 static char *duplicate_path(const char *path) {
@@ -457,6 +480,16 @@ static SceneLoadResult scene_document_commit_candidate(
     document->decal_capacity = candidate->decal_count;
     candidate->decals = NULL;
     candidate->decal_count = 0U;
+    document->optical_material_defaults = candidate->optical_material_defaults;
+    document->optical_material_capacity = candidate->optical_material_capacity;
+    document->optical_material_storage_capacity = candidate->optical_material_capacity;
+    candidate->optical_material_defaults = NULL;
+    candidate->optical_material_capacity = 0U;
+    document->optical_cell_overrides = candidate->optical_cell_overrides;
+    document->optical_cell_override_count = candidate->optical_cell_override_count;
+    document->optical_cell_override_capacity = candidate->optical_cell_override_count;
+    candidate->optical_cell_overrides = NULL;
+    candidate->optical_cell_override_count = 0U;
     document->next_instance_id = candidate->next_instance_id;
     memcpy(document->east_growth, candidate->east_growth,
            candidate->east_growth_count * sizeof(*document->east_growth));
@@ -710,6 +743,14 @@ SceneLoadResult scene_document_load_native_with_assets(
             scene_format_candidate_destroy(&candidate);
             return parse_result == SCENE_FORMAT_OUT_OF_MEMORY
                 ? SCENE_LOAD_OUT_OF_MEMORY : SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
+    if (candidate.source_version == SCENE_VERSION_V5) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v5_to_v6(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
         }
     }
     new_path = duplicate_path(path);
@@ -991,7 +1032,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
 
     scene_format_candidate_init(&candidate);
     candidate.map = document->map;
-    candidate.source_version = SCENE_VERSION_V5;
+    candidate.source_version = SCENE_VERSION_V6;
     candidate.authored_cells = document->authored_cells;
     candidate.authored_cell_count = document->authored_cell_count;
     memcpy(candidate.name, name, strlen(name) + 1U);
@@ -1004,6 +1045,10 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.light_count = document->light_count;
     candidate.decals = document->decals;
     candidate.decal_count = document->decal_count;
+    candidate.optical_material_defaults = document->optical_material_defaults;
+    candidate.optical_material_capacity = document->optical_material_capacity;
+    candidate.optical_cell_overrides = document->optical_cell_overrides;
+    candidate.optical_cell_override_count = document->optical_cell_override_count;
     candidate.next_instance_id = document->next_instance_id;
     memcpy(candidate.east_growth, document->east_growth,
            document->east_growth_count * sizeof(*candidate.east_growth));
@@ -1211,6 +1256,66 @@ bool scene_document_get_height_view(
     out_view->width = document->map.width;
     out_view->height = document->map.height;
     out_view->movement = document->movement;
+    return true;
+}
+
+bool scene_document_get_optical_view(
+    const SceneDocument *document, OpticalRuntimeView *out_view,
+    uint32_t *out_generation
+) {
+    OpticalRuntimeView candidate;
+    if (!document || !out_view || document->authored_cell_count == 0U ||
+        (document->optical_material_capacity == 0U &&
+         document->optical_cell_override_count == 0U) ||
+        !optical_runtime_view_init(
+            &candidate, document->authored_cell_count,
+            document->optical_material_defaults,
+            document->optical_material_capacity,
+            document->optical_cell_overrides,
+            document->optical_cell_override_count,
+            document->optical_generation)) return false;
+    *out_view = candidate;
+    if (out_generation) *out_generation = document->optical_generation;
+    return true;
+}
+
+bool scene_document_get_optical_material_extension(
+    const SceneDocument *document, uint16_t material_id,
+    OpticalExtension *out_extension
+) {
+    if (!document || !out_extension) return false;
+    memset(out_extension, 0, sizeof(*out_extension));
+    if ((size_t)material_id < document->optical_material_capacity)
+        *out_extension = document->optical_material_defaults[material_id];
+    return true;
+}
+
+static size_t optical_cell_lower_bound(
+    const SceneDocument *document, size_t cell_index
+) {
+    size_t low = 0U;
+    size_t high = document->optical_cell_override_count;
+    while (low < high) {
+        size_t middle = low + (high - low) / 2U;
+        if ((size_t)document->optical_cell_overrides[middle].cell_index < cell_index)
+            low = middle + 1U;
+        else high = middle;
+    }
+    return low;
+}
+
+bool scene_document_get_optical_cell_extension(
+    const SceneDocument *document, size_t cell_index,
+    OpticalExtension *out_extension
+) {
+    size_t position;
+    if (!document || !out_extension || cell_index >= document->authored_cell_count)
+        return false;
+    memset(out_extension, 0, sizeof(*out_extension));
+    position = optical_cell_lower_bound(document, cell_index);
+    if (position < document->optical_cell_override_count &&
+        (size_t)document->optical_cell_overrides[position].cell_index == cell_index)
+        *out_extension = document->optical_cell_overrides[position].optical;
     return true;
 }
 
@@ -1529,6 +1634,99 @@ bool scene_document_internal_set_surface_material(
     return true;
 }
 
+static void scene_document_advance_optical_generation(SceneDocument *document) {
+    document->optical_generation++;
+    if (document->optical_generation == 0U) document->optical_generation = 1U;
+}
+
+bool scene_document_internal_set_optical_material_extension(
+    SceneDocument *document, uint16_t material_id,
+    const OpticalExtension *extension
+) {
+    OpticalExtension *grown;
+    size_t capacity;
+    if (!document || !extension || !optical_extension_is_valid(extension))
+        return false;
+    if ((size_t)material_id >= document->optical_material_storage_capacity) {
+        if (extension->override_mask == 0U) return true;
+        capacity = (size_t)material_id + 1U;
+        grown = g_optical_realloc(
+            document->optical_material_defaults,
+            capacity * sizeof(*document->optical_material_defaults));
+        if (!grown) return false;
+        memset(grown + document->optical_material_storage_capacity, 0,
+               (capacity - document->optical_material_storage_capacity) * sizeof(*grown));
+        document->optical_material_defaults = grown;
+        document->optical_material_storage_capacity = capacity;
+    }
+    document->optical_material_defaults[material_id] = *extension;
+    if (extension->override_mask != 0U &&
+        (size_t)material_id >= document->optical_material_capacity)
+        document->optical_material_capacity = (size_t)material_id + 1U;
+    while (document->optical_material_capacity > 0U &&
+           document->optical_material_defaults[
+               document->optical_material_capacity - 1U].override_mask == 0U)
+        document->optical_material_capacity--;
+    scene_document_advance_optical_generation(document);
+    return true;
+}
+
+bool scene_document_internal_set_optical_cell_extension(
+    SceneDocument *document, size_t cell_index,
+    const OpticalExtension *extension
+) {
+    size_t position;
+    if (!document || !extension || cell_index >= document->authored_cell_count ||
+        cell_index > UINT32_MAX || !optical_extension_is_valid(extension)) return false;
+    position = optical_cell_lower_bound(document, cell_index);
+    if (position < document->optical_cell_override_count &&
+        (size_t)document->optical_cell_overrides[position].cell_index == cell_index) {
+        if (extension->override_mask == 0U) {
+            if (position + 1U < document->optical_cell_override_count) {
+                memmove(&document->optical_cell_overrides[position],
+                        &document->optical_cell_overrides[position + 1U],
+                        (document->optical_cell_override_count - position - 1U) *
+                            sizeof(*document->optical_cell_overrides));
+            }
+            document->optical_cell_override_count--;
+        } else {
+            document->optical_cell_overrides[position].optical = *extension;
+        }
+        scene_document_advance_optical_generation(document);
+        return true;
+    }
+    if (extension->override_mask == 0U) return true;
+    if (document->optical_cell_override_count >=
+        document->optical_cell_override_capacity) {
+        OpticalCellOverride *grown;
+        size_t capacity = document->optical_cell_override_capacity
+            ? document->optical_cell_override_capacity * 2U : 4U;
+        if (capacity <= document->optical_cell_override_count ||
+            capacity > document->authored_cell_count)
+            capacity = document->authored_cell_count;
+        if (capacity <= document->optical_cell_override_count ||
+            capacity > SIZE_MAX / sizeof(*document->optical_cell_overrides))
+            return false;
+        grown = g_optical_realloc(
+            document->optical_cell_overrides,
+            capacity * sizeof(*document->optical_cell_overrides));
+        if (!grown) return false;
+        document->optical_cell_overrides = grown;
+        document->optical_cell_override_capacity = capacity;
+    }
+    if (position < document->optical_cell_override_count) {
+        memmove(&document->optical_cell_overrides[position + 1U],
+                &document->optical_cell_overrides[position],
+                (document->optical_cell_override_count - position) *
+                    sizeof(*document->optical_cell_overrides));
+    }
+    document->optical_cell_overrides[position].cell_index = (uint32_t)cell_index;
+    document->optical_cell_overrides[position].optical = *extension;
+    document->optical_cell_override_count++;
+    scene_document_advance_optical_generation(document);
+    return true;
+}
+
 bool scene_document_internal_set_cell_occupancy(
     SceneDocument *document,
     int map_x,
@@ -1782,7 +1980,30 @@ static bool resize_ring_has_content(const SceneDocument *document,
             if ((east ? decal->map_x : decal->map_y) >= new_dimension) return true;
         } else if ((east ? decal->x : decal->y) >= new_dimension) return true;
     }
+    for (i = 0U; i < document->optical_cell_override_count; i++) {
+        uint32_t index = document->optical_cell_overrides[i].cell_index;
+        int x = (int)(index % (uint32_t)document->map.width);
+        int y = (int)(index / (uint32_t)document->map.width);
+        if ((east ? x : y) >= new_dimension) return true;
+    }
     return false;
+}
+
+static const OpticalExtension *document_optical_override_at(
+    const SceneDocument *document, size_t cell_index
+) {
+    size_t low = 0U;
+    size_t high = document->optical_cell_override_count;
+    while (low < high) {
+        size_t middle = low + (high - low) / 2U;
+        if (document->optical_cell_overrides[middle].cell_index < cell_index)
+            low = middle + 1U;
+        else high = middle;
+    }
+    if (low < document->optical_cell_override_count &&
+        document->optical_cell_overrides[low].cell_index == cell_index)
+        return &document->optical_cell_overrides[low].optical;
+    return NULL;
 }
 
 static SceneResizeResult resize_document(SceneDocument *document, bool east,
@@ -1795,6 +2016,8 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
     SceneAuthoredCell *cells;
     MapCell *map_cells;
     double *light_map;
+    OpticalCellOverride *optical_overrides = NULL;
+    size_t optical_override_count = 0U;
     int x;
     int y;
     int *growth;
@@ -1828,8 +2051,12 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
     cells = g_resize_calloc(new_count, sizeof(*cells));
     map_cells = g_resize_calloc(new_count, sizeof(*map_cells));
     light_map = g_resize_calloc(new_count, sizeof(*light_map));
-    if (!cells || !map_cells || !light_map) {
+    if (document->optical_cell_override_count > 0U)
+        optical_overrides = g_resize_calloc(new_count, sizeof(*optical_overrides));
+    if (!cells || !map_cells || !light_map ||
+        (document->optical_cell_override_count > 0U && !optical_overrides)) {
         g_resize_free(cells); g_resize_free(map_cells); g_resize_free(light_map);
+        g_resize_free(optical_overrides);
         return SCENE_RESIZE_OUT_OF_MEMORY;
     }
     for (y = 0; y < new_height; y++) {
@@ -1844,19 +2071,35 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
             cells[target] = document->authored_cells[source];
             map_cells[target] = document->map.cells[source];
             light_map[target] = document->map.light_map[source];
+            if (optical_overrides) {
+                const OpticalExtension *optical =
+                    document_optical_override_at(document, source);
+                if (optical) {
+                    optical_overrides[optical_override_count].cell_index =
+                        (uint32_t)target;
+                    optical_overrides[optical_override_count].optical = *optical;
+                    optical_override_count++;
+                }
+            }
         }
     }
     g_resize_free(document->authored_cells);
     g_resize_free(document->map.cells);
     g_resize_free(document->map.light_map);
+    g_resize_free(document->optical_cell_overrides);
     document->authored_cells = cells;
     document->authored_cell_count = new_count;
     document->map.cells = map_cells;
     document->map.light_map = light_map;
+    document->optical_cell_overrides = optical_overrides;
+    document->optical_cell_override_count = optical_override_count;
+    document->optical_cell_override_capacity = optical_overrides ? new_count : 0U;
     document->map.width = new_width;
     document->map.height = new_height;
     if (grow) growth[(*growth_count)++] = trigger;
     else (*growth_count)--;
+    document->optical_generation++;
+    if (document->optical_generation == 0U) document->optical_generation = 1U;
     return SCENE_RESIZE_OK;
 }
 
