@@ -90,7 +90,9 @@ static bool lights_equal(const SceneLight *a, const SceneLight *b) {
     return a->id == b->id && a->x == b->x && a->y == b->y &&
         a->red == b->red && a->green == b->green && a->blue == b->blue &&
         a->alpha == b->alpha && a->intensity == b->intensity &&
-        a->radius == b->radius;
+        a->radius == b->radius && a->type == b->type &&
+        a->direction == b->direction && a->cone == b->cone &&
+        a->falloff == b->falloff;
 }
 
 static bool decals_equal(

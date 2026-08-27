@@ -115,6 +115,7 @@ TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
 TEST_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/test-editor-highlight
 BENCH_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/benchmark-editor-highlight
 BENCH_SURFACE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-surface-render
+BENCH_COLORED_LIGHTING_RUNNER := $(BUILD_DIR)/benchmark-colored-lighting
 TEST_EDITOR_DOMAIN_RUNNER    := $(BUILD_DIR)/test-editor-domain
 TEST_UNIFIED_EDITOR_RUNNER   := $(BUILD_DIR)/test-unified-editor
 TEST_INPUT_RUNNER            := $(BUILD_DIR)/test-input
@@ -153,7 +154,7 @@ BENCH_OPTICAL_RENDER_RUNNER := $(BUILD_DIR)/benchmark-optical-render
 
 
 
-.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
+.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render benchmark-colored-lighting r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
 
 
 all: $(APP)
@@ -595,6 +596,12 @@ $(TEST_LIGHTING_RUNNER): tests/test_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTIN
 		$(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) \
 		$(TEST_FEATURE_EXTRA_SRC) -o $(TEST_LIGHTING_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
+$(BENCH_COLORED_LIGHTING_RUNNER): tests/benchmark_colored_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) $(TEST_FEATURE_EXTRA_SRC) | dirs
+	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
+		tests/benchmark_colored_lighting.c $(SRC_CHECKED_SIZE) $(SRC_LIGHTING) $(SRC_RAYCAST) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) \
+		$(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) \
+		$(TEST_FEATURE_EXTRA_SRC) -o $(BENCH_COLORED_LIGHTING_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
+
 $(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c \
 		-o $(TEST_APP_OPTIONS_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -894,6 +901,9 @@ stability-editor-highlight: $(BENCH_EDITOR_HIGHLIGHT_RUNNER)
 
 benchmark-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
 	./$(BENCH_SURFACE_RENDER_RUNNER)
+
+benchmark-colored-lighting: $(BENCH_COLORED_LIGHTING_RUNNER)
+	./$(BENCH_COLORED_LIGHTING_RUNNER)
 
 stability-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
 	./$(BENCH_SURFACE_RENDER_RUNNER) --stability

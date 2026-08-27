@@ -2,11 +2,15 @@
 
 ## Outcome
 
-R9 implementation is **complete pending manual optical acceptance**. All automated
-engineering gates pass. The visible optical increments (I2 selective composition,
-I3 optical render, I6 editor optics, I7 mirrors) have not yet been subjected to a
-human display session; that is the only remaining item before R9 can be marked
-Verified.
+R9 is **Verified** as of 2026-08-27. Manual optical acceptance passed in a real
+display session (recorded below), and all automated engineering gates pass. The
+visible optical increments (I2 selective composition, I3 optical render, I6 editor
+optics, I7 mirrors) were confirmed by the manual pass.
+
+One non-blocking performance follow-up is recorded below: the current-renderer
+flat inherited path measures about 6.3 ms on the benchmark host, above the 6 ms
+surface-render budget. It is a tracked timing follow-up, not a manual-acceptance
+or functional blocker.
 
 I8 (preset/e2e assessment) remains explicitly deferred per Review H.
 
@@ -82,11 +86,11 @@ Research prototypes (P1–P4) remain compile-time gated behind
 - v1–v5 byte-equality and migration preserved.
 - No optical presets named or shipped.
 
-## Manual acceptance still required
+## Manual acceptance — passed 2026-08-27
 
 The user-owned optical checklist from
-`R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md` must be performed in a
-real SDL window and recorded here before R9 can move to Verified:
+`R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md` was performed in a real
+SDL window and passed:
 
 1. default/legacy scenes visually unchanged;
 2. single translucent layer over a wall readable/stable;
@@ -100,9 +104,14 @@ real SDL window and recorded here before R9 can move to Verified:
 9. rotation/motion free of flicker, popping, unstable glyphs, objectionable
    darkness.
 
-**Interactive result:** Partial — transparency authoring correction implemented;
-replacement transparency check and reflectivity white/black re-test pending.
-**Environment:** (date, display/resolution, SDL build)
+**Interactive result:** **Pass.** The user confirmed all 9 checklist items in a
+real display session on 2026-08-27, including the previously pending transparency
+authoring re-check and the reflectivity white/black re-test at `reflectivity = 255`.
+The current-renderer consolidation resolved the previously reported one-row roof
+movement (see `R9_MANUAL_REVIEW_TRANSPARENCY_FOLLOWUP_2026-08-26.md`). R9 is marked
+Verified.
+**Environment:** user-run real SDL display session; display/resolution details
+were not recorded in this record.
 **Findings:**
 
 1. **Opacity alone produces no visible translucency (confirmed, by design).**
@@ -159,8 +168,8 @@ Opacity alone (without steps 2-3) reveals nothing behind — by design.
   (`reviews/2026-08-24-roadmap-r9-review-h.md`).
 - Implemented-phase Review H: passed 2026-08-25
   (`reviews/2026-08-25-roadmap-r9-review-h-implemented-phase.md`).
-- This closeout records that both reviews are satisfied on automated evidence
-  and only manual acceptance remains.
+- This closeout records that both reviews plus the manual optical acceptance
+  passed, and R9 is Verified (2026-08-27).
 
 ## I8 deferred note
 
@@ -168,10 +177,24 @@ Preset/e2e assessment remains deferred. No low/medium/high quality names or
 thresholds may be added without a fresh end-to-end coverage/performance
 assessment and separate authorization.
 
+## Performance follow-up (current-renderer flat path)
+
+After the 2026-08-27 current-renderer consolidation, `benchmark-surface-render`
+flat inherited path measures about 6.3 ms on the benchmark host (observed range
+~6.2–7.1 ms under variable load), above the 6 ms `SURFACE_RENDER_PASS_MS` budget.
+The raised-height path generally passes (~5.0–5.9 ms). Determinism and checksum
+parity remain exact; this is a timing-only follow-up. Flat scenes must not be
+routed back through the deprecated renderer, which would recreate the
+pipeline-switch defect the consolidation removed.
+
 ## Next action
 
-1. Perform the manual optical acceptance checklist in a real SDL window.
-2. Record findings in this file.
-3. If all items pass, update `docs/FEATURE_ROADMAP.md` to mark R9 Verified and
-   update `docs/handoff.md` to the next phase (R10 planning or backlog item).
+R9 is Verified and released from the closeout checkpoint.
+
+1. Next phase: **R10 planning** (colored/expanded lighting). Write a scoped Q1
+   requirements/decision plan before any implementation (see `docs/FEATURE_ROADMAP.md`).
+2. Close the current-renderer flat-path performance follow-up above before any
+   performance-sensitive milestone.
+3. I8 preset/e2e assessment remains deferred and requires a fresh end-to-end
+   assessment plus separate authorization.
 4. Do not begin R10, R11, R12, or I8 without separate authorization.

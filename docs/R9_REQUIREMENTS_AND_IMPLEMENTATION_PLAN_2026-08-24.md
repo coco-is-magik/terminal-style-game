@@ -1,7 +1,9 @@
 # R9 Requirements and Implementation Plan — Layered Optical Rendering — 2026-08-24
 
 ## Status
-**Active; I1–I7 complete and verified. I8 preset policy remains deferred. R9 is pending manual optical acceptance and final phase closeout before it can be marked Verified.**
+**Verified 2026-08-27.** Manual optical acceptance passed after the transparency
+authoring correction and current-renderer consolidation. I8 preset policy remains
+deferred and requires separate authorization.
 Pre-implementation Review H conditionally passed on
 2026-08-24 (`reviews/2026-08-24-roadmap-r9-review-h.md`). The second Review H on
 2026-08-25 (`reviews/2026-08-25-roadmap-r9-review-h-implemented-phase.md`) accepted

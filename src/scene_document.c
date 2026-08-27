@@ -753,6 +753,14 @@ SceneLoadResult scene_document_load_native_with_assets(
             return SCENE_LOAD_VALIDATION_FAILED;
         }
     }
+    if (candidate.source_version == SCENE_VERSION_V6) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v6_to_v7(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -1032,7 +1040,7 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
 
     scene_format_candidate_init(&candidate);
     candidate.map = document->map;
-    candidate.source_version = SCENE_VERSION_V6;
+    candidate.source_version = SCENE_VERSION;
     candidate.authored_cells = document->authored_cells;
     candidate.authored_cell_count = document->authored_cell_count;
     memcpy(candidate.name, name, strlen(name) + 1U);
@@ -1525,8 +1533,13 @@ SceneRuntimeBuildResult scene_document_build_runtime_world(
     for (i = 0U; i < document->light_count; i++) {
         const SceneLight *source = &document->lights[i];
         SDL_Color color = {source->red, source->green, source->blue, source->alpha};
-        if (world_add_light(&temporary, source->x, source->y, color,
-                            source->intensity, source->radius) != WORLD_INSERT_OK) {
+        WorldInsertResult inserted = source->type == SCENE_LIGHT_SPOT
+            ? world_add_spot_light(
+                &temporary, source->x, source->y, color, source->intensity,
+                source->radius, source->direction, source->cone, source->falloff)
+            : world_add_light(&temporary, source->x, source->y, color,
+                              source->intensity, source->radius);
+        if (inserted != WORLD_INSERT_OK) {
             world_clear(&temporary);
             return SCENE_RUNTIME_BUILD_INVALID_DOCUMENT;
         }
@@ -2015,7 +2028,7 @@ static SceneResizeResult resize_document(SceneDocument *document, bool east,
     size_t new_count;
     SceneAuthoredCell *cells;
     MapCell *map_cells;
-    double *light_map;
+    LightLevel *light_map;
     OpticalCellOverride *optical_overrides = NULL;
     size_t optical_override_count = 0U;
     int x;

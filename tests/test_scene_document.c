@@ -1111,7 +1111,8 @@ static void test_light_map_not_serialized(void **state) {
     /* Poison light_map with non-zero values that must never appear in file. */
     size_t n = (size_t)doc.map.width * (size_t)doc.map.height;
     for (size_t i = 0; i < n; i++) {
-        doc.map.light_map[i] = 123.456 + (double)i;
+        double poison = 123.456 + (double)i;
+        doc.map.light_map[i] = (LightLevel){poison, poison + 1.0, poison + 2.0};
     }
 
     assert_int_equal(scene_document_save(&doc), SCENE_SAVE_OK);
@@ -1126,7 +1127,9 @@ static void test_light_map_not_serialized(void **state) {
     scene_document_init(&again);
     assert_int_equal(scene_document_load(&again, path), SCENE_LOAD_OK);
     for (size_t i = 0; i < n; i++) {
-        assert_true(again.map.light_map[i] == 0.0);
+        assert_true(again.map.light_map[i].red == 0.0);
+        assert_true(again.map.light_map[i].green == 0.0);
+        assert_true(again.map.light_map[i].blue == 0.0);
     }
 
     scene_document_destroy(&doc);
@@ -1482,7 +1485,7 @@ static void test_native_load_light_map_is_populated_by_current_lighting(void **s
     lighting_update_current(&doc.map, &runtime);
     ambient = runtime.ambient_intensity;
     for (i = 0U; i < (size_t)(doc.map.width * doc.map.height); i++) {
-        if (doc.map.light_map[i] > ambient + 0.001) {
+        if (doc.map.light_map[i].red > ambient + 0.001) {
             has_above_ambient = true;
             break;
         }
@@ -1525,7 +1528,7 @@ static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 6\n"));
+    assert_non_null(strstr(saved, "scene_version = 7\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
@@ -1642,8 +1645,7 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
     assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 6\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 6\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 7\n"));
     assert_false(document.migration_pending);
     assert_false(scene_document_is_dirty(&document));
     free(saved_text);
@@ -1765,7 +1767,7 @@ static void test_v6_optical_document_persistence_and_borrowed_view(void **state)
 static void test_resize_limits_and_allocation_failures_are_atomic(void **state) {
     SceneDocument doc;
     MapCell *map_cells;
-    double *light_map;
+    LightLevel *light_map;
     SceneAuthoredCell *authored;
     int width;
     int height;

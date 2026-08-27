@@ -6,7 +6,7 @@
  * a material_id that determines the tile's visual appearance and behaviour.
  *
  * Each Map also has a parallel light_map array (same dimensions as the tile
- * grid) that stores a per-tile brightness value. This is updated every frame
+ * grid) that stores per-tile RGB brightness. This is updated every frame
  * by lighting_update_optical() in lighting.c; anti-lights can make values negative
  * before colour sampling clamps them.
  *
@@ -58,7 +58,7 @@ Map* map_create(int width, int height) {
     size_t light_bytes;
     if (!checked_size_2d(width, height, &cell_count) ||
         !checked_size_bytes(cell_count, sizeof(MapCell), &cell_bytes) ||
-        !checked_size_bytes(cell_count, sizeof(double), &light_bytes)) return NULL;
+        !checked_size_bytes(cell_count, sizeof(LightLevel), &light_bytes)) return NULL;
     (void)cell_bytes;
     (void)light_bytes;
 
@@ -77,9 +77,8 @@ Map* map_create(int width, int height) {
         return NULL;
     }
 
-    /* Allocate the light map — a parallel array of doubles, one per tile.
-     * Zero-initialised means all tiles start dark (0.0 brightness). */
-    m->light_map = calloc(cell_count, sizeof(double));
+    /* Allocate one zero-initialised RGB light level per tile. */
+    m->light_map = calloc(cell_count, sizeof(*m->light_map));
     if (!m->light_map) {
         /* Clean up both allocations on failure */
         free(m->cells);

@@ -522,6 +522,22 @@ SceneFormatResult scene_format_migrate_v5_to_v6(
     return SCENE_FORMAT_OK;
 }
 
+SceneFormatResult scene_format_migrate_v6_to_v7(
+    SceneFormatCandidate *candidate, SceneDiagnostic *diagnostic
+) {
+    SceneFormatResult result;
+    size_t i;
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate || candidate->source_version != SCENE_VERSION_V6)
+        return SCENE_FORMAT_INVALID_ARGUMENT;
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    for (i = 0U; i < candidate->light_count; i++)
+        scene_light_set_point_defaults(&candidate->lights[i]);
+    candidate->source_version = SCENE_VERSION_V7;
+    return SCENE_FORMAT_OK;
+}
+
 SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                                         const char *path,
                                         SceneDiagnostic *diagnostic) {
@@ -677,7 +693,16 @@ SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
             light->y >= candidate->map.height || light->intensity != light->intensity ||
             light->intensity > DBL_MAX || light->intensity < -DBL_MAX ||
             light->radius != light->radius || light->radius > DBL_MAX ||
-            light->radius <= 0.0) {
+            light->radius <= 0.0 ||
+            (candidate->source_version >= SCENE_VERSION_V7 &&
+             (light->type < SCENE_LIGHT_POINT || light->type > SCENE_LIGHT_SPOT ||
+              !isfinite(light->direction) ||
+              light->direction < SCENE_LIGHT_DIRECTION_MIN ||
+              light->direction >= SCENE_LIGHT_DIRECTION_MAX ||
+              !isfinite(light->cone) || light->cone < SCENE_LIGHT_CONE_MIN ||
+              light->cone > SCENE_LIGHT_CONE_MAX || !isfinite(light->falloff) ||
+              light->falloff < SCENE_LIGHT_FALLOFF_MIN ||
+              light->falloff > SCENE_LIGHT_FALLOFF_MAX))) {
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                           "light", NULL, "invalid light value", 0U, light->id);
         }
@@ -869,7 +894,8 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
             if (!parse_uint_range(value, UINT_MAX, &parsed) ||
                  (parsed != SCENE_VERSION_V1 && parsed != SCENE_VERSION_V2 &&
                    parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4 &&
-                   parsed != SCENE_VERSION_V5 && parsed != SCENE_VERSION_V6))
+                   parsed != SCENE_VERSION_V5 && parsed != SCENE_VERSION_V6 &&
+                   parsed != SCENE_VERSION_V7))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -1229,6 +1255,10 @@ static SceneFormatResult parse_light_field(SceneLight *light, unsigned *seen,
     else if (strcmp(key, "color") == 0) bit = 2U;
     else if (strcmp(key, "intensity") == 0) bit = 4U;
     else if (strcmp(key, "radius") == 0) bit = 8U;
+    else if (strcmp(key, "type") == 0) bit = 16U;
+    else if (strcmp(key, "direction") == 0) bit = 32U;
+    else if (strcmp(key, "cone") == 0) bit = 64U;
+    else if (strcmp(key, "falloff") == 0) bit = 128U;
     else return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNKNOWN, path, "light",
                        key, "unknown light field", line, light->id);
     if (*seen & bit) return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
@@ -1244,7 +1274,17 @@ static SceneFormatResult parse_light_field(SceneLight *light, unsigned *seen,
         light->blue = (uint8_t)channels[2]; light->alpha = (uint8_t)channels[3];
     } else if (bit == 4U) {
         if (!parse_double_c(value, &light->intensity)) goto numeric;
-    } else if (!parse_double_c(value, &light->radius)) goto numeric;
+    } else if (bit == 8U) {
+        if (!parse_double_c(value, &light->radius)) goto numeric;
+    } else if (bit == 16U) {
+        if (strcmp(value, "point") == 0) light->type = SCENE_LIGHT_POINT;
+        else if (strcmp(value, "spot") == 0) light->type = SCENE_LIGHT_SPOT;
+        else goto numeric;
+    } else if (bit == 32U) {
+        if (!parse_double_c(value, &light->direction)) goto numeric;
+    } else if (bit == 64U) {
+        if (!parse_double_c(value, &light->cone)) goto numeric;
+    } else if (!parse_double_c(value, &light->falloff)) goto numeric;
     return SCENE_FORMAT_OK;
 numeric:
     return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path, "light", key,
@@ -1370,11 +1410,13 @@ static SceneFormatResult parse_optical_field(
 
 static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                                           SceneDecalSurface decal_surface,
+                                          unsigned int source_version,
                                           const char *path, size_t line,
                                           SceneDiagnostic *diagnostic) {
     unsigned required;
     if (header.kind == SECTION_MOVEMENT) required = 127U;
-    else if (header.kind == SECTION_LIGHT) required = 15U;
+    else if (header.kind == SECTION_LIGHT) required = source_version >= SCENE_VERSION_V7
+        ? 255U : 15U;
     else if (header.kind == SECTION_DECAL) {
         bool wall = decal_surface == SCENE_DECAL_SURFACE_WALL;
         unsigned placement = seen & (8U | 16U | 32U);
@@ -1593,6 +1635,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 if (header.kind == SECTION_DECAL && decal_index > 0U)
                     surface = temporary.decals[decal_index - 1U].surface;
                 result = finalize_section(header, fields_seen, surface,
+                                          temporary.source_version,
                                           path, line.number,
                                           diagnostic);
                 if (result != SCENE_FORMAT_OK) goto done;
@@ -1608,6 +1651,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 }
                 if (current == SECTION_LIGHT) {
                     temporary.lights[light_index].id = header.id;
+                    scene_light_set_point_defaults(&temporary.lights[light_index]);
                     temporary.light_count = ++light_index;
                 } else if (current == SECTION_DECAL) {
                     temporary.decals[decal_index].id = header.id;
@@ -1721,6 +1765,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             header.kind == SECTION_DECAL && decal_index > 0U
                 ? temporary.decals[decal_index - 1U].surface
                 : SCENE_DECAL_SURFACE_WALL,
+            temporary.source_version,
             path, reader.line_number,
                                   diagnostic);
         if (result != SCENE_FORMAT_OK) goto done;
@@ -2059,7 +2104,17 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         APPEND(writer_printf(&writer, "\ncolor = %u,%u,%u,%u\nintensity = ",
                             light->red, light->green, light->blue, light->alpha));
         APPEND(writer_double(&writer, light->intensity)); APPEND(writer_append(&writer, "\nradius = "));
-        APPEND(writer_double(&writer, light->radius)); APPEND(writer_append(&writer, "\n"));
+        APPEND(writer_double(&writer, light->radius));
+        if (output_version >= SCENE_VERSION_V7) {
+            APPEND(writer_printf(&writer, "\ntype = %s\ndirection = ",
+                                 light->type == SCENE_LIGHT_SPOT ? "spot" : "point"));
+            APPEND(writer_double(&writer, light->direction));
+            APPEND(writer_append(&writer, "\ncone = "));
+            APPEND(writer_double(&writer, light->cone));
+            APPEND(writer_append(&writer, "\nfalloff = "));
+            APPEND(writer_double(&writer, light->falloff));
+        }
+        APPEND(writer_append(&writer, "\n"));
     }
     for (i = 0U; i < candidate->decal_count; i++) {
         const SceneDecalInstance *decal = decals[i];

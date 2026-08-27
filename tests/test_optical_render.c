@@ -75,7 +75,7 @@ static void fixture_init(Fixture *f) {
         f->cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
         f->cells[i].floor_material = 1U;
         f->cells[i].ceiling_material = 2U;
-        f->map->light_map[i] = 1.0;
+        f->map->light_map[i] = (LightLevel){1.0, 1.0, 1.0};
     }
 }
 

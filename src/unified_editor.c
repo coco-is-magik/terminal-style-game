@@ -1467,6 +1467,8 @@ CommandResult unified_editor_place_light(UnifiedEditorState *editor) {
     prototype.alpha = 255;
     prototype.intensity = 1.0;
     prototype.radius = 5.0;
+    scene_light_set_point_defaults(&prototype);
+    prototype.falloff = config_get()->light_falloff_default;
     old_count = editor->history.count;
     old_cursor = editor->history.cursor;
     old_next = editor->history.next_state_id;
@@ -2567,7 +2569,7 @@ static void editor_handle_light_field_prev(UnifiedEditorState *editor) {
     editor->light_value_text_length = 0U;
     editor->light_value_text[0] = '\0';
     if (editor->light_field == EDITOR_LIGHT_FIELD_X)
-        editor->light_field = EDITOR_LIGHT_FIELD_RADIUS;
+        editor->light_field = EDITOR_LIGHT_FIELD_FALLOFF;
     else editor->light_field = (EditorLightField)(editor->light_field - 1);
 }
 

@@ -1,14 +1,51 @@
-# Active Handoff — R9 I1–I7 Complete — Pending Manual Optical Acceptance — 2026-08-26
+# Active Handoff — R10 I1–I2 Implemented — Manual Acceptance Pending — 2026-08-27
 
 ## Current status
 
-**R9 implementation plus the manual-review transparency authoring correction is
-complete on automated evidence. The phase remains stopped at the closeout
-checkpoint pending replacement human-operated optical acceptance.**
+**R9 is Verified.** The manual optical acceptance passed on 2026-08-27; the R9
+closeout records the phase as verified. R10 I1 colored illumination and I2 spot
+lights are implemented with deterministic automated gates passing. Combined manual
+visual/input acceptance remains before marking them Verified. I2 record:
+`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
-All I1–I7 increments pass `make check`, ASan, UBSan, application smoke test, and
-the 6 ms surface benchmark/stability gate. I8 preset work remains deferred.
-Research prototypes remain gated behind `R9_OPTICAL_RESEARCH=1`.
+## R10 I2 implementation (2026-08-27)
+
+- Scene v7 adds explicit point/spot type, direction `[0,2π)`, full cone width,
+  and radial falloff exponent; v1–v6 remain readable and migrate to exact points.
+- Runtime spots apply inclusive cone membership plus
+  `pow(1-distance/radius, falloff)` before existing shadow and RGB/A rules.
+- Inspector Type/Direction/Cone/Falloff edits are bounded, undoable, immediately
+  reflected in runtime, and persist through canonical v7 save/reopen.
+- Cache keys include all spot geometry. Latest `benchmark-colored-lighting`: white
+  0.247 ms, colored 0.226 ms, spot 0.152 ms (6 ms gate); checksums deterministic
+  and PASS.
+- Strict `make check`, ASan/LeakSanitizer, UBSan, optimized build, smoke, benchmark,
+  current-renderer guard, and diff check pass.
+
+## R10 I1 implementation (2026-08-27)
+
+- `Map.light_map` is `LightLevel { red, green, blue }`; ambient, colored additive
+  lights, anti-light, alpha weighting, shadow attenuation, renderer sampling, and
+  scene resize use all channels.
+- Alpha is editable (0..255) through typed inspector requests, history, runtime,
+  undo, and unchanged scene v6 persistence.
+- Cache entries own geometry only; current RGB/A/intensity apply after lookup.
+  Runtime map identity plus exact position/radius bits prevent stale hits between
+  live maps and geometry edits; durable topology revision remains an existing TODO.
+- Per-channel transmission tinting is deferred: R9 transmission is one scalar byte,
+  so RGB filtering requires a later format/data decision.
+- Benchmark (32x24, four lights, 200 updates, 6 ms gate): default observed
+  white/colored 0.101–0.239/0.096–0.164 ms; cache-enabled 0.044/0.043 ms;
+  checksums identical across modes.
+- Strict `make check`, ASan/LeakSanitizer, resumed UBSan suite, optimized build,
+  smoke, current-renderer guard, and diff check pass. The initial full clean UBSan
+  invocation timed out during final-target compilation; its bounded resume passed.
+
+All I1–I7 increments pass the functional, strict, sanitizer, and smoke gates. I8
+preset work remains deferred. The current-renderer flat inherited path is about
+6.3 ms (above the 6 ms surface-render budget) and is a tracked performance
+follow-up, not an acceptance blocker. Research prototypes remain gated behind
+`R9_OPTICAL_RESEARCH=1`.
 
 The prior SMC handoff below is historical and remains preserved.
 
@@ -54,21 +91,24 @@ The prior SMC handoff below is historical and remains preserved.
 - I8 preset/e2e assessment (deferred by Review H)
 - Mirror enablement in the default shipping path
 - Reflected entities, horizontal mirrors, or recursive mirrors
-- Colored/spot lighting (R10)
+- R10 I1/I2 combined manual visual/input acceptance; I3 research
 - Sprites/entities/triggers (R11)
 - Responsive UI model (R12)
 
-## Manual acceptance required
+## Manual acceptance — passed
 
-Run the game in a real SDL window and complete the 9-item optical checklist in
-`docs/reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`. Record the
-result, environment, and any findings there. Do not mark R9 Verified until that
-is filled in.
+The 9-item optical checklist in
+`docs/reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md` was completed
+in a real display session and passed on 2026-08-27, including the previously
+pending transparency authoring re-check and the reflectivity white/black re-test.
+The current-renderer consolidation resolved the reported roof-position movement.
+R9 is marked Verified.
 
 ## Stop boundary
 
-Do not begin R10, R11, R12, or I8 without separate authorization. The next
-action is the human optical acceptance pass and recording its outcome.
+R9 is released. R10 I1–I2 are implemented; perform combined manual acceptance
+before marking them Verified. Do not begin R10 I3 without separate authorization.
+R11, R12, and I8 also require separate authorization.
 
 ## Automated gate evidence (final run 2026-08-26)
 

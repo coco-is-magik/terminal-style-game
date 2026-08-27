@@ -20,7 +20,7 @@
 typedef struct {
     Map map;
     MapCell map_cells[FIXTURE_WIDTH * FIXTURE_HEIGHT];
-    double light_map[FIXTURE_WIDTH * FIXTURE_HEIGHT];
+    LightLevel light_map[FIXTURE_WIDTH * FIXTURE_HEIGHT];
     SceneAuthoredCell cells[FIXTURE_WIDTH * FIXTURE_HEIGHT];
     SceneHeightView heights;
     Camera camera;

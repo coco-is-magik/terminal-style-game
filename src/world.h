@@ -23,6 +23,7 @@
 #define WORLD_H
 
 #include "entity.h"       /* Vec2 type — used by Light, SpriteEntity, spawn_pos */
+#include "scene_types.h"
 #include "decal.h"        /* Decal struct and DecalSurface enum */
 #include <SDL3/SDL.h>     /* SDL_Color — used by Light */
 #include <stdbool.h>
@@ -38,7 +39,7 @@ typedef enum {
  * =================================================================== */
 
 /**
- * Light — A point light source in the world
+ * Light — A point or spot light source in the world
  *
  * Lights are 2D point lights that cast light onto the map's light_map.
  * The intensity can be negative to create "anti-light" (darkness) that
@@ -48,9 +49,13 @@ typedef enum {
  */
 typedef struct {
     Vec2 pos;               /* World position (fractional grid coordinates) */
-    SDL_Color color;        /* Billboard/marker colour; illumination is scalar */
+    SDL_Color color;        /* Billboard colour and RGB/A illumination weights */
     double intensity;       /* Brightness multiplier (>0 = light, <0 = anti-light) */
     double radius;          /* Maximum distance the light reaches (grid cells) */
+    SceneLightType type;    /* Point or directional spot */
+    double direction;       /* Spot direction in radians [0, 2pi) */
+    double cone;            /* Full spot cone angle in radians */
+    double falloff;         /* Radial falloff exponent */
 } Light;
 
 /**
@@ -145,6 +150,9 @@ void world_clear(WorldState *world);
  */
 WorldInsertResult world_add_light(WorldState *world, double x, double y,
                                   SDL_Color col, double intensity, double radius);
+WorldInsertResult world_add_spot_light(
+    WorldState *world, double x, double y, SDL_Color col, double intensity,
+    double radius, double direction, double cone, double falloff);
 
 /**
  * world_add_sprite() — Add an intended billboard-style sprite instance to the world

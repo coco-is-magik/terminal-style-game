@@ -18,8 +18,9 @@
 #define SCENE_VERSION_V4 4U
 #define SCENE_VERSION_V5 5U
 #define SCENE_VERSION_V6 6U
-/* Canonical writes use v6; v1-v5 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V6
+#define SCENE_VERSION_V7 7U
+/* Canonical writes use v7; v1-v6 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V7
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -123,6 +124,19 @@ typedef enum {
     SCENE_DECAL_SURFACE_CEILING
 } SceneDecalSurface;
 
+typedef enum {
+    SCENE_LIGHT_POINT = 0,
+    SCENE_LIGHT_SPOT
+} SceneLightType;
+
+#define SCENE_LIGHT_DIRECTION_MIN 0.0
+#define SCENE_LIGHT_DIRECTION_MAX 6.28318530717958647692
+#define SCENE_LIGHT_CONE_MIN 0.01745329251994329577
+#define SCENE_LIGHT_CONE_MAX SCENE_LIGHT_DIRECTION_MAX
+#define SCENE_LIGHT_SPOT_CONE_DEFAULT (SCENE_LIGHT_DIRECTION_MAX / 4.0)
+#define SCENE_LIGHT_FALLOFF_MIN 0.1
+#define SCENE_LIGHT_FALLOFF_MAX 8.0
+
 typedef struct {
     SceneInstanceId id;
     double x;
@@ -133,7 +147,19 @@ typedef struct {
     uint8_t alpha;
     double intensity;
     double radius;
+    SceneLightType type;
+    double direction;
+    double cone;
+    double falloff;
 } SceneLight;
+
+static inline void scene_light_set_point_defaults(SceneLight *light) {
+    if (!light) return;
+    light->type = SCENE_LIGHT_POINT;
+    light->direction = 0.0;
+    light->cone = SCENE_LIGHT_CONE_MAX;
+    light->falloff = 1.0;
+}
 
 typedef struct {
     SceneInstanceId id;

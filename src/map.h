@@ -3,7 +3,7 @@
  *
  * Defines the Map and MapCell types that represent the game world as
  * a 2D grid of tiles.  Each tile has a material_id (0 = void/passable,
- * >0 = solid wall) and a parallel light_map stores per-tile brightness values.
+ * >0 = solid wall) and a parallel light_map stores per-tile RGB light levels.
  *
  * See map.c for the implementation.
  */
@@ -31,15 +31,15 @@ typedef struct {
  * width     — Number of columns in the grid
  * height    — Number of rows in the grid
  * cells     — Row-major array of MapCells (size = width × height)
- * light_map — Row-major array of doubles (size = width × height),
- *             each value is a brightness contribution; anti-lights can
- *             make values negative before colour sampling clamps them
+ * light_map — Row-major array of LightLevel values (size = width × height).
+ *             Each channel is an independent brightness contribution;
+ *             anti-lights can make channels negative before sampling clamps.
  */
 typedef struct {
     int width;                 /* Grid width in tiles */
     int height;                /* Grid height in tiles */
     MapCell *cells;            /* Tile data (heap-allocated) */
-    double *light_map;         /* Per-tile brightness (heap-allocated) */
+    LightLevel *light_map;     /* Per-tile RGB brightness (heap-allocated) */
 } Map;
 
 /* ---- Map API ---- */

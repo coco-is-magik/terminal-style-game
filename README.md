@@ -287,6 +287,13 @@ overrides together.
   Position, RGBA channels, intensity, and radius are edited in bounded steps; the
   inspector Remove row asks for confirmation. Placement, removal, and edits share
   the same undo/redo history as wall materials, and native Save/Open persists them.
+  RGB channels tint surface illumination independently, alpha scales emitted light,
+  and negative intensity subtracts the selected channels. Type can switch between
+  Point and Spot; spot Direction, Cone, and radial Falloff are bounded inspector
+  fields. Strict canonical scene v7 persists these fields and older native scenes migrate
+  to exact point-light defaults. The headless `make benchmark-colored-lighting`
+  gate compares deterministic white, colored, and spot workloads against a
+  6 ms/update budget.
 - Decals can be placed on wall, floor, and ceiling surfaces through the surface
   inspector's Decals submenu. **Add decal…** creates a new reusable pattern asset
   (default `1 × 1`, editable columns/rows), refreshes the registry, and places a

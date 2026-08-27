@@ -6,9 +6,11 @@
  * them ideal candidates for caching across player movement.
  *
  * Cache key includes:
+ *   - map identity (prevents cross-map reuse)
  *   - map_revision (map topology changes)
- *   - lighting_revision (light position/radius/intensity changes)
+ *   - lighting_revision (explicit bulk invalidation)
  *   - light_id (stable per-light identifier)
+ *   - exact light position/radius bit patterns (geometric attenuation changes)
  *   - target_tile_x, target_tile_y (integer tile coordinates)
  *
  * Build flag: USE_LIGHTING_CACHE=1 to enable the cache.
@@ -23,19 +25,27 @@
 
 /* Cache key for light-to-tile shadow rays */
 typedef struct {
+    uint64_t map_identity;
     int map_revision;
     int lighting_revision;
     int light_id;
+    uint64_t light_x_bits;
+    uint64_t light_y_bits;
+    uint64_t light_radius_bits;
+    uint64_t light_direction_bits;
+    uint64_t light_cone_bits;
+    uint64_t light_falloff_bits;
+    int light_type;
     int target_tile_x;
     int target_tile_y;
 } LightShadowKey;
 
-/* Cache result storing full light contribution */
+/* Cache result stores geometry only; current RGB/A and intensity apply on lookup. */
 typedef struct {
     bool   blocked;       /* Is this tile shadowed from this light? */
     double distance;      /* Distance from light to tile center */
     double attenuation;   /* Light falloff factor (1.0 at center, 0.0 at radius edge) */
-    double intensity;     /* Final light contribution (attenuation * light_power) */
+    double intensity;     /* Shadow-adjusted geometric attenuation */
 } LightSampleResult;
 
 #ifdef __cplusplus

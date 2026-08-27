@@ -171,7 +171,7 @@ void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const c
  * @param light_level  Lighting multiplier, clamped to [0.0, 1.0]
  * @return             The final shaded SDL_Color
  */
-SDL_Color palette_sample(const Palette *p, double distance, double light_level) {
+SDL_Color palette_sample(const Palette *p, double distance, LightLevel light_level) {
     /* --- Stage 1: pick the base colour based on distance band --- */
     SDL_Color base;
     if (distance < 4.0) {
@@ -183,14 +183,17 @@ SDL_Color palette_sample(const Palette *p, double distance, double light_level) 
     }
 
     /* --- Stage 2: apply light-level attenuation --- */
-    /* Clamp light_level to valid range */
-    if (light_level < 0.0) light_level = 0.0;
-    if (light_level > 1.0) light_level = 1.0;
+    if (light_level.red < 0.0) light_level.red = 0.0;
+    if (light_level.red > 1.0) light_level.red = 1.0;
+    if (light_level.green < 0.0) light_level.green = 0.0;
+    if (light_level.green > 1.0) light_level.green = 1.0;
+    if (light_level.blue < 0.0) light_level.blue = 0.0;
+    if (light_level.blue > 1.0) light_level.blue = 1.0;
 
     /* Scale each channel independently */
-    base.r = (uint8_t)(base.r * light_level);
-    base.g = (uint8_t)(base.g * light_level);
-    base.b = (uint8_t)(base.b * light_level);
+    base.r = (uint8_t)(base.r * light_level.red);
+    base.g = (uint8_t)(base.g * light_level.green);
+    base.b = (uint8_t)(base.b * light_level.blue);
     base.a = 255;                    /* Always fully opaque */
     return base;
 }

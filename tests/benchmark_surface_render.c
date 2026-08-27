@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
                 x == map->width - 1 || y == map->height - 1;
             if (edge) map_set(map, x, y, 1);
             if (x == 12) map_set(map, x, y, 1);
-            map->light_map[index] = 0.75;
+            map->light_map[index] = (LightLevel){1.0, 1.0, 1.0};
             cells[index].floor_material = 1U;
             cells[index].ceiling_material = 2U;
             cells[index].floor_height_step = SCENE_DEFAULT_FLOOR_HEIGHT_STEP;

@@ -2,7 +2,9 @@
 
 ## Status
 
-Implemented and automated-gate verified; replacement manual confirmation pending.
+Implemented, automated-gate verified, and manually confirmed on 2026-08-27; R9
+is Verified (closeout:
+`docs/reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`).
 
 ## Finding
 

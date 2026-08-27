@@ -95,6 +95,29 @@ WorldInsertResult world_add_light(WorldState *world, double x, double y,
     l->color     = col;
     l->intensity = intensity;
     l->radius    = radius;
+    l->type      = SCENE_LIGHT_POINT;
+    l->direction = 0.0;
+    l->cone      = SCENE_LIGHT_CONE_MAX;
+    l->falloff   = 1.0;
+    return WORLD_INSERT_OK;
+}
+
+WorldInsertResult world_add_spot_light(
+    WorldState *world, double x, double y, SDL_Color col, double intensity,
+    double radius, double direction, double cone, double falloff
+) {
+    WorldInsertResult result;
+    if (!isfinite(direction) || direction < SCENE_LIGHT_DIRECTION_MIN ||
+        direction >= SCENE_LIGHT_DIRECTION_MAX || !isfinite(cone) ||
+        cone < SCENE_LIGHT_CONE_MIN || cone > SCENE_LIGHT_CONE_MAX ||
+        !isfinite(falloff) || falloff < SCENE_LIGHT_FALLOFF_MIN ||
+        falloff > SCENE_LIGHT_FALLOFF_MAX) return WORLD_INSERT_INVALID;
+    result = world_add_light(world, x, y, col, intensity, radius);
+    if (result != WORLD_INSERT_OK) return result;
+    world->lights[world->num_lights - 1].type = SCENE_LIGHT_SPOT;
+    world->lights[world->num_lights - 1].direction = direction;
+    world->lights[world->num_lights - 1].cone = cone;
+    world->lights[world->num_lights - 1].falloff = falloff;
     return WORLD_INSERT_OK;
 }
 

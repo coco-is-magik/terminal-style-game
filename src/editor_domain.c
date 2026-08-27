@@ -37,8 +37,8 @@ bool editor_domain_inspector_presentation(
     if (!out_presentation) return false;
     if (kind == EDITOR_INSPECTOR_LIGHT) {
         *out_presentation = (EditorInspectorPresentation){
-            "point light", "Up/Down  Left/Right=edit  Type+Enter=set",
-            "RGB colors marker; scene illumination is scalar",
+            "light", "Up/Down  Left/Right=edit  Type+Enter=set",
+            "RGBA weights colored surface illumination",
             EDITOR_LIGHT_FIELD_COUNT};
         return true;
     }
@@ -880,6 +880,9 @@ bool editor_domain_light_field_metadata(
         case EDITOR_LIGHT_FIELD_BLUE:
             metadata = (EditorLightFieldMetadata){field, "Blue", 0.0, 255.0, 1.0, 0U};
             break;
+        case EDITOR_LIGHT_FIELD_ALPHA:
+            metadata = (EditorLightFieldMetadata){field, "Alpha", 0.0, 255.0, 1.0, 0U};
+            break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             metadata = (EditorLightFieldMetadata){
                 field, "Intensity", EDITOR_LIGHT_INTENSITY_MIN,
@@ -889,6 +892,24 @@ bool editor_domain_light_field_metadata(
             metadata = (EditorLightFieldMetadata){
                 field, "Radius", EDITOR_LIGHT_RADIUS_MIN,
                 EDITOR_LIGHT_RADIUS_MAX, EDITOR_LIGHT_RADIUS_STEP, 2U};
+            break;
+        case EDITOR_LIGHT_FIELD_TYPE:
+            metadata = (EditorLightFieldMetadata){field, "Type (0=Point 1=Spot)", 0.0, 1.0, 1.0, 0U};
+            break;
+        case EDITOR_LIGHT_FIELD_DIRECTION:
+            metadata = (EditorLightFieldMetadata){
+                field, "Direction", SCENE_LIGHT_DIRECTION_MIN,
+                SCENE_LIGHT_DIRECTION_MAX - 0.01, 0.05, 2U};
+            break;
+        case EDITOR_LIGHT_FIELD_CONE:
+            metadata = (EditorLightFieldMetadata){
+                field, "Cone", SCENE_LIGHT_CONE_MIN,
+                SCENE_LIGHT_CONE_MAX, 0.05, 2U};
+            break;
+        case EDITOR_LIGHT_FIELD_FALLOFF:
+            metadata = (EditorLightFieldMetadata){
+                field, "Falloff", SCENE_LIGHT_FALLOFF_MIN,
+                SCENE_LIGHT_FALLOFF_MAX, 0.1, 2U};
             break;
         case EDITOR_LIGHT_FIELD_REMOVE:
         case EDITOR_LIGHT_FIELD_COUNT:
@@ -921,11 +942,25 @@ bool editor_domain_format_light_field(
         case EDITOR_LIGHT_FIELD_RED: written = snprintf(out_text, out_size, "%u", light->red); break;
         case EDITOR_LIGHT_FIELD_GREEN: written = snprintf(out_text, out_size, "%u", light->green); break;
         case EDITOR_LIGHT_FIELD_BLUE: written = snprintf(out_text, out_size, "%u", light->blue); break;
+        case EDITOR_LIGHT_FIELD_ALPHA: written = snprintf(out_text, out_size, "%u", light->alpha); break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             written = snprintf(out_text, out_size, "%.2f", light->intensity);
             break;
         case EDITOR_LIGHT_FIELD_RADIUS:
             written = snprintf(out_text, out_size, "%.2f", light->radius);
+            break;
+        case EDITOR_LIGHT_FIELD_TYPE:
+            written = snprintf(out_text, out_size, "%s",
+                               light->type == SCENE_LIGHT_SPOT ? "Spot" : "Point");
+            break;
+        case EDITOR_LIGHT_FIELD_DIRECTION:
+            written = snprintf(out_text, out_size, "%.2f", light->direction);
+            break;
+        case EDITOR_LIGHT_FIELD_CONE:
+            written = snprintf(out_text, out_size, "%.2f", light->cone);
+            break;
+        case EDITOR_LIGHT_FIELD_FALLOFF:
+            written = snprintf(out_text, out_size, "%.2f", light->falloff);
             break;
         case EDITOR_LIGHT_FIELD_REMOVE:
             written = snprintf(out_text, out_size, "Enter=remove");
@@ -974,11 +1009,33 @@ bool editor_domain_make_light_step_request(
             next = clamp_step(value.blue, &metadata, direction);
             value.blue = (uint8_t)next;
             break;
+        case EDITOR_LIGHT_FIELD_ALPHA:
+            next = clamp_step(value.alpha, &metadata, direction);
+            value.alpha = (uint8_t)next;
+            break;
         case EDITOR_LIGHT_FIELD_INTENSITY:
             value.intensity = clamp_step(value.intensity, &metadata, direction);
             break;
         case EDITOR_LIGHT_FIELD_RADIUS:
             value.radius = clamp_step(value.radius, &metadata, direction);
+            break;
+        case EDITOR_LIGHT_FIELD_TYPE:
+            if (direction < 0) {
+                value.type = SCENE_LIGHT_POINT;
+            } else {
+                value.type = SCENE_LIGHT_SPOT;
+                if (value.cone == SCENE_LIGHT_CONE_MAX)
+                    value.cone = SCENE_LIGHT_SPOT_CONE_DEFAULT;
+            }
+            break;
+        case EDITOR_LIGHT_FIELD_DIRECTION:
+            value.direction = clamp_step(value.direction, &metadata, direction);
+            break;
+        case EDITOR_LIGHT_FIELD_CONE:
+            value.cone = clamp_step(value.cone, &metadata, direction);
+            break;
+        case EDITOR_LIGHT_FIELD_FALLOFF:
+            value.falloff = clamp_step(value.falloff, &metadata, direction);
             break;
         case EDITOR_LIGHT_FIELD_COUNT:
         default:
@@ -1026,8 +1083,21 @@ bool editor_domain_make_light_value_request(
             if (numeric_value != (double)(uint8_t)numeric_value) return false;
             value.blue = (uint8_t)numeric_value;
             break;
+        case EDITOR_LIGHT_FIELD_ALPHA:
+            if (numeric_value != (double)(uint8_t)numeric_value) return false;
+            value.alpha = (uint8_t)numeric_value;
+            break;
         case EDITOR_LIGHT_FIELD_INTENSITY: value.intensity = numeric_value; break;
         case EDITOR_LIGHT_FIELD_RADIUS: value.radius = numeric_value; break;
+        case EDITOR_LIGHT_FIELD_TYPE:
+            if (numeric_value != 0.0 && numeric_value != 1.0) return false;
+            value.type = numeric_value == 0.0 ? SCENE_LIGHT_POINT : SCENE_LIGHT_SPOT;
+            if (value.type == SCENE_LIGHT_SPOT && value.cone == SCENE_LIGHT_CONE_MAX)
+                value.cone = SCENE_LIGHT_SPOT_CONE_DEFAULT;
+            break;
+        case EDITOR_LIGHT_FIELD_DIRECTION: value.direction = numeric_value; break;
+        case EDITOR_LIGHT_FIELD_CONE: value.cone = numeric_value; break;
+        case EDITOR_LIGHT_FIELD_FALLOFF: value.falloff = numeric_value; break;
         case EDITOR_LIGHT_FIELD_COUNT:
         default: return false;
     }

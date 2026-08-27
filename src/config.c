@@ -19,6 +19,7 @@
 #include "config.h"        /* EngineConfig struct, function declarations,
                               RunMode and VisualMode enums */
 #include "assets.h"
+#include "scene_types.h"
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -44,7 +45,8 @@ bool config_validate(const EngineConfig *config) {
            config->light_bounce_attenuation >= 0.0 &&
            config->light_bounce_attenuation <= 1.0 &&
            isfinite(config->light_falloff_default) &&
-           config->light_falloff_default > 0.0 &&
+           config->light_falloff_default >= SCENE_LIGHT_FALLOFF_MIN &&
+           config->light_falloff_default <= SCENE_LIGHT_FALLOFF_MAX &&
            isfinite(config->raycast_max_distance) &&
            config->raycast_max_distance > 0.0 &&
            isfinite(config->side_shadow_attenuation) &&
@@ -74,7 +76,7 @@ bool config_validate(const EngineConfig *config) {
  *   Lighting:
  *     - 20% ambient light (so nothing is ever completely black)
  *     - 20% light bounce attenuation (shadowed light bleed)
- *     - 1.0 default falloff exponent (parsed for future use; currently unused)
+ *     - 1.0 default falloff exponent for newly authored lights
  *
  *   Raycasting:
  *     - 20 cells max ray distance (good for most map sizes)

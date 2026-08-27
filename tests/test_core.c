@@ -282,7 +282,8 @@ static void test_asset_loader(void **state) {
     asset_loader_load_registry(&assets, "assets");
     
     // Verify palette 1 was loaded
-    SDL_Color near_col = palette_sample(&assets.palettes[1], 1.0, 1.0);
+    SDL_Color near_col = palette_sample(
+        &assets.palettes[1], 1.0, (LightLevel){1.0, 1.0, 1.0});
     assert_int_equal(near_col.r, 255);
     
     // Verify material 1 was loaded
@@ -356,7 +357,8 @@ static void prepare_surface_baseline(
     assert_true(asset_registry_init(assets));
     world_init(world);
     count = (size_t)map_width * (size_t)map_height;
-    for (size_t i = 0U; i < count; i++) (*out_map)->light_map[i] = 1.0;
+    for (size_t i = 0U; i < count; i++)
+        (*out_map)->light_map[i] = (LightLevel){1.0, 1.0, 1.0};
     raycast_render(*out_grid, *out_map, camera, assets, world, NULL);
 }
 
@@ -445,7 +447,7 @@ static void test_horizontal_surface_constant_baseline_out_of_bounds(void **state
     WorldState world;
     (void)state;
     prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 1, 1, 0.0);
-    map->light_map[0] = 0.0;
+    map->light_map[0] = (LightLevel){0.0, 0.0, 0.0};
     raycast_render(grid, map, &camera, &assets, &world, NULL);
     assert_surface_cell(grid, 0, 0, 50U);
     assert_surface_cell(grid, 0, 8, 30U);
@@ -482,7 +484,7 @@ static void test_authored_horizontal_materials_and_lighting(void **state) {
     for (size_t i = 0U; i < 81U; i++) {
         cells[i].floor_material = 7U;
         cells[i].ceiling_material = 2U;
-        map->light_map[i] = 0.5;
+        map->light_map[i] = (LightLevel){0.5, 0.5, 0.5};
     }
     world_init(&world);
 
@@ -528,10 +530,11 @@ static void test_missing_horizontal_material_is_obvious_and_unlit(void **state) 
     for (size_t i = 0U; i < 81U; i++) {
         cells[i].floor_material = 9U;
         cells[i].ceiling_material = 9U;
-        map->light_map[i] = 0.0;
+        map->light_map[i] = (LightLevel){0.0, 0.0, 0.0};
     }
     raycast_render(dark_grid, map, &camera, &assets, &world, &surfaces);
-    for (size_t i = 0U; i < 81U; i++) map->light_map[i] = 1.0;
+    for (size_t i = 0U; i < 81U; i++)
+        map->light_map[i] = (LightLevel){1.0, 1.0, 1.0};
     raycast_render(bright_grid, map, &camera, &assets, &world, &surfaces);
 
     assert_true(grid_get(dark_grid, 5, 0, &dark));
@@ -590,7 +593,7 @@ static void test_valid_surface_view_preserves_out_of_bounds_backgrounds(void **s
     SceneSurfaceView surfaces = {&cell, 1U, 1, 1};
     (void)state;
     prepare_surface_baseline(&grid, &map, &camera, &assets, &world, 1, 1, 0.0);
-    map->light_map[0] = 0.0;
+    map->light_map[0] = (LightLevel){0.0, 0.0, 0.0};
     raycast_render(grid, map, &camera, &assets, &world, &surfaces);
     assert_surface_cell(grid, 0, 0, 50U);
     assert_surface_cell(grid, 0, 8, 30U);
@@ -628,7 +631,7 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
             bool wall = x == 0 || y == 0 || x == map->width - 1 ||
                         y == map->height - 1 || x == 7;
             map_set(map, x, y, wall ? 1 : 0);
-            map->light_map[index] = 1.0;
+            map->light_map[index] = (LightLevel){1.0, 1.0, 1.0};
             cells[index].occupancy = wall ? SCENE_CELL_OCCUPANCY_WALL
                                           : SCENE_CELL_OCCUPANCY_EMPTY;
             cells[index].wall_material = wall ? 1U : 0U;
@@ -731,7 +734,7 @@ static void test_horizontal_decal_follows_authored_floor_height(void **state) {
             size_t index = (size_t)y * 9U + (size_t)x;
             bool wall = x == 0 || y == 0 || x == 8 || y == 8;
             map_set(map, x, y, wall ? 1 : 0);
-            map->light_map[index] = 1.0;
+            map->light_map[index] = (LightLevel){1.0, 1.0, 1.0};
             cells[index].occupancy = wall
                 ? SCENE_CELL_OCCUPANCY_WALL : SCENE_CELL_OCCUPANCY_EMPTY;
             cells[index].wall_material = wall ? 1U : 0U;
@@ -793,7 +796,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     Camera camera;
     AssetRegistry assets;
     WorldState world;
-    SDL_Color black = {0, 0, 0, 255};
+    SDL_Color white = {255, 255, 255, 255};
     unsigned long ambient_top, ambient_middle, ambient_bottom;
     (void)state;
 
@@ -826,7 +829,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     ambient_bottom = grid_region_luminance(ambient_grid, 17, 25);
 
     assert_int_equal(world_add_light(
-        &world, 4.5, 3.5, black, 1.0, 4.0), WORLD_INSERT_OK);
+        &world, 4.5, 3.5, white, 1.0, 4.0), WORLD_INSERT_OK);
     lighting_update_current(map, &world);
     raycast_render(lit_grid, map, &camera, &assets, &world, NULL);
     assert_true(grid_region_luminance(lit_grid, 0, 8) > ambient_top);
@@ -1441,7 +1444,8 @@ static void test_sparse_high_id_bulk_asset_loading(void **state) {
     assert_int_equal(assets.generation, 0U);
     asset_loader_load_registry(&assets, root);
     assert_int_equal(assets.generation, 1U);
-    sampled = palette_sample(&assets.palettes[50000], 1.0, 1.0);
+    sampled = palette_sample(
+        &assets.palettes[50000], 1.0, (LightLevel){1.0, 1.0, 1.0});
     assert_int_equal(sampled.r, 10U);
     assert_int_equal(sampled.g, 20U);
     assert_int_equal(sampled.b, 30U);

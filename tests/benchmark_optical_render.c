@@ -125,7 +125,7 @@ int main(void) {
             cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
             cells[i].floor_material = 1U;
             cells[i].ceiling_material = 2U;
-            map->light_map[i] = 0.75;
+            f->map.light_map[i] = (LightLevel){1.0, 1.0, 1.0};
             if (edge) {
                 cells[i].occupancy = SCENE_CELL_OCCUPANCY_WALL;
                 cells[i].wall_material = 1U;

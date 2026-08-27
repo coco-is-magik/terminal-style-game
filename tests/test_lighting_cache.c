@@ -7,7 +7,21 @@
 #include "../src/lighting_cache.h"
 
 static LightShadowKey key_for(int revision) {
-    LightShadowKey key = {revision, revision, 2, 3, 4};
+    LightShadowKey key = {
+        .map_identity = UINT64_C(0x1234),
+        .map_revision = revision,
+        .lighting_revision = revision,
+        .light_id = 2,
+        .light_x_bits = UINT64_C(11),
+        .light_y_bits = UINT64_C(12),
+        .light_radius_bits = UINT64_C(13),
+        .light_direction_bits = UINT64_C(14),
+        .light_cone_bits = UINT64_C(15),
+        .light_falloff_bits = UINT64_C(16),
+        .light_type = 0,
+        .target_tile_x = 3,
+        .target_tile_y = 4
+    };
     return key;
 }
 

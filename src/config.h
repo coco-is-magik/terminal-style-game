@@ -37,7 +37,7 @@ typedef struct {
     /* ---- Lighting ---- */
     double ambient_light;             /* Minimum light level (default 0.2 = 20%) */
     double light_bounce_attenuation;  /* Light bleed through obstacles (default 0.2) */
-    double light_falloff_default;     /* Parsed setting; currently unused by lighting.c */
+    double light_falloff_default;     /* New authored-light radial exponent */
 
     /* ---- Raycasting ---- */
     double raycast_max_distance;      /* Max ray distance in cells (default 20.0) */

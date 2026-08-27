@@ -577,7 +577,7 @@ static void test_horizontal_highlight_composes_over_authored_material(void **sta
                          sizeof(assets.material_names[1]), "1") > 0);
     for (size_t i = 0U; i < 81U; i++) {
         cells[i].floor_material = 1U;
-        map->light_map[i] = 1.0;
+        map->light_map[i] = (LightLevel){1.0, 1.0, 1.0};
     }
     memcpy(before_cells, cells, sizeof(cells));
     world_init(&world);

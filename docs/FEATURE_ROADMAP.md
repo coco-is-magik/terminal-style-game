@@ -224,8 +224,8 @@ Do not create empty review directories or placeholder review files.
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
-| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Active; I1–I7 complete; pending manual optical acceptance and final closeout |
-| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
+| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
+| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Active — I1 implemented/automated gates passed 2026-08-27; manual acceptance pending |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
@@ -702,7 +702,10 @@ continuing full-Q4 phase closeout is recorded in
 
 ## R9 — Layered optical rendering
 
-**Status:** Active; I1 derived optical runtime lookup verified 2026-08-24. I2 selective continuation is next.
+**Status:** Verified 2026-08-27 (manual optical acceptance passed; closeout:
+[`reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`](reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md)).
+A non-blocking timing follow-up remains: the current-renderer flat inherited path
+exceeds the 6 ms surface-render budget by roughly 0.3 ms.
 Research plan recorded 2026-08-21
 ([`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md));
 P1–P4 and RQ5/RQ6 evidence completed 2026-08-24
@@ -759,7 +762,10 @@ work. A second Review H remains required after the implemented phase.
 
 ## R10 — Colored and expanded lighting
 
-**Status:** Proposed
+**Status:** Active — Q1 locked; I1 colored illumination and I2 spot lights are
+implemented with automated gates passing 2026-08-27; combined manual visual/input
+acceptance remains. See `R10_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-27.md` and
+`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
 **Purpose:** Extend lighting only after world height and optical transmission
 semantics are stable enough to avoid repeated migrations.
@@ -773,6 +779,10 @@ occlusion, and transmission rules.
 2. Implement colored-light mixing and transmission.
 3. Add spot lights with direction, cone, falloff, and editor controls.
 4. Research directional, area, and emissive lighting separately.
+
+Q1 decision (2026-08-27): **RGB per-channel accumulation** locked; see
+`R10_DECISION_RECORD_2026-08-27.md`. Ordering: I1 colored illumination, I2 spot
+lights (version bump + migration), I3 research track.
 
 **Data-first opportunities:** Light type, transform, color, intensity, radius,
 cone, falloff, shadow policy, and quality settings are typed scene/asset data.
@@ -888,7 +898,10 @@ Continuing reviews completed: after R8 on 2026-08-21 (see
 `reviews/2026-08-21-roadmap-r8-phase-closeout.md`).
 
 Pre-implementation Review H for R9 conditionally passed on 2026-08-24 (see
-`reviews/2026-08-24-roadmap-r9-review-h.md`).
+`reviews/2026-08-24-roadmap-r9-review-h.md`). Implemented-phase Review H passed on
+2026-08-25 (`reviews/2026-08-25-roadmap-r9-review-h-implemented-phase.md`), and the
+R9 closeout recorded Verified on 2026-08-27
+(`reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`).
 
 A review may add a blocker, split a phase, combine phases, or reorder future
 work. Such changes are expected maintenance of the roadmap, not a failure to
@@ -951,12 +964,23 @@ until that evidence exists.
 
 ## Next action
 
-**R0–R7 are Verified.** The R7 plan and locked decisions are in
-`R7_DECISION_RECORD_2026-08-13.md` and
-`R7_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-13.md`.
+**R0–R8 plus R9 are Verified.** R9 passed manual optical acceptance on
+2026-08-27; closeout and checklist:
+`reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`.
 
-R8 (Vertical-world implementation) is **Active**: Q1 passed on 2026-08-19,
-decisions are locked in `R8_DECISION_RECORD_2026-08-19.md`, I1 establishes the
-canonical v5 schema, I2 completes height-aware projection, I3 completes the
-vertical movement core, and I4 completes jump/air-control/ladder traversal. I5
-(editor authoring and parameter tuning) is next.
+The active roadmap phase is **R10 — Colored and expanded lighting**. The Q1
+decision is locked — **RGB per-channel accumulation** — and
+the I1–I3 increment plan is recorded in `R10_DECISION_RECORD_2026-08-27.md` and
+`R10_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-27.md` (I1 colored
+illumination with a per-channel `light_map` and alpha authoring; I2 spot lights
+with a version bump and migration; I3 research track).
+
+I1 colored illumination and I2 spot lights are implemented and pass automated
+gates. The next action is **combined I1/I2 manual visual/input acceptance**. I3
+directional/area/emissive research remains separately gated.
+
+R11 (sprites, animation, objects, and triggers) and R12 (responsive UI model)
+remain Proposed and follow once their prerequisites are reached. I8 quality
+presets stay deferred and require a fresh end-to-end assessment plus separate
+authorization. Open R9 follow-up: bring the current-renderer flat inherited path
+under the 6 ms surface-render budget.

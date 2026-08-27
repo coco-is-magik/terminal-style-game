@@ -27,6 +27,7 @@ static void init_document(SceneDocument *document) {
         .red = 10U, .green = 20U, .blue = 30U, .alpha = 255U,
         .intensity = -1.0, .radius = 3.0
     };
+    scene_light_set_point_defaults(&document->lights[0]);
 }
 
 static SelectionTarget light_target(SceneInstanceId id) {
@@ -104,7 +105,18 @@ static void test_light_metadata_and_formatting(void **state) {
     assert_true(editor_domain_format_light_field(
         &document.lights[0], EDITOR_LIGHT_FIELD_REMOVE, text, sizeof(text)));
     assert_string_equal(text, "Enter=remove");
-    assert_int_equal(EDITOR_LIGHT_FIELD_COUNT, 8);
+    assert_true(editor_domain_light_field_metadata(
+        EDITOR_LIGHT_FIELD_ALPHA, &document.map, &metadata));
+    assert_string_equal(metadata.label, "Alpha");
+    assert_true(metadata.minimum == 0.0 && metadata.maximum == 255.0);
+    assert_true(editor_domain_light_field_metadata(
+        EDITOR_LIGHT_FIELD_DIRECTION, &document.map, &metadata));
+    assert_string_equal(metadata.label, "Direction");
+    assert_true(editor_domain_light_field_metadata(
+        EDITOR_LIGHT_FIELD_CONE, &document.map, &metadata));
+    assert_true(editor_domain_light_field_metadata(
+        EDITOR_LIGHT_FIELD_FALLOFF, &document.map, &metadata));
+    assert_int_equal(EDITOR_LIGHT_FIELD_COUNT, 13);
     assert_false(editor_domain_light_field_metadata(
         EDITOR_LIGHT_FIELD_COUNT, &document.map, &metadata));
     assert_false(editor_domain_light_field_metadata(
@@ -132,6 +144,16 @@ static void test_light_step_requests_are_typed_and_bounded(void **state) {
     assert_true(editor_domain_make_light_step_request(
         &document, target, EDITOR_LIGHT_FIELD_RED, 1, &request));
     assert_int_equal(request.data.light.value.red, 11U);
+    assert_true(editor_domain_make_light_step_request(
+        &document, target, EDITOR_LIGHT_FIELD_ALPHA, -1, &request));
+    assert_int_equal(request.data.light.value.alpha, 254U);
+    assert_true(editor_domain_make_light_step_request(
+        &document, target, EDITOR_LIGHT_FIELD_TYPE, 1, &request));
+    assert_int_equal(request.data.light.value.type, SCENE_LIGHT_SPOT);
+    assert_true(request.data.light.value.cone == SCENE_LIGHT_SPOT_CONE_DEFAULT);
+    assert_true(editor_domain_make_light_step_request(
+        &document, target, EDITOR_LIGHT_FIELD_FALLOFF, 1, &request));
+    assert_true(request.data.light.value.falloff == 1.1);
 
     document.lights[0].red = 255U;
     assert_true(editor_domain_make_light_step_request(
@@ -177,6 +199,22 @@ static void test_light_value_requests_are_typed_and_bounded(void **state) {
     assert_true(editor_domain_make_light_value_request(
         &document, target, EDITOR_LIGHT_FIELD_RED, 200.0, &request));
     assert_int_equal(request.data.light.value.red, 200U);
+    assert_true(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_ALPHA, 128.0, &request));
+    assert_int_equal(request.data.light.value.alpha, 128U);
+    assert_false(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_ALPHA, 128.5, &request));
+    assert_true(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_DIRECTION, 1.5, &request));
+    assert_true(request.data.light.value.direction == 1.5);
+    assert_true(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_CONE, 0.75, &request));
+    assert_true(request.data.light.value.cone == 0.75);
+    assert_true(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_TYPE, 1.0, &request));
+    assert_int_equal(request.data.light.value.type, SCENE_LIGHT_SPOT);
+    assert_false(editor_domain_make_light_value_request(
+        &document, target, EDITOR_LIGHT_FIELD_TYPE, 0.5, &request));
     assert_false(editor_domain_make_light_value_request(
         &document, target, EDITOR_LIGHT_FIELD_RED, 2.5, &request));
     assert_false(editor_domain_make_light_value_request(
@@ -227,7 +265,7 @@ static void test_shared_inspector_presentation_is_typed(void **state) {
 
     assert_true(editor_domain_inspector_presentation(
         EDITOR_INSPECTOR_LIGHT, &inspector));
-    assert_string_equal(inspector.title, "point light");
+    assert_string_equal(inspector.title, "light");
     assert_string_equal(inspector.controls,
                         "Up/Down  Left/Right=edit  Type+Enter=set");
     assert_non_null(inspector.note);

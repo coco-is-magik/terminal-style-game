@@ -47,12 +47,20 @@ static uint64_t g_stats_evictions = 0;
 /* =================================================================== */
 
 static unsigned int hash_key(LightShadowKey key) {
-    /* Simple hash combining all 6 integer fields of the key.
+    /* Simple hash combining every exact geometric key field.
      * Uses prime multipliers to reduce collisions. */
     unsigned int h = 0;
+    h ^= (unsigned int)(key.map_identity ^ (key.map_identity >> 32U));
     h ^= (unsigned int)key.map_revision * 1103515243;
     h ^= (unsigned int)key.lighting_revision * 101511;
     h ^= (unsigned int)key.light_id * 3571;
+    h ^= (unsigned int)(key.light_x_bits ^ (key.light_x_bits >> 32U));
+    h ^= (unsigned int)(key.light_y_bits ^ (key.light_y_bits >> 32U));
+    h ^= (unsigned int)(key.light_radius_bits ^ (key.light_radius_bits >> 32U));
+    h ^= (unsigned int)(key.light_direction_bits ^ (key.light_direction_bits >> 32U));
+    h ^= (unsigned int)(key.light_cone_bits ^ (key.light_cone_bits >> 32U));
+    h ^= (unsigned int)(key.light_falloff_bits ^ (key.light_falloff_bits >> 32U));
+    h ^= (unsigned int)key.light_type * 65537U;
     h ^= (unsigned int)key.target_tile_x * 131071;
     h ^= (unsigned int)key.target_tile_y * 1237;
     return h % LIGHTING_CACHE_SIZE;
@@ -103,9 +111,17 @@ bool lighting_cache_lookup(LightShadowKey key, LightSampleResult *out) {
     
     /* Check if key matches and entry is valid */
     if (g_cache[idx].valid &&
+        g_cache[idx].key.map_identity == key.map_identity &&
         g_cache[idx].key.map_revision == key.map_revision &&
         g_cache[idx].key.lighting_revision == key.lighting_revision &&
         g_cache[idx].key.light_id == key.light_id &&
+        g_cache[idx].key.light_x_bits == key.light_x_bits &&
+        g_cache[idx].key.light_y_bits == key.light_y_bits &&
+        g_cache[idx].key.light_radius_bits == key.light_radius_bits &&
+        g_cache[idx].key.light_direction_bits == key.light_direction_bits &&
+        g_cache[idx].key.light_cone_bits == key.light_cone_bits &&
+        g_cache[idx].key.light_falloff_bits == key.light_falloff_bits &&
+        g_cache[idx].key.light_type == key.light_type &&
         g_cache[idx].key.target_tile_x == key.target_tile_x &&
         g_cache[idx].key.target_tile_y == key.target_tile_y) {
         if (out) *out = g_cache[idx].result;

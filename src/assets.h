@@ -177,7 +177,13 @@ void asset_registry_set_material(AssetRegistry *reg, int id, int pal_id, const c
  * @param light_level  Lighting multiplier, clamped to [0.0, 1.0]
  * @return             The final shaded SDL_Color
  */
-SDL_Color palette_sample(const Palette *p, double distance, double light_level);
+typedef struct {
+    double red;
+    double green;
+    double blue;
+} LightLevel;
+
+SDL_Color palette_sample(const Palette *p, double distance, LightLevel light_level);
 
 /**
  * material_find_by_name() — Look up a material ID by its filename-derived name

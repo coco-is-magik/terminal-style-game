@@ -115,22 +115,43 @@ static bool project_world_point(Grid *grid, Camera *cam,
     return true;
 }
 
-static double decal_light_level(Map *map, const Decal *d,
-                                double world_x, double world_y,
-                                double normal_y) {
-    double light_level = 1.0;
+static LightLevel light_level_white(void) {
+    return (LightLevel){1.0, 1.0, 1.0};
+}
+
+static LightLevel light_level_scale(LightLevel level, double scale) {
+    level.red *= scale;
+    level.green *= scale;
+    level.blue *= scale;
+    return level;
+}
+
+static LightLevel light_level_clamp(LightLevel level) {
+    if (level.red < 0.0) level.red = 0.0;
+    if (level.red > 1.0) level.red = 1.0;
+    if (level.green < 0.0) level.green = 0.0;
+    if (level.green > 1.0) level.green = 1.0;
+    if (level.blue < 0.0) level.blue = 0.0;
+    if (level.blue > 1.0) level.blue = 1.0;
+    return level;
+}
+
+static LightLevel decal_light_level(Map *map, const Decal *d,
+                                    double world_x, double world_y,
+                                    double normal_y) {
+    LightLevel light_level = light_level_white();
 
     if (map->light_map) {
         int map_x = (int)world_x;
         int map_y = (int)world_y;
         if (map_in_bounds(map, map_x, map_y)) {
             light_level = map->light_map[map_y * map->width + map_x];
-            if (light_level > 1.0) light_level = 1.0;
         }
     }
 
     if (d->surface == DECAL_SURFACE_WALL && fabs(normal_y) > 0.5) {
-        light_level *= config_get()->side_shadow_attenuation;
+        light_level = light_level_scale(
+            light_level, config_get()->side_shadow_attenuation);
     }
 
     return light_level;
@@ -172,18 +193,17 @@ Cell raycast_sample_heightfield_hit(const Map *map,
     if (!map || !assets || !hit || !hit->hit) return sampled;
     if (material_id_is_loaded(assets, hit->material)) {
         const Material *material = &assets->materials[hit->material];
-        double light_level = 1.0;
+        LightLevel light_level = light_level_white();
         int glyph_index = hit->distance > 10.0 ? 3 :
             hit->distance > 7.0 ? 2 : hit->distance > 4.0 ? 1 : 0;
         if (map->light_map && map_in_bounds(map, hit->map_x, hit->map_y)) {
             light_level = map->light_map[
                 (size_t)hit->map_y * (size_t)map->width + (size_t)hit->map_x];
-            if (light_level > 1.0) light_level = 1.0;
-            if (light_level < 0.0) light_level = 0.0;
         }
         if ((hit->kind == HEIGHTFIELD_HIT_WALL || hit->generated_boundary) &&
             hit->side == 1) {
-            light_level *= config_get()->side_shadow_attenuation;
+            light_level = light_level_scale(
+                light_level, config_get()->side_shadow_attenuation);
         }
         sampled.glyph = material->glyphs[glyph_index];
         sampled.fg = palette_sample(
@@ -365,8 +385,8 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 if (!grid_get(grid, screen_x, screen_y, &existing)) continue;
 
                 Material *d_mat = &assets->materials[pc.material_id];
-                double light_level = decal_light_level(map, &projected, world_x, world_y,
-                                                       basis.normal[1]);
+                LightLevel light_level = decal_light_level(
+                    map, &projected, world_x, world_y, basis.normal[1]);
                 SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
                                                depth, light_level);
                 grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
@@ -701,13 +721,14 @@ void raycast_render_height_legacy_impl(
             uint8_t wall_glyph = mat->glyphs[glyph_idx];
 
             /* ---- Lighting for this wall tile ---- */
-            double light_level = 1.0;
+            LightLevel light_level = light_level_white();
             if (map->light_map) {
                 light_level = map->light_map[ray.map_y * map->width + ray.map_x];
             }
             /* East-West facing walls (side == 1) are dimmer to simulate
              * directional shadowing — light hits them at a grazing angle. */
-            if (ray.side == 1) light_level *= config_get()->side_shadow_attenuation;
+            if (ray.side == 1) light_level = light_level_scale(
+                light_level, config_get()->side_shadow_attenuation);
 
             /* Sample the wall colour from the material's palette */
             SDL_Color wall_color = palette_sample(&assets->palettes[mat->palette_id],
@@ -755,11 +776,10 @@ void raycast_render_height_legacy_impl(
             SDL_Color bg = {50, 50, 50, 255};   /* Grey ceiling */
 
             /* Apply light map */
-            double light_level = 1.0;
+            LightLevel light_level = light_level_white();
             if (map->light_map) {
                 if (in_bounds) {
                     light_level = map->light_map[map_y * map->width + map_x];
-                    if (light_level > 1.0) light_level = 1.0;
                 }
             }
 
@@ -786,12 +806,13 @@ void raycast_render_height_legacy_impl(
                     bg = (SDL_Color){0, 0, 0, 255};
                 }
             } else if (in_bounds) {
-                fg.r = (uint8_t)(fg.r * light_level);
-                fg.g = (uint8_t)(fg.g * light_level);
-                fg.b = (uint8_t)(fg.b * light_level);
-                bg.r = (uint8_t)(bg.r * light_level);
-                bg.g = (uint8_t)(bg.g * light_level);
-                bg.b = (uint8_t)(bg.b * light_level);
+                light_level = light_level_clamp(light_level);
+                fg.r = (uint8_t)(fg.r * light_level.red);
+                fg.g = (uint8_t)(fg.g * light_level.green);
+                fg.b = (uint8_t)(fg.b * light_level.blue);
+                bg.r = (uint8_t)(bg.r * light_level.red);
+                bg.g = (uint8_t)(bg.g * light_level.green);
+                bg.b = (uint8_t)(bg.b * light_level.blue);
             }
 
             grid_set(grid, x, y, glyph, fg, bg);
@@ -825,11 +846,10 @@ void raycast_render_height_legacy_impl(
             SDL_Color fg = {255, 255, 255, 255};
             SDL_Color bg = {30, 30, 30, 255};   /* Darker floor */
 
-            double light_level = 1.0;
+            LightLevel light_level = light_level_white();
             if (map->light_map) {
                 if (in_bounds) {
                     light_level = map->light_map[map_y * map->width + map_x];
-                    if (light_level > 1.0) light_level = 1.0;
                 }
             }
 
@@ -856,12 +876,13 @@ void raycast_render_height_legacy_impl(
                     bg = (SDL_Color){0, 0, 0, 255};
                 }
             } else if (in_bounds) {
-                fg.r = (uint8_t)(fg.r * light_level);
-                fg.g = (uint8_t)(fg.g * light_level);
-                fg.b = (uint8_t)(fg.b * light_level);
-                bg.r = (uint8_t)(bg.r * light_level);
-                bg.g = (uint8_t)(bg.g * light_level);
-                bg.b = (uint8_t)(bg.b * light_level);
+                light_level = light_level_clamp(light_level);
+                fg.r = (uint8_t)(fg.r * light_level.red);
+                fg.g = (uint8_t)(fg.g * light_level.green);
+                fg.b = (uint8_t)(fg.b * light_level.blue);
+                bg.r = (uint8_t)(bg.r * light_level.red);
+                bg.g = (uint8_t)(bg.g * light_level.green);
+                bg.b = (uint8_t)(bg.b * light_level.blue);
             }
 
             grid_set(grid, x, y, glyph, fg, bg);

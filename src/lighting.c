@@ -2,12 +2,12 @@
  * lighting.c — 2D dynamic lighting system with shadow casting
  *
  * This file implements the engine's per-frame lighting update.  It computes
- * a light level for every tile on the map by combining ambient light with
+ * RGB light levels for every tile on the map by combining ambient light with
  * contributions from all point lights defined in the WorldState.
  *
- * The light level is stored in map->light_map[], a double array of the same
- * dimensions as the map grid.  Each cell's light_map value represents the
- * brightness contribution that will be applied to that tile's colour during
+ * The light level is stored in map->light_map[], a LightLevel array of the same
+ * dimensions as the map grid. Each channel represents the brightness
+ * contribution applied to that tile's corresponding colour channel during
  * rendering (see palette_sample() in assets.c).  Values are usually positive,
  * but negative-intensity lights can push them below 0 before sampling clamps.
  *
@@ -19,7 +19,7 @@
  *         (1.0 at centre, 0.0 at radius edge)
  *      c. Fire a ray from the light to the tile; if a wall is hit *before*
  *         reaching the tile, the tile is in shadow → apply bounce attenuation
- *      d. Add the light's contribution (intensity × light_power) to the map
+ *      d. Add the light's RGB/A-weighted contribution to the map
  *   3. Light values accumulate additively (multiple lights brighten an area)
  *
  * IMPORTANT: This is called once per frame in VISUAL_RAYCAST mode.  It uses
@@ -39,11 +39,36 @@
 #include "config.h"      /* config_get() — provides ambient_light and
                             light_bounce_attenuation settings */
 #include <math.h>         /* sqrt(), atan2() */
+#include <string.h>       /* memcpy() for deterministic double cache keys */
 #include <SDL3/SDL.h>     /* SDL_GetPerformanceCounter/Frequency */
 
 #ifdef USE_LIGHTING_CACHE
 #include "lighting_cache.h" /* Lighting shadow ray cache */
 #endif
+
+static void add_light_contribution(LightLevel *level, const Light *light,
+                                   double attenuation) {
+    double alpha = (double)light->color.a / 255.0;
+    double contribution = attenuation * light->intensity * alpha;
+    level->red += contribution * ((double)light->color.r / 255.0);
+    level->green += contribution * ((double)light->color.g / 255.0);
+    level->blue += contribution * ((double)light->color.b / 255.0);
+}
+
+#ifdef USE_LIGHTING_CACHE
+static uint64_t double_bits(double value) {
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+#endif
+
+static bool light_contains_angle(const Light *light, double angle) {
+    double delta;
+    if (light->type != SCENE_LIGHT_SPOT) return true;
+    delta = remainder(angle - light->direction, SCENE_LIGHT_DIRECTION_MAX);
+    return fabs(delta) <= light->cone * 0.5;
+}
 
 /* =================================================================== */
 /* Timing instrumentation                                             */
@@ -172,9 +197,10 @@ void lighting_update_optical(
     /* Every tile starts at the ambient light level (e.g. 0.2 = 20% brightness).
      * This ensures no tile is ever completely black. */
     for (size_t i = 0; i < cell_count; i++) {
-        map->light_map[i] = world->has_authored_ambient
+        double ambient = world->has_authored_ambient
             ? world->ambient_intensity
             : config_get()->ambient_light;
+        map->light_map[i] = (LightLevel){ambient, ambient, ambient};
     }
 
     /* ---- Step 2: Process each light in the world ---- */
@@ -201,37 +227,43 @@ void lighting_update_optical(
                 double dx = cx - l->pos.x;
                 double dy = cy - l->pos.y;
                 double dist = sqrt(dx * dx + dy * dy);
+                double ray_angle = atan2(dy, dx);
 
                 /* Only process tiles within the light's radius */
-                if (dist <= l->radius) {
+                if (dist <= l->radius && light_contains_angle(l, ray_angle)) {
 #ifdef USE_LIGHTING_CACHE
                     /* Check cache first */
                     LightShadowKey key;
+                    key.map_identity = (uint64_t)(uintptr_t)map;
                     key.map_revision = 1;  /* TODO: Get from map */
                     key.lighting_revision = 1;  /* TODO: Get from world */
                     key.light_id = i;
+                    key.light_x_bits = double_bits(l->pos.x);
+                    key.light_y_bits = double_bits(l->pos.y);
+                    key.light_radius_bits = double_bits(l->radius);
+                    key.light_direction_bits = double_bits(l->direction);
+                    key.light_cone_bits = double_bits(l->cone);
+                    key.light_falloff_bits = double_bits(l->falloff);
+                    key.light_type = (int)l->type;
                     key.target_tile_x = x;
                     key.target_tile_y = y;
                     
                     LightSampleResult cached;
                     if (!optical_current && lighting_cache_lookup(key, &cached)) {
-                        /* Cache hit - use cached values */
-                        map->light_map[y * map->width + x] += cached.intensity;
+                        add_light_contribution(
+                            &map->light_map[y * map->width + x], l, cached.intensity);
                         continue;
                     }
 #endif
 
                     lighting_shadow_ray_count++;
 
-                    /* Linear distance-based falloff:
-                     *   At distance 0:   intensity = 1.0 (full brightness)
-                     *   At distance R:   intensity = 0.0 (darkness) */
-                    double intensity = 1.0 - (dist / l->radius);
+                    /* Exponent-shaped radial falloff: 1.0 at the source and
+                     * 0.0 at the radius edge; exponent 1 preserves legacy linear. */
+                    double intensity = pow(1.0 - (dist / l->radius), l->falloff);
 
                     /* ---- Step 2c: Shadow test ---- */
                     bool blocked = false;
-                    double ray_angle = atan2(dy, dx);   /* Angle from light → tile */
-
                     /* Construct a temporary Camera positioned at the light source.
                      * We only need the transform (pos + angle) for raycast_fire(). */
                     Camera dummy_cam;
@@ -254,14 +286,12 @@ void lighting_update_optical(
                     }
 
                     /* ---- Step 2d: Calculate and accumulate the light contribution ---- */
-                    double contribution = intensity * l->intensity;
-
                     if (blocked) {
                         /* Tile is in shadow — only a fraction of the light makes it
                          * through via bounce / ambient bleed.  This attenuation factor
                          * (default 0.2 = 20%) is configured in config.ini as
                          * light_bounce_attenuation. */
-                        contribution *= config_get()->light_bounce_attenuation;
+                        intensity *= config_get()->light_bounce_attenuation;
                     }
 
 #ifdef USE_LIGHTING_CACHE
@@ -270,14 +300,15 @@ void lighting_update_optical(
                     result.blocked = blocked;
                     result.distance = dist;
                     result.attenuation = intensity;
-                    result.intensity = contribution;
+                    result.intensity = intensity;
                     if (!optical_current) lighting_cache_store(key, result);
 #endif
 
                     /* Accumulate into the map's light map.
                      * Multiple lights add their contributions together, so a tile
                      * lit by two lights will be brighter than one lit by a single light. */
-                    map->light_map[y * map->width + x] += contribution;
+                    add_light_contribution(
+                        &map->light_map[y * map->width + x], l, intensity);
                 }
             }
         }

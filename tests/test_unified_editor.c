@@ -852,7 +852,7 @@ static void test_light_hover_selection_uses_stable_id(void **state) {
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
     assert_true(grid_contains_text(grid, "Select light:11"));
-    assert_true(grid_contains_text(grid, "Inspector: point light"));
+    assert_true(grid_contains_text(grid, "Inspector: light"));
     assert_true(grid_contains_text(grid, "> X"));
     grid_destroy(grid);
 
@@ -923,6 +923,34 @@ static void test_light_inspector_edits_through_history_and_runtime(void **state)
     assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
     assert_true(ed.runtime_world.lights[0].pos.x == 2.75);
 
+    ed.light_field = EDITOR_LIGHT_FIELD_TYPE;
+    zero_input(&in); in.editor_increase_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(ed.runtime_world.lights[0].type, SCENE_LIGHT_SPOT);
+    ed.light_field = EDITOR_LIGHT_FIELD_DIRECTION;
+    zero_input(&in); strcpy(in.text_input, "1.25"); in.text_input_len = 4;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    ed.light_field = EDITOR_LIGHT_FIELD_CONE;
+    zero_input(&in); strcpy(in.text_input, "0.75"); in.text_input_len = 4;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    ed.light_field = EDITOR_LIGHT_FIELD_FALLOFF;
+    zero_input(&in); strcpy(in.text_input, "2"); in.text_input_len = 1;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_true(ed.runtime_world.lights[0].direction == 1.25);
+    assert_true(ed.runtime_world.lights[0].cone == 0.75);
+    assert_true(ed.runtime_world.lights[0].falloff == 2.0);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_true(ed.runtime_world.lights[0].falloff == 1.0);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_true(ed.runtime_world.lights[0].falloff == 2.0);
+    assert_int_equal(ed.runtime_world.lights[0].type, SCENE_LIGHT_SPOT);
+
     assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
     assert_false(scene_document_is_dirty(&ed.document));
     unified_editor_destroy(&ed);
@@ -934,6 +962,9 @@ static void test_light_inspector_edits_through_history_and_runtime(void **state)
     assert_true(light->x == 2.75);
     assert_int_equal(light->red, 255U);
     assert_true(ed.runtime_world.lights[0].pos.x == 2.75);
+    assert_int_equal(light->type, SCENE_LIGHT_SPOT);
+    assert_true(light->direction == 1.25 && light->cone == 0.75 && light->falloff == 2.0);
+    assert_int_equal(ed.runtime_world.lights[0].type, SCENE_LIGHT_SPOT);
 
     unified_editor_destroy(&ed);
     remove(path);
@@ -973,7 +1004,7 @@ static void test_light_inspector_numeric_entry_commit_cancel_and_validation(void
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
     assert_true(grid_contains_text(grid, "[2.5_]"));
-    assert_true(grid_contains_text(grid, "illumination is scalar"));
+    assert_true(grid_contains_text(grid, "RGBA weights colored surface illumination"));
     grid_destroy(grid);
 
     zero_input(&in); in.editor_confirm_pressed = true;
@@ -982,6 +1013,18 @@ static void test_light_inspector_numeric_entry_commit_cancel_and_validation(void
     assert_true(scene_document_find_light(&ed.document, 11U)->intensity == 2.5);
     assert_true(ed.runtime_world.lights[0].intensity == 2.5);
 
+    ed.light_field = EDITOR_LIGHT_FIELD_ALPHA;
+    zero_input(&in); strcpy(in.text_input, "128"); in.text_input_len = 3;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    zero_input(&in); in.editor_confirm_pressed = true;
+    unified_editor_update(&ed, &in, &cam, 0.016);
+    assert_int_equal(scene_document_find_light(&ed.document, 11U)->alpha, 128U);
+    assert_int_equal(ed.runtime_world.lights[0].color.a, 128U);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_light(&ed.document, 11U)->alpha, 255U);
+    assert_int_equal(ed.runtime_world.lights[0].color.a, 255U);
+
+    ed.light_field = EDITOR_LIGHT_FIELD_INTENSITY;
     zero_input(&in); strcpy(in.text_input, "999"); in.text_input_len = 3;
     unified_editor_update(&ed, &in, &cam, 0.016);
     zero_input(&in); in.editor_confirm_pressed = true;

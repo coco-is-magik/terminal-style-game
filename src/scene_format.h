@@ -83,6 +83,12 @@ SceneFormatResult scene_format_migrate_v5_to_v6(
     SceneDiagnostic *out_diagnostic
 );
 
+/* Adds explicit point-light type/cone/falloff defaults to a parsed v6 candidate. */
+SceneFormatResult scene_format_migrate_v6_to_v7(
+    SceneFormatCandidate *candidate,
+    SceneDiagnostic *out_diagnostic
+);
+
 SceneFormatResult scene_format_parse(
     const char *source,
     size_t source_size,
