@@ -2,8 +2,11 @@
 
 ## Status
 
-**Implemented; automated verification passed on 2026-08-27.** Manual visual/input
-acceptance remains before marking I2 Verified. I3 research has not started.
+**Implemented and Verified on 2026-08-27.** Automated verification passed and
+the combined I1/I2 manual visual/input acceptance passed in a live display
+session on 2026-08-27; I2 is Verified. I3 research is recorded with
+all candidates DEFER (one REJECT); see
+`R10_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
 ## Delivered behavior
 
@@ -47,8 +50,10 @@ a deterministic hard boundary.
   `11839672862453039471` / `2975859286826906331` / `1009061497268611021`; PASS.
 - `git diff --check` and current-renderer caller guard: passed.
 
-## Remaining acceptance
+## Manual acceptance — passed
 
-Manual check: create a light, switch Point→Spot, rotate Direction, narrow/widen Cone,
-compare Falloff values, edit RGB/A/intensity, verify occlusion, undo/redo, save, and
-reopen. I3 remains separately gated.
+The combined I1/I2 manual visual/input acceptance passed in a live display
+session on 2026-08-27: create a light, switch Point→Spot, rotate Direction,
+narrow/widen Cone, compare Falloff values, edit RGB/A/intensity, verify
+occlusion, undo/redo, save, and reopen. All items passed; I1 and I2 are marked
+Verified. I3 remains separately gated.

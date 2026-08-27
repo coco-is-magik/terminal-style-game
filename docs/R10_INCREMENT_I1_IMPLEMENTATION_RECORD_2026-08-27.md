@@ -2,9 +2,10 @@
 
 ## Status
 
-**Implemented; automated verification passed on 2026-08-27.** Manual visual
-acceptance remains appropriate before marking I1 Verified. R10 I2 is now also
-implemented; see `R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
+**Implemented and Verified on 2026-08-27.** Automated verification passed and
+the combined I1/I2 manual visual/input acceptance passed in a live display
+session on 2026-08-27; I1 is Verified. R10 I2 is also Verified; see
+`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
 ## Implemented behavior
 
@@ -66,8 +67,10 @@ colored already-lit samples continue to compose correctly through R9 layers.
 - Optimized app build, smoke (`{"smoke":"ok","map_width":10,"map_height":6}`),
   and `git diff --check`: passed.
 
-## Next action
+## Manual acceptance — passed
 
-Perform a short manual visual acceptance for red/green/blue mixing, alpha 0/128/
-255, anti-light channel subtraction, and save/reopen. If accepted, mark I1
-Verified and scope I2 spot-light implementation separately.
+The combined I1/I2 manual visual/input acceptance passed in a live display
+session on 2026-08-27: red/green/blue mixing, alpha 0/128/255, anti-light
+channel subtraction, and save/reopen. I1 is marked Verified; I2 spot lights
+were accepted in the same session (see
+`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`).

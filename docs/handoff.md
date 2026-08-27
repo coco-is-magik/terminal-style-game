@@ -1,11 +1,11 @@
-# Active Handoff — R10 I1–I2 Implemented — Manual Acceptance Pending — 2026-08-27
+# Active Handoff — R10 I1–I2 Verified — 2026-08-27
 
 ## Current status
 
 **R9 is Verified.** The manual optical acceptance passed on 2026-08-27; the R9
 closeout records the phase as verified. R10 I1 colored illumination and I2 spot
-lights are implemented with deterministic automated gates passing. Combined manual
-visual/input acceptance remains before marking them Verified. I2 record:
+lights are Implemented and Verified: automated gates pass and the combined
+manual visual/input acceptance passed on 2026-08-27. I2 record:
 `R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
 ## R10 I2 implementation (2026-08-27)
@@ -91,7 +91,8 @@ The prior SMC handoff below is historical and remains preserved.
 - I8 preset/e2e assessment (deferred by Review H)
 - Mirror enablement in the default shipping path
 - Reflected entities, horizontal mirrors, or recursive mirrors
-- R10 I1/I2 combined manual visual/input acceptance; I3 research
+- R10 I1/I2 combined manual visual/input acceptance passed 2026-08-27; R10 is
+  closed with I3 research evidence recorded (all candidates DEFER; one REJECT)
 - Sprites/entities/triggers (R11)
 - Responsive UI model (R12)
 
@@ -104,11 +105,26 @@ pending transparency authoring re-check and the reflectivity white/black re-test
 The current-renderer consolidation resolved the reported roof-position movement.
 R9 is marked Verified.
 
+## R10 manual acceptance — passed (2026-08-27)
+
+The combined R10 I1/I2 manual visual/input acceptance was performed in a live
+display session by the user and passed in full:
+
+- Create a light and switch Point→Spot.
+- Rotate Direction; narrow and widen Cone.
+- Compare Falloff values.
+- Edit RGB/A/intensity; verify occlusion shadows the spot.
+- Undo/redo each edit; save and reopen the scene.
+
+R10 I1 and I2 are marked Verified. R10 has no remaining open items.
+
 ## Stop boundary
 
-R9 is released. R10 I1–I2 are implemented; perform combined manual acceptance
-before marking them Verified. Do not begin R10 I3 without separate authorization.
-R11, R12, and I8 also require separate authorization.
+R9 and R10 are released. R10 I1–I2 are Implemented and Verified (automated
+gates plus manual acceptance on 2026-08-27). R10 I3 research is recorded with
+all candidates DEFER (area-analytic REJECT); do not begin any v8 implementation
+without separate Q1 authorization and a paired benchmark. R11, R12, and I8 also
+require separate authorization.
 
 ## Automated gate evidence (final run 2026-08-26)
 

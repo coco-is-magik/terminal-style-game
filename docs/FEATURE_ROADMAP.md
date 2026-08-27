@@ -763,9 +763,12 @@ work. A second Review H remains required after the implemented phase.
 ## R10 — Colored and expanded lighting
 
 **Status:** Active — Q1 locked; I1 colored illumination and I2 spot lights are
-implemented with automated gates passing 2026-08-27; combined manual visual/input
-acceptance remains. See `R10_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-27.md` and
-`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
+Implemented and Verified: automated gates passed and the combined manual
+visual/input acceptance passed 2026-08-27. I3 light-type research is recorded
+with all candidates DEFER (one REJECT). See
+`R10_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-27.md`,
+`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`, and
+`R10_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-08-27.md`.
 
 **Purpose:** Extend lighting only after world height and optical transmission
 semantics are stable enough to avoid repeated migrations.

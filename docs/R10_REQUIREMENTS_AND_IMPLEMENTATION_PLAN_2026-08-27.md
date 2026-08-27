@@ -4,8 +4,9 @@
 
 **Q1 decision record locked and I1–I3 increment plan recorded on 2026-08-27.**
 The Q1 decision record is `R10_DECISION_RECORD_2026-08-27.md`; this document is
-the Q2/Q3 increment plan. **I1 is implemented with automated gates passing;
-manual visual acceptance remains.** R9 is Verified; this phase's
+the Q2/Q3 increment plan. **I1 and I2 are Implemented and Verified: automated
+gates pass and the combined manual visual/input acceptance passed on
+2026-08-27.** R9 is Verified; this phase's
 prerequisites (R6 point-light authoring and R8/R9 geometry, occlusion, and
 occlusion, and scalar transmission semantics) are satisfied.
 
@@ -92,14 +93,36 @@ version bump and migration.
 Deterministic tests for spot math, editor field editing, round-trip, migration,
 undo, and cache; strict/passing sanitizers/smoke/`make check`.
 
-**Implementation status (2026-08-27):** automated exit gate passed; manual
-visual/input acceptance remains. See `R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`
+**Implementation status (2026-08-27):** automated exit gate passed; the
+combined manual visual/input acceptance passed in a live display session on
+2026-08-27 and I2 is Verified. See `R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`
 and `R10_NATIVE_SCENE_V7_SPEC_2026-08-27.md`.
 
 ## I3 — Research tracks (roadmap item 4)
 
 Evaluate directional, area, and emissive lighting with evidence write-ups
 (reuse the research-doc conventions) and decide accept/defer/reject per type.
+
+### I3 outcome (2026-08-27)
+
+**Research track complete; all three candidates DEFER (one REJECT).** No
+shipping code, scene data, cache key, or runtime value is changed. Evidence
+is recorded in:
+
+- `R10_I3_P1_DIRECTIONAL_FINDINGS_2026-08-27.md` — directional: DEFER.
+- `R10_I3_P2_AREA_FINDINGS_2026-08-27.md` — area (discrete): DEFER; area
+  (analytic): REJECT for I3.
+- `R10_I3_P3_EMISSIVE_FINDINGS_2026-08-27.md` — emissive surfaces: DEFER with
+  a documented v8 upgrade path (material default + sparse per-cell override,
+  reserved `OPTICAL_OVERRIDE_*` bit, apply at sample time after light-map).
+- `R10_I3_RQ5_RQ6_SYNTHESIS_2026-08-27.md` — combined policy table, RQ6
+  envelope (colored-lighting 6 ms gate; white 0.247 ms / colored 0.226 ms /
+  spot 0.152 ms; cache-enabled 0.080 ms), D1–D3 recommendations
+  (v8, gated, one new type per phase).
+
+The I3 record is `R10_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-08-27.md`. No
+implementation is authorized; any future v8 work must start with its own Q1
+review and a paired benchmark.
 
 ## Test impacts
 
