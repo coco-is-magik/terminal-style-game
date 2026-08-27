@@ -31,7 +31,7 @@
  *   LIGHTING_CACHE_VALIDATE=1 - Validate cache hits against original computation
  */
 
-#include "lighting.h"    /* lighting_update() declaration, Map, WorldState types */
+#include "lighting.h"    /* lighting APIs, Map, WorldState types */
 #include "checked_size.h" /* checked_size_2d() — validates row-major cell count */
 #include "raycast.h"     /* raycast_fire(), RayResult — for shadow testing */
 #include "camera.h"      /* Camera struct — used to construct a dummy camera
@@ -74,7 +74,7 @@ double lighting_total_time_ms = 0.0;
 /* =================================================================== */
 
 /**
- * lighting_update() — Per-frame light propagation
+ * lighting_update_optical() — Per-frame light propagation
  *
  * Called once per frame from app.c (only in VISUAL_RAYCAST mode).
  * Resets the map's light_map to the ambient light level, then iterates over

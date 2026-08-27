@@ -758,7 +758,7 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
     candidate->map.cells = calloc(count, sizeof(*candidate->map.cells));
     if (!candidate->map.cells) goto allocation_failed;
     /* light_map must be allocated here, not just in map_create().  The
-     * renderer and lighting_update both check map->light_map != NULL and
+     * renderer and lighting_update_optical both check map->light_map != NULL and
      * silently fall back to full-brightness if it is missing.  Without this
      * allocation, native-loaded scenes appear fully lit with no point-light
      * or ambient effect. */

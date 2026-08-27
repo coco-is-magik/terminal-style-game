@@ -8,6 +8,11 @@ Default rendering still calls `raycast_render_height()` and is unchanged. No
 schema, editor, collision, mirror, preset, or visible application behavior
 changed.
 
+> **Historical dispatch note:** the opt-in seam described here was superseded on
+> 2026-08-27. `raycast_render_height_optical()` is now the sole production and test
+> heightfield renderer for both inherited/default and authored optical data. The
+> former entry point remains compiler-deprecated for rollback only.
+
 ## Delivered
 
 ### Production compositor

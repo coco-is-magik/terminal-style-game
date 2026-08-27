@@ -6,8 +6,8 @@
  * a material_id that determines the tile's visual appearance and behaviour.
  *
  * Each Map also has a parallel light_map array (same dimensions as the tile
- * grid) that stores a per-tile brightness value.  This is updated every frame
- * by lighting_update() in lighting.c; anti-lights can make values negative
+ * grid) that stores a per-tile brightness value. This is updated every frame
+ * by lighting_update_optical() in lighting.c; anti-lights can make values negative
  * before colour sampling clamps them.
  *
  * A material_id of 0 means "empty / void" — the player and rays pass through

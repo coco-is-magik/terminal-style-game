@@ -219,10 +219,10 @@ double raycast_heightfield_column_depth(const HeightfieldTraceColumn *column) {
     return depth;
 }
 
-static void render_heightfield_samples(Grid *grid, Map *map, Camera *cam,
-                                       AssetRegistry *assets,
-                                       const SceneHeightView *heights,
-                                       double *z_buffer) {
+void raycast_render_heightfield_opaque_impl(
+    Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
+    const SceneHeightView *heights, double *z_buffer
+) {
     int x;
     for (x = 0; x < grid->width; x++) {
         HeightfieldTraceColumn column;
@@ -563,10 +563,10 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
  * @param surfaces Optional borrowed authored floor/ceiling material view. NULL
  *                 preserves constant legacy backgrounds.
  */
-void raycast_render_height(Grid *grid, Map *map, Camera *cam,
-                           AssetRegistry *assets, WorldState *world,
-                           const SceneSurfaceView *surfaces,
-                           const SceneHeightView *heights) {
+void raycast_render_height_legacy_impl(
+    Grid *grid, Map *map, Camera *cam, AssetRegistry *assets, WorldState *world,
+    const SceneSurfaceView *surfaces, const SceneHeightView *heights
+) {
     bool surfaces_valid;
     bool heights_valid;
     bool bounded_occlusion = false;
@@ -589,7 +589,8 @@ void raycast_render_height(Grid *grid, Map *map, Camera *cam,
         (!heightfield_view_is_flat_default(heights, map->width, map->height) ||
          fabs(cam->z - 0.5) > 0.000001)) {
         bounded_occlusion = true;
-        render_heightfield_samples(grid, map, cam, assets, heights, z_buffer);
+        raycast_render_heightfield_opaque_impl(
+            grid, map, cam, assets, heights, z_buffer);
         goto render_overlays;
     }
 
@@ -873,7 +874,16 @@ render_overlays:
         heights_valid ? heights : NULL, bounded_occlusion);
 }
 
+void raycast_render_height(Grid *grid, Map *map, Camera *cam,
+                           AssetRegistry *assets, WorldState *world,
+                           const SceneSurfaceView *surfaces,
+                           const SceneHeightView *heights) {
+    raycast_render_height_legacy_impl(
+        grid, map, cam, assets, world, surfaces, heights);
+}
+
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
                     WorldState *world, const SceneSurfaceView *surfaces) {
-    raycast_render_height(grid, map, cam, assets, world, surfaces, NULL);
+    raycast_render_height_legacy_impl(
+        grid, map, cam, assets, world, surfaces, NULL);
 }

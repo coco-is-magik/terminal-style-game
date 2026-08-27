@@ -28,6 +28,10 @@
 #include "../src/config.h"
 #include "../src/lighting.h"
 
+static void lighting_update_current(Map *map, WorldState *world) {
+    lighting_update_optical(map, world, NULL, 0U);
+}
+
 static int g_resize_allocations_before_failure = -1;
 
 static void *failing_resize_calloc(size_t count, size_t size) {
@@ -1451,7 +1455,7 @@ static void test_native_load_allocates_light_map(void **state) {
     asset_registry_clear(&assets);
 }
 
-static void test_native_load_light_map_is_populated_by_lighting_update(void **state) {
+static void test_native_load_light_map_is_populated_by_current_lighting(void **state) {
     SceneDocument doc;
     SceneDiagnostic diagnostic;
     AssetRegistry assets;
@@ -1475,7 +1479,7 @@ static void test_native_load_light_map_is_populated_by_lighting_update(void **st
         &doc, &assets, &runtime), SCENE_RUNTIME_BUILD_OK);
     assert_non_null(doc.map.light_map);
 
-    lighting_update(&doc.map, &runtime);
+    lighting_update_current(&doc.map, &runtime);
     ambient = runtime.ambient_intensity;
     for (i = 0U; i < (size_t)(doc.map.width * doc.map.height); i++) {
         if (doc.map.light_map[i] > ambient + 0.001) {
@@ -1897,7 +1901,7 @@ int main(void) {
         cmocka_unit_test(test_accessors_null_safe),
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
-        cmocka_unit_test(test_native_load_light_map_is_populated_by_lighting_update),
+        cmocka_unit_test(test_native_load_light_map_is_populated_by_current_lighting),
         cmocka_unit_test(test_v1_migration_save_emits_v5_and_reopens_clean),
         cmocka_unit_test(test_v2_surface_missing_repair_and_explicit_replacement),
         cmocka_unit_test(test_checked_in_r4_v3_fixture_migrates_to_v5),

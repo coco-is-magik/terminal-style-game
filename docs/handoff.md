@@ -25,6 +25,19 @@ The prior SMC handoff below is historical and remains preserved.
   ~90% CPU throughout available trials; it was not terminated.
 - Full record: `R9_MANUAL_REVIEW_TRANSPARENCY_FOLLOWUP_2026-08-26.md`.
 
+## Current-renderer consolidation follow-up (2026-08-27)
+
+- Production, tests, and render benchmarks now use
+  `raycast_render_height_optical()` for both inherited/default and authored optics.
+- Adding or removing the final override no longer switches the editor between two
+  heightfield renderers, removing the visible roof-position jump.
+- `raycast_render_height()` and `lighting_update()` remain available only as
+  compiler-deprecated rollback APIs; `make check-current-renderer` prevents new
+  production or test callers.
+- Strict/full/sanitizer/smoke gates pass. Current-renderer checksums are deterministic;
+  raised height is 5.22 ms, while flat inherited height is 6.43 ms and remains a
+  performance follow-up rather than a reason to restore runtime renderer switching.
+
 ## What is done
 
 - I1: derived optical runtime lookup (material defaults + sparse cell overrides)
@@ -118,8 +131,9 @@ before any quality-preset names or thresholds are decided.
   exact grammar is in `R9_NATIVE_SCENE_V6_SPEC_2026-08-25.md`.
 - v1–v5 remain accepted and migrate to exact allocation-free legacy optical
   semantics; canonical document Save writes v6.
-- Validated nonempty v6 views conditionally consume the I1–I3 optical renderer;
-  absent/default optical data remains on `raycast_render_height()`.
+- This was the original I5 dispatch rule. It was superseded on 2026-08-27: all
+  heightfield rendering now uses the current optical renderer, including
+  inherited/default optical data.
 - Focused format/document runners pass 19/19 and 46/46; aggregate strict checks,
   ASan, UBSan, application build, deterministic checksums, and stability budget pass.
 - Full record: `R9_INCREMENT_I5_IMPLEMENTATION_RECORD_2026-08-25.md`.

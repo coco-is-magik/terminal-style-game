@@ -54,6 +54,30 @@ single-field inherit behavior.
 - Resolver, selective tracer, compositor, lighting semantics, mirrors, and checksums
   are unchanged.
 
+## Current-renderer follow-up (2026-08-27)
+
+Manual review found that adding the first custom optical value switched the whole
+editor viewport from the prior heightfield renderer to the optical renderer; removing
+the last override switched it back, producing a visible one-row roof movement. The
+editor, tests, and render benchmarks now use the optical renderer for inherited and
+custom values alike. The old renderer remains compiler-deprecated in source as a
+rollback option, and an aggregate guard rejects new callers.
+
+Final evidence for this consolidation:
+
+- strict aggregate `make check` and optimized application build: pass;
+- optical render regression: 17/17, including a raised-roof scene where a custom
+  non-visual override must produce identical cells, depths, and hit keys;
+- ASan/LeakSanitizer and UBSan: pass;
+- smoke: pass (`{"smoke":"ok","map_width":10,"map_height":6}`);
+- current-renderer caller guard and `git diff --check`: pass;
+- optical benchmark: inherited/opaque checksum parity exact, deterministic, zero
+  render-loop allocations;
+- surface benchmark: raised path 5.22 ms (passes 6 ms); flat inherited path 6.43 ms
+  (deterministic but over budget). This remains a performance follow-up; flat scenes
+  were not routed back through the deprecated renderer because that would recreate
+  the visible pipeline-switch defect.
+
 ## Automated evidence
 
 - command system: 41/41

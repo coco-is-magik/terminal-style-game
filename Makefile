@@ -345,8 +345,7 @@ TEST_CORE_SRC := \
 	$(SRC_MATH) \
 	$(SRC_MAP) \
 	$(SRC_CAMERA) \
-	$(SRC_OPTICAL_RUNTIME_VIEW) \
-	$(SRC_RAYCAST) \
+	$(SRC_RAYCAST_OPTICAL) \
 	$(SRC_LIGHTING) \
 	$(SRC_CONFIG) \
 	$(SRC_ASSET_LOADER) \
@@ -550,10 +549,10 @@ $(BENCH_EDITOR_HIGHLIGHT_RUNNER): tests/benchmark_editor_highlight.c $(TEST_EDIT
 		tests/benchmark_editor_highlight.c $(TEST_EDITOR_HIGHLIGHT_SRC) $(TEST_FEATURE_EXTRA_SRC) \
 		-o $(BENCH_EDITOR_HIGHLIGHT_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
-$(BENCH_SURFACE_RENDER_RUNNER): tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
+$(BENCH_SURFACE_RENDER_RUNNER): tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_RAYCAST_OPTICAL) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
 	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
 		tests/benchmark_surface_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) \
-		$(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_RAYCAST) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) \
+		$(SRC_CAMERA) $(SRC_RAYCAST_OPTICAL) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) \
 		$(TEST_FEATURE_EXTRA_SRC) -o $(BENCH_SURFACE_RENDER_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
 $(TEST_EDITOR_DOMAIN_RUNNER): tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SRC) | dirs
@@ -806,7 +805,7 @@ test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_
 	./$(TEST_OPTICAL_RENDER_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
-check: all test
+check: all test check-current-renderer
 
 asan:
 	$(MAKE) clean
@@ -852,6 +851,12 @@ check-legacy-unused:
 	@! grep -Rsn "scene_document_save[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
 	@! grep -Rsn "unified_editor_load_scene[(][^)]*[)];" src/*.c | grep -v "src/scene_document.c:" | grep -v "src/unified_editor.c:" >/dev/null
 	@echo "OK: deprecated legacy symbols have no unexpected production callers"
+
+check-current-renderer:
+	@echo "Checking that production, tests, and benchmarks use current render/lighting APIs..."
+	@! grep -RsnE "\\braycast_render_height[[:space:]]*[(]" src/*.c tests/*.c | grep -v "src/raycast.c:" >/dev/null
+	@! grep -RsnE "\\blighting_update[[:space:]]*[(]" src/*.c tests/*.c | grep -v "src/lighting.c:" >/dev/null
+	@echo "OK: deprecated renderer and lighting entry points have no callers"
 
 matrix:
 	@set -e; for mode in \

@@ -7,6 +7,11 @@ met.** Review H records disposition to proceed to I5 (v6 schema/migration/persis
 for authored optical data). Editor authoring, mirrors, and presets remain deferred
 until their respective increments are reached.
 
+> **Superseded dispatch detail (2026-08-27):** the accepted opt-in renderer seam was
+> consolidated after manual review exposed a pipeline-switch roof jump. All current
+> production/tests use `raycast_render_height_optical()`; the old renderer is retained
+> only as a compiler-deprecated rollback implementation.
+
 This is the second Review H required by the R9 plan: the first conditionally
 accepted the architecture and planning direction on 2026-08-24; this review accepts
 the implemented optical phase and authorizes the next bounded increment.

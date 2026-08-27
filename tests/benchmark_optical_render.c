@@ -60,14 +60,9 @@ static double measure(Grid *grid, Map *map, Camera *camera,
                       uint64_t expected, bool *deterministic) {
     double start = now_ms();
     for (size_t frame = 0U; frame < FRAMES; frame++) {
-        if (view) {
-            raycast_render_height_optical(
-                grid, map, camera, assets, world, surfaces, heights,
-                view, GENERATION);
-        } else {
-            raycast_render_height(
-                grid, map, camera, assets, world, surfaces, heights);
-        }
+        raycast_render_height_optical(
+            grid, map, camera, assets, world, surfaces, heights,
+            view, view ? GENERATION : 0U);
         {
             uint64_t actual = checksum(grid);
             if (actual != expected) *deterministic = false;
@@ -154,8 +149,8 @@ int main(void) {
     if (!optical_runtime_view_init(
             &transparent_view, heights.cell_count, materials, 5U,
             NULL, 0U, GENERATION)) goto cleanup;
-    raycast_render_height(
-        grid, map, &camera, &assets, &world, &surfaces, &heights);
+    raycast_render_height_optical(
+        grid, map, &camera, &assets, &world, &surfaces, &heights, NULL, 0U);
     compatibility_checksum = checksum(grid);
     raycast_render_height_optical(
         opaque_grid, map, &camera, &assets, &world, &surfaces, &heights,
@@ -171,8 +166,9 @@ int main(void) {
                    sizeof(grid->cells[i])) != 0) changed_cells++;
     if (changed_cells == 0U || transparent_checksum == opaque_checksum) goto cleanup;
     for (size_t frame = 0U; frame < WARMUP; frame++) {
-        raycast_render_height(grid, map, &camera, &assets, &world,
-                              &surfaces, &heights);
+        raycast_render_height_optical(
+            grid, map, &camera, &assets, &world,
+            &surfaces, &heights, NULL, 0U);
         raycast_render_height_optical(
             grid, map, &camera, &assets, &world, &surfaces, &heights,
             &opaque_view, GENERATION);

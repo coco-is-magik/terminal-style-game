@@ -24,6 +24,11 @@ no optical editor authoring, mirror enablement, or presets.
   for a validated nonempty authored view; ordinary and migrated legacy scenes keep
   the existing `raycast_render_height()` call and fast path.
 
+> **Superseded 2026-08-27:** this conditional dispatch was removed after manual
+> review exposed a visible roof-position jump when adding/removing the final optical
+> override. Production and tests now always use `raycast_render_height_optical()`;
+> the prior entry point remains compiler-deprecated for rollback only.
+
 ## Focused tests
 
 - `test_scene_format`: **19/19 pass**. New coverage proves v5→v6 zero-allocation

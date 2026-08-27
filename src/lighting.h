@@ -32,11 +32,21 @@ extern "C" {
  * @param map    The Map whose light_map will be updated
  * @param world  The WorldState containing all active point lights
  */
+#if defined(__GNUC__) || defined(__clang__)
+#define LIGHTING_DEPRECATED(message) __attribute__((deprecated(message)))
+#else
+#define LIGHTING_DEPRECATED(message)
+#endif
+
+/** Deprecated compatibility wrapper retained only for an explicit rollback. */
+LIGHTING_DEPRECATED("use lighting_update_optical")
 void lighting_update(Map *map, WorldState *world);
 void lighting_update_optical(
     Map *map, WorldState *world, const OpticalRuntimeView *optical_view,
     uint32_t optical_generation
 );
+
+#undef LIGHTING_DEPRECATED
 
 /**
  * Profiling variables - exported for benchmark modes.

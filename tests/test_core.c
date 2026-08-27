@@ -25,6 +25,19 @@
 #include "../src/checked_size.h"
 #include "../src/map_loader.h"
 
+static void lighting_update_current(Map *map, WorldState *world) {
+    lighting_update_optical(map, world, NULL, 0U);
+}
+
+static void render_heightfield_current(
+    Grid *grid, Map *map, Camera *camera, AssetRegistry *assets,
+    WorldState *world, const SceneSurfaceView *surfaces,
+    const SceneHeightView *heights
+) {
+    raycast_render_height_optical(
+        grid, map, camera, assets, world, surfaces, heights, NULL, 0U);
+}
+
 // --- GRID TESTS ---
 
 static void test_grid_init(void **state) {
@@ -629,7 +642,7 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
     }
 
     raycast_render(legacy, map, &camera, &assets, &world, &surfaces);
-    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
+    render_heightfield_current(height, map, &camera, &assets, &world, &surfaces, &heights);
     flat_checksum = grid_checksum(legacy);
     assert_int_equal(grid_checksum(height), flat_checksum);
     assert_memory_equal(height->cells, legacy->cells,
@@ -637,10 +650,10 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
                             sizeof(*height->cells));
 
     camera.z = 0.75;
-    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
+    render_heightfield_current(height, map, &camera, &assets, &world, &surfaces, &heights);
     {
         uint64_t airborne_flat_checksum = grid_checksum(height);
-        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+        render_heightfield_current(height, map, &camera, &assets, &world, &surfaces,
                               &heights);
         assert_int_equal(grid_checksum(height), airborne_flat_checksum);
     }
@@ -652,18 +665,18 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
         cells[index].ceiling_height_step = UINT16_C(0x0140);
     }
     assert_false(heightfield_view_is_flat_default(&heights, map->width, map->height));
-    raycast_render_height(height, map, &camera, &assets, &world, &surfaces, &heights);
+    render_heightfield_current(height, map, &camera, &assets, &world, &surfaces, &heights);
     {
         uint64_t raised_checksum = grid_checksum(height);
-        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+        render_heightfield_current(height, map, &camera, &assets, &world, &surfaces,
                               &heights);
         assert_int_equal(grid_checksum(height), raised_checksum);
         camera.z = 0.75;
-        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+        render_heightfield_current(height, map, &camera, &assets, &world, &surfaces,
                               &heights);
         {
             uint64_t airborne_checksum = grid_checksum(height);
-            raycast_render_height(height, map, &camera, &assets, &world,
+            render_heightfield_current(height, map, &camera, &assets, &world,
                                   &surfaces, &heights);
             assert_int_equal(grid_checksum(height), airborne_checksum);
         }
@@ -673,7 +686,7 @@ static void test_height_view_flat_parity_and_authored_difference(void **state) {
         SceneHeightView invalid = heights;
         invalid.cell_count--;
         camera.z = 0.5;
-        raycast_render_height(height, map, &camera, &assets, &world, &surfaces,
+        render_heightfield_current(height, map, &camera, &assets, &world, &surfaces,
                               &invalid);
         raycast_render(legacy, map, &camera, &assets, &world, &surfaces);
         assert_memory_equal(height->cells, legacy->cells,
@@ -743,7 +756,7 @@ static void test_horizontal_decal_follows_authored_floor_height(void **state) {
     assert_non_null(decal.pattern);
     decal.pattern[0] = (PatternCell){'D', 1U};
     assert_int_equal(world_add_decal(&world, decal), WORLD_INSERT_OK);
-    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    render_heightfield_current(grid, map, &camera, &assets, &world, &surfaces, &heights);
     for (int y = 0; y < grid->height; y++) {
         for (int x = 0; x < grid->width; x++) {
             if (grid->cells[(size_t)y * (size_t)grid->width + (size_t)x].glyph == 'D') {
@@ -754,7 +767,7 @@ static void test_horizontal_decal_follows_authored_floor_height(void **state) {
     }
     assert_true(before_x >= 0 && before_y >= 0);
     cells[decal_index].floor_height_step = INT16_C(0x0040);
-    raycast_render_height(grid, map, &camera, &assets, &world, &surfaces, &heights);
+    render_heightfield_current(grid, map, &camera, &assets, &world, &surfaces, &heights);
     for (int y = 0; y < grid->height; y++) {
         for (int x = 0; x < grid->width; x++) {
             if (grid->cells[(size_t)y * (size_t)grid->width + (size_t)x].glyph == 'D') {
@@ -806,7 +819,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
     world.has_authored_ambient = true;
     world.ambient_intensity = 0.05;
 
-    lighting_update(map, &world);
+    lighting_update_current(map, &world);
     raycast_render(ambient_grid, map, &camera, &assets, &world, NULL);
     ambient_top = grid_region_luminance(ambient_grid, 0, 8);
     ambient_middle = grid_region_luminance(ambient_grid, 8, 17);
@@ -814,7 +827,7 @@ static void test_rendered_point_light_affects_ceiling_walls_and_floor(void **sta
 
     assert_int_equal(world_add_light(
         &world, 4.5, 3.5, black, 1.0, 4.0), WORLD_INSERT_OK);
-    lighting_update(map, &world);
+    lighting_update_current(map, &world);
     raycast_render(lit_grid, map, &camera, &assets, &world, NULL);
     assert_true(grid_region_luminance(lit_grid, 0, 8) > ambient_top);
     assert_true(grid_region_luminance(lit_grid, 8, 17) > ambient_middle);
@@ -1098,7 +1111,7 @@ static void test_raycast_render_output(void **state) {
     WorldState world;
     world_init(&world);
 
-    lighting_update(m, &world);
+    lighting_update_current(m, &world);
     raycast_render(g, m, &cam, &assets, &world, NULL);
     
     Cell c;
@@ -1143,7 +1156,7 @@ static void test_raycast_render_extreme_horizon_offsets(void **state) {
         (SDL_Color){255, 255, 255, 255});
     asset_registry_set_material(&assets, 1, 1, "#x-.");
     world_init(&world);
-    lighting_update(m, &world);
+    lighting_update_current(m, &world);
 
     cam.pitch = -(double)g->height;
     raycast_render(g, m, &cam, &assets, &world, NULL);
@@ -1181,7 +1194,7 @@ static void test_raycast_render_has_no_fixed_width_cutoff(void **state) {
     asset_registry_set_material(&assets, 1, 1, "#x-.");
     world_init(&world);
 
-    lighting_update(m, &world);
+    lighting_update_current(m, &world);
     raycast_render(g, m, &cam, &assets, &world, NULL);
 
     assert_true(grid_get(g, 1099, 9, &c));

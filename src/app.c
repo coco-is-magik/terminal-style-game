@@ -864,7 +864,7 @@ int app_main(int argc, char* argv[]) {
             if (visual_mode == VISUAL_RAYCAST) {
                 frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
                 camera_update(&cam, map, &input, delta_time_sec, grid->height);
-                lighting_update(map, &world);
+                lighting_update_optical(map, &world, NULL, 0U);
                 raycast_render(grid, map, &cam, &assets, &world, NULL);
             } else if (visual_mode == VISUAL_STRESS) {
                 draw_stress_pattern(grid, frame_count);
@@ -909,20 +909,15 @@ int app_main(int argc, char* argv[]) {
                     size_t editor_light_count = 0U;
                     const SceneLight *editor_lights = scene_document_get_lights(
                         &ued.document, &editor_light_count);
-                    if (has_optical_view)
-                        lighting_update_optical(
-                            ed_map, &ued.runtime_world, &optical_view,
-                            optical_generation);
-                    else lighting_update(ed_map, &ued.runtime_world);
-                    if (has_optical_view) {
-                        raycast_render_height_optical(
-                            grid, ed_map, &cam, &assets, &ued.runtime_world,
-                            surfaces, heights, &optical_view,
-                            optical_generation);
-                    } else {
-                        raycast_render_height(grid, ed_map, &cam, &assets,
-                                              &ued.runtime_world, surfaces, heights);
-                    }
+                    lighting_update_optical(
+                        ed_map, &ued.runtime_world,
+                        has_optical_view ? &optical_view : NULL,
+                        has_optical_view ? optical_generation : 0U);
+                    raycast_render_height_optical(
+                        grid, ed_map, &cam, &assets, &ued.runtime_world,
+                        surfaces, heights,
+                        has_optical_view ? &optical_view : NULL,
+                        has_optical_view ? optical_generation : 0U);
                     if (ued.selection_set.count > 0U) {
                         editor_highlight_render_set_height(
                             grid, ed_map, &cam, editor_lights, editor_light_count,

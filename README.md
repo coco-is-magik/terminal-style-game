@@ -261,8 +261,11 @@ overrides together.
   signed fixed-point floor/ceiling heights, explicit surface-presence and gravity
   overrides, plus per-map movement parameters. Rendering, selection, and
   highlights share bounded per-cell tracing, including generated vertical faces at
-  finite height discontinuities. The exact legacy path is retained for flat-default
-  scenes. Version 6 additionally stores independent optical material defaults and
+  finite height discontinuities. The current optical heightfield renderer handles
+  both inherited/default and authored optical data, so editing the final override
+  never switches rendering pipelines. The prior heightfield renderer remains in
+  source as a clearly deprecated rollback path. Version 6 additionally stores
+  independent optical material defaults and
   sparse per-cell overrides; the Transparency percentage is derived editor state,
   not a redundant serialized field.
 - Floor/ceiling hover and selection use the same border-only `.`/`#` vocabulary as

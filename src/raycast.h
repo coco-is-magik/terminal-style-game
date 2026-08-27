@@ -75,15 +75,26 @@ RayResult raycast_fire(Map *map, Camera *cam, double ray_angle, double max_dist)
 void raycast_render(Grid *grid, Map *map, Camera *cam, AssetRegistry *assets,
                     WorldState *world, const SceneSurfaceView *surfaces);
 
-/** Height-aware variant; invalid/NULL heights preserve the legacy render path. */
+#if defined(__GNUC__) || defined(__clang__)
+#define RAYCAST_DEPRECATED(message) __attribute__((deprecated(message)))
+#else
+#define RAYCAST_DEPRECATED(message)
+#endif
+
+/**
+ * Deprecated height-aware renderer retained only for an explicit rollback.
+ * New production and test code must use raycast_render_height_optical().
+ */
+RAYCAST_DEPRECATED("use raycast_render_height_optical")
 void raycast_render_height(Grid *grid, Map *map, Camera *cam,
                            AssetRegistry *assets, WorldState *world,
                            const SceneSurfaceView *surfaces,
                            const SceneHeightView *heights);
 
 /**
- * Height-aware optical variant using a borrowed current runtime view.
- * Invalid optical inputs preserve compatibility rendering.
+ * Current height-aware renderer using a borrowed optical runtime view. A NULL
+ * optical view means all fields inherit legacy/default optical semantics.
+ * Invalid non-NULL optical inputs preserve compatibility rendering.
  */
 void raycast_render_height_optical(
     Grid *grid, Map *map, Camera *cam,
@@ -93,5 +104,7 @@ void raycast_render_height_optical(
     const OpticalRuntimeView *optical_view,
     uint32_t source_generation
 );
+
+#undef RAYCAST_DEPRECATED
 
 #endif /* RAYCAST_H */

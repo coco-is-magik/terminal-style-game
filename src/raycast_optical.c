@@ -14,6 +14,20 @@ static const Cell optical_darkness = {
     ' ', {0U, 0U, 0U, 255U}, {0U, 0U, 0U, 255U}
 };
 
+static bool optical_view_requires_composition(const OpticalRuntimeView *view) {
+    const uint8_t render_mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
+        OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION |
+        OPTICAL_OVERRIDE_REFLECTIVITY;
+    size_t i;
+    for (i = 0U; i < view->material_capacity; i++)
+        if ((view->material_defaults[i].override_mask & render_mask) != 0U)
+            return true;
+    for (i = 0U; i < view->cell_override_count; i++)
+        if ((view->cell_overrides[i].optical.override_mask & render_mask) != 0U)
+            return true;
+    return false;
+}
+
 static Cell compose_optical_result(
     const Map *map, const AssetRegistry *assets,
     const HeightfieldOpticalResult *traced
@@ -120,14 +134,27 @@ void raycast_render_height_optical(
     const OpticalRuntimeView *optical_view,
     uint32_t source_generation
 ) {
+    OpticalRuntimeView inherited_view;
+    const OpticalRuntimeView *active_view = optical_view;
     int x;
     if (!grid || !map || !cam || !assets || !world) return;
+    if (scene_height_view_is_valid(heights, map->width, map->height) &&
+        !active_view && optical_runtime_view_init(
+            &inherited_view, heights->cell_count, NULL, 0U, NULL, 0U,
+            source_generation)) active_view = &inherited_view;
     if (!scene_height_view_is_valid(heights, map->width, map->height) ||
-        !optical_runtime_view_is_current(optical_view, source_generation) ||
-        optical_view->cell_count != heights->cell_count ||
+        !optical_runtime_view_is_current(active_view, source_generation) ||
+        active_view->cell_count != heights->cell_count ||
         !grid->column_depths || !grid->world_depths || !grid->world_hit_keys) {
-        raycast_render_height(
+        raycast_render_height_legacy_impl(
             grid, map, cam, assets, world, surfaces, heights);
+        return;
+    }
+    if (!optical_view_requires_composition(active_view)) {
+        raycast_render_heightfield_opaque_impl(
+            grid, map, cam, assets, heights, grid->column_depths);
+        raycast_render_world_overlays(
+            grid, map, cam, assets, world, heights, true);
         return;
     }
     for (x = 0; x < grid->width; x++) {
@@ -150,7 +177,7 @@ void raycast_render_height_optical(
         grid->column_depths[x] = raycast_heightfield_column_depth(&column);
         for (y = 0; y < grid->height; y++) {
             render_optical_sample(
-                grid, map, assets, &column, &mirror_cache, optical_view,
+                grid, map, assets, &column, &mirror_cache, active_view,
                 source_generation, x, y);
         }
     }

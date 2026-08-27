@@ -26,7 +26,7 @@
 
 typedef struct {
     Grid *grid;
-    Grid *legacy;
+    Grid *reference;
     Map *map;
     AssetRegistry assets;
     WorldState world;
@@ -50,10 +50,10 @@ static void fixture_init(Fixture *f) {
     memset(f, 0, sizeof(*f));
     config_init_defaults();
     f->grid = grid_create(GRID_WIDTH, GRID_HEIGHT);
-    f->legacy = grid_create(GRID_WIDTH, GRID_HEIGHT);
+    f->reference = grid_create(GRID_WIDTH, GRID_HEIGHT);
     f->map = map_create(WIDTH, HEIGHT);
     assert_non_null(f->grid);
-    assert_non_null(f->legacy);
+    assert_non_null(f->reference);
     assert_non_null(f->map);
     assert_true(asset_registry_init(&f->assets));
     world_init(&f->world);
@@ -90,7 +90,7 @@ static void fixture_destroy(Fixture *f) {
     world_clear(&f->world);
     asset_registry_clear(&f->assets);
     map_destroy(f->map);
-    grid_destroy(f->legacy);
+    grid_destroy(f->reference);
     grid_destroy(f->grid);
 }
 
@@ -136,17 +136,51 @@ static void test_opaque_and_stale_views_preserve_complete_frame(void **state) {
     fixture_wall(&f, 3, 10U);
     assert_true(optical_runtime_view_init(
         &view, WIDTH * HEIGHT, NULL, 0U, NULL, 0U, GENERATION));
-    raycast_render_height(f.legacy, f.map, &f.camera, &f.assets, &f.world,
-                          &f.surfaces, &f.heights);
+    raycast_render_height_optical(
+        f.reference, f.map, &f.camera, &f.assets, &f.world,
+        &f.surfaces, &f.heights, NULL, 0U);
     raycast_render_height_optical(f.grid, f.map, &f.camera, &f.assets, &f.world,
                                   &f.surfaces, &f.heights, &view, GENERATION);
-    assert_memory_equal(f.grid->cells, f.legacy->cells,
+    assert_memory_equal(f.grid->cells, f.reference->cells,
                         GRID_WIDTH * GRID_HEIGHT * sizeof(*f.grid->cells));
     memset(f.grid->cells, 0x5a, GRID_WIDTH * GRID_HEIGHT * sizeof(*f.grid->cells));
     raycast_render_height_optical(f.grid, f.map, &f.camera, &f.assets, &f.world,
                                   &f.surfaces, &f.heights, &view, GENERATION + 1U);
-    assert_memory_equal(f.grid->cells, f.legacy->cells,
+    assert_memory_equal(f.grid->cells, f.reference->cells,
                         GRID_WIDTH * GRID_HEIGHT * sizeof(*f.grid->cells));
+    fixture_destroy(&f);
+}
+
+static void test_nonvisual_custom_override_does_not_move_roof(void **state) {
+    Fixture f;
+    OpticalExtension materials[11] = {0};
+    OpticalRuntimeView view;
+    size_t count = (size_t)GRID_WIDTH * (size_t)GRID_HEIGHT;
+    (void)state;
+    fixture_init(&f);
+    fixture_wall(&f, 3, 10U);
+    for (int y = 0; y < HEIGHT; y++) {
+        size_t index = index_at(4, y);
+        f.cells[index].ceiling_height_step = INT16_C(0x0140);
+    }
+    raycast_render_height_optical(
+        f.reference, f.map, &f.camera, &f.assets, &f.world,
+        &f.surfaces, &f.heights, NULL, 0U);
+
+    materials[10].override_mask = OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+    materials[10].player_blocks = 1U;
+    assert_true(optical_runtime_view_init(
+        &view, WIDTH * HEIGHT, materials, 11U, NULL, 0U, GENERATION));
+    raycast_render_height_optical(
+        f.grid, f.map, &f.camera, &f.assets, &f.world,
+        &f.surfaces, &f.heights, &view, GENERATION);
+
+    assert_memory_equal(f.grid->cells, f.reference->cells,
+                        count * sizeof(*f.grid->cells));
+    assert_memory_equal(f.grid->world_depths, f.reference->world_depths,
+                        count * sizeof(*f.grid->world_depths));
+    assert_memory_equal(f.grid->world_hit_keys, f.reference->world_hit_keys,
+                        count * sizeof(*f.grid->world_hit_keys));
     fixture_destroy(&f);
 }
 
@@ -584,6 +618,7 @@ static void test_second_mirror_plane_in_column_is_bounded_darkness(void **state)
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_opaque_and_stale_views_preserve_complete_frame),
+        cmocka_unit_test(test_nonvisual_custom_override_does_not_move_roof),
         cmocka_unit_test(test_transparent_wall_composes_over_far_wall),
         cmocka_unit_test(test_two_layers_are_deterministic),
         cmocka_unit_test(test_transparent_floor_over_opening_uses_darkness),
