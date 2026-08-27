@@ -73,9 +73,11 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->movement_menu_open = false;
     editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
     editor->optical_menu_open = false;
+    editor->transparency_menu_open = false;
     editor->optical_scope = EDITOR_OPTICAL_SCOPE_CELL;
     editor->optical_field = EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS;
     editor->optical_menu_index = 0U;
+    editor->transparency_field = EDITOR_TRANSPARENCY_FIELD_MASTER;
     editor->decal_menu_stage = EDITOR_DECAL_MENU_LIST;
     editor->decal_menu_index = 0U;
     editor->decal_pattern_index = 0U;
@@ -1242,6 +1244,26 @@ CommandResult unified_editor_toggle_selected_optical_inherit(
     return editor_execute_optical_request(editor, &request);
 }
 
+CommandResult unified_editor_step_selected_transparency(
+    UnifiedEditorState *editor, int direction
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_transparency_step_request(
+            &editor->document, editor->selection, editor->optical_scope,
+            direction, &request)) return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_optical_request(editor, &request);
+}
+
+CommandResult unified_editor_clear_selected_transparency_override(
+    UnifiedEditorState *editor
+) {
+    EditorMutationRequest request;
+    if (!editor || !editor_domain_make_transparency_inherit_request(
+            &editor->document, editor->selection, editor->optical_scope,
+            &request)) return CMD_RESULT_INVALID_TARGET;
+    return editor_execute_optical_request(editor, &request);
+}
+
 void unified_editor_toggle_optical_scope(UnifiedEditorState *editor) {
     if (!editor) return;
     editor->optical_scope = editor->optical_scope == EDITOR_OPTICAL_SCOPE_CELL
@@ -2007,6 +2029,11 @@ static void editor_handle_escape(
     }
 
     if (editor->optical_menu_open) {
+        if (editor->transparency_menu_open) {
+            editor->transparency_menu_open = false;
+            editor_mark_keyboard(consumed);
+            return;
+        }
         editor->optical_menu_open = false;
         editor_mark_keyboard(consumed);
         return;
@@ -2418,9 +2445,11 @@ static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
         editor->movement_field = EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE;
     } else if (editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS) {
         editor->optical_menu_open = true;
+        editor->transparency_menu_open = false;
         editor->optical_scope = EDITOR_OPTICAL_SCOPE_CELL;
         editor->optical_field = EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS;
         editor->optical_menu_index = 0U;
+        editor->transparency_field = EDITOR_TRANSPARENCY_FIELD_MASTER;
     } else if (!editor_construction_is_disabled(editor)) {
         editor_handle_confirm_apply(editor);
     }
@@ -2436,6 +2465,34 @@ static void editor_step_movement_field(UnifiedEditorState *editor, int direction
         editor->movement_field = (EditorMovementField)(
             (editor->movement_field + 1) % EDITOR_MOVEMENT_FIELD_COUNT);
     }
+}
+
+static EditorOpticalField transparency_optical_field(
+    EditorTransparencyField field
+) {
+    switch (field) {
+        case EDITOR_TRANSPARENCY_FIELD_OPACITY:
+            return EDITOR_OPTICAL_FIELD_OPACITY;
+        case EDITOR_TRANSPARENCY_FIELD_RAY_BLOCKS:
+            return EDITOR_OPTICAL_FIELD_RAY_BLOCKS;
+        case EDITOR_TRANSPARENCY_FIELD_TRANSMISSION:
+            return EDITOR_OPTICAL_FIELD_TRANSMISSION;
+        case EDITOR_TRANSPARENCY_FIELD_LIGHT_BLOCKS:
+            return EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS;
+        default:
+            return EDITOR_OPTICAL_FIELD_OPACITY;
+    }
+}
+
+static void editor_step_transparency_field(
+    UnifiedEditorState *editor, int direction
+) {
+    int next;
+    if (!editor || (direction != -1 && direction != 1)) return;
+    next = (int)editor->transparency_field + direction;
+    if (next < 0) next = EDITOR_TRANSPARENCY_FIELD_COUNT - 1;
+    if (next >= EDITOR_TRANSPARENCY_FIELD_COUNT) next = 0;
+    editor->transparency_field = (EditorTransparencyField)next;
 }
 
 static void editor_step_decal_menu(UnifiedEditorState *editor, int direction) {
@@ -3316,33 +3373,71 @@ EditorInputConsumption unified_editor_update(
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
         if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+            editor->transparency_menu_open && input->editor_previous_pressed) {
+            editor_step_transparency_field(editor, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   editor->transparency_menu_open && input->editor_next_pressed) {
+            editor_step_transparency_field(editor, 1);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   editor->transparency_menu_open &&
+                   (input->editor_decrease_pressed || input->editor_increase_pressed)) {
+            int direction = input->editor_decrease_pressed ? -1 : 1;
+            if (editor->transparency_field == EDITOR_TRANSPARENCY_FIELD_MASTER) {
+                (void)unified_editor_step_selected_transparency(editor, direction);
+            } else {
+                editor->optical_field = transparency_optical_field(
+                    editor->transparency_field);
+                (void)unified_editor_step_selected_optical(editor, direction);
+            }
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+                   editor->transparency_menu_open && input->editor_confirm_pressed) {
+            if (editor->transparency_field == EDITOR_TRANSPARENCY_FIELD_MASTER) {
+                (void)unified_editor_clear_selected_transparency_override(editor);
+            } else {
+                editor->optical_field = transparency_optical_field(
+                    editor->transparency_field);
+                (void)unified_editor_toggle_selected_optical_inherit(editor);
+            }
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
             input->editor_previous_pressed) {
             editor->optical_menu_index = editor->optical_menu_index == 0U
-                ? EDITOR_OPTICAL_FIELD_COUNT : editor->optical_menu_index - 1U;
-            if (editor->optical_menu_index > 0U)
-                editor->optical_field = (EditorOpticalField)(
-                    editor->optical_menu_index - 1U);
+                ? 3U : editor->optical_menu_index - 1U;
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
                    input->editor_next_pressed) {
             editor->optical_menu_index = (editor->optical_menu_index + 1U) %
-                (EDITOR_OPTICAL_FIELD_COUNT + 1U);
-            if (editor->optical_menu_index > 0U)
-                editor->optical_field = (EditorOpticalField)(
-                    editor->optical_menu_index - 1U);
+                4U;
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
                    (input->editor_decrease_pressed || input->editor_increase_pressed)) {
             int direction = input->editor_decrease_pressed ? -1 : 1;
-            if (editor->optical_menu_index == 0U)
+            if (editor->optical_menu_index == 0U) {
                 unified_editor_toggle_optical_scope(editor);
-            else (void)unified_editor_step_selected_optical(editor, direction);
+            } else if (editor->optical_menu_index == 1U) {
+                editor->optical_field = EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS;
+                (void)unified_editor_step_selected_optical(editor, direction);
+            } else if (editor->optical_menu_index == 3U) {
+                editor->optical_field = EDITOR_OPTICAL_FIELD_REFLECTIVITY;
+                (void)unified_editor_step_selected_optical(editor, direction);
+            }
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
                    input->editor_confirm_pressed) {
-            if (editor->optical_menu_index == 0U)
+            if (editor->optical_menu_index == 0U) {
                 unified_editor_toggle_optical_scope(editor);
-            else (void)unified_editor_toggle_selected_optical_inherit(editor);
+            } else if (editor->optical_menu_index == 2U) {
+                editor->transparency_menu_open = true;
+                editor->transparency_field = EDITOR_TRANSPARENCY_FIELD_MASTER;
+            } else {
+                editor->optical_field = editor->optical_menu_index == 1U
+                    ? EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS
+                    : EDITOR_OPTICAL_FIELD_REFLECTIVITY;
+                (void)unified_editor_toggle_selected_optical_inherit(editor);
+            }
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && editor->movement_menu_open &&
             input->editor_previous_pressed) {
@@ -3816,32 +3911,78 @@ void unified_editor_render_text_overlay(
             }
             if (editor->optical_menu_open) {
                 OpticalExtension extension;
-                grid_print(grid, 1, row++,
-                           "   OPTICS  Up/Down  Left/Right=edit  Enter=inherit",
+                grid_print(grid, 1, row++, editor->transparency_menu_open
+                           ? "   TRANSPARENCY  Up/Down  Left/Right=edit  Esc=back"
+                           : "   OPTICS  Up/Down  Left/Right=edit  Enter=open/inherit",
                            fg, bg);
                 snprintf(line, sizeof(line), " %s Scope: %s",
-                         editor->optical_menu_index == 0U ? ">" : " ",
+                         !editor->transparency_menu_open &&
+                             editor->optical_menu_index == 0U ? ">" : " ",
                          editor->optical_scope == EDITOR_OPTICAL_SCOPE_CELL
                          ? "cell override" : "material default");
                 grid_print(grid, 1, row++, line,
-                           editor->optical_menu_index == 0U ? hi : dim, bg);
+                           !editor->transparency_menu_open &&
+                               editor->optical_menu_index == 0U ? hi : dim, bg);
                 if (editor_domain_get_optical_extension(
                         &editor->document, editor->selection,
                         editor->optical_scope, &extension, NULL, NULL)) {
-                    for (i = 0U; i < EDITOR_OPTICAL_FIELD_COUNT; i++) {
-                        EditorInspectorFieldPresentation metadata;
+                    if (editor->transparency_menu_open) {
+                        static const EditorOpticalField fields[] = {
+                            EDITOR_OPTICAL_FIELD_OPACITY,
+                            EDITOR_OPTICAL_FIELD_RAY_BLOCKS,
+                            EDITOR_OPTICAL_FIELD_TRANSMISSION,
+                            EDITOR_OPTICAL_FIELD_LIGHT_BLOCKS
+                        };
+                        static const char *const labels[] = {
+                            "Opacity", "Ray blocks", "Transmission", "Light blocks"
+                        };
                         char value[32];
-                        (void)editor_domain_optical_field_presentation(
-                        (EditorOpticalField)i, &metadata);
-                        (void)editor_domain_format_optical_field(
-                        &extension, (EditorOpticalField)i,
-                        value, sizeof(value));
+                        (void)editor_domain_format_transparency(
+                            &editor->document, editor->selection,
+                            editor->optical_scope, value, sizeof(value));
                         snprintf(line, sizeof(line), " %s %-14s %s",
-                             editor->optical_menu_index == i + 1U ? ">" : " ",
-                             metadata.label, value);
+                            editor->transparency_field ==
+                                EDITOR_TRANSPARENCY_FIELD_MASTER ? ">" : " ",
+                            "Transparency", value);
                         grid_print(grid, 1, row++, line,
-                               editor->optical_menu_index == i + 1U
-                                   ? hi : dim, bg);
+                            editor->transparency_field ==
+                                EDITOR_TRANSPARENCY_FIELD_MASTER ? hi : dim, bg);
+                        for (i = 0U; i < 4U; i++) {
+                            EditorTransparencyField selected =
+                                (EditorTransparencyField)(i + 1U);
+                            (void)editor_domain_format_optical_field(
+                                &extension, fields[i], value, sizeof(value));
+                            snprintf(line, sizeof(line), " %s %-14s %s",
+                                editor->transparency_field == selected ? ">" : " ",
+                                labels[i], value);
+                            grid_print(grid, 1, row++, line,
+                                editor->transparency_field == selected ? hi : dim, bg);
+                        }
+                    } else {
+                        char value[32];
+                        (void)editor_domain_format_optical_field(
+                            &extension, EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS,
+                            value, sizeof(value));
+                        snprintf(line, sizeof(line), " %s %-14s %s",
+                            editor->optical_menu_index == 1U ? ">" : " ",
+                            "Player blocks", value);
+                        grid_print(grid, 1, row++, line,
+                            editor->optical_menu_index == 1U ? hi : dim, bg);
+                        (void)editor_domain_format_transparency(
+                            &editor->document, editor->selection,
+                            editor->optical_scope, value, sizeof(value));
+                        snprintf(line, sizeof(line), " %s Transparency... %s",
+                            editor->optical_menu_index == 2U ? ">" : " ", value);
+                        grid_print(grid, 1, row++, line,
+                            editor->optical_menu_index == 2U ? hi : dim, bg);
+                        (void)editor_domain_format_optical_field(
+                            &extension, EDITOR_OPTICAL_FIELD_REFLECTIVITY,
+                            value, sizeof(value));
+                        snprintf(line, sizeof(line), " %s %-14s %s",
+                            editor->optical_menu_index == 3U ? ">" : " ",
+                            "Reflectivity", value);
+                        grid_print(grid, 1, row++, line,
+                            editor->optical_menu_index == 3U ? hi : dim, bg);
                     }
                 }
             }

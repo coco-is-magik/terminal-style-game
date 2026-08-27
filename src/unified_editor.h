@@ -165,9 +165,11 @@ typedef struct {
     bool movement_menu_open;
     EditorMovementField movement_field;
     bool optical_menu_open;
+    bool transparency_menu_open;
     EditorOpticalScope optical_scope;
     EditorOpticalField optical_field;
     size_t optical_menu_index;
+    EditorTransparencyField transparency_field;
     EditorDecalMenuStage decal_menu_stage;
     size_t decal_menu_index;
     size_t decal_pattern_index;
@@ -317,6 +319,12 @@ CommandResult unified_editor_step_selected_optical(
     UnifiedEditorState *editor, int direction
 );
 CommandResult unified_editor_toggle_selected_optical_inherit(
+    UnifiedEditorState *editor
+);
+CommandResult unified_editor_step_selected_transparency(
+    UnifiedEditorState *editor, int direction
+);
+CommandResult unified_editor_clear_selected_transparency_override(
     UnifiedEditorState *editor
 );
 void unified_editor_toggle_optical_scope(UnifiedEditorState *editor);

@@ -1,11 +1,76 @@
-# Active Handoff — R9 I7 Mirrors Complete — 2026-08-26
+# Active Handoff — R9 I1–I7 Complete — Pending Manual Optical Acceptance — 2026-08-26
 
 ## Current status
 
-**I1–I7 complete and verified. I8 preset work is not authorized.** The approved
-R9 plan and both Review H records are binding. R8 remains Verified; research
-prototypes remain gated behind `R9_OPTICAL_RESEARCH=1`.
+**R9 implementation plus the manual-review transparency authoring correction is
+complete on automated evidence. The phase remains stopped at the closeout
+checkpoint pending replacement human-operated optical acceptance.**
+
+All I1–I7 increments pass `make check`, ASan, UBSan, application smoke test, and
+the 6 ms surface benchmark/stability gate. I8 preset work remains deferred.
+Research prototypes remain gated behind `R9_OPTICAL_RESEARCH=1`.
+
 The prior SMC handoff below is historical and remains preserved.
+
+## Transparency follow-up (2026-08-26)
+
+- Added Optics -> Transparency with a derived 0–100% master plus independent
+  Opacity, Ray blocks, Transmission, and Light blocks rows.
+- Master edits atomically map all four fields; underlying edits produce `Custom`;
+  no new v6 field was added.
+- Player blocks and Reflectivity remain independent.
+- Focused tests: command 41/41, domain 12/12, unified editor 79/79.
+- Strict aggregate, ASan, UBSan, optimized build, smoke, checksums, and determinism
+  pass. Timing gate needs a quiet rerun: a user-owned `ascii-fps` process consumed
+  ~90% CPU throughout available trials; it was not terminated.
+- Full record: `R9_MANUAL_REVIEW_TRANSPARENCY_FOLLOWUP_2026-08-26.md`.
+
+## What is done
+
+- I1: derived optical runtime lookup (material defaults + sparse cell overrides)
+- I2: selective continuation in the prepared-column tracer
+- I3: selective terminal-cell composition integrated into the renderer
+- I4: mandatory stop-gate review authorizing v6/editor work
+- I5: scene v6 persistence/migration
+- I6: editor authoring, undo/redo, and runtime semantics wiring (camera,
+  physics, lighting)
+- I7: coarse-reuse one-bounce vertical-wall mirrors
+
+## What is intentionally not done
+
+- I8 preset/e2e assessment (deferred by Review H)
+- Mirror enablement in the default shipping path
+- Reflected entities, horizontal mirrors, or recursive mirrors
+- Colored/spot lighting (R10)
+- Sprites/entities/triggers (R11)
+- Responsive UI model (R12)
+
+## Manual acceptance required
+
+Run the game in a real SDL window and complete the 9-item optical checklist in
+`docs/reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`. Record the
+result, environment, and any findings there. Do not mark R9 Verified until that
+is filled in.
+
+## Stop boundary
+
+Do not begin R10, R11, R12, or I8 without separate authorization. The next
+action is the human optical acceptance pass and recording its outcome.
+
+## Automated gate evidence (final run 2026-08-26)
+
+- `make -j2 check`: pass
+- `make asan`: pass
+- `make ubsan`: pass
+- `make -j2 all && ./build/ascii-fps --smoke-test`: pass
+- Surface benchmark raised: 5.26–5.71 ms across trials (one 11.2 ms host-load
+  outlier recorded and retried)
+- Surface stability raised: 5.599373 ms
+- Occluded decal stability: 5.172322 ms
+- Flat/default checksum: `5602340901454607159`
+- Raised/decal checksum: `16569300432624360523`
+- Optical opaque parity: `17276792261464593835`
+- Optical localized transparent: `18106365475393592681`
 
 ## I7 completion summary
 

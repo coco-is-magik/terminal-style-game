@@ -1,7 +1,7 @@
 # R9 Requirements and Implementation Plan — Layered Optical Rendering — 2026-08-24
 
 ## Status
-**Active; I1–I7 complete and verified. I8 preset policy remains deferred.**
+**Active; I1–I7 complete and verified. I8 preset policy remains deferred. R9 is pending manual optical acceptance and final phase closeout before it can be marked Verified.**
 Pre-implementation Review H conditionally passed on
 2026-08-24 (`reviews/2026-08-24-roadmap-r9-review-h.md`). The second Review H on
 2026-08-25 (`reviews/2026-08-25-roadmap-r9-review-h-implemented-phase.md`) accepted
@@ -177,7 +177,7 @@ R9 is not Verified until:
 
 The user performs manual optical acceptance at each visible increment (I2+):
 1. default/legacy scenes byte/visually unchanged;
-2. single translucent over a wall readable/stable;
+2. translucent surface over/behind a wall readable/stable — author cell override with `ray_blocks=0`, `transmission>0`, and `opacity<255` (opacity alone is only a blend weight and does not reveal what is behind; see the closeout "Authoring a translucent surface" guidance);
 3. two translucent layers legible and deterministic;
 4. translucent opening darkness without stale framebuffer;
 5. decal ordering correct on optics/discontinuities;

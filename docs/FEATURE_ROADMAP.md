@@ -224,7 +224,7 @@ Do not create empty review directories or placeholder review files.
 | R6 | Decal placement and point-light authoring | R4–R5 | Authored placed visual/environment content | Verified |
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
-| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Active; I1–I2 verified, I3 pending |
+| R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Active; I1–I7 complete; pending manual optical acceptance and final closeout |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Proposed |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |

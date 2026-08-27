@@ -643,6 +643,149 @@ static bool make_optical_request(
     return true;
 }
 
+static void apply_optical_extension(OpticalResolved *resolved,
+                                    const OpticalExtension *extension) {
+    if ((extension->override_mask & OPTICAL_OVERRIDE_RAY_BLOCKS) != 0U)
+        resolved->ray_blocks = extension->ray_blocks != 0U;
+    if ((extension->override_mask & OPTICAL_OVERRIDE_LIGHT_BLOCKS) != 0U)
+        resolved->light_blocks = extension->light_blocks != 0U;
+    if ((extension->override_mask & OPTICAL_OVERRIDE_OPACITY) != 0U)
+        resolved->opacity = extension->opacity;
+    if ((extension->override_mask & OPTICAL_OVERRIDE_TRANSMISSION) != 0U)
+        resolved->transmission = extension->transmission;
+}
+
+static bool effective_transparency_optical(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, OpticalResolved *out_resolved,
+    OpticalExtension *out_local
+) {
+    OpticalResolved resolved = optical_resolved_legacy(true);
+    OpticalExtension material = {0};
+    OpticalExtension local = {0};
+    uint16_t material_id;
+    size_t cell_index;
+    if (!out_resolved || !out_local ||
+        !editor_domain_get_optical_extension(
+            document, target, scope, &local, &material_id, &cell_index)) return false;
+    (void)scene_document_get_optical_material_extension(
+        document, material_id, &material);
+    apply_optical_extension(&resolved, &material);
+    if (scope == EDITOR_OPTICAL_SCOPE_CELL) {
+        OpticalExtension cell = {0};
+        (void)scene_document_get_optical_cell_extension(
+            document, cell_index, &cell);
+        apply_optical_extension(&resolved, &cell);
+    }
+    *out_resolved = resolved;
+    *out_local = local;
+    return true;
+}
+
+static uint8_t transparency_opacity(unsigned int percent) {
+    return (uint8_t)((percent * UINT8_MAX + 50U) / 100U);
+}
+
+static uint8_t transparency_transmission(unsigned int percent) {
+    return (uint8_t)(((100U - percent) * UINT8_MAX + 50U) / 100U);
+}
+
+bool editor_domain_transparency_value(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, unsigned int *out_percent, bool *out_custom
+) {
+    OpticalResolved resolved;
+    OpticalExtension local;
+    unsigned int percent;
+    if (!out_percent || !out_custom || !effective_transparency_optical(
+            document, target, scope, &resolved, &local)) return false;
+    (void)local;
+    for (percent = 0U; percent <= 100U; percent++) {
+        bool blocks = percent == 100U;
+        if (resolved.opacity == transparency_opacity(percent) &&
+            resolved.transmission == transparency_transmission(percent) &&
+            resolved.ray_blocks == blocks && resolved.light_blocks == blocks) {
+            *out_percent = percent;
+            *out_custom = false;
+            return true;
+        }
+    }
+    *out_percent = 0U;
+    *out_custom = true;
+    return true;
+}
+
+bool editor_domain_format_transparency(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, char *out_text, size_t out_size
+) {
+    unsigned int percent;
+    bool custom;
+    if (!out_text || out_size == 0U || !editor_domain_transparency_value(
+            document, target, scope, &percent, &custom)) return false;
+    if (custom) return snprintf(out_text, out_size, "Custom") >= 0;
+    return snprintf(out_text, out_size, "%u%%", percent) >= 0;
+}
+
+static unsigned int transparency_estimate(const OpticalResolved *resolved) {
+    unsigned int opacity_percent =
+        ((unsigned int)resolved->opacity * 100U + 127U) / UINT8_MAX;
+    unsigned int transmission_percent =
+        ((unsigned int)(UINT8_MAX - resolved->transmission) * 100U + 127U) /
+        UINT8_MAX;
+    unsigned int estimate = (opacity_percent + transmission_percent + 1U) / 2U;
+    return ((estimate + 2U) / 5U) * 5U;
+}
+
+bool editor_domain_make_transparency_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, int direction,
+    EditorMutationRequest *out_request
+) {
+    OpticalResolved resolved;
+    OpticalExtension value;
+    unsigned int percent;
+    bool custom;
+    int next;
+    const uint8_t mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
+        OPTICAL_OVERRIDE_LIGHT_BLOCKS | OPTICAL_OVERRIDE_OPACITY |
+        OPTICAL_OVERRIDE_TRANSMISSION;
+    if ((direction != -1 && direction != 1) ||
+        !effective_transparency_optical(
+            document, target, scope, &resolved, &value) ||
+        !editor_domain_transparency_value(
+            document, target, scope, &percent, &custom)) return false;
+    if (custom) percent = transparency_estimate(&resolved);
+    next = (int)percent + direction * 5;
+    if (next < 0) next = 0;
+    if (next > 100) next = 100;
+    percent = (unsigned int)next;
+    value.override_mask = (uint8_t)(value.override_mask | mask);
+    value.opacity = transparency_opacity(percent);
+    value.transmission = transparency_transmission(percent);
+    value.ray_blocks = percent == 100U ? 1U : 0U;
+    value.light_blocks = percent == 100U ? 1U : 0U;
+    return make_optical_request(document, target, scope, value, out_request);
+}
+
+bool editor_domain_make_transparency_inherit_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorMutationRequest *out_request
+) {
+    OpticalExtension value;
+    const uint8_t mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
+        OPTICAL_OVERRIDE_LIGHT_BLOCKS | OPTICAL_OVERRIDE_OPACITY |
+        OPTICAL_OVERRIDE_TRANSMISSION;
+    if (!editor_domain_get_optical_extension(
+            document, target, scope, &value, NULL, NULL)) return false;
+    value.override_mask = (uint8_t)(value.override_mask & (uint8_t)~mask);
+    value.ray_blocks = 0U;
+    value.light_blocks = 0U;
+    value.opacity = 0U;
+    value.transmission = 0U;
+    return make_optical_request(document, target, scope, value, out_request);
+}
+
 bool editor_domain_make_optical_step_request(
     const SceneDocument *document, SelectionTarget target,
     EditorOpticalScope scope, EditorOpticalField field, int direction,

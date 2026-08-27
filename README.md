@@ -245,14 +245,26 @@ darkness and removed ceilings open upward; cells missing either finite surface a
 not traversable. The HUD reports whether a finite selected cell is flat/down,
 step-sized, jumpable, or blocked by height/clearance.
 
+Wall, floor, and ceiling inspectors also expose an **Optics** submenu at cell or
+material-default scope. Its nested **Transparency** menu has a derived 0–100%
+master plus independent Opacity, Ray blocks, Transmission, and Light blocks
+rows. The master changes all four atomically (0% fully translucent/light-passing;
+100% fully opaque/blocking). Editing an underlying row independently changes the
+master display to `Custom`; Player blocks and Reflectivity remain independent.
+All edits use normal undo/redo and native v6 Save/Open. Enter on an individual
+row toggles inheritance; Enter on the master removes all four local transparency
+overrides together.
+
 ### Current editor limits
 
-- Native v5 scenes store independent occupancy, wall/floor/ceiling materials,
+- Native v6 scenes store independent occupancy, wall/floor/ceiling materials,
   signed fixed-point floor/ceiling heights, explicit surface-presence and gravity
   overrides, plus per-map movement parameters. Rendering, selection, and
   highlights share bounded per-cell tracing, including generated vertical faces at
   finite height discontinuities. The exact legacy path is retained for flat-default
-  scenes.
+  scenes. Version 6 additionally stores independent optical material defaults and
+  sparse per-cell overrides; the Transparency percentage is derived editor state,
+  not a redundant serialized field.
 - Floor/ceiling hover and selection use the same border-only `.`/`#` vocabulary as
   walls, leaving the authored material visible. East/south boundary removal grows by
   copying the prior edge outward; west/north removal is visibly unavailable. Refilling

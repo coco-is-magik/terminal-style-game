@@ -3907,6 +3907,86 @@ static void test_r9_i6_optical_submenu_input_and_overlay(void **state) {
     unified_editor_destroy(&editor);
 }
 
+static void test_r9_transparency_submenu_master_custom_undo_and_round_trip(void **state) {
+    UnifiedEditorState editor;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    OpticalExtension extension;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    char path[512];
+    char value[32];
+    (void)state;
+    assert_int_equal(load_editor(&editor, "r9_transparency_source.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_surface_direct(&editor, SELECTION_FLOOR, 2, 2);
+    editor.surface_field = EDITOR_SURFACE_FIELD_OPTICS;
+
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    zero_input(&input);
+    input.editor_next_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    zero_input(&input);
+    input.editor_next_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.optical_menu_index, 2U);
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.transparency_menu_open);
+
+    zero_input(&input);
+    input.editor_decrease_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.opacity, 242U);
+    assert_int_equal(extension.transmission, 13U);
+    assert_int_equal(extension.ray_blocks, 0U);
+    assert_int_equal(extension.light_blocks, 0U);
+    assert_int_equal(editor.history.count, 1U);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &editor.document, 12U, &extension));
+    assert_int_equal(extension.override_mask, 0U);
+    assert_int_equal(unified_editor_redo(&editor), CMD_RESULT_OK);
+
+    editor.transparency_field = EDITOR_TRANSPARENCY_FIELD_OPACITY;
+    zero_input(&input);
+    input.editor_decrease_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor_domain_format_transparency(
+        &editor.document, editor.selection, editor.optical_scope,
+        value, sizeof(value)));
+    assert_string_equal(value, "Custom");
+
+    grid = grid_create(160, 80);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "TRANSPARENCY"));
+    assert_true(grid_contains_text(grid, "Transparency   Custom"));
+    grid_destroy(grid);
+
+    path_in_tmpdir(path, sizeof(path), "r9_transparency_saved.tscene");
+    assert_int_equal(unified_editor_save_as(
+        &editor, path, "r9_transparency"), SCENE_SAVE_OK);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_load_native(
+        &reopened, path, &diagnostic), SCENE_LOAD_OK);
+    assert_true(scene_document_get_optical_cell_extension(
+        &reopened, 12U, &extension));
+    assert_int_equal(extension.opacity, 226U);
+    assert_int_equal(extension.transmission, 13U);
+    assert_int_equal(extension.ray_blocks, 0U);
+    assert_int_equal(extension.light_blocks, 0U);
+    scene_document_destroy(&reopened);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -3993,6 +4073,7 @@ int main(void) {
         cmocka_unit_test(test_r7_ctrl_arrow_axis_and_occlusion),
         cmocka_unit_test(test_r9_i6_optical_authoring_undo_save_reopen),
         cmocka_unit_test(test_r9_i6_optical_submenu_input_and_overlay),
+        cmocka_unit_test(test_r9_transparency_submenu_master_custom_undo_and_round_trip),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

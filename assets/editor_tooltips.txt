@@ -16,3 +16,6 @@ surface_presence=Remove or restore the selected floor or ceiling. Removed floors
 surface_gravity=Per-cell gravity direction and scale override. A zero scale inherits the map magnitude.
 movement_parameters=Per-map gravity, step, jump, air-control, eye, and clearance values apply immediately and persist in scene v5.
 traversal_feedback=Compares the selected cell with the player cell: flat/down, ramp/step, jump, or blocked by height/clearance.
+optical_transparency=Derived 0-100% transparency master. It atomically keeps opacity, transmission, sight-ray blocking, and light blocking consistent; manual field edits display Custom.
+optical_opacity=Visual surface weight only. Lower values do not reveal geometry unless sight rays and transmission also pass; use Transparency for the coordinated workflow.
+optical_reflectivity=One-bounce vertical-wall reflection strength. Player collision and transparency remain independent.

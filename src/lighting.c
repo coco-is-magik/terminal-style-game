@@ -104,6 +104,16 @@ static bool lighting_ray_blocked_optical(
     double dy = target_center_y - start_y;
     int map_x = (int)floor(start_x);
     int map_y = (int)floor(start_y);
+    /* A light never shadows its own cell.  The legacy raycast_fire()
+     * shadow path truncates the ray at the distance to the target tile's
+     * centre, so for the source tile that distance is ~0 and no wall can
+     * block it.  This DDA advances one cell before it is allowed to check
+     * the target, so without this early return a light sitting near a tile
+     * corner could walk straight past its own cell and be falsely
+     * shadowed by a diagonally adjacent wall, dimming the light's own cell
+     * by light_bounce_attenuation. */
+    if (map_x == target_x && map_y == target_y) return false;
+
     int step_x = dx < 0.0 ? -1 : 1;
     int step_y = dy < 0.0 ? -1 : 1;
     double delta_x = dx == 0.0 ? INFINITY : fabs(1.0 / dx);

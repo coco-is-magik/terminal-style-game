@@ -478,6 +478,103 @@ static void test_optical_domain_preserves_scope_and_inheritance(void **state) {
     scene_document_destroy(&document);
 }
 
+static void test_transparency_master_maps_and_detects_custom(void **state) {
+    SceneDocument document;
+    SelectionTarget floor = surface_target(SELECTION_FLOOR, 2, 3);
+    EditorMutationRequest request;
+    OpticalExtension extension = {0};
+    unsigned int percent = 0U;
+    bool custom = true;
+    char text[32];
+    (void)state;
+    init_document(&document);
+    document.authored_cell_count = 20U;
+    document.authored_cells = calloc(20U, sizeof(*document.authored_cells));
+    assert_non_null(document.authored_cells);
+    document.authored_cells[17].floor_material = 12U;
+
+    assert_true(editor_domain_transparency_value(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, &percent, &custom));
+    assert_false(custom);
+    assert_int_equal(percent, 100U);
+    assert_true(editor_domain_make_transparency_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, -1, &request));
+    extension = request.data.optical_cell.value;
+    assert_int_equal(extension.opacity, 242U);
+    assert_int_equal(extension.transmission, 13U);
+    assert_int_equal(extension.ray_blocks, 0U);
+    assert_int_equal(extension.light_blocks, 0U);
+    assert_int_equal(extension.override_mask &
+        (OPTICAL_OVERRIDE_RAY_BLOCKS | OPTICAL_OVERRIDE_LIGHT_BLOCKS |
+         OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION),
+        OPTICAL_OVERRIDE_RAY_BLOCKS | OPTICAL_OVERRIDE_LIGHT_BLOCKS |
+        OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION);
+
+    assert_true(editor_domain_make_transparency_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_MATERIAL, -1, &request));
+    assert_int_equal(request.type, EDITOR_MUTATION_SET_OPTICAL_MATERIAL);
+    assert_int_equal(request.data.optical_material.material_id, 12U);
+    assert_int_equal(request.data.optical_material.value.opacity, 242U);
+    assert_int_equal(request.data.optical_material.value.transmission, 13U);
+
+    document.optical_material_capacity = 13U;
+    document.optical_material_defaults = calloc(
+        13U, sizeof(*document.optical_material_defaults));
+    assert_non_null(document.optical_material_defaults);
+    document.optical_material_defaults[12] =
+        request.data.optical_material.value;
+    assert_true(editor_domain_make_transparency_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_MATERIAL, 1, &request));
+    assert_int_equal(request.data.optical_material.value.opacity, 255U);
+    assert_int_equal(request.data.optical_material.value.transmission, 0U);
+    assert_int_equal(request.data.optical_material.value.ray_blocks, 1U);
+    assert_int_equal(request.data.optical_material.value.light_blocks, 1U);
+    document.optical_material_defaults[12].opacity = 13U;
+    document.optical_material_defaults[12].transmission = 242U;
+    document.optical_material_defaults[12].ray_blocks = 0U;
+    document.optical_material_defaults[12].light_blocks = 0U;
+    assert_true(editor_domain_make_transparency_step_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_MATERIAL, -1, &request));
+    assert_int_equal(request.data.optical_material.value.opacity, 0U);
+    assert_int_equal(request.data.optical_material.value.transmission, 255U);
+    assert_int_equal(request.data.optical_material.value.ray_blocks, 0U);
+    assert_int_equal(request.data.optical_material.value.light_blocks, 0U);
+
+    document.optical_cell_override_count = 1U;
+    document.optical_cell_overrides = calloc(
+        1U, sizeof(*document.optical_cell_overrides));
+    assert_non_null(document.optical_cell_overrides);
+    document.optical_cell_overrides[0].cell_index = 17U;
+    document.optical_cell_overrides[0].optical = extension;
+    assert_true(editor_domain_format_transparency(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, text, sizeof(text)));
+    assert_string_equal(text, "95%");
+
+    document.optical_cell_overrides[0].optical.opacity = 200U;
+    assert_true(editor_domain_format_transparency(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, text, sizeof(text)));
+    assert_string_equal(text, "Custom");
+
+    document.optical_cell_overrides[0].optical.opacity = 128U;
+    document.optical_cell_overrides[0].optical.transmission = 128U;
+    assert_true(editor_domain_format_transparency(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, text, sizeof(text)));
+    assert_string_equal(text, "50%");
+
+    document.optical_cell_overrides[0].optical.override_mask |=
+        OPTICAL_OVERRIDE_PLAYER_BLOCKS | OPTICAL_OVERRIDE_REFLECTIVITY;
+    document.optical_cell_overrides[0].optical.player_blocks = 1U;
+    document.optical_cell_overrides[0].optical.reflectivity = 64U;
+    assert_true(editor_domain_make_transparency_inherit_request(
+        &document, floor, EDITOR_OPTICAL_SCOPE_CELL, &request));
+    extension = request.data.optical_cell.value;
+    assert_int_equal(extension.override_mask,
+        OPTICAL_OVERRIDE_PLAYER_BLOCKS | OPTICAL_OVERRIDE_REFLECTIVITY);
+    assert_int_equal(extension.player_blocks, 1U);
+    assert_int_equal(extension.reflectivity, 64U);
+    scene_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dispatch_and_wall_request),
@@ -491,6 +588,7 @@ int main(void) {
         cmocka_unit_test(test_decal_inspector_fields_and_typed_requests),
         cmocka_unit_test(test_vertical_and_movement_domain_requests),
         cmocka_unit_test(test_optical_domain_preserves_scope_and_inheritance),
+        cmocka_unit_test(test_transparency_master_maps_and_detects_custom),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

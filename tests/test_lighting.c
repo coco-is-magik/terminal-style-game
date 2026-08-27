@@ -142,6 +142,52 @@ static void test_optical_light_blocking_is_independent(void **state) {
     map_destroy(map);
 }
 
+static void test_optical_diagonal_wall_does_not_shadow_source_cell(void **state) {
+    Map *map = map_create(4, 4);
+    WorldState world;
+    SDL_Color white = {255, 255, 255, 255};
+    OpticalExtension materials[2] = {0};
+    OpticalRuntimeView view;
+    double source_open = 0.0;
+    double source_blocked = 0.0;
+    double far_open = 0.0;
+    double far_blocked = 0.0;
+    (void)state;
+    assert_non_null(map);
+    world_init(&world);
+    world.has_authored_ambient = true;
+    world.ambient_intensity = 0.0;
+    /* Light sits near the top-left corner of its own tile (0,0); the wall at
+     * (1,1) is diagonally adjacent to that tile. */
+    assert_int_equal(world_add_light(
+        &world, 0.1, 0.1, white, 1.0, 8.0), WORLD_INSERT_OK);
+    map_set(map, 1, 1, 1);
+    materials[1].override_mask = OPTICAL_OVERRIDE_LIGHT_BLOCKS |
+                                 OPTICAL_OVERRIDE_RAY_BLOCKS;
+    materials[1].light_blocks = 0U;
+    materials[1].ray_blocks = 0U;
+    assert_true(optical_runtime_view_init(
+        &view, 16U, materials, 2U, NULL, 0U, 9U));
+
+    lighting_update_optical(map, &world, &view, 9U);
+    source_open = map->light_map[0U * 4U + 0U];   /* light's own tile */
+    far_open = map->light_map[3U * 4U + 3U];      /* beyond the diagonal wall */
+
+    /* Make the diagonal wall fully light/ray blocking.  It must still shade a
+     * far tile, but must NOT darken the light's own diagonally-adjacent tile. */
+    materials[1].light_blocks = 1U;
+    materials[1].ray_blocks = 1U;
+    lighting_update_optical(map, &world, &view, 9U);
+    source_blocked = map->light_map[0U * 4U + 0U];
+    far_blocked = map->light_map[3U * 4U + 3U];
+
+    assert_float_equal(source_blocked, source_open, 0.000001);
+    assert_true(far_open > far_blocked);
+
+    world_clear(&world);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ambient_and_null_inputs),
@@ -150,6 +196,7 @@ int main(void) {
         cmocka_unit_test(test_authored_runtime_ambient_overrides_config),
         cmocka_unit_test(test_intensity_radius_and_saturation_are_quantified),
         cmocka_unit_test(test_optical_light_blocking_is_independent),
+        cmocka_unit_test(test_optical_diagonal_wall_does_not_shadow_source_cell),
     };
     config_init_defaults();
     return cmocka_run_group_tests(tests, NULL, NULL);

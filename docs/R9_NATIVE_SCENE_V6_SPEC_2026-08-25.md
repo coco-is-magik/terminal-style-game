@@ -21,6 +21,12 @@ Resolution order is:
 2. optional material default;
 3. optional sparse cell override.
 
+Transparency is an editor-derived authoring lens, not a seventh serialized
+property. The editor may atomically map a 0–100% master onto opacity,
+transmission, ray blocking, and light blocking; canonical v6 continues to persist
+only the independent fields below. Independently edited values display as
+`Custom` when they do not exactly match the master mapping.
+
 The six independent properties are:
 
 - `player_blocks`: decimal `0` or `1`;

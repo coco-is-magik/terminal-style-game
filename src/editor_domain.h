@@ -53,6 +53,15 @@ typedef enum {
 } EditorOpticalField;
 
 typedef enum {
+    EDITOR_TRANSPARENCY_FIELD_MASTER = 0,
+    EDITOR_TRANSPARENCY_FIELD_OPACITY,
+    EDITOR_TRANSPARENCY_FIELD_RAY_BLOCKS,
+    EDITOR_TRANSPARENCY_FIELD_TRANSMISSION,
+    EDITOR_TRANSPARENCY_FIELD_LIGHT_BLOCKS,
+    EDITOR_TRANSPARENCY_FIELD_COUNT
+} EditorTransparencyField;
+
+typedef enum {
     EDITOR_MOVEMENT_FIELD_GRAVITY_MAGNITUDE = 0,
     EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION,
     EDITOR_MOVEMENT_FIELD_STEP_HEIGHT,
@@ -212,6 +221,23 @@ bool editor_domain_make_optical_inherit_toggle_request(
     const SceneDocument *document, SelectionTarget target,
     EditorOpticalScope scope, EditorOpticalField field,
     EditorMutationRequest *out_request
+);
+bool editor_domain_transparency_value(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, unsigned int *out_percent, bool *out_custom
+);
+bool editor_domain_format_transparency(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, char *out_text, size_t out_size
+);
+bool editor_domain_make_transparency_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, int direction,
+    EditorMutationRequest *out_request
+);
+bool editor_domain_make_transparency_inherit_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorOpticalScope scope, EditorMutationRequest *out_request
 );
 
 bool editor_domain_light_field_metadata(
