@@ -15,12 +15,14 @@
 #include "raycast.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define EDITOR_PICKER_VISIBLE 4
 #define EDITOR_MAP_CHOOSER_VISIBLE 10
@@ -39,6 +41,7 @@ void unified_editor_set_runtime_build_failure_for_test(bool fail) {
 static void editor_cancel_light_value_edit(UnifiedEditorState *editor);
 static bool editor_rebuild_material_shortlist(UnifiedEditorState *editor);
 static bool editor_rebuild_decal_shortlist(UnifiedEditorState *editor);
+static void editor_rebuild_sprite_shortlist(UnifiedEditorState *editor);
 
 static void editor_clear_selection(UnifiedEditorState *editor) {
     editor->selection.type = SELECTION_NONE;
@@ -91,6 +94,13 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
     editor->sprite_field = EDITOR_SPRITE_FIELD_X;
+    editor->sprite_menu_open = false;
+    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+    editor->sprite_menu_index = 0U;
+    editor->sprite_shortlist_count = 0U;
+    editor->sprite_paint_x = 0U;
+    editor->sprite_paint_y = 0U;
+    editor->sprite_paint_material = 1U;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
     editor->light_value_editing = false;
@@ -193,6 +203,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_INVALID_SCENE_NAME:    return "Invalid scene name";
         case EDITOR_STATUS_INVALID_NUMERIC_VALUE: return "Invalid or out-of-range number";
         case EDITOR_STATUS_INVALID_DECAL:         return "Invalid decal operation";
+        case EDITOR_STATUS_INVALID_SPRITE:        return "Invalid sprite operation";
         case EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED: return "Remove attached wall decal first";
         case EDITOR_STATUS_SPAWN_BLOCKED:          return "Cannot place wall at spawn";
         case EDITOR_STATUS_PLAYER_BLOCKED:         return "Leave cell before placing wall";
@@ -656,6 +667,7 @@ void unified_editor_destroy(UnifiedEditorState *editor) {
     editor->decal_shortlist = NULL;
     editor->decal_shortlist_count = 0U;
     editor->decal_shortlist_capacity = 0U;
+    sprite_document_destroy(&editor->sprite_document);
     editor->assets = NULL;
     editor->active = false;
     editor_reset_session_ui(editor);
@@ -1862,15 +1874,267 @@ CommandResult unified_editor_set_decal_field_value(
     return result;
 }
 
-static uint16_t editor_find_loaded_sprite_id(
-    const UnifiedEditorState *editor
-) {
-    int id;
-    if (!editor || !editor->assets) return 0U;
-    for (id = 1; id <= 255; id++) {
-        if (sprite_id_is_loaded(editor->assets, id)) return (uint16_t)id;
+static void editor_rebuild_sprite_shortlist(UnifiedEditorState *editor) {
+    uint16_t id;
+    if (!editor || !editor->assets) return;
+    editor->sprite_shortlist_count = 0U;
+    for (id = 1U; id < SPRITE_ID_CAPACITY; id++) {
+        if (sprite_id_is_loaded(editor->assets, (int)id)) {
+            editor->sprite_shortlist[editor->sprite_shortlist_count++] = id;
+        }
     }
-    return 0U;
+}
+
+static bool editor_sprite_directory(const UnifiedEditorState *editor,
+                                    char *out, size_t out_size) {
+    int written;
+    if (!editor || !editor->asset_root || !out || out_size == 0U) return false;
+    written = snprintf(out, out_size, "%s/sprites", editor->asset_root);
+    return written >= 0 && (size_t)written < out_size;
+}
+
+static bool editor_ensure_sprite_directory(const UnifiedEditorState *editor,
+                                           char *out, size_t out_size) {
+    struct stat info;
+    if (!editor_sprite_directory(editor, out, out_size)) return false;
+    if (stat(out, &info) == 0) return S_ISDIR(info.st_mode);
+    return errno == ENOENT && mkdir(out, 0755) == 0;
+}
+
+static bool editor_open_sprite_document(UnifiedEditorState *editor,
+                                        uint16_t asset_id) {
+    char directory[1024];
+    SpriteDocumentResult result;
+    if (!editor_sprite_directory(editor, directory, sizeof(directory))) return false;
+    result = sprite_document_open_loaded(
+        &editor->sprite_document, editor->assets, asset_id, directory);
+    if (result != SPRITE_DOCUMENT_OK) {
+        editor->status = result == SPRITE_DOCUMENT_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_INVALID_SPRITE;
+        return false;
+    }
+    editor->sprite_paint_x = 0U;
+    editor->sprite_paint_y = 0U;
+    editor->sprite_paint_material = 1U;
+    while (editor->sprite_paint_material <= ASSET_ID_MAX &&
+           !material_id_is_loaded(editor->assets,
+                                  (int)editor->sprite_paint_material)) {
+        editor->sprite_paint_material++;
+    }
+    if (editor->sprite_paint_material > ASSET_ID_MAX)
+        editor->sprite_paint_material = 0U;
+    return true;
+}
+
+static bool editor_save_sprite_document(UnifiedEditorState *editor) {
+    char directory[1024];
+    SpriteDocumentResult result;
+    if (!editor_ensure_sprite_directory(editor, directory, sizeof(directory))) {
+        editor->status = EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    result = sprite_document_save(
+        &editor->sprite_document, editor->assets, directory);
+    if (result == SPRITE_DOCUMENT_OK)
+        result = sprite_document_commit_to_registry(
+            &editor->sprite_document, editor->assets);
+    if (result != SPRITE_DOCUMENT_OK || !editor_refresh_runtime(editor)) {
+        editor->status = result == SPRITE_DOCUMENT_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    editor_rebuild_sprite_shortlist(editor);
+    editor->status = EDITOR_STATUS_SAVED;
+    return true;
+}
+
+static bool editor_set_selected_sprite_asset(UnifiedEditorState *editor,
+                                             uint16_t asset_id) {
+    const SceneSpriteInstance *current;
+    SceneSpriteInstance changed;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    CommandResult result;
+    if (!editor || editor->selection.type != SELECTION_SPRITE ||
+        !sprite_id_is_loaded(editor->assets, (int)asset_id)) return false;
+    current = scene_document_find_sprite(
+        &editor->document, editor->selection.value.sprite.id);
+    if (!current) return false;
+    changed = *current;
+    changed.asset.id = asset_id;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_set_sprite(
+        &editor->history, &editor->document, changed.id, &changed);
+    editor_map_command_result(editor, result);
+    if (result != CMD_RESULT_OK) return false;
+    return editor_command_commit_runtime(
+        editor, result, old_count, old_cursor, old_next);
+}
+
+static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
+    char directory[1024];
+    char path[1060];
+    int map_x;
+    int map_y;
+    uint16_t asset_id;
+    SpriteDocumentResult result;
+    if (!editor || !editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
+        if (editor) editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        return false;
+    }
+    (void)map_x;
+    (void)map_y;
+    if (!editor_ensure_sprite_directory(
+            editor, directory, sizeof(directory))) {
+        editor->status = EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    result = sprite_document_create(
+        &editor->sprite_document, editor->assets, 8U, 8U);
+    if (result == SPRITE_DOCUMENT_OK)
+        result = sprite_document_save(
+            &editor->sprite_document, editor->assets, directory);
+    if (result == SPRITE_DOCUMENT_OK)
+        result = sprite_document_commit_to_registry(
+            &editor->sprite_document, editor->assets);
+    if (result != SPRITE_DOCUMENT_OK) {
+        if (editor->sprite_document.path) {
+            (void)unlink(editor->sprite_document.path);
+        }
+        sprite_document_destroy(&editor->sprite_document);
+        editor->status = result == SPRITE_DOCUMENT_OUT_OF_MEMORY
+            ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
+        return false;
+    }
+    asset_id = editor->sprite_document.id;
+    editor_rebuild_sprite_shortlist(editor);
+    if (unified_editor_place_sprite(editor, asset_id) != CMD_RESULT_OK) {
+        free(editor->assets->sprites[asset_id].pattern);
+        memset(&editor->assets->sprites[asset_id], 0,
+               sizeof(editor->assets->sprites[asset_id]));
+        if (snprintf(path, sizeof(path), "%s/%u.txt", directory,
+                     (unsigned)asset_id) >= 0 && strlen(path) < sizeof(path)) {
+            (void)unlink(path);
+        }
+        sprite_document_destroy(&editor->sprite_document);
+        editor_rebuild_sprite_shortlist(editor);
+        return false;
+    }
+    editor->sprite_field = EDITOR_SPRITE_FIELD_PATTERN;
+    editor->sprite_menu_open = true;
+    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+    editor->sprite_menu_index = 2U;
+    editor->status = EDITOR_STATUS_NONE;
+    return true;
+}
+
+static void editor_cycle_sprite_paint_material(UnifiedEditorState *editor,
+                                               int direction) {
+    int candidate;
+    int attempts;
+    if (!editor || (direction != -1 && direction != 1)) return;
+    candidate = editor->sprite_paint_material > 0
+        ? editor->sprite_paint_material : 1;
+    for (attempts = 0; attempts < ASSET_ID_MAX; attempts++) {
+        candidate += direction;
+        if (candidate < 1) candidate = ASSET_ID_MAX;
+        if (candidate > ASSET_ID_MAX) candidate = 1;
+        if (material_id_is_loaded(editor->assets, candidate)) {
+            editor->sprite_paint_material = candidate;
+            return;
+        }
+    }
+}
+
+static bool editor_begin_selected_sprite_pattern(UnifiedEditorState *editor) {
+    const SceneSpriteInstance *sprite;
+    if (!editor || editor->selection.type != SELECTION_SPRITE) return false;
+    sprite = scene_document_find_sprite(
+        &editor->document, editor->selection.value.sprite.id);
+    if (!sprite || !editor_open_sprite_document(editor, sprite->asset.id)) return false;
+    editor_rebuild_sprite_shortlist(editor);
+    editor->sprite_menu_open = true;
+    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+    editor->sprite_menu_index = 0U;
+    return true;
+}
+
+static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
+                                            const InputState *input) {
+    if (!editor || !input || !editor->sprite_menu_open) return false;
+    if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT) {
+        if (input->editor_save_pressed) {
+            (void)editor_save_sprite_document(editor);
+        } else if (input->editor_previous_pressed && editor->sprite_paint_y > 0U) {
+            editor->sprite_paint_y--;
+        } else if (input->editor_next_pressed &&
+                   editor->sprite_paint_y + 1U < editor->sprite_document.rows) {
+            editor->sprite_paint_y++;
+        } else if (input->editor_decrease_pressed && editor->sprite_paint_x > 0U) {
+            editor->sprite_paint_x--;
+        } else if (input->editor_increase_pressed &&
+                   editor->sprite_paint_x + 1U < editor->sprite_document.cols) {
+            editor->sprite_paint_x++;
+        } else if (input->prev_glyph) {
+            editor_cycle_sprite_paint_material(editor, -1);
+        } else if (input->next_glyph) {
+            editor_cycle_sprite_paint_material(editor, 1);
+        } else if (input->editor_text_backspace_pressed) {
+            (void)sprite_document_erase_cell(
+                &editor->sprite_document, editor->sprite_paint_x,
+                editor->sprite_paint_y);
+        } else if (input->text_input_len > 0 &&
+                   editor->sprite_paint_material > 0) {
+            unsigned char glyph = (unsigned char)input->text_input[0];
+            if (glyph >= 32U && glyph <= 126U) {
+                PatternCell cell = {
+                    (uint8_t)glyph, (uint16_t)editor->sprite_paint_material};
+                (void)sprite_document_paint_cell(
+                    &editor->sprite_document, editor->assets,
+                    editor->sprite_paint_x, editor->sprite_paint_y, cell);
+            }
+        }
+        return true;
+    }
+    if (input->editor_previous_pressed) {
+        size_t count = editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS
+            ? 3U : editor->sprite_shortlist_count;
+        if (count > 0U) editor->sprite_menu_index = editor->sprite_menu_index == 0U
+            ? count - 1U : editor->sprite_menu_index - 1U;
+        return true;
+    }
+    if (input->editor_next_pressed) {
+        size_t count = editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS
+            ? 3U : editor->sprite_shortlist_count;
+        if (count > 0U) editor->sprite_menu_index =
+            (editor->sprite_menu_index + 1U) % count;
+        return true;
+    }
+    if (!input->editor_confirm_pressed) return false;
+    if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
+        if (editor->sprite_menu_index < editor->sprite_shortlist_count) {
+            uint16_t id = editor->sprite_shortlist[editor->sprite_menu_index];
+            if (editor_set_selected_sprite_asset(editor, id) &&
+                editor_open_sprite_document(editor, id)) {
+                editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+                editor->sprite_menu_index = 0U;
+            }
+        }
+        return true;
+    }
+    if (editor->sprite_menu_index == 0U) {
+        editor_rebuild_sprite_shortlist(editor);
+        editor->sprite_menu_stage = EDITOR_SPRITE_MENU_LOAD;
+        editor->sprite_menu_index = 0U;
+    } else if (editor->sprite_menu_index == 1U) {
+        (void)editor_save_sprite_document(editor);
+    } else {
+        editor->sprite_menu_stage = EDITOR_SPRITE_MENU_PAINT;
+    }
+    return true;
 }
 
 CommandResult unified_editor_place_sprite(
@@ -3457,7 +3721,18 @@ EditorInputConsumption unified_editor_update(
 
         /* 3. Inline numeric entry precedes the normal escape hierarchy. */
         if (input->editor_cancel_pressed) {
-            if (editor->light_value_editing) {
+            if (editor->sprite_menu_open) {
+                if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT ||
+                    editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
+                    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+                    editor->sprite_menu_index = 0U;
+                } else {
+                    editor->sprite_menu_open = false;
+                    sprite_document_destroy(&editor->sprite_document);
+                }
+                editor_mark_keyboard(&consumed);
+                return consumed;
+            } else if (editor->light_value_editing) {
                 editor_cancel_light_value_edit(editor);
                 editor_mark_keyboard(&consumed);
                 return consumed;
@@ -3578,7 +3853,9 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
+        if (editor_handle_sprite_menu_input(editor, input)) {
+            editor_mark_keyboard(&consumed);
+        } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
             editor->transparency_menu_open && input->editor_previous_pressed) {
             editor_step_transparency_field(editor, -1);
             editor_mark_keyboard(&consumed);
@@ -3839,6 +4116,12 @@ EditorInputConsumption unified_editor_update(
         } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
                    !editor->light_value_editing &&
                    input->editor_confirm_pressed &&
+                   editor->sprite_field == EDITOR_SPRITE_FIELD_PATTERN) {
+            (void)editor_begin_selected_sprite_pattern(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
+                   !editor->light_value_editing &&
+                   input->editor_confirm_pressed &&
                    editor->sprite_field == EDITOR_SPRITE_FIELD_REMOVE) {
             editor->modal = EDITOR_MODAL_SPRITE_REMOVE_PROMPT;
             editor_mark_keyboard(&consumed);
@@ -3867,13 +4150,15 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_decrease_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
-            if (editor->sprite_field != EDITOR_SPRITE_FIELD_REMOVE)
+            if (editor->sprite_field == EDITOR_SPRITE_FIELD_X ||
+                editor->sprite_field == EDITOR_SPRITE_FIELD_Y)
                 (void)unified_editor_step_sprite_field(
                     editor, editor->sprite_field, -1);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_increase_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
-            if (editor->sprite_field != EDITOR_SPRITE_FIELD_REMOVE)
+            if (editor->sprite_field == EDITOR_SPRITE_FIELD_X ||
+                editor->sprite_field == EDITOR_SPRITE_FIELD_Y)
                 (void)unified_editor_step_sprite_field(
                     editor, editor->sprite_field, 1);
             editor_mark_keyboard(&consumed);
@@ -3947,13 +4232,7 @@ EditorInputConsumption unified_editor_update(
             (void)unified_editor_place_light(editor);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_place_sprite_pressed) {
-            uint16_t asset_id = editor_find_loaded_sprite_id(editor);
-            if (asset_id != 0U) {
-                (void)unified_editor_place_sprite(editor, asset_id);
-            } else {
-                editor->status = EDITOR_STATUS_INVALID_SELECTION;
-                editor->last_command_result = CMD_RESULT_INVALID_TARGET;
-            }
+            (void)editor_create_and_place_sprite_canvas(editor);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
@@ -4512,6 +4791,61 @@ void unified_editor_render_text_overlay(
                                   selected ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                 }
+                if (editor->sprite_menu_open) {
+                    static const char *actions[3] = {
+                        "Load existing...", "Save pattern", "Edit/Paint"
+                    };
+                    if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS) {
+                        grid_print(grid, 1, row++,
+                                   "   PATTERN  Up/Down  Enter=open  Esc=back", fg, bg);
+                        for (size_t action = 0U; action < 3U; action++) {
+                            snprintf(line, sizeof(line), " %s %s",
+                                     editor->sprite_menu_index == action ? ">" : " ",
+                                     actions[action]);
+                            grid_print(grid, 1, row++, line,
+                                       editor->sprite_menu_index == action ? hi : dim, bg);
+                        }
+                    } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
+                        grid_print(grid, 1, row++,
+                                   "   LOAD SPRITE  Up/Down  Enter=load  Esc=back", fg, bg);
+                        if (editor->sprite_shortlist_count == 0U)
+                            grid_print(grid, 1, row++, "   (no saved sprite files)", dim, bg);
+                        for (size_t index = 0U;
+                             index < editor->sprite_shortlist_count; index++) {
+                            snprintf(line, sizeof(line), " %s sprite pattern:%u",
+                                     editor->sprite_menu_index == index ? ">" : " ",
+                                     (unsigned)editor->sprite_shortlist[index]);
+                            grid_print(grid, 1, row++, line,
+                                       editor->sprite_menu_index == index ? hi : dim, bg);
+                        }
+                    } else {
+                        grid_print(grid, 1, row++,
+                                   "   SPRITE PAINT  Arrows=cursor  Type=paint  Backspace=erase",
+                                   fg, bg);
+                        snprintf(line, sizeof(line),
+                                 "   [ / ]=material  Ctrl+S=save  Esc=back  material:%d%s",
+                                 editor->sprite_paint_material,
+                                 editor->sprite_document.dirty ? "  UNSAVED" : "");
+                        grid_print(grid, 1, row++, line, warn, bg);
+                        for (size_t y = 0U; y < editor->sprite_document.rows &&
+                             row < grid->height - 3; y++) {
+                            int col = 4;
+                            for (size_t x = 0U; x < editor->sprite_document.cols &&
+                                 col < grid->width; x++, col++) {
+                                PatternCell cell = editor->sprite_document.cells[
+                                    y * editor->sprite_document.cols + x];
+                                bool cursor = x == editor->sprite_paint_x &&
+                                              y == editor->sprite_paint_y;
+                                (void)grid_set(grid, col, row,
+                                    cursor && (cell.glyph == 0U ||
+                                               cell.glyph == (uint8_t)' ')
+                                        ? (uint8_t)'_' : cell.glyph,
+                                    cursor ? hi : fg, bg);
+                            }
+                            row++;
+                        }
+                    }
+                }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
         }
@@ -4666,10 +5000,10 @@ void unified_editor_render_text_overlay(
                            dim, bg);
             }
         }
-
-
         grid_print(grid, 1, grid->height - 2,
-                   "Tab=walk/edit  E=select  L=place light  Enter=apply  "
+                   "Tab=walk/edit  E=select  L=place light  P=new sprite canvas  Enter=apply",
+                   dim, bg);
+        grid_print(grid, 1, grid->height - 1,
                    "Ctrl+Z/Y=undo/redo  Ctrl+N=new  Ctrl+S=save  Ctrl+O=open",
                    dim, bg);
     }

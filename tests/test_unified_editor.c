@@ -1276,6 +1276,112 @@ static void test_placed_light_native_save_reopen_round_trip(void **state) {
     remove(path);
 }
 
+static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
+    UnifiedEditorState ed;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    const SceneSpriteInstance *sprite;
+    PatternCell alternate = {(uint8_t)'B', UINT16_C(2)};
+    uint16_t created_id;
+    char sprite_dir[512];
+    char created_path[512];
+    char alternate_path[512];
+    char map_path[512];
+    (void)state;
+
+    assert_int_equal(load_editor(&ed, "sprite_canvas.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&ed, g_tmpdir));
+    path_in_tmpdir(sprite_dir, sizeof(sprite_dir), "sprites");
+    assert_int_equal(mkdir(sprite_dir, 0700), 0);
+    assert_true(asset_registry_set_sprite(&g_assets, 2U, 1, 1, &alternate));
+    assert_true(snprintf(alternate_path, sizeof(alternate_path),
+                         "%s/2.txt", sprite_dir) > 0);
+    assert_int_equal(write_text_file(
+        alternate_path,
+        "cols=1\nrows=1\ndefault_material=2\npattern_0=B\nmaterial_0=2\n"), 0);
+
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&in);
+    in.editor_place_sprite_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.document.sprite_count, 1U);
+    sprite = &ed.document.sprites[0];
+    created_id = sprite->asset.id;
+    assert_true(created_id > 0U && created_id != 2U);
+    assert_true(sprite->x == 3.5 && sprite->y == 2.5);
+    assert_int_equal(ed.selection.type, SELECTION_SPRITE);
+    assert_int_equal(ed.selection.value.sprite.id, sprite->id);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_SPRITE);
+    assert_int_equal(ed.sprite_field, EDITOR_SPRITE_FIELD_PATTERN);
+    assert_true(ed.sprite_menu_open);
+    assert_int_equal(ed.sprite_document.cols, 8U);
+    assert_int_equal(ed.sprite_document.rows, 8U);
+    assert_non_null(asset_registry_get_sprite(&g_assets, created_id));
+    assert_true(snprintf(created_path, sizeof(created_path),
+                         "%s/%u.txt", sprite_dir, (unsigned)created_id) > 0);
+    assert_int_equal(access(created_path, F_OK), 0);
+
+    grid = grid_create(160, 80);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Pattern..."));
+    assert_true(grid_contains_text(grid, "Load existing..."));
+    assert_true(grid_contains_text(grid, "Edit/Paint"));
+    assert_true(grid_contains_text(grid, "P=new sprite canvas"));
+    grid_destroy(grid);
+
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_PAINT);
+    zero_input(&in);
+    in.text_input[0] = '#';
+    in.text_input[1] = '\0';
+    in.text_input_len = 1;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_true(ed.sprite_document.dirty);
+    assert_int_equal(asset_registry_get_sprite(
+        &g_assets, created_id)->pattern[0].glyph, 0U);
+    zero_input(&in);
+    in.editor_save_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_false(ed.sprite_document.dirty);
+    assert_int_equal(asset_registry_get_sprite(
+        &g_assets, created_id)->pattern[0].glyph, (uint8_t)'#');
+
+    zero_input(&in);
+    in.editor_cancel_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_ACTIONS);
+    ed.sprite_menu_index = 0U;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_LOAD);
+    assert_int_equal(ed.sprite_shortlist_count, 2U);
+    ed.sprite_menu_index = ed.sprite_shortlist[0] == 2U ? 0U : 1U;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.document.sprites[0].asset.id, 2U);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.sprites[0].asset.id, created_id);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.sprites[0].asset.id, 2U);
+
+    unified_editor_destroy(&ed);
+    path_in_tmpdir(map_path, sizeof(map_path), "sprite_canvas.txt");
+    remove(map_path);
+    remove(created_path);
+    remove(alternate_path);
+    rmdir(sprite_dir);
+    free(g_assets.sprites[created_id].pattern);
+    memset(&g_assets.sprites[created_id], 0, sizeof(g_assets.sprites[created_id]));
+    free(g_assets.sprites[2].pattern);
+    memset(&g_assets.sprites[2], 0, sizeof(g_assets.sprites[2]));
+}
+
 static void select_surface_direct(
     UnifiedEditorState *ed, SelectionType type, int x, int y
 ) {
@@ -4052,6 +4158,7 @@ int main(void) {
         cmocka_unit_test(test_light_place_capacity_and_runtime_failure_are_atomic),
         cmocka_unit_test(test_light_remove_prompt_cancel_confirm_and_undo_redo),
         cmocka_unit_test(test_placed_light_native_save_reopen_round_trip),
+        cmocka_unit_test(test_sprite_p_creates_canvas_and_pattern_workflow),
         cmocka_unit_test(test_decal_place_each_surface_defaults_and_undo_redo),
         cmocka_unit_test(test_decal_surface_menu_selects_stable_id),
         cmocka_unit_test(test_decal_wall_surface_menu_excludes_opposite_face),

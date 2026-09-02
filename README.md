@@ -100,7 +100,8 @@ against current world geometry and decals, shade through the per-channel light
 map, and never affect collision, ray/light occlusion, or mirrors. The paired
 `benchmark-sprite-render` target compares an empty world with 128 active sprites
 against the 6 ms render budget. R11 I2 adds scene v8 sprite authoring (place,
-select, move, remove, undo/redo, and native persistence; see below).
+select, move, remove, undo/redo, and native persistence; see below) and its
+automated exit gate has passed.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -216,8 +217,9 @@ Closing the inspector clears that persistent selection.
 |---|---|
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
-| `E` | Select the aimed wall, floor, ceiling, or point light and open its inspector / surface submenu |
+| `E` | Select the aimed wall, floor, ceiling, point light, decal, or sprite and open its inspector / surface submenu |
 | `L` | Place an undoable point light at the aimed cell center (wall face uses the adjacent cell) |
+| `P` | Create an 8×8 sprite canvas, place it at the aimed cell center, select it, and open its Pattern actions |
 | `Up` / `Down` | Move through the active inspector/menu level |
 | `Ctrl` + arrow keys | Extend a surface multiselect along the same visible wall/floor/ceiling axis (up to 8 faces) |
 | `Left` / `Right` | Edit point-light/decal fields, selected floor/ceiling height and gravity, or the active movement parameter |
@@ -230,6 +232,12 @@ Closing the inspector clears that persistent selection.
 | `Ctrl+I` | Open the legacy import chooser |
 | `F5` | Reload; dirty documents require confirmation |
 | `Escape` | Move up one submenu level, close/deselect at inspector top, then open exit prompt |
+
+The selected sprite inspector includes **Pattern...** with **Load existing...**,
+**Save pattern**, and **Edit/Paint**. In the painter, arrows move the cursor,
+typing paints a glyph, Backspace erases, `[` / `]` cycle loaded materials, and
+`Ctrl+S` saves the standalone `assets/sprites/<id>.txt` pattern. Scene save still
+persists the sprite instance position, stable ID, and pattern reference.
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.

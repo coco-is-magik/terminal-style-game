@@ -20,6 +20,7 @@
 #include "map_catalog.h"
 #include "material_document.h"
 #include "scene_document.h"
+#include "sprite_document.h"
 #include "vertical_physics.h"
 
 #include <stdbool.h>
@@ -92,6 +93,12 @@ typedef enum {
     EDITOR_DECAL_MENU_CREATE_DIMENSIONS
 } EditorDecalMenuStage;
 
+typedef enum {
+    EDITOR_SPRITE_MENU_ACTIONS = 0,
+    EDITOR_SPRITE_MENU_LOAD,
+    EDITOR_SPRITE_MENU_PAINT
+} EditorSpriteMenuStage;
+
 
 typedef enum {
     EDITOR_STATUS_NONE = 0,
@@ -109,6 +116,7 @@ typedef enum {
     EDITOR_STATUS_INVALID_SCENE_NAME,
     EDITOR_STATUS_INVALID_NUMERIC_VALUE,
     EDITOR_STATUS_INVALID_DECAL,
+    EDITOR_STATUS_INVALID_SPRITE,
     EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED,
     EDITOR_STATUS_SPAWN_BLOCKED,
     EDITOR_STATUS_PLAYER_BLOCKED
@@ -194,6 +202,15 @@ typedef struct {
     EditorLightField light_field;
     EditorDecalField decal_field;
     EditorSpriteField sprite_field;
+    bool sprite_menu_open;
+    EditorSpriteMenuStage sprite_menu_stage;
+    size_t sprite_menu_index;
+    uint16_t sprite_shortlist[SPRITE_ID_CAPACITY - 1U];
+    size_t sprite_shortlist_count;
+    SpriteDocument sprite_document;
+    size_t sprite_paint_x;
+    size_t sprite_paint_y;
+    MaterialId sprite_paint_material;
     char light_value_text[32];
     size_t light_value_text_length;
     bool light_value_editing;

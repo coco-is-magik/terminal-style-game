@@ -52,8 +52,8 @@ bool editor_domain_inspector_presentation(
     }
     if (kind == EDITOR_INSPECTOR_SPRITE) {
         *out_presentation = (EditorInspectorPresentation){
-            "sprite instance", "Up/Down  Left/Right=edit  Enter=remove",
-            "Decorative billboard; position only", EDITOR_SPRITE_FIELD_COUNT};
+            "sprite instance", "Up/Down=choose  Left/Right=move  Enter=open",
+            "Pattern opens load, save, and paint", EDITOR_SPRITE_FIELD_COUNT};
         return true;
     }
     if (kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
@@ -285,6 +285,9 @@ bool editor_domain_sprite_field_presentation(
         *out = (EditorInspectorFieldPresentation){
             "Y", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0, map->height - 0.01,
             EDITOR_LIGHT_POSITION_STEP, 2U};
+    else if (field == EDITOR_SPRITE_FIELD_PATTERN)
+        *out = (EditorInspectorFieldPresentation){
+            "Pattern...", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
     else if (field == EDITOR_SPRITE_FIELD_REMOVE)
         *out = (EditorInspectorFieldPresentation){
             "Remove", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
@@ -298,7 +301,9 @@ bool editor_domain_format_sprite_field(
 ) {
     int written;
     if (!sprite || !out_text || out_size == 0U) return false;
-    if (field == EDITOR_SPRITE_FIELD_REMOVE)
+    if (field == EDITOR_SPRITE_FIELD_PATTERN)
+        written = snprintf(out_text, out_size, "Enter=open");
+    else if (field == EDITOR_SPRITE_FIELD_REMOVE)
         written = snprintf(out_text, out_size, "Enter=remove");
     else if (field == EDITOR_SPRITE_FIELD_X)
         written = snprintf(out_text, out_size, "%.2f", sprite->x);

@@ -27,6 +27,8 @@
 #define ASSET_ID_CAPACITY 65536U
 #define ASSET_ID_MAX 65535
 #define SPRITE_ID_CAPACITY 256U
+#define SPRITE_PATTERN_MAX_COLS 255
+#define SPRITE_PATTERN_MAX_ROWS 32
 #define MATERIAL_NAME_CAPACITY 64U
 
 /**
@@ -248,5 +250,10 @@ const SpriteAsset *asset_registry_get_sprite(
 
 /** Check whether a sprite ID has a loaded pattern. */
 bool sprite_id_is_loaded(const AssetRegistry *reg, int id);
+/** Return the lowest unused sprite-pattern ID, or 0 when full. */
+uint16_t asset_registry_allocate_sprite_id(const AssetRegistry *reg);
+/** Deep-copy a sprite pattern into the registry. */
+bool asset_registry_set_sprite(AssetRegistry *reg, uint16_t id, int cols, int rows,
+                               const PatternCell *pattern);
 
 #endif /* ASSETS_H */

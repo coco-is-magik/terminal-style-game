@@ -292,3 +292,31 @@ bool sprite_id_is_loaded(const AssetRegistry *reg, int id) {
     return asset_registry_get_sprite(reg, id) != NULL;
 }
 
+uint16_t asset_registry_allocate_sprite_id(const AssetRegistry *reg) {
+    uint16_t id;
+    if (!reg) return 0U;
+    for (id = 1U; id < SPRITE_ID_CAPACITY; id++) {
+        if (!sprite_id_is_loaded(reg, (int)id)) return id;
+    }
+    return 0U;
+}
+
+bool asset_registry_set_sprite(AssetRegistry *reg, uint16_t id, int cols, int rows,
+                               const PatternCell *pattern) {
+    PatternCell *copy;
+    size_t count;
+    size_t bytes;
+    if (!reg || id == 0U || id >= SPRITE_ID_CAPACITY || cols <= 0 || rows <= 0 ||
+        cols > SPRITE_PATTERN_MAX_COLS || rows > SPRITE_PATTERN_MAX_ROWS || !pattern ||
+        !checked_size_2d(cols, rows, &count) ||
+        !checked_size_bytes(count, sizeof(*copy), &bytes)) return false;
+    copy = malloc(bytes);
+    if (!copy) return false;
+    memcpy(copy, pattern, bytes);
+    free(reg->sprites[id].pattern);
+    reg->sprites[id].cols = cols;
+    reg->sprites[id].rows = rows;
+    reg->sprites[id].pattern = copy;
+    return true;
+}
+

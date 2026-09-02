@@ -57,8 +57,6 @@
 #include <stdlib.h>          /* strtol(), strtod(), malloc(), free(), calloc() */
 #include <string.h>          /* strcmp(), strncmp(), strtok(), strncpy(), memset() */
 
-#define SPRITE_PATTERN_MAX_ROWS 32
-#define SPRITE_PATTERN_MAX_COLS 255
 #define MAP_FILE_MAX_BYTES (1024U * 1024U)
 #include <dirent.h>          /* opendir(), readdir(), closedir(), struct dirent */
 

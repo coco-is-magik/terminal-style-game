@@ -796,6 +796,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_decrease_pressed = false;
                 input.editor_increase_pressed = false;
                 input.editor_place_light_pressed = false;
+                input.editor_place_sprite_pressed = false;
                 input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {

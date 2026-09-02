@@ -393,7 +393,8 @@ edge wrapping, and capacity/performance policy beyond existing limits.
 camera-facing billboards (R11 I1: depth-tested against world geometry and
 decals, lit through the per-channel light map, no collision/ray/light/mirror
 effects). Scene v8 sprite placement/selection/persistence and undo/redo land
-with R11 I2 (code present in commit `277fb3c`; verification/record pending).
+with R11 I2 (code present in commit `277fb3c`; automated verification passed;
+manual acceptance pending).
 
 Still open: animation timeline/file format, playback, oriented versus billboard
 behavior, painting-tool reuse, solid/occluding sprites, mirror visibility, and

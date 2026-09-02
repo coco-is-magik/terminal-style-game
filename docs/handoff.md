@@ -5,14 +5,14 @@
 **R9 and R10 are Released and Verified** (automated gates plus manual acceptance
 on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and
 its automated gates pass. **R11 I2 (scene v8 sprite authoring) is Implemented in
-the working tree (commit `277fb3c`, 2026-09-02) but its exit-gate
-verification, the dedicated implementation record, and the bundled I1+I2 manual
-visual/input acceptance are not recorded yet.** I3 triggers are not implemented.
-Manual sprite acceptance is bundled with I2 because I1 has no ordinary persisted
-placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
-`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`, and
-`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`. An
-`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md` is the next deliverable.
+the working tree (commit `277fb3c`, 2026-09-02); its automated exit gate has
+passed and the dedicated implementation record exists, but the bundled I1+I2
+manual visual/input acceptance is still pending.** I3 triggers are not
+implemented. Manual sprite acceptance is bundled with I2 because I1 has no
+ordinary persisted placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
+`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`,
+`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`, and
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
 
 ## R11 Q1 planning (2026-08-28)
 

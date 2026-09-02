@@ -6,10 +6,11 @@
 The Q1 decision record is `R11_DECISION_RECORD_2026-08-28.md`; this document is
 the Q2/Q3 increment plan. **I1 is Implemented and its automated exit gate passed
 on 2026-08-28.** I2 scene v8 authoring code is present in the working tree
-(commit `277fb3c`, 2026-09-02) and its exit-gate verification, implementation
-record, and bundled manual acceptance are pending. Manual visual acceptance is
-intentionally paired with I2 because I1 has no ordinary scene
-placement/persistence path. R10 is released; prerequisites are satisfied.
+(commit `277fb3c`, 2026-09-02); its automated exit gate passed and the dedicated
+implementation record now exists, while bundled manual acceptance remains
+pending. Manual visual acceptance is intentionally paired with I2 because I1 has
+no ordinary scene placement/persistence path. R10 is released; prerequisites are
+satisfied.
 
 ## Scope
 

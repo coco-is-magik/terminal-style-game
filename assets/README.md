@@ -233,4 +233,8 @@ Whitespace/zero glyphs are transparent. Every visible pattern cell requires a
 loaded, nonzero material; missing assets and invalid references are safe no-ops.
 R11 I1 renders existing `WorldState.sprites`. R11 I2 (scene v8) adds authored
 sprite placement, selection, persistence, and undo/redo (code present in commit
-`277fb3c`; verification/record pending).
+`277fb3c`; automated verification passed; manual acceptance pending).
+In the unified editor, `P` creates and places an 8×8 canvas. Select a sprite and
+open **Pattern...** to load another numeric sprite file, save the current pattern,
+or paint it in place. Pattern edits are copied and do not replace the live
+registry asset until Save succeeds.

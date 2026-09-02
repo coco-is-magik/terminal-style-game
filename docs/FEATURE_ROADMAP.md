@@ -809,11 +809,13 @@ or scene ownership changes broadly.
 **Status:** Active — Q1 decision record locked; I1 sprite runtime Implemented
 with automated gates passing 2026-08-28. I2 scene v8 sprite authoring
 (placement, selection, undo/redo, persistence) is Implemented in commit
-`277fb3c` (2026-09-02); its exit-gate verification, implementation record, and
-the bundled I1+I2 manual acceptance remain pending. I3 triggers are planned but
-not started. See `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
+`277fb3c` (2026-09-02); its automated exit gate has passed and the dedicated
+implementation record now exists, while the bundled I1+I2 manual acceptance
+remains pending. I3 triggers are planned but not started. See
+`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
 `R11_DECISION_RECORD_2026-08-28.md`, plus
-`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`.
+`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md` and
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
 
 **Purpose:** Add broader gameplay-authored entities using the existing scene,
 identity, command, selection, and vertical-world foundations.
