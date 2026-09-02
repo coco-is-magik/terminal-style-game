@@ -60,6 +60,12 @@ void editor_highlight_render_set_height(
     size_t primary_index, EditorHit hover,
     const SceneHeightView *heights
 );
+void editor_highlight_render_trigger_regions(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneTrigger *triggers, size_t trigger_count,
+    SelectionTarget selection, EditorHit hover,
+    const SceneHeightView *heights
+);
 
 /** Draw the editor center-ray reticle above world highlights. */
 void editor_crosshair_render(Grid *grid);

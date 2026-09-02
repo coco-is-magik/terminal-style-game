@@ -613,6 +613,44 @@ static void test_transparency_master_maps_and_detects_custom(void **state) {
     scene_document_destroy(&document);
 }
 
+static void test_trigger_inspector_and_requests(void **state) {
+    SceneDocument document;
+    SelectionTarget target = {0};
+    EditorInspectorPresentation inspector;
+    EditorInspectorFieldPresentation field;
+    EditorMutationRequest request;
+    char text[64];
+    (void)state;
+    init_document(&document);
+    document.triggers = calloc(1U, sizeof(*document.triggers));
+    assert_non_null(document.triggers);
+    document.trigger_count = document.trigger_capacity = 1U;
+    document.triggers[0] = (SceneTrigger){.id = 20U, .min_x = 1.0, .min_y = 1.0,
+        .max_x = 2.0, .max_y = 2.0,
+        .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_SET_FLAG, .flag_id = 1U, .flag_value = true};
+    target.type = SELECTION_TRIGGER;
+    target.value.trigger.id = 20U;
+    assert_int_equal(editor_domain_inspector_kind(target), EDITOR_INSPECTOR_TRIGGER);
+    assert_true(editor_domain_inspector_presentation(EDITOR_INSPECTOR_TRIGGER, &inspector));
+    assert_int_equal(inspector.field_count, EDITOR_TRIGGER_FIELD_COUNT);
+    assert_true(editor_domain_trigger_field_presentation(
+        EDITOR_TRIGGER_FIELD_MIN_X, &document.map, &field));
+    assert_true(field.step == 0.25);
+    assert_true(editor_domain_format_trigger_field(
+        &document.triggers[0], EDITOR_TRIGGER_FIELD_PAYLOAD, text, sizeof(text)));
+    assert_string_equal(text, "flag 1 = true");
+    assert_true(editor_domain_make_trigger_step_request(
+        &document, target, EDITOR_TRIGGER_FIELD_ACTION, 1, &request));
+    assert_int_equal(request.data.trigger.value.action,
+                     SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN);
+    assert_int_equal(request.data.trigger.value.flag_id, 0U);
+    document.triggers[0].min_x = 1.75;
+    assert_false(editor_domain_make_trigger_step_request(
+        &document, target, EDITOR_TRIGGER_FIELD_MIN_X, 1, &request));
+    scene_document_destroy(&document);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dispatch_and_wall_request),
@@ -627,6 +665,7 @@ int main(void) {
         cmocka_unit_test(test_vertical_and_movement_domain_requests),
         cmocka_unit_test(test_optical_domain_preserves_scope_and_inheritance),
         cmocka_unit_test(test_transparency_master_maps_and_detects_custom),
+        cmocka_unit_test(test_trigger_inspector_and_requests),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

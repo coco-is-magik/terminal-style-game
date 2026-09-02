@@ -31,6 +31,9 @@ typedef enum {
     EDITOR_MUTATION_SET_SPRITE,
     EDITOR_MUTATION_INSERT_SPRITE,
     EDITOR_MUTATION_REMOVE_SPRITE,
+    EDITOR_MUTATION_SET_TRIGGER,
+    EDITOR_MUTATION_INSERT_TRIGGER,
+    EDITOR_MUTATION_REMOVE_TRIGGER,
     EDITOR_MUTATION_GROW_EAST,
     EDITOR_MUTATION_GROW_SOUTH,
     EDITOR_MUTATION_SHRINK_EAST,
@@ -90,6 +93,9 @@ typedef struct {
         struct { SceneInstanceId id; SceneSpriteInstance value; } sprite;
         struct { SceneSpriteInstance value; } insert_sprite;
         struct { SceneInstanceId id; } remove_sprite;
+        struct { SceneInstanceId id; SceneTrigger value; } trigger;
+        struct { SceneTrigger value; } insert_trigger;
+        struct { SceneInstanceId id; } remove_trigger;
         struct { int trigger; } resize;
         struct {
             int map_x;
@@ -176,6 +182,9 @@ typedef struct {
             size_t index;
             SceneSpriteInstance removed_value;
         } remove_sprite;
+        struct { SceneInstanceId id; SceneTrigger before; SceneTrigger after; } trigger;
+        struct { SceneTrigger value; } insert_trigger;
+        struct { SceneInstanceId id; size_t index; SceneTrigger removed_value; } remove_trigger;
         struct { int trigger; } resize;
         struct {
             int map_x;
@@ -215,6 +224,7 @@ typedef enum {
     ,CMD_RESULT_MAP_LIMIT
     ,CMD_RESULT_RESIZE_BLOCKED
     ,CMD_RESULT_HISTORY_LIMIT
+    ,CMD_RESULT_TRIGGER_REFERENCE_BLOCKED
 } CommandResult;
 
 typedef struct {
@@ -364,6 +374,17 @@ CommandResult command_history_insert_sprite(
     const SceneSpriteInstance *prototype, SceneInstanceId *out_id
 );
 CommandResult command_history_remove_sprite(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
+);
+CommandResult command_history_set_trigger(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id,
+    const SceneTrigger *value
+);
+CommandResult command_history_insert_trigger(
+    CommandHistory *history, SceneDocument *document,
+    const SceneTrigger *prototype, SceneInstanceId *out_id
+);
+CommandResult command_history_remove_trigger(
     CommandHistory *history, SceneDocument *document, SceneInstanceId id
 );
 

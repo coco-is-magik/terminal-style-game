@@ -1528,7 +1528,7 @@ static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 8\n"));
+    assert_non_null(strstr(saved, "scene_version = 9\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
@@ -1645,7 +1645,7 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
     assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 8\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 9\n"));
     assert_false(document.migration_pending);
     assert_false(scene_document_is_dirty(&document));
     free(saved_text);
@@ -1918,6 +1918,43 @@ static void test_v8_sprite_document_runtime_repair_and_round_trip(void **state) 
     remove(path);
 }
 
+static void test_v9_trigger_document_round_trip_and_resize_guard(void **state) {
+    SceneDocument document;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    SceneTrigger trigger = {.id = 1U, .min_x = 1.0, .min_y = 1.0,
+        .max_x = 2.0, .max_y = 2.0,
+        .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_SET_FLAG, .flag_id = 1U, .flag_value = true};
+    char path[512];
+    const SceneTrigger *found;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "v9_trigger.tscene");
+    scene_document_init(&document);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_create_new(&document), SCENE_LOAD_OK);
+    assert_true(scene_document_internal_insert_trigger(&document, 0U, &trigger));
+    document.next_instance_id = 2U;
+    found = scene_document_find_trigger(&document, 1U);
+    assert_non_null(found);
+    {
+        SceneTrigger invalid = *found;
+        invalid.max_x = document.map.width + 1.0;
+        assert_false(scene_document_internal_set_trigger(&document, 1U, &invalid));
+        assert_true(scene_document_find_trigger(&document, 1U)->max_x == 2.0);
+    }
+    assert_int_equal(scene_document_save_as_native(
+        &document, path, "v9_trigger", &diagnostic), SCENE_SAVE_OK);
+    assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic), SCENE_LOAD_OK);
+    assert_false(reopened.migration_pending);
+    found = scene_document_find_trigger(&reopened, 1U);
+    assert_non_null(found);
+    assert_int_equal(found->flag_id, 1U);
+    scene_document_destroy(&reopened);
+    scene_document_destroy(&document);
+    remove(path);
+}
+
 /* ===================================================================
  *  Entry
  * =================================================================== */
@@ -1970,6 +2007,7 @@ int main(void) {
         cmocka_unit_test(test_v6_optical_document_persistence_and_borrowed_view),
         cmocka_unit_test(test_v3_growth_provenance_save_reopen),
         cmocka_unit_test(test_v8_sprite_document_runtime_repair_and_round_trip),
+        cmocka_unit_test(test_v9_trigger_document_round_trip_and_resize_guard),
         cmocka_unit_test(test_resize_limits_and_allocation_failures_are_atomic),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);

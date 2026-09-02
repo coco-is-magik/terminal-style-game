@@ -7,10 +7,11 @@ The Q1 decision record is `R11_DECISION_RECORD_2026-08-28.md`; this document is
 the Q2/Q3 increment plan. **I1 is Implemented and its automated exit gate passed
 on 2026-08-28.** I2 scene v8 authoring code is present in the working tree
 (commit `277fb3c`, 2026-09-02); its automated exit gate passed and the dedicated
-implementation record now exists, while bundled manual acceptance remains
-pending. Manual visual acceptance is intentionally paired with I2 because I1 has
-no ordinary scene placement/persistence path. R10 is released; prerequisites are
-satisfied.
+implementation record now exists. Bundled I1+I2 manual visual/input acceptance
+passed after the 2026-09-02 workflow-polish follow-up. R10 is released;
+prerequisites are satisfied. The file-by-file path from this baseline through I3
+and the deferred-outcome decision gates is recorded in
+`R11_TRACK_A_COMPLETION_PLAN_2026-09-02.md`.
 
 ## Scope
 
@@ -99,13 +100,12 @@ increment only adds the authoring seam.
 5. Missing patterns produce load repair diagnostics; save/reopen round-trips
    exactly.
 
-**Implementation status (I2, 2026-09-02):** Scene v8 sprite authoring code is
-present in the working tree (commit `277fb3c`) — `SCENE_ASSET_KIND_SPRITE_PATTERN`,
+**Implementation status (I2, 2026-09-02):** Implemented and verified, including
+bundled I1+I2 manual acceptance — `SCENE_ASSET_KIND_SPRITE_PATTERN`,
 `SceneSpriteInstance`, `scene_format_migrate_v7_to_v8`, the `[sprite_instance]`
 parser/writer, `SceneDocument` ownership, `command_history_{insert,set,remove}_sprite`,
-and editor `P`-key placement/selection with sprite inspector fields. The I2
-exit-gate verification, the dedicated implementation record, and the bundled
-I1+I2 manual acceptance are **not** recorded yet.
+and editor `P`-key placement/selection with sprite inspector fields. Evidence is
+recorded in `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
 
 ### Increment exit-gate (I2)
 

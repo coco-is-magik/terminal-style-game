@@ -36,6 +36,8 @@ static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
         return a.value.decal.id == b.value.decal.id;
     if (a.type == SELECTION_SPRITE)
         return a.value.sprite.id == b.value.sprite.id;
+    if (a.type == SELECTION_TRIGGER)
+        return a.value.trigger.id == b.value.trigger.id;
     return a.type == SELECTION_NONE;
 }
 
@@ -299,6 +301,49 @@ EditorHit editor_pick_sprite_selection(
         result.distance = best;
         result.target.type = SELECTION_SPRITE;
         result.target.value.sprite.id = best_id;
+    }
+    return result;
+}
+
+EditorHit editor_pick_trigger_selection(
+    const Camera *camera, const SceneTrigger *triggers, size_t trigger_count,
+    EditorHit existing_hit, double max_distance
+) {
+    EditorHit result = existing_hit;
+    double dx, dy, limit, best = 0.0;
+    SceneInstanceId best_id = 0U;
+    size_t i;
+    if (!camera || (!triggers && trigger_count) || !isfinite(max_distance) ||
+        max_distance <= 0.0) return result;
+    dx = cos(camera->transform.angle); dy = sin(camera->transform.angle);
+    limit = existing_hit.valid ? existing_hit.distance : max_distance;
+    for (i = 0U; i < trigger_count; i++) {
+        const SceneTrigger *t = &triggers[i];
+        double tx1, tx2, ty1, ty2, enter, leave;
+        if (!t->id || !isfinite(t->min_x) || !isfinite(t->max_x) ||
+            !isfinite(t->min_y) || !isfinite(t->max_y) ||
+            t->min_x >= t->max_x || t->min_y >= t->max_y) continue;
+        tx1 = dx == 0.0 ? -INFINITY : (t->min_x - camera->transform.pos.x) / dx;
+        tx2 = dx == 0.0 ? INFINITY : (t->max_x - camera->transform.pos.x) / dx;
+        ty1 = dy == 0.0 ? -INFINITY : (t->min_y - camera->transform.pos.y) / dy;
+        ty2 = dy == 0.0 ? INFINITY : (t->max_y - camera->transform.pos.y) / dy;
+        if (tx1 > tx2) { double s = tx1; tx1 = tx2; tx2 = s; }
+        if (ty1 > ty2) { double s = ty1; ty1 = ty2; ty2 = s; }
+        if (dx == 0.0 && (camera->transform.pos.x < t->min_x ||
+                         camera->transform.pos.x >= t->max_x)) continue;
+        if (dy == 0.0 && (camera->transform.pos.y < t->min_y ||
+                         camera->transform.pos.y >= t->max_y)) continue;
+        enter = fmax(tx1, ty1); leave = fmin(tx2, ty2);
+        if (leave < fmax(enter, 0.0)) continue;
+        if (enter < 0.0) enter = 0.0;
+        if (enter >= limit || (best_id && (enter > best ||
+            (enter == best && t->id >= best_id)))) continue;
+        best = enter; best_id = t->id;
+    }
+    if (best_id) {
+        result.valid = true; result.distance = best;
+        result.target.type = SELECTION_TRIGGER;
+        result.target.value.trigger.id = best_id;
     }
     return result;
 }

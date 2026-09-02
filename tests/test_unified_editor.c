@@ -1460,6 +1460,76 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     memset(&g_assets.sprites[2], 0, sizeof(g_assets.sprites[2]));
 }
 
+static void test_trigger_place_inspect_runtime_remove_and_round_trip(void **state) {
+    UnifiedEditorState ed;
+    SceneDocument reopened;
+    SceneDiagnostic diagnostic;
+    Camera cam;
+    InputState in;
+    Grid *grid;
+    SceneInstanceId id;
+    DocumentStateId authored_state;
+    char path[512];
+    (void)state;
+    assert_int_equal(load_editor(&ed, "trigger_workflow.txt"), 0);
+    camera_init(&cam, 2.5, 2.5, 0.0, PI / 2.0);
+    set_horizontal_hover(&ed, SELECTION_FLOOR, 3, 2);
+    zero_input(&in);
+    in.editor_place_trigger_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    assert_int_equal(ed.document.trigger_count, 1U);
+    id = ed.document.triggers[0].id;
+    assert_int_equal(ed.selection.type, SELECTION_TRIGGER);
+    assert_int_equal(ed.inspector_kind, EDITOR_INSPECTOR_TRIGGER);
+    assert_true(ed.document.triggers[0].min_x == 3.0);
+    grid = grid_create(260, 30);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&ed, grid);
+    assert_true(grid_contains_text(grid, "Inspector: trigger"));
+    assert_true(grid_contains_text(grid, "Min X"));
+    grid_destroy(grid);
+
+    ed.trigger_field = EDITOR_TRIGGER_FIELD_PAYLOAD;
+    zero_input(&in);
+    in.editor_increase_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.document.triggers[0].flag_id, 2U);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.triggers[0].flag_id, 1U);
+    assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.triggers[0].flag_id, 2U);
+
+    authored_state = ed.document.current_state;
+    cam.transform.pos.x = 3.5;
+    cam.transform.pos.y = 2.5;
+    zero_input(&in);
+    update_with(&ed, &cam, &in);
+    assert_true(entity_trigger_session_flag(&ed.trigger_session, 2U));
+    assert_int_equal(ed.document.current_state, authored_state);
+
+    path_in_tmpdir(path, sizeof(path), "trigger_workflow.tscene");
+    assert_int_equal(unified_editor_save_as(
+        &ed, path, "trigger_workflow"), SCENE_SAVE_OK);
+    scene_document_init(&reopened);
+    assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic), SCENE_LOAD_OK);
+    assert_non_null(scene_document_find_trigger(&reopened, id));
+    scene_document_destroy(&reopened);
+
+    ed.trigger_field = EDITOR_TRIGGER_FIELD_REMOVE;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.modal, EDITOR_MODAL_TRIGGER_REMOVE_PROMPT);
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.document.trigger_count, 0U);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_non_null(scene_document_find_trigger(&ed.document, id));
+    unified_editor_destroy(&ed);
+    remove(path);
+}
+
 static void select_surface_direct(
     UnifiedEditorState *ed, SelectionType type, int x, int y
 ) {
@@ -4237,6 +4307,7 @@ int main(void) {
         cmocka_unit_test(test_light_remove_prompt_cancel_confirm_and_undo_redo),
         cmocka_unit_test(test_placed_light_native_save_reopen_round_trip),
         cmocka_unit_test(test_sprite_p_creates_canvas_and_pattern_workflow),
+        cmocka_unit_test(test_trigger_place_inspect_runtime_remove_and_round_trip),
         cmocka_unit_test(test_decal_place_each_surface_defaults_and_undo_redo),
         cmocka_unit_test(test_decal_surface_menu_selects_stable_id),
         cmocka_unit_test(test_decal_wall_surface_menu_excludes_opposite_face),

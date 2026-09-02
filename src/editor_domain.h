@@ -21,7 +21,8 @@ typedef enum {
     EDITOR_INSPECTOR_FLOOR_SURFACE,
     EDITOR_INSPECTOR_CEILING_SURFACE,
     EDITOR_INSPECTOR_DECAL,
-    EDITOR_INSPECTOR_SPRITE
+    EDITOR_INSPECTOR_SPRITE,
+    EDITOR_INSPECTOR_TRIGGER
 } EditorInspectorKind;
 
 typedef enum {
@@ -124,6 +125,14 @@ typedef enum {
     EDITOR_SPRITE_FIELD_REMOVE,
     EDITOR_SPRITE_FIELD_COUNT
 } EditorSpriteField;
+
+typedef enum {
+    EDITOR_TRIGGER_FIELD_MIN_X = 0, EDITOR_TRIGGER_FIELD_MIN_Y,
+    EDITOR_TRIGGER_FIELD_MAX_X, EDITOR_TRIGGER_FIELD_MAX_Y,
+    EDITOR_TRIGGER_FIELD_CONDITION, EDITOR_TRIGGER_FIELD_ACTION,
+    EDITOR_TRIGGER_FIELD_PAYLOAD, EDITOR_TRIGGER_FIELD_REMOVE,
+    EDITOR_TRIGGER_FIELD_COUNT
+} EditorTriggerField;
 
 typedef enum {
     EDITOR_INSPECTOR_FIELD_CHOICE = 0,
@@ -322,6 +331,22 @@ bool editor_domain_make_sprite_step_request(
 bool editor_domain_make_sprite_value_request(
     const SceneDocument *document, SelectionTarget target,
     EditorSpriteField field, double value, EditorMutationRequest *out_request
+);
+bool editor_domain_trigger_field_presentation(
+    EditorTriggerField field, const Map *map,
+    EditorInspectorFieldPresentation *out_presentation
+);
+bool editor_domain_format_trigger_field(
+    const SceneTrigger *trigger, EditorTriggerField field,
+    char *out_text, size_t out_size
+);
+bool editor_domain_make_trigger_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorTriggerField field, int direction, EditorMutationRequest *out_request
+);
+bool editor_domain_make_trigger_confirm_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorTriggerField field, EditorMutationRequest *out_request
 );
 
 #endif /* EDITOR_DOMAIN_H */

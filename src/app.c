@@ -797,6 +797,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_increase_pressed = false;
                 input.editor_place_light_pressed = false;
                 input.editor_place_sprite_pressed = false;
+                input.editor_place_trigger_pressed = false;
                 input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {
@@ -930,6 +931,9 @@ int app_main(int argc, char* argv[]) {
                             grid, ed_map, &cam, editor_lights, editor_light_count,
                             ued.selection, ued.hover, heights);
                     }
+                    editor_highlight_render_trigger_regions(
+                        grid, ed_map, &cam, ued.document.triggers,
+                        ued.document.trigger_count, ued.selection, ued.hover, heights);
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);

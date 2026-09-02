@@ -33,6 +33,8 @@ typedef struct {
     size_t decal_count;
     SceneSpriteInstance *sprites;
     size_t sprite_count;
+    SceneTrigger *triggers;
+    size_t trigger_count;
     OpticalExtension *optical_material_defaults;
     size_t optical_material_capacity;
     OpticalCellOverride *optical_cell_overrides;
@@ -95,6 +97,9 @@ SceneFormatResult scene_format_migrate_v6_to_v7(
 SceneFormatResult scene_format_migrate_v7_to_v8(
     SceneFormatCandidate *candidate,
     SceneDiagnostic *out_diagnostic
+);
+SceneFormatResult scene_format_migrate_v8_to_v9(
+    SceneFormatCandidate *candidate, SceneDiagnostic *out_diagnostic
 );
 
 SceneFormatResult scene_format_parse(

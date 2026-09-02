@@ -107,6 +107,14 @@ static bool sprites_equal(
     return memcmp(a, b, sizeof(*a)) == 0;
 }
 
+static bool triggers_equal(const SceneTrigger *a, const SceneTrigger *b) {
+    return a->id == b->id && a->min_x == b->min_x && a->min_y == b->min_y &&
+        a->max_x == b->max_x && a->max_y == b->max_y &&
+        a->condition == b->condition && a->action == b->action &&
+        a->flag_id == b->flag_id && a->flag_value == b->flag_value &&
+        a->target_id == b->target_id;
+}
+
 static bool cell_vertical_equal(const SceneCellVertical *a,
                                 const SceneCellVertical *b) {
     return a->floor_height_step == b->floor_height_step &&
@@ -189,7 +197,8 @@ static bool light_value_insert_is_valid(
         value->x >= document->map.width || value->y >= document->map.height ||
         value->radius <= 0.0 ||
         document->light_count >= SCENE_MAX_LIGHTS ||
-        scene_document_find_light(document, value->id) != NULL) {
+        scene_document_find_light(document, value->id) != NULL ||
+        scene_document_find_trigger(document, value->id) != NULL) {
         return false;
     }
     return true;
@@ -222,6 +231,23 @@ static bool find_sprite_index(
             return true;
         }
     }
+    return false;
+}
+
+static bool find_trigger_index(const SceneDocument *document, SceneInstanceId id,
+                               size_t *out_index) {
+    size_t i;
+    if (!document || !out_index || id == 0U) return false;
+    for (i = 0U; i < document->trigger_count; i++)
+        if (document->triggers[i].id == id) { *out_index = i; return true; }
+    return false;
+}
+
+static bool light_is_referenced(const SceneDocument *document, SceneInstanceId id) {
+    size_t i;
+    for (i = 0U; i < document->trigger_count; i++)
+        if (document->triggers[i].action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
+            document->triggers[i].target_id == id) return true;
     return false;
 }
 
@@ -311,6 +337,19 @@ static bool mutations_target_same_field(
     if (a->type == EDITOR_MUTATION_INSERT_DECAL &&
         b->type == EDITOR_MUTATION_INSERT_DECAL)
         return a->data.insert_decal.value.id == b->data.insert_decal.value.id;
+    if ((a->type == EDITOR_MUTATION_SET_TRIGGER ||
+         a->type == EDITOR_MUTATION_REMOVE_TRIGGER) &&
+        (b->type == EDITOR_MUTATION_SET_TRIGGER ||
+         b->type == EDITOR_MUTATION_REMOVE_TRIGGER)) {
+        SceneInstanceId a_id = a->type == EDITOR_MUTATION_SET_TRIGGER
+            ? a->data.trigger.id : a->data.remove_trigger.id;
+        SceneInstanceId b_id = b->type == EDITOR_MUTATION_SET_TRIGGER
+            ? b->data.trigger.id : b->data.remove_trigger.id;
+        return a_id == b_id;
+    }
+    if (a->type == EDITOR_MUTATION_INSERT_TRIGGER &&
+        b->type == EDITOR_MUTATION_INSERT_TRIGGER)
+        return a->data.insert_trigger.value.id == b->data.insert_trigger.value.id;
     if ((a->type == EDITOR_MUTATION_SET_SPRITE ||
          a->type == EDITOR_MUTATION_REMOVE_SPRITE) &&
         (b->type == EDITOR_MUTATION_SET_SPRITE ||
@@ -480,7 +519,8 @@ static bool prepare_mutation(
     }
     if (request->type == EDITOR_MUTATION_REMOVE_LIGHT) {
         size_t index;
-        if (!find_light_index(document, request->data.remove_light.id, &index))
+        if (!find_light_index(document, request->data.remove_light.id, &index) ||
+            light_is_referenced(document, request->data.remove_light.id))
             return false;
         mutation->data.remove_light.id = request->data.remove_light.id;
         mutation->data.remove_light.index = index;
@@ -506,6 +546,8 @@ static bool prepare_mutation(
             scene_document_find_decal(
                 document, request->data.insert_decal.value.id) != NULL ||
             scene_document_find_light(
+                document, request->data.insert_decal.value.id) != NULL ||
+            scene_document_find_trigger(
                 document, request->data.insert_decal.value.id) != NULL) return false;
         mutation->data.insert_decal.value = request->data.insert_decal.value;
         *changed = true;
@@ -544,7 +586,8 @@ static bool prepare_mutation(
             value->y >= document->map.height ||
             scene_document_find_sprite(document, value->id) ||
             scene_document_find_light(document, value->id) ||
-            scene_document_find_decal(document, value->id)) return false;
+            scene_document_find_decal(document, value->id) ||
+            scene_document_find_trigger(document, value->id)) return false;
         mutation->data.insert_sprite.value = *value;
         *changed = true;
         return true;
@@ -556,6 +599,40 @@ static bool prepare_mutation(
         mutation->data.remove_sprite.id = request->data.remove_sprite.id;
         mutation->data.remove_sprite.index = index;
         mutation->data.remove_sprite.removed_value = document->sprites[index];
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_SET_TRIGGER) {
+        const SceneTrigger *before = scene_document_find_trigger(
+            document, request->data.trigger.id);
+        if (!before || !scene_document_internal_trigger_value_is_valid(
+                document, request->data.trigger.id, &request->data.trigger.value))
+            return false;
+        mutation->data.trigger.id = request->data.trigger.id;
+        mutation->data.trigger.before = *before;
+        mutation->data.trigger.after = request->data.trigger.value;
+        *changed = !triggers_equal(before, &request->data.trigger.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_INSERT_TRIGGER) {
+        const SceneTrigger *value = &request->data.insert_trigger.value;
+        if (document->trigger_count >= SCENE_MAX_TRIGGERS ||
+            !scene_document_internal_trigger_value_is_valid(document, value->id, value) ||
+            scene_document_find_light(document, value->id) ||
+            scene_document_find_decal(document, value->id) ||
+            scene_document_find_sprite(document, value->id) ||
+            scene_document_find_trigger(document, value->id)) return false;
+        mutation->data.insert_trigger.value = *value;
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_REMOVE_TRIGGER) {
+        size_t index;
+        if (!find_trigger_index(document, request->data.remove_trigger.id, &index))
+            return false;
+        mutation->data.remove_trigger.id = request->data.remove_trigger.id;
+        mutation->data.remove_trigger.index = index;
+        mutation->data.remove_trigger.removed_value = document->triggers[index];
         *changed = true;
         return true;
     }
@@ -757,6 +834,29 @@ static bool apply_mutation(
         return scene_document_internal_insert_sprite(
             document, mutation->data.remove_sprite.index,
             &mutation->data.remove_sprite.removed_value);
+    }
+    if (mutation->type == EDITOR_MUTATION_SET_TRIGGER)
+        return scene_document_internal_set_trigger(
+            document, mutation->data.trigger.id,
+            after ? &mutation->data.trigger.after : &mutation->data.trigger.before);
+    if (mutation->type == EDITOR_MUTATION_INSERT_TRIGGER) {
+        if (after) return scene_document_internal_insert_trigger(
+            document, document->trigger_count, &mutation->data.insert_trigger.value);
+        {
+            size_t index;
+            if (!find_trigger_index(document, mutation->data.insert_trigger.value.id,
+                                    &index)) return false;
+            return scene_document_internal_remove_trigger(
+                document, index, mutation->data.insert_trigger.value.id);
+        }
+    }
+    if (mutation->type == EDITOR_MUTATION_REMOVE_TRIGGER) {
+        if (after) return scene_document_internal_remove_trigger(
+            document, mutation->data.remove_trigger.index,
+            mutation->data.remove_trigger.id);
+        return scene_document_internal_insert_trigger(
+            document, mutation->data.remove_trigger.index,
+            &mutation->data.remove_trigger.removed_value);
     }
     return false;
 }
@@ -1138,6 +1238,9 @@ CommandResult command_history_remove_light(
     SceneInstanceId id
 ) {
     EditorMutationRequest request = {0};
+    if (document && scene_document_find_light(document, id) &&
+        light_is_referenced(document, id))
+        return CMD_RESULT_TRIGGER_REFERENCE_BLOCKED;
     request.type = EDITOR_MUTATION_REMOVE_LIGHT;
     request.data.remove_light.id = id;
     return command_history_execute_group(history, document, &request, 1U);
@@ -1270,6 +1373,50 @@ CommandResult command_history_remove_sprite(
     EditorMutationRequest request = {0};
     request.type = EDITOR_MUTATION_REMOVE_SPRITE;
     request.data.remove_sprite.id = id;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_trigger(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id,
+    const SceneTrigger *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_TRIGGER;
+    request.data.trigger.id = id;
+    request.data.trigger.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_insert_trigger(
+    CommandHistory *history, SceneDocument *document,
+    const SceneTrigger *prototype, SceneInstanceId *out_id
+) {
+    EditorMutationRequest request = {0};
+    SceneInstanceId allocated, next_before;
+    SceneIdAllocateResult allocation;
+    CommandResult result;
+    if (!history || !document || !prototype ||
+        document->trigger_count >= SCENE_MAX_TRIGGERS) return CMD_RESULT_INVALID_TARGET;
+    next_before = document->next_instance_id;
+    allocation = scene_document_internal_allocate_instance_id(document, &allocated);
+    if (allocation == SCENE_ID_ALLOCATE_EXHAUSTED) return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (allocation != SCENE_ID_ALLOCATE_OK) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_INSERT_TRIGGER;
+    request.data.insert_trigger.value = *prototype;
+    request.data.insert_trigger.value.id = allocated;
+    result = command_history_execute_group(history, document, &request, 1U);
+    if (result != CMD_RESULT_OK) { document->next_instance_id = next_before; return result; }
+    if (out_id) *out_id = allocated;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_remove_trigger(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
+) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_REMOVE_TRIGGER;
+    request.data.remove_trigger.id = id;
     return command_history_execute_group(history, document, &request, 1U);
 }
 

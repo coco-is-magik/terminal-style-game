@@ -24,6 +24,7 @@ verified authored-scene and typed-editor boundary:
 versioned scene -> parse/migrate/validate -> SceneDocument (authored owner)
 reusable assets -> parse/validate -> AssetRegistry (definition owner)
 SceneDocument + AssetRegistry -> immutable runtime adapters -> consumers/caches
+SceneDocument triggers -> EntityTriggerSession -> session-only effects
 ```
 
 R2 implements transactional native scene v1, explicit legacy import, scene-owned map,
@@ -93,6 +94,11 @@ See `R4_INCREMENT_F_IMPLEMENTATION_RECORD_2026-08-11.md` and
 - `scene_document` / `command_system`: authoritative scene metadata, instances, and
   v2 authored cells plus transactional mutation history. The current renderer and
   collision consumers borrow the document's derived compatibility `Map` view.
+- `entity_trigger_session`: allocation-free deterministic runtime state for
+  authored scene-v9 enter-region triggers. It borrows trigger/light/spawn data and
+  owns only per-entry flags and light-enabled state; ticks never mutate authored
+  data or command history. The current adapter is native-scene editor Walk mode.
+  Start Game remains on the deprecated legacy loader pending post-editor cleanup.
 - `map_catalog`: owns a sorted, extension-filtered snapshot of regular direct
   children under a caller-supplied root. Native Open filters lowercase `.tscene`;
   legacy Import filters lowercase `.txt`. Refresh builds a candidate snapshot

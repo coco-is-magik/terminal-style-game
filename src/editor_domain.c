@@ -28,6 +28,7 @@ EditorInspectorKind editor_domain_inspector_kind(SelectionTarget target) {
     if (target.type == SELECTION_CEILING) return EDITOR_INSPECTOR_CEILING_SURFACE;
     if (target.type == SELECTION_DECAL) return EDITOR_INSPECTOR_DECAL;
     if (target.type == SELECTION_SPRITE) return EDITOR_INSPECTOR_SPRITE;
+    if (target.type == SELECTION_TRIGGER) return EDITOR_INSPECTOR_TRIGGER;
     return EDITOR_INSPECTOR_NONE;
 }
 
@@ -54,6 +55,12 @@ bool editor_domain_inspector_presentation(
         *out_presentation = (EditorInspectorPresentation){
             "sprite instance", "Up/Down=choose  Left/Right=move  Enter=open",
             "Pattern opens load, save, and paint", EDITOR_SPRITE_FIELD_COUNT};
+        return true;
+    }
+    if (kind == EDITOR_INSPECTOR_TRIGGER) {
+        *out_presentation = (EditorInspectorPresentation){
+            "trigger", "Up/Down=choose  Left/Right=edit  Enter=set",
+            "Enter-region; runtime state is not authored", EDITOR_TRIGGER_FIELD_COUNT};
         return true;
     }
     if (kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
@@ -129,6 +136,9 @@ bool editor_domain_inspector_field_presentation(
         return editor_domain_sprite_field_presentation(
             (EditorSpriteField)field_index, map, out_presentation);
     }
+    if (kind == EDITOR_INSPECTOR_TRIGGER && field_index < EDITOR_TRIGGER_FIELD_COUNT)
+        return editor_domain_trigger_field_presentation(
+            (EditorTriggerField)field_index, map, out_presentation);
     if (kind != EDITOR_INSPECTOR_LIGHT ||
         field_index >= EDITOR_LIGHT_FIELD_COUNT) return false;
     if (field_index == EDITOR_LIGHT_FIELD_REMOVE) {
@@ -359,6 +369,120 @@ bool editor_domain_make_sprite_step_request(
     if (value > presentation.maximum) value = presentation.maximum;
     return editor_domain_make_sprite_value_request(
         document, target, field, value, out_request);
+}
+
+bool editor_domain_trigger_field_presentation(
+    EditorTriggerField field, const Map *map, EditorInspectorFieldPresentation *out
+) {
+    static const char *labels[] = {
+        "Min X", "Min Y", "Max X", "Max Y", "Condition", "Action", "Value", "Remove"
+    };
+    if (!map || !out || field < 0 || field >= EDITOR_TRIGGER_FIELD_COUNT) return false;
+    *out = (EditorInspectorFieldPresentation){labels[field],
+        field < EDITOR_TRIGGER_FIELD_CONDITION || field == EDITOR_TRIGGER_FIELD_PAYLOAD
+            ? EDITOR_INSPECTOR_FIELD_NUMBER : EDITOR_INSPECTOR_FIELD_CHOICE,
+        0.0, (field == EDITOR_TRIGGER_FIELD_MIN_X || field == EDITOR_TRIGGER_FIELD_MAX_X)
+            ? map->width : (field == EDITOR_TRIGGER_FIELD_MIN_Y ||
+                            field == EDITOR_TRIGGER_FIELD_MAX_Y) ? map->height : 64.0,
+        field == EDITOR_TRIGGER_FIELD_PAYLOAD ? 1.0 : 0.25,
+        field == EDITOR_TRIGGER_FIELD_PAYLOAD ? 0U : 2U};
+    return true;
+}
+
+bool editor_domain_format_trigger_field(const SceneTrigger *t, EditorTriggerField field,
+                                        char *out, size_t size) {
+    int n;
+    if (!t || !out || !size) return false;
+    if (field == EDITOR_TRIGGER_FIELD_MIN_X) n = snprintf(out, size, "%.2f", t->min_x);
+    else if (field == EDITOR_TRIGGER_FIELD_MIN_Y) n = snprintf(out, size, "%.2f", t->min_y);
+    else if (field == EDITOR_TRIGGER_FIELD_MAX_X) n = snprintf(out, size, "%.2f", t->max_x);
+    else if (field == EDITOR_TRIGGER_FIELD_MAX_Y) n = snprintf(out, size, "%.2f", t->max_y);
+    else if (field == EDITOR_TRIGGER_FIELD_CONDITION) n = snprintf(out, size, "enter region");
+    else if (field == EDITOR_TRIGGER_FIELD_ACTION) n = snprintf(out, size, "%s",
+        t->action == SCENE_TRIGGER_ACTION_SET_FLAG ? "set flag" :
+        t->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN ? "teleport to spawn" : "toggle light");
+    else if (field == EDITOR_TRIGGER_FIELD_PAYLOAD) {
+        if (t->action == SCENE_TRIGGER_ACTION_SET_FLAG)
+            n = snprintf(out, size, "flag %u = %s", t->flag_id,
+                         t->flag_value ? "true" : "false");
+        else if (t->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT)
+            n = snprintf(out, size, "light %llu",
+                         (unsigned long long)t->target_id);
+        else n = snprintf(out, size, "none");
+    }
+    else n = snprintf(out, size, "Enter=remove");
+    return n >= 0 && (size_t)n < size;
+}
+
+bool editor_domain_make_trigger_step_request(
+    const SceneDocument *document, SelectionTarget target, EditorTriggerField field,
+    int direction, EditorMutationRequest *out
+) {
+    const SceneTrigger *current;
+    SceneTrigger value;
+    double step = direction < 0 ? -0.25 : 0.25;
+    if (!document || !out || !direction || target.type != SELECTION_TRIGGER) return false;
+    current = scene_document_find_trigger(document, target.value.trigger.id);
+    if (!current) return false;
+    value = *current;
+    if (field == EDITOR_TRIGGER_FIELD_MIN_X) value.min_x += step;
+    else if (field == EDITOR_TRIGGER_FIELD_MIN_Y) value.min_y += step;
+    else if (field == EDITOR_TRIGGER_FIELD_MAX_X) value.max_x += step;
+    else if (field == EDITOR_TRIGGER_FIELD_MAX_Y) value.max_y += step;
+    else if (field == EDITOR_TRIGGER_FIELD_ACTION) {
+        int action = (int)value.action + (direction < 0 ? -1 : 1);
+        if (action < 0) action = SCENE_TRIGGER_ACTION_TOGGLE_LIGHT;
+        if (action > SCENE_TRIGGER_ACTION_TOGGLE_LIGHT) action = 0;
+        value.action = (SceneTriggerActionType)action;
+        value.flag_id = value.action == SCENE_TRIGGER_ACTION_SET_FLAG ? 1U : 0U;
+        value.flag_value = value.action == SCENE_TRIGGER_ACTION_SET_FLAG;
+        value.target_id = value.action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
+            document->light_count ? document->lights[0].id : 0U;
+    } else if (field == EDITOR_TRIGGER_FIELD_PAYLOAD) {
+        if (value.action == SCENE_TRIGGER_ACTION_SET_FLAG) {
+            int id = (int)value.flag_id + (direction < 0 ? -1 : 1);
+            if (id < 1) id = 1;
+            if (id > 64) id = 64;
+            value.flag_id = (uint8_t)id;
+        } else if (value.action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT && document->light_count) {
+            size_t index;
+            for (index = 0U; index < document->light_count; index++)
+                if (document->lights[index].id == value.target_id) break;
+            if (index == document->light_count) index = 0U;
+            else if (direction < 0)
+                index = index == 0U ? document->light_count - 1U : index - 1U;
+            else index = (index + 1U) % document->light_count;
+            value.target_id = document->lights[index].id;
+        }
+        else return false;
+    } else return false;
+    if (value.min_x < 0.0 || value.min_y < 0.0 ||
+        value.max_x > document->map.width || value.max_y > document->map.height ||
+        value.min_x >= value.max_x || value.min_y >= value.max_y ||
+        (value.action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT && value.target_id == 0U))
+        return false;
+    memset(out, 0, sizeof(*out)); out->type = EDITOR_MUTATION_SET_TRIGGER;
+    out->data.trigger.id = value.id; out->data.trigger.value = value;
+    return true;
+}
+
+bool editor_domain_make_trigger_confirm_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorTriggerField field, EditorMutationRequest *out
+) {
+    const SceneTrigger *current;
+    SceneTrigger value;
+    if (!document || !out || target.type != SELECTION_TRIGGER ||
+        field != EDITOR_TRIGGER_FIELD_PAYLOAD) return false;
+    current = scene_document_find_trigger(document, target.value.trigger.id);
+    if (!current || current->action != SCENE_TRIGGER_ACTION_SET_FLAG) return false;
+    value = *current;
+    value.flag_value = !value.flag_value;
+    memset(out, 0, sizeof(*out));
+    out->type = EDITOR_MUTATION_SET_TRIGGER;
+    out->data.trigger.id = value.id;
+    out->data.trigger.value = value;
+    return true;
 }
 
 bool editor_domain_make_surface_material_request(

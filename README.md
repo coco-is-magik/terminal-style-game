@@ -99,9 +99,10 @@ R11 I1 adds decorative camera-facing glyph-pattern sprites. They are depth-teste
 against current world geometry and decals, shade through the per-channel light
 map, and never affect collision, ray/light occlusion, or mirrors. The paired
 `benchmark-sprite-render` target compares an empty world with 128 active sprites
-against the 6 ms render budget. R11 I2 adds scene v8 sprite authoring (place,
-select, move, remove, undo/redo, and native persistence; see below) and its
-automated exit gate has passed.
+against the 6 ms render budget. R11 I2 adds sprite authoring (place, select, move,
+remove, undo/redo, and native persistence). R11 I3 adds scene v9 authored
+enter-region triggers and the closed actions set flag, teleport to spawn, and
+toggle light in native-scene editor Walk mode.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -307,7 +308,7 @@ overrides together.
   RGB channels tint surface illumination independently, alpha scales emitted light,
   and negative intensity subtracts the selected channels. Type can switch between
   Point and Spot; spot Direction, Cone, and radial Falloff are bounded inspector
-  fields. Strict canonical scene v8 persists these fields (v7 introduced them)
+  fields. Strict canonical scene v9 persists these fields (v7 introduced them)
   and older native scenes migrate to exact point-light defaults. The headless
   `make benchmark-colored-lighting`
   gate compares deterministic white, colored, and spot workloads against a
@@ -315,9 +316,14 @@ overrides together.
 - Sprites can be placed at aimed cell centers, selected by stable scene ID, moved
   by X/Y inspector fields, and removed with confirmation. Placement, removal,
   and edits share the same undo/redo history as walls, lights, and decals, and
-  persist in native Save/Open through the scene v8 `[sprite_instance]` records.
+  persist in native Save/Open through `[sprite_instance]` records introduced in v8.
   Decorative sprites render as depth-tested billboards (see the R11 overview
   above); they never affect collision, ray/light occlusion, or mirrors.
+- `T` places a one-cell `enter_region` trigger at the aimed cell. Trigger fields
+  edit its quarter-cell bounds, action, and payload; regions are highlighted and
+  selected by stable scene ID. Actions run once per distinct entry in editor Walk
+  mode. Flags and light enabled state are session-only and never dirty the scene;
+  trigger records persist through canonical scene v9 Save/Open.
 - Decals can be placed on wall, floor, and ceiling surfaces through the surface
   inspector's Decals submenu. **Add decal…** creates a new reusable pattern asset
   (default `1 × 1`, editable columns/rows), refreshes the registry, and places a

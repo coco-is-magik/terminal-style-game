@@ -3,10 +3,15 @@
 > **Amendment (2026-09-02):** I1 sprite runtime is implemented and its
 > automated gates passed (2026-08-28); I2 scene v8 authoring code is present in
 > commit `277fb3c` with its automated exit gate passed and the dedicated
-> implementation record now written. Bundled manual acceptance remains pending.
+> implementation record now written. Bundled I1+I2 manual acceptance passed
+> after the 2026-09-02 workflow-polish follow-up.
 > The "decision time" code-grounding statements below that describe sprite
 > rendering/persistence as not yet implemented are superseded for those
 > increments. The decisions themselves remain binding.
+>
+> **I3 requirements lock (2026-09-02):** Exact region, action payload, session,
+> scene-v9, and editor semantics are approved in
+> `R11_I3_TRIGGER_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-02.md`.
 
 ## Authority
 

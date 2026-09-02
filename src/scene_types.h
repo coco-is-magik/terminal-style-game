@@ -20,8 +20,9 @@
 #define SCENE_VERSION_V6 6U
 #define SCENE_VERSION_V7 7U
 #define SCENE_VERSION_V8 8U
-/* Canonical writes use v8; v1-v7 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V8
+#define SCENE_VERSION_V9 9U
+/* Canonical writes use v9; v1-v8 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V9
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -31,6 +32,8 @@
 #define SCENE_MAX_LIGHTS 64U
 #define SCENE_MAX_DECALS 256U
 #define SCENE_MAX_SPRITES 128U
+#define SCENE_MAX_TRIGGERS 128U
+#define SCENE_TRIGGER_FLAG_CAPACITY 64U
 #define SCENE_MAX_REPAIR_DIAGNOSTICS 256U
 
 typedef uint64_t SceneInstanceId;
@@ -190,5 +193,28 @@ typedef struct {
     double x;
     double y;
 } SceneSpriteInstance;
+
+typedef enum {
+    SCENE_TRIGGER_CONDITION_ENTER_REGION = 0
+} SceneTriggerConditionType;
+
+typedef enum {
+    SCENE_TRIGGER_ACTION_SET_FLAG = 0,
+    SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN,
+    SCENE_TRIGGER_ACTION_TOGGLE_LIGHT
+} SceneTriggerActionType;
+
+typedef struct {
+    SceneInstanceId id;
+    double min_x;
+    double min_y;
+    double max_x;
+    double max_y;
+    SceneTriggerConditionType condition;
+    SceneTriggerActionType action;
+    uint8_t flag_id;
+    bool flag_value;
+    SceneInstanceId target_id;
+} SceneTrigger;
 
 #endif /* SCENE_TYPES_H */

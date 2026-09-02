@@ -46,6 +46,7 @@ typedef struct {
 typedef struct {
     SceneInstanceId id;
 } SpriteSelectionRef;
+typedef struct { SceneInstanceId id; } TriggerSelectionRef;
 
 typedef struct {
     int map_x;
@@ -59,7 +60,8 @@ typedef enum {
     SELECTION_FLOOR,
     SELECTION_CEILING,
     SELECTION_DECAL,
-    SELECTION_SPRITE
+    SELECTION_SPRITE,
+    SELECTION_TRIGGER
 } SelectionType;
 
 typedef struct {
@@ -69,6 +71,7 @@ typedef struct {
         LightSelectionRef light;
         DecalSelectionRef decal;
         SpriteSelectionRef sprite;
+        TriggerSelectionRef trigger;
         HorizontalSurfaceRef horizontal;
     } value;
 } SelectionTarget;

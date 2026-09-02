@@ -589,6 +589,25 @@ static void test_selection_set_primary_capacity_and_revalidate(void **state) {
     map_destroy(map);
 }
 
+static void test_trigger_pick_nearest_and_respects_existing_hit(void **state) {
+    Camera camera;
+    SceneTrigger triggers[2] = {
+        {.id = 9U, .min_x = 3.0, .min_y = 2.0, .max_x = 4.0, .max_y = 3.0},
+        {.id = 8U, .min_x = 1.0, .min_y = 2.0, .max_x = 2.0, .max_y = 3.0}
+    };
+    EditorHit hit = {0};
+    (void)state;
+    camera_init(&camera, 0.5, 2.5, 0.0, PI / 2.0);
+    hit = editor_pick_trigger_selection(&camera, triggers, 2U, hit, 10.0);
+    assert_true(hit.valid);
+    assert_int_equal(hit.target.type, SELECTION_TRIGGER);
+    assert_int_equal(hit.target.value.trigger.id, 8U);
+    hit.distance = 0.25;
+    hit.target.type = SELECTION_WALL_FACE;
+    hit = editor_pick_trigger_selection(&camera, triggers, 2U, hit, 10.0);
+    assert_int_equal(hit.target.type, SELECTION_WALL_FACE);
+}
+
 /* ===================================================================
  *  Runner
  * =================================================================== */
@@ -620,6 +639,7 @@ int main(void) {
         cmocka_unit_test(test_horizontal_pick_occlusion_and_precedence),
         cmocka_unit_test(test_horizontal_selection_validation),
         cmocka_unit_test(test_selection_set_primary_capacity_and_revalidate),
+        cmocka_unit_test(test_trigger_pick_nearest_and_respects_existing_hit),
     };
 
     return cmocka_run_group_tests(tests, group_setup, NULL);

@@ -231,10 +231,34 @@ material_1=1,2,1
 
 Whitespace/zero glyphs are transparent. Every visible pattern cell requires a
 loaded, nonzero material; missing assets and invalid references are safe no-ops.
-R11 I1 renders existing `WorldState.sprites`. R11 I2 (scene v8) adds authored
+R11 I1 renders existing `WorldState.sprites`. R11 I2 adds authored
 sprite placement, selection, persistence, and undo/redo (code present in commit
-`277fb3c`; automated verification passed; manual acceptance pending).
+`277fb3c`; automated and bundled manual verification passed).
 In the unified editor, `P` creates and places an 8×8 canvas. Select a sprite and
 open **Pattern...** to load another numeric sprite file, save the current pattern,
 or paint it in place. Pattern edits are copied and do not replace the live
 registry asset until Save succeeds.
+
+## Native scene v9 triggers
+
+Canonical `.tscene` v9 files may contain repeated trigger blocks after sprite
+instances. Identity is the scene-wide stable ID in the block header:
+
+```ini
+[trigger 42]
+min_x = 2
+min_y = 3
+max_x = 3
+max_y = 4
+condition = enter_region
+action = set_flag
+flag_id = 1
+flag_value = 1
+```
+
+Actions have exact payloads: `set_flag` requires `flag_id` (`1..64`) and
+`flag_value` (`0` or `1`); `teleport_to_spawn` has no payload; `toggle_light`
+requires `target_id` resolving to a scene light. Regions are finite positive
+half-open rectangles contained by the map. Unknown/inapplicable fields, unknown
+tokens, duplicate IDs, and dangling targets reject the scene transactionally.
+Versions 1–8 remain readable and migrate forward; canonical Save writes v9.

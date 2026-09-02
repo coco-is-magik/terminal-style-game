@@ -652,6 +652,30 @@ static void test_null_inputs_are_safe(void **state) {
     editor_crosshair_render(NULL);
 }
 
+static void test_trigger_region_highlight_is_visible_and_borrowed(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(9, 9);
+    Camera camera;
+    SceneTrigger trigger = {.id = 7U, .min_x = 5.0, .min_y = 4.0,
+        .max_x = 6.0, .max_y = 5.0};
+    SceneTrigger before = trigger;
+    SelectionTarget selection = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    camera_init(&camera, 3.5, 4.5, 0.0, PI / 2.0);
+    fill_grid(grid, ' ', dark, dark);
+    selection.type = SELECTION_TRIGGER;
+    selection.value.trigger.id = 7U;
+    editor_highlight_render_trigger_regions(
+        grid, map, &camera, &trigger, 1U, selection, (EditorHit){0}, NULL);
+    assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_memory_equal(&trigger, &before, sizeof(trigger));
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_selected_outline_all_cardinal_faces),
@@ -673,6 +697,7 @@ int main(void) {
         cmocka_unit_test(test_horizontal_highlight_composes_over_authored_material),
         cmocka_unit_test(test_height_aware_wall_outline_matches_raised_span),
         cmocka_unit_test(test_null_inputs_are_safe),
+        cmocka_unit_test(test_trigger_region_highlight_is_visible_and_borrowed),
     };
 
     return cmocka_run_group_tests(tests, group_setup, NULL);

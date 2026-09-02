@@ -3,7 +3,7 @@
 ## Status
 
 **Implemented; automated verification passed on 2026-09-02.** Manual visual/input
-acceptance is intentionally bundled with I1 and remains pending.
+acceptance now also passed after the sprite workflow polish follow-up.
 
 ## Delivered behavior
 
@@ -105,7 +105,7 @@ Fresh post-remediation evidence:
   6 ms gate **PASS**.
 - `git diff --check`: **passed**.
 
-Manual visual/input acceptance remains pending after this remediation.
+Manual visual/input acceptance passed after this remediation.
 
 ### Manual-review polish follow-up
 

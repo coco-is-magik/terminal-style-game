@@ -472,6 +472,49 @@ void editor_highlight_render_set_height(
                       selections[primary_index], HIGHLIGHT_STYLE_SELECTED, heights);
 }
 
+static const SceneTrigger *find_trigger(const SceneTrigger *triggers, size_t count,
+                                        SceneInstanceId id) {
+    size_t i;
+    for (i = 0U; i < count; i++) if (triggers[i].id == id) return &triggers[i];
+    return NULL;
+}
+
+static void render_trigger_region(
+    Grid *grid, Map *map, Camera *camera, const SceneTrigger *trigger,
+    HighlightStyle style, const SceneHeightView *heights
+) {
+    int min_x, min_y, max_x, max_y, x, y;
+    if (!trigger) return;
+    min_x = (int)floor(trigger->min_x);
+    min_y = (int)floor(trigger->min_y);
+    max_x = (int)ceil(trigger->max_x) - 1;
+    max_y = (int)ceil(trigger->max_y) - 1;
+    for (y = min_y; y <= max_y; y++) for (x = min_x; x <= max_x; x++) {
+        SelectionTarget target = {0};
+        if (!map_in_bounds(map, x, y)) continue;
+        target.type = SELECTION_FLOOR;
+        target.value.horizontal = (HorizontalSurfaceRef){x, y};
+        render_horizontal_surface(grid, map, camera, target, style, heights);
+    }
+}
+
+void editor_highlight_render_trigger_regions(
+    Grid *grid, Map *map, Camera *camera,
+    const SceneTrigger *triggers, size_t trigger_count,
+    SelectionTarget selection, EditorHit hover, const SceneHeightView *heights
+) {
+    const SceneTrigger *selected = NULL;
+    const SceneTrigger *hovered = NULL;
+    if (!grid || !map || !camera || (!triggers && trigger_count)) return;
+    if (selection.type == SELECTION_TRIGGER)
+        selected = find_trigger(triggers, trigger_count, selection.value.trigger.id);
+    if (hover.valid && hover.target.type == SELECTION_TRIGGER)
+        hovered = find_trigger(triggers, trigger_count, hover.target.value.trigger.id);
+    if (hovered && (!selected || hovered->id != selected->id))
+        render_trigger_region(grid, map, camera, hovered, HIGHLIGHT_STYLE_HOVER, heights);
+    render_trigger_region(grid, map, camera, selected, HIGHLIGHT_STYLE_SELECTED, heights);
+}
+
 void editor_crosshair_render(Grid *grid) {
     Cell under;
     SDL_Color foreground;

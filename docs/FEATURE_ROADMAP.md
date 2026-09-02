@@ -226,7 +226,7 @@ Do not create empty review directories or placeholder review files.
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime implemented/automated gates passed 2026-08-28; I2 scene v8 authoring implemented 2026-09-02 (commit 277fb3c); I2 verification + manual acceptance pending; I3 next |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime, I2 sprite authoring, and I3 scene v9 triggers implemented and verified including bundled manual acceptance; approved I1–I3 scope closed |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
@@ -806,16 +806,17 @@ or scene ownership changes broadly.
 
 ## R11 — Sprites, animation, objects, triggers, and spawn authoring
 
-**Status:** Active — Q1 decision record locked; I1 sprite runtime Implemented
-with automated gates passing 2026-08-28. I2 scene v8 sprite authoring
-(placement, selection, undo/redo, persistence) is Implemented in commit
-`277fb3c` (2026-09-02); its automated exit gate has passed and the dedicated
-implementation record now exists, while the bundled I1+I2 manual acceptance
-remains pending. I3 triggers are planned but not started. See
+**Status:** Active — Q1 decision record locked. I1 sprite runtime, I2 sprite
+authoring, and I3 scene v9 minimal triggers are all Implemented and Verified:
+automated gates, Q4 reviews, and bundled manual visual/input acceptance passed.
+The approved I1–I3 scope is closed. The broader R11 phase remains Active because
+animation, typed objects/components, and game-mode spawn expansion are still
+deferred pending separate Q1 authorization. See
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
 `R11_DECISION_RECORD_2026-08-28.md`, plus
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md` and
-`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md` and
+`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`.
 
 **Purpose:** Add broader gameplay-authored entities using the existing scene,
 identity, command, selection, and vertical-world foundations.
@@ -997,17 +998,16 @@ spawn authoring**. Q1 is locked and the I1–I3 increment plan is recorded in
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`.
 
 - **I1 sprite runtime:** Implemented; automated gates passed 2026-08-28.
-- **I2 sprite authoring (scene v8):** code is Implemented and committed in
-  `277fb3c` (2026-09-02), but its exit-gate verification, the dedicated
-  implementation record, and the bundled I1+I2 manual visual/input acceptance
-  have **not** been recorded yet. Manual sprite acceptance is intentionally
-  paired with I2.
-- **I3 minimal trigger pair:** planned; not started.
+- **I2 sprite authoring:** Implemented and verified, including bundled manual
+  visual/input acceptance after workflow polish.
+- **I3 minimal triggers (scene v9):** Verified; automated gates, Q4 review, and
+  manual visual/input acceptance all passed on 2026-09-02.
 
-The immediate next action is to **close out I2**: run the I2 exit-gate checks,
-record `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-28.md`, and perform the
-bundled I1+I2 manual sprite acceptance. I3 then follows (per authorization,
-after I2 is recorded). R12 (responsive UI model) remains Proposed. I8 quality
-presets stay deferred and require a fresh end-to-end assessment plus separate
-authorization. Open R9 follow-up: bring the current-renderer flat inherited path
-under the 6 ms surface-render budget.
+The approved I1–I3 scope is now closed. The immediate next action is beginning
+Q1 planning for the next R11 feature decision: animation, typed
+objects/components, or Spawn expansion (the latter only if a game-mode
+requirement is supplied). Start Game native-scene loading is post-editor
+cleanup. R12 remains Proposed. I8 quality presets stay deferred and require a
+fresh end-to-end assessment plus separate authorization. Open R9 follow-up:
+bring the current-renderer flat inherited path under the 6 ms surface-render
+budget.

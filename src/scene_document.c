@@ -81,6 +81,7 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     free(document->lights);
     free(document->decals);
     free(document->sprites);
+    free(document->triggers);
     free(document->optical_material_defaults);
     free(document->optical_cell_overrides);
     free(document->legacy_source_path);
@@ -96,6 +97,9 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->sprites = NULL;
     document->sprite_count = 0U;
     document->sprite_capacity = 0U;
+    document->triggers = NULL;
+    document->trigger_count = 0U;
+    document->trigger_capacity = 0U;
     document->optical_material_defaults = NULL;
     document->optical_material_capacity = 0U;
     document->optical_material_storage_capacity = 0U;
@@ -489,6 +493,11 @@ static SceneLoadResult scene_document_commit_candidate(
     document->sprite_capacity = candidate->sprite_count;
     candidate->sprites = NULL;
     candidate->sprite_count = 0U;
+    document->triggers = candidate->triggers;
+    document->trigger_count = candidate->trigger_count;
+    document->trigger_capacity = candidate->trigger_count;
+    candidate->triggers = NULL;
+    candidate->trigger_count = 0U;
     document->optical_material_defaults = candidate->optical_material_defaults;
     document->optical_material_capacity = candidate->optical_material_capacity;
     document->optical_material_storage_capacity = candidate->optical_material_capacity;
@@ -808,6 +817,14 @@ SceneLoadResult scene_document_load_native_with_assets(
             return SCENE_LOAD_VALIDATION_FAILED;
         }
     }
+    if (candidate.source_version == SCENE_VERSION_V8) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v8_to_v9(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -1102,6 +1119,8 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.decal_count = document->decal_count;
     candidate.sprites = document->sprites;
     candidate.sprite_count = document->sprite_count;
+    candidate.triggers = document->triggers;
+    candidate.trigger_count = document->trigger_count;
     candidate.optical_material_defaults = document->optical_material_defaults;
     candidate.optical_material_capacity = document->optical_material_capacity;
     candidate.optical_cell_overrides = document->optical_cell_overrides;
@@ -1544,6 +1563,23 @@ const SceneSpriteInstance *scene_document_find_sprite(
     if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
     for (i = 0U; i < document->sprite_count; i++)
         if (document->sprites[i].id == instance_id) return &document->sprites[i];
+    return NULL;
+}
+
+const SceneTrigger *scene_document_get_triggers(
+    const SceneDocument *document, size_t *out_count
+) {
+    if (out_count) *out_count = document ? document->trigger_count : 0U;
+    return document ? document->triggers : NULL;
+}
+
+const SceneTrigger *scene_document_find_trigger(
+    const SceneDocument *document, SceneInstanceId instance_id
+) {
+    size_t i;
+    if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (i = 0U; i < document->trigger_count; i++)
+        if (document->triggers[i].id == instance_id) return &document->triggers[i];
     return NULL;
 }
 
@@ -2084,6 +2120,83 @@ bool scene_document_internal_set_sprite(
     return false;
 }
 
+bool scene_document_internal_insert_trigger(
+    SceneDocument *document, size_t index, const SceneTrigger *trigger
+) {
+    SceneTrigger *grown;
+    size_t capacity;
+    if (!document || !trigger || index > document->trigger_count ||
+        document->trigger_count >= SCENE_MAX_TRIGGERS) return false;
+    if (document->trigger_count >= document->trigger_capacity) {
+        capacity = document->trigger_capacity ? document->trigger_capacity * 2U : 8U;
+        if (capacity > SCENE_MAX_TRIGGERS) capacity = SCENE_MAX_TRIGGERS;
+        if (capacity <= document->trigger_count) return false;
+        grown = realloc(document->triggers, capacity * sizeof(*document->triggers));
+        if (!grown) return false;
+        document->triggers = grown;
+        document->trigger_capacity = capacity;
+    }
+    if (index < document->trigger_count)
+        memmove(&document->triggers[index + 1U], &document->triggers[index],
+                (document->trigger_count - index) * sizeof(*document->triggers));
+    document->triggers[index] = *trigger;
+    document->trigger_count++;
+    return true;
+}
+
+bool scene_document_internal_remove_trigger(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+) {
+    if (!document || index >= document->trigger_count ||
+        document->triggers[index].id != expected_id) return false;
+    if (index + 1U < document->trigger_count)
+        memmove(&document->triggers[index], &document->triggers[index + 1U],
+                (document->trigger_count - index - 1U) * sizeof(*document->triggers));
+    document->trigger_count--;
+    return true;
+}
+
+static bool document_has_light_id(const SceneDocument *document, SceneInstanceId id) {
+    return scene_document_find_light(document, id) != NULL;
+}
+
+bool scene_document_internal_trigger_value_is_valid(
+    const SceneDocument *document, SceneInstanceId instance_id,
+    const SceneTrigger *value
+) {
+    return document && value && instance_id != 0U && value->id == instance_id &&
+        isfinite(value->min_x) && isfinite(value->min_y) &&
+        isfinite(value->max_x) && isfinite(value->max_y) &&
+        value->min_x >= 0.0 && value->min_y >= 0.0 &&
+        value->max_x <= document->map.width && value->max_y <= document->map.height &&
+        value->min_x < value->max_x && value->min_y < value->max_y &&
+        value->condition == SCENE_TRIGGER_CONDITION_ENTER_REGION &&
+        value->action >= SCENE_TRIGGER_ACTION_SET_FLAG &&
+        value->action <= SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
+        (value->action != SCENE_TRIGGER_ACTION_SET_FLAG ||
+         (value->flag_id >= 1U && value->flag_id <= SCENE_TRIGGER_FLAG_CAPACITY &&
+          value->target_id == 0U)) &&
+        (value->action != SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN ||
+         (value->flag_id == 0U && !value->flag_value && value->target_id == 0U)) &&
+        (value->action != SCENE_TRIGGER_ACTION_TOGGLE_LIGHT ||
+         (value->flag_id == 0U && !value->flag_value &&
+          document_has_light_id(document, value->target_id)));
+}
+
+bool scene_document_internal_set_trigger(
+    SceneDocument *document, SceneInstanceId instance_id, const SceneTrigger *value
+) {
+    size_t i;
+    if (!scene_document_internal_trigger_value_is_valid(document, instance_id, value) ||
+        !scene_document_find_trigger(document, instance_id)) return false;
+    for (i = 0U; i < document->trigger_count; i++)
+        if (document->triggers[i].id == instance_id) {
+            document->triggers[i] = *value;
+            return true;
+        }
+    return false;
+}
+
 bool scene_document_internal_insert_light(
     SceneDocument *document, size_t index, const SceneLight *light
 ) {
@@ -2136,6 +2249,9 @@ static bool resize_ring_has_content(const SceneDocument *document,
     }
     for (i = 0U; i < document->sprite_count; i++)
         if ((east ? document->sprites[i].x : document->sprites[i].y) >=
+            new_dimension) return true;
+    for (i = 0U; i < document->trigger_count; i++)
+        if ((east ? document->triggers[i].max_x : document->triggers[i].max_y) >
             new_dimension) return true;
     for (i = 0U; i < document->optical_cell_override_count; i++) {
         uint32_t index = document->optical_cell_overrides[i].cell_index;

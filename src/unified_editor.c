@@ -102,6 +102,9 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
     editor->sprite_field = EDITOR_SPRITE_FIELD_X;
+    editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
+    entity_trigger_session_reset(&editor->trigger_session);
+    editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
     editor->sprite_menu_open = false;
     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
     editor->sprite_menu_index = 0U;
@@ -221,6 +224,8 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_RESIZE_BLOCKED:         return "Map resize blocked by outer content";
         case EDITOR_STATUS_SELECTION_LIMIT:        return "Selection limit reached (8 faces)";
         case EDITOR_STATUS_HISTORY_LIMIT:          return "Command history memory limit reached";
+        case EDITOR_STATUS_INVALID_TRIGGER:        return "Invalid trigger operation";
+        case EDITOR_STATUS_TRIGGER_REFERENCE_BLOCKED: return "Light is referenced by a trigger";
         case EDITOR_STATUS_NONE:
         default:                                   return "";
     }
@@ -496,6 +501,9 @@ static void editor_map_command_result(
         case CMD_RESULT_HISTORY_LIMIT:
             editor->status = EDITOR_STATUS_HISTORY_LIMIT;
             break;
+        case CMD_RESULT_TRIGGER_REFERENCE_BLOCKED:
+            editor->status = EDITOR_STATUS_TRIGGER_REFERENCE_BLOCKED;
+            break;
         case CMD_RESULT_OUT_OF_MEMORY:
             editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
             break;
@@ -529,6 +537,9 @@ static bool editor_selection_is_valid(
     if (selection.type == SELECTION_SPRITE)
         return scene_document_find_sprite(
             &editor->document, selection.value.sprite.id) != NULL;
+    if (selection.type == SELECTION_TRIGGER)
+        return scene_document_find_trigger(
+            &editor->document, selection.value.trigger.id) != NULL;
     if (selection.type == SELECTION_FLOOR ||
         selection.type == SELECTION_CEILING) {
         return editor_selection_is_valid_for_map(
@@ -540,8 +551,11 @@ static bool editor_selection_is_valid(
 static void editor_revalidate_selection(UnifiedEditorState *editor) {
     const SelectionTarget *primary;
     if (!editor || editor->selection.type == SELECTION_NONE) return;
-    editor_selection_set_revalidate(
-        &editor->selection_set, scene_document_get_map(&editor->document));
+    if (editor->selection.type == SELECTION_WALL_FACE ||
+        editor->selection.type == SELECTION_FLOOR ||
+        editor->selection.type == SELECTION_CEILING)
+        editor_selection_set_revalidate(
+            &editor->selection_set, scene_document_get_map(&editor->document));
     primary = editor_selection_set_primary(&editor->selection_set);
     if (primary) editor->selection = *primary;
     if (!editor_selection_is_valid(editor, editor->selection)) {
@@ -566,6 +580,9 @@ static bool editor_command_requires_runtime_refresh(const EditorCommand *command
             type == EDITOR_MUTATION_SET_SPRITE ||
             type == EDITOR_MUTATION_INSERT_SPRITE ||
             type == EDITOR_MUTATION_REMOVE_SPRITE ||
+            type == EDITOR_MUTATION_SET_TRIGGER ||
+            type == EDITOR_MUTATION_INSERT_TRIGGER ||
+            type == EDITOR_MUTATION_REMOVE_TRIGGER ||
             type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY ||
             type == EDITOR_MUTATION_PLACE_WALL ||
             type == EDITOR_MUTATION_REMOVE_WALL ||
@@ -602,7 +619,37 @@ static bool editor_refresh_runtime(UnifiedEditorState *editor) {
     }
     world_clear(&editor->runtime_world);
     editor->runtime_world = candidate;
+    entity_trigger_session_reset(&editor->trigger_session);
     return true;
+}
+
+static void editor_tick_triggers(UnifiedEditorState *editor, Camera *camera,
+                                 double delta_seconds) {
+    EntityTriggerTickResult result;
+    size_t i;
+    if (!editor || !camera || editor->mode != EDITOR_MODE_WALK ||
+        entity_trigger_session_tick(&editor->trigger_session,
+            editor->document.triggers, editor->document.trigger_count,
+            editor->document.lights, editor->document.light_count,
+            editor->document.spawn_x, editor->document.spawn_y,
+            editor->document.spawn_angle, camera->transform.pos.x,
+            camera->transform.pos.y, delta_seconds, &result) != ENTITY_TRIGGER_OK)
+        return;
+    if (result.teleported) {
+        SceneHeightView heights;
+        camera->transform.pos.x = result.player_x;
+        camera->transform.pos.y = result.player_y;
+        camera->transform.angle = result.player_angle;
+        if (scene_document_get_height_view(&editor->document, &heights))
+            (void)vertical_physics_reset(&editor->vertical_physics, camera,
+                                         &editor->document.map, &heights);
+    }
+    for (i = 0U; i < editor->document.light_count &&
+         i < (size_t)editor->runtime_world.num_lights; i++)
+        editor->runtime_world.lights[i].intensity =
+            entity_trigger_session_light_enabled(
+                &editor->trigger_session, editor->document.lights[i].id)
+            ? editor->document.lights[i].intensity : 0.0;
 }
 
 static bool editor_command_commit_runtime(
@@ -2285,6 +2332,109 @@ CommandResult unified_editor_set_sprite_field_value(
     return result;
 }
 
+CommandResult unified_editor_place_trigger(UnifiedEditorState *editor) {
+    int map_x, map_y;
+    SceneTrigger prototype = {0};
+    SceneInstanceId id = 0U, old_next_instance;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    CommandResult result;
+    if (!editor || !editor->active ||
+        !editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
+        if (editor) editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    prototype.min_x = map_x; prototype.min_y = map_y;
+    prototype.max_x = map_x + 1.0; prototype.max_y = map_y + 1.0;
+    prototype.condition = SCENE_TRIGGER_CONDITION_ENTER_REGION;
+    prototype.action = SCENE_TRIGGER_ACTION_SET_FLAG;
+    prototype.flag_id = 1U; prototype.flag_value = true;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    old_next_instance = editor->document.next_instance_id;
+    result = command_history_insert_trigger(
+        &editor->history, &editor->document, &prototype, &id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next)) {
+        editor->document.next_instance_id = old_next_instance;
+        return CMD_RESULT_OUT_OF_MEMORY;
+    }
+    if (result == CMD_RESULT_OK) {
+        editor->selection.type = SELECTION_TRIGGER;
+        editor->selection.value.trigger.id = id;
+        editor_reset_selection_set(editor);
+        editor->inspector_open = true;
+        editor->inspector_kind = EDITOR_INSPECTOR_TRIGGER;
+        editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
+    }
+    return result;
+}
+
+CommandResult unified_editor_remove_trigger(
+    UnifiedEditorState *editor, SceneInstanceId id
+) {
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_remove_trigger(&editor->history, &editor->document, id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    }
+    return result;
+}
+
+CommandResult unified_editor_step_trigger_field(
+    UnifiedEditorState *editor, EditorTriggerField field, int direction
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active || !editor_domain_make_trigger_step_request(
+            &editor->document, editor->selection, field, direction, &request)) {
+        if (editor) editor->status = EDITOR_STATUS_INVALID_TRIGGER;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+static CommandResult editor_confirm_trigger_payload(UnifiedEditorState *editor) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor_domain_make_trigger_confirm_request(
+            &editor->document, editor->selection, editor->trigger_field, &request))
+        return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
 
 CommandResult unified_editor_step_light_field(
     UnifiedEditorState *editor,
@@ -3569,6 +3719,13 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
                 editor, editor->selection.value.sprite.id);
         return;
     }
+    if (editor->modal == EDITOR_MODAL_TRIGGER_REMOVE_PROMPT) {
+        editor->modal = EDITOR_MODAL_NONE;
+        if (editor->selection.type == SELECTION_TRIGGER)
+            (void)unified_editor_remove_trigger(
+                editor, editor->selection.value.trigger.id);
+        return;
+    }
 
     if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
         char path_copy[1024];
@@ -3830,6 +3987,7 @@ EditorInputConsumption unified_editor_update(
             input->forward = forward; input->backward = backward;
             input->left = left; input->right = right;
             input->editor_jump_pressed = jump;
+            editor_tick_triggers(editor, camera, delta_seconds);
         } else {
             consumed.pointer_consumed = true;
         }
@@ -3855,6 +4013,13 @@ EditorInputConsumption unified_editor_update(
                 editor->hover = editor_pick_sprite_selection(
                     camera, sprites, sprite_count, editor->hover, max_distance,
                     EDITOR_SPRITE_PICK_RADIUS);
+            }
+            {
+                size_t trigger_count = 0U;
+                const SceneTrigger *triggers = scene_document_get_triggers(
+                    &editor->document, &trigger_count);
+                editor->hover = editor_pick_trigger_selection(
+                    camera, triggers, trigger_count, editor->hover, max_distance);
             }
             editor->hover = editor_pick_horizontal_surface_selection_height(
                 camera, cmap, heights, editor->hover, viewport_rows, max_distance);
@@ -4118,6 +4283,36 @@ EditorInputConsumption unified_editor_update(
                 ? (EditorDecalField)(EDITOR_DECAL_FIELD_COUNT - 1)
                 : (EditorDecalField)(editor->decal_field - 1);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
+            editor->trigger_field = editor->trigger_field == EDITOR_TRIGGER_FIELD_MIN_X
+                ? EDITOR_TRIGGER_FIELD_REMOVE
+                : (EditorTriggerField)(editor->trigger_field - 1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
+            editor->trigger_field = (EditorTriggerField)(
+                (editor->trigger_field + 1) % EDITOR_TRIGGER_FIELD_COUNT);
+            editor_mark_keyboard(&consumed);
+        } else if ((input->editor_decrease_pressed || input->editor_increase_pressed) &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER &&
+                   editor->trigger_field != EDITOR_TRIGGER_FIELD_REMOVE &&
+                   editor->trigger_field != EDITOR_TRIGGER_FIELD_CONDITION) {
+            (void)unified_editor_step_trigger_field(
+                editor, editor->trigger_field,
+                input->editor_decrease_pressed ? -1 : 1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_confirm_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
+            if (editor->trigger_field == EDITOR_TRIGGER_FIELD_REMOVE)
+                editor->modal = EDITOR_MODAL_TRIGGER_REMOVE_PROMPT;
+            else if (editor->trigger_field == EDITOR_TRIGGER_FIELD_ACTION)
+                (void)unified_editor_step_trigger_field(
+                    editor, editor->trigger_field, 1);
+            else if (editor->trigger_field == EDITOR_TRIGGER_FIELD_PAYLOAD) {
+                (void)editor_confirm_trigger_payload(editor);
+            }
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_next_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
             editor_cancel_light_value_edit(editor);
@@ -4256,6 +4451,9 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_place_sprite_pressed) {
             (void)editor_create_and_place_sprite_canvas(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_place_trigger_pressed) {
+            (void)unified_editor_place_trigger(editor);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
@@ -4419,6 +4617,9 @@ void unified_editor_render_text_overlay(
                      editor->selection.value.sprite.id,
                      sprite ? (unsigned)sprite->asset.id : 0U,
                      sprite ? sprite->x : 0.0, sprite ? sprite->y : 0.0);
+        } else if (editor->selection.type == SELECTION_TRIGGER) {
+            snprintf(line, sizeof(line), "Select trigger:%" PRIu64,
+                     editor->selection.value.trigger.id);
         } else if (editor->selection.type == SELECTION_FLOOR ||
                    editor->selection.type == SELECTION_CEILING) {
             snprintf(line, sizeof(line), "Select %s (%d,%d) selected:%zu primary",
@@ -4884,6 +5085,29 @@ void unified_editor_render_text_overlay(
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
+        } else if (editor->inspector_open &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
+            EditorInspectorPresentation presentation;
+            const SceneTrigger *trigger = scene_document_find_trigger(
+                &editor->document, editor->selection.value.trigger.id);
+            if (editor_domain_inspector_presentation(
+                    EDITOR_INSPECTOR_TRIGGER, &presentation)) {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+                for (size_t field = 0U; field < presentation.field_count; field++) {
+                    EditorInspectorFieldPresentation fp;
+                    char value[64];
+                    bool selected = field == (size_t)editor->trigger_field;
+                    if (!trigger || !editor_domain_trigger_field_presentation(
+                            (EditorTriggerField)field, &editor->document.map, &fp) ||
+                        !editor_domain_format_trigger_field(
+                            trigger, (EditorTriggerField)field, value, sizeof(value))) continue;
+                    snprintf(line, sizeof(line), " %s %-10s %s",
+                             selected ? ">" : " ", fp.label, value);
+                    grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
+                }
+            }
         }
 
         if (editor_document_has_unsaveable_material(&editor->document) ||
@@ -4917,6 +5141,8 @@ void unified_editor_render_text_overlay(
                 grid_print(grid, 1, row++, line,
                            c == (int)editor->exit_choice ? hi : dim, bg);
             }
+        } else if (editor->modal == EDITOR_MODAL_TRIGGER_REMOVE_PROMPT) {
+            grid_print(grid, 1, row++, "Remove trigger? Enter=yes Esc=cancel", warn, bg);
         } else if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
             grid_print(grid, 1, row + 1,
                        "Reload scene? Enter=yes  Esc=cancel", warn, bg);

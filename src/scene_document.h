@@ -42,6 +42,9 @@ typedef struct {
     SceneSpriteInstance *sprites;
     size_t sprite_count;
     size_t sprite_capacity;
+    SceneTrigger *triggers;
+    size_t trigger_count;
+    size_t trigger_capacity;
     OpticalExtension *optical_material_defaults;
     size_t optical_material_capacity;
     size_t optical_material_storage_capacity;
@@ -256,6 +259,12 @@ const SceneSpriteInstance *scene_document_get_sprites(
 const SceneSpriteInstance *scene_document_find_sprite(
     const SceneDocument *document,
     SceneInstanceId instance_id
+);
+const SceneTrigger *scene_document_get_triggers(
+    const SceneDocument *document, size_t *out_count
+);
+const SceneTrigger *scene_document_find_trigger(
+    const SceneDocument *document, SceneInstanceId instance_id
 );
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
     const SceneDocument *document,

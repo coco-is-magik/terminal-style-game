@@ -1,4 +1,4 @@
-# Active Handoff — R10 Released; R11 I1 Implemented and I2 Code Present — 2026-09-02
+# Active Handoff — R10 Released; R11 I1–I3 Verified — 2026-09-02
 
 ## Current status
 
@@ -6,13 +6,14 @@
 on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and
 its automated gates pass. **R11 I2 (scene v8 sprite authoring) is Implemented in
 the working tree (commit `277fb3c`, 2026-09-02); its automated exit gate has
-passed and the dedicated implementation record exists, but the bundled I1+I2
-manual visual/input acceptance is still pending.** I3 triggers are not
-implemented. Manual sprite acceptance is bundled with I2 because I1 has no
-ordinary persisted placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
+passed, the dedicated implementation record exists, and bundled I1+I2 manual
+visual/input acceptance passed after workflow polish.** I3 scene v9 minimal triggers are verified: automated gates, Q4 review, and manual
+acceptance all passed. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`,
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`, and
-`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`, plus
+`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`. The detailed next-work
+sequence is `R11_TRACK_A_COMPLETION_PLAN_2026-09-02.md`.
 
 ## R11 Q1 planning (2026-08-28)
 
@@ -50,19 +51,17 @@ ordinary persisted placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.
   flat 8.332 ms fails 6 ms while raised 5.716 ms passes. This predates I1; the
   paired sprite benchmark isolates I1 overhead.
 
-## R11 I2 code present (2026-09-02, commit `277fb3c`)
+## R11 I2 verified (2026-09-02, commit `277fb3c`)
 
-**Status: Implemented in the working tree; exit-gate verification and record
-not yet done.** Scene v8 sprite authoring is implemented but has no dedicated
-implementation record yet. Present: `SCENE_VERSION_V8`/`SCENE_MAX_SPRITES`,
+**Status: Implemented and verified, including bundled I1+I2 manual acceptance.**
+Present: `SCENE_VERSION_V8`/`SCENE_MAX_SPRITES`,
 `SceneSpriteInstance`, `SCENE_ASSET_KIND_SPRITE_PATTERN`,
 `scene_format_migrate_v7_to_v8`, `[sprite_instance]` parse/write/validate/
 round-trip, `SceneDocument` sprite ownership and runtime rebuild,
 `command_history_{insert,set,remove}_sprite` undo/redo, sprite inspector
-(X/Y/Remove), `P`-key placement, and `SELECTION_SPRITE` picking. Tests exist in
-`test_scene_format`, `test_scene_document`, and `test_command_system`. The next
-required steps are the I2 exit-gate run, the bundled I1+I2 manual sprite
-acceptance, and `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
+(X/Y/Pattern/Remove), `P`-key canvas placement, embedded Pattern painter, and
+`SELECTION_SPRITE` picking. Automated and manual evidence is in
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`; I3 is next.
 
 ## R10 I2 implementation (2026-08-27)
 
@@ -178,13 +177,17 @@ R10 I1 and I2 are marked Verified. R10 has no remaining open items.
 
 ## Stop boundary
 
-R9 and R10 are released. R11 I1 is Implemented with automated gates passing.
-**R11 I2 scene v8/authoring code is present in the working tree (commit
-`277fb3c`); it still requires the I2 exit-gate verification, a dedicated
-implementation record, and the bundled I1+I2 manual sprite acceptance before it
-is Verified.** I3 triggers, animation, objects, game-mode spawn, solid/occluding
-sprites, and sprite attachment remain deferred and require explicit
-authorization. R12 and I8 also require separate authorization.
+R9 and R10 are released. R11 I1, I2, and I3 are Verified: all three
+increments implemented, automated gates passed, Q4 review passed, and bundled
+manual acceptance passed. The approved I1–I3 scope is closed.
+Animation, objects, game-mode spawn expansion, solid/occluding sprites, and
+sprite attachment remain deferred and require separate Q1 authorization. R12 and
+I8 also require separate authorization.
+
+`APP_STATE_PLAYING` remains on the deprecated legacy map/`WorldState` loader and
+is intentionally not updated during fast-moving editor feature work. Native-scene
+Start Game ownership and trigger integration are recorded as post-editor cleanup;
+the I3 runtime acceptance boundary is native-scene editor Walk mode.
 
 ## Automated gate evidence (final run 2026-08-26)
 

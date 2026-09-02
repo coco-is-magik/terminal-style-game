@@ -1575,6 +1575,66 @@ static void test_sprite_set_insert_remove_undo_redo_and_capacity(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_trigger_set_insert_remove_undo_redo(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    SceneTrigger prototype = {.min_x = 1.0, .min_y = 1.0, .max_x = 2.0,
+        .max_y = 2.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_SET_FLAG, .flag_id = 1U, .flag_value = true};
+    SceneTrigger changed;
+    SceneInstanceId id = 0U;
+    (void)state;
+    load_fixture(&doc);
+    doc.next_instance_id = 40U;
+    command_history_init(&history, doc.current_state);
+    assert_int_equal(command_history_insert_trigger(&history, &doc, &prototype, &id),
+                     CMD_RESULT_OK);
+    assert_int_equal(id, 40U);
+    changed = *scene_document_find_trigger(&doc, id);
+    changed.flag_id = 2U;
+    assert_int_equal(command_history_set_trigger(&history, &doc, id, &changed),
+                     CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 2U);
+    assert_int_equal(command_history_remove_trigger(&history, &doc, id), CMD_RESULT_OK);
+    assert_null(scene_document_find_trigger(&doc, id));
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 2U);
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 1U);
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+    assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 2U);
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
+static void test_referenced_light_removal_is_blocked(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    SceneTrigger trigger = {.id = 20U, .min_x = 1.0, .min_y = 1.0,
+        .max_x = 2.0, .max_y = 2.0,
+        .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_TOGGLE_LIGHT, .target_id = 11U};
+    (void)state;
+    load_fixture(&doc);
+    add_two_lights(&doc);
+    assert_true(scene_document_internal_insert_trigger(&doc, 0U, &trigger));
+    command_history_init(&history, doc.current_state);
+    assert_int_equal(command_history_remove_light(&history, &doc, 11U),
+                     CMD_RESULT_TRIGGER_REFERENCE_BLOCKED);
+    assert_non_null(scene_document_find_light(&doc, 11U));
+    assert_int_equal(history.count, 0U);
+    {
+        EditorMutationRequest collision = {0};
+        collision.type = EDITOR_MUTATION_INSERT_LIGHT;
+        collision.data.insert_light.value = doc.lights[0];
+        collision.data.insert_light.value.id = 20U;
+        assert_int_equal(command_history_execute_group(
+            &history, &doc, &collision, 1U), CMD_RESULT_INVALID_TARGET);
+    }
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
 static void test_optical_cell_sparse_order_removal_and_allocation_failure(void **state) {
     SceneDocument doc;
     CommandHistory history;
@@ -1684,6 +1744,8 @@ int main(void) {
         cmocka_unit_test(test_decal_batch_insert_is_one_step_and_rolls_back_ids),
         cmocka_unit_test(test_history_memory_limit_is_bounded_and_atomic),
         cmocka_unit_test(test_sprite_set_insert_remove_undo_redo_and_capacity),
+        cmocka_unit_test(test_trigger_set_insert_remove_undo_redo),
+        cmocka_unit_test(test_referenced_light_removal_is_blocked),
         cmocka_unit_test(test_optical_material_command_undo_redo_and_inherit),
         cmocka_unit_test(test_optical_cell_sparse_order_removal_and_allocation_failure),
         cmocka_unit_test(test_optical_command_invalid_values_are_atomic),

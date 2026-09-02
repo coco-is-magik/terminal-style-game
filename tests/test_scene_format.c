@@ -1007,6 +1007,68 @@ static void test_v8_sprite_migration_round_trip_and_diagnostics(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v9_trigger_migration_round_trip_and_diagnostics(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    char *bad;
+    (void)state;
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_to_v5(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v5_to_v6(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v6_to_v7(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v7_to_v8(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v8_to_v9(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    candidate.lights = calloc(1U, sizeof(*candidate.lights));
+    candidate.triggers = calloc(3U, sizeof(*candidate.triggers));
+    assert_non_null(candidate.lights);
+    assert_non_null(candidate.triggers);
+    candidate.light_count = 1U;
+    candidate.lights[0] = (SceneLight){.id = 2U, .x = 0.5, .y = 0.5,
+        .red = 255U, .green = 255U, .blue = 255U, .alpha = 255U,
+        .intensity = 1.0, .radius = 2.0};
+    scene_light_set_point_defaults(&candidate.lights[0]);
+    candidate.trigger_count = 3U;
+    candidate.triggers[0] = (SceneTrigger){.id = 5U, .min_x = 0.0, .min_y = 0.0,
+        .max_x = 1.0, .max_y = 1.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_TOGGLE_LIGHT, .target_id = 2U};
+    candidate.triggers[1] = (SceneTrigger){.id = 3U, .min_x = 1.0, .min_y = 0.0,
+        .max_x = 2.0, .max_y = 1.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_SET_FLAG, .flag_id = 4U, .flag_value = true};
+    candidate.triggers[2] = (SceneTrigger){.id = 4U, .min_x = 0.5, .min_y = 1.0,
+        .max_x = 1.5, .max_y = 2.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN};
+    candidate.next_instance_id = 6U;
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic), SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "scene_version = 9\n"));
+    assert_true(strstr(buffer.data, "[trigger 3]") < strstr(buffer.data, "[trigger 5]"));
+    assert_non_null(strstr(buffer.data, "action = set_flag\nflag_id = 4\nflag_value = 1\n"));
+    assert_non_null(strstr(buffer.data, "action = teleport_to_spawn\n"));
+    assert_non_null(strstr(buffer.data, "action = toggle_light\ntarget_id = 2\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v9.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.trigger_count, 3U);
+    bad = replace_once(buffer.data, "action = set_flag", "action = script");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+    bad = replace_once(buffer.data, "target_id = 2", "target_id = 99");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_INSTANCE_REFERENCE);
+    free(bad);
+    bad = replace_once(buffer.data, "flag_value = 1", "target_id = 2");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING);
+    free(bad);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -1029,7 +1091,8 @@ int main(void) {
         cmocka_unit_test(test_v5_migration_round_trip_and_validation),
         cmocka_unit_test(test_v6_optical_migration_canonical_round_trip_and_diagnostics),
         cmocka_unit_test(test_v7_spot_migration_round_trip_and_diagnostics),
-        cmocka_unit_test(test_v8_sprite_migration_round_trip_and_diagnostics)
+        cmocka_unit_test(test_v8_sprite_migration_round_trip_and_diagnostics),
+        cmocka_unit_test(test_v9_trigger_migration_round_trip_and_diagnostics)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

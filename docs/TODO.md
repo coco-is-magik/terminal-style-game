@@ -67,20 +67,20 @@ These labels describe readiness, not priority.
 
 ### Versioned scene persistence — **Resolved 2026-08-28 (R1–R11 chain)**
 
-Scene v1–v8 resolve the earlier open questions:
+Scene v1–v9 resolve the earlier open questions:
 
-- One versioned `.tscene` file with strict unknown-key parsing and v1–v7
-  migration; canonical writes are v8 (R1/R2/R4/R6/R10/R11).
+- One versioned `.tscene` file with strict unknown-key parsing and v1–v8
+  migration; canonical writes are v9 (R1/R2/R4/R6/R10/R11).
 - Legacy digit-grid maps import non-destructively through the chooser flow.
 - Native saves are atomic; `SceneDocument` owns map, cells, spawn, movement,
   lights, decals, optical overrides, and sprite instances. `WorldState` is a
   derived runtime rebuild.
 - Older scenes get deterministic migration defaults (e.g. v6→v7 exact point
-  lights; v7→v8 empty sprite list) and load-time repair diagnostics for
-  dangling references.
+  lights; v7→v8 empty sprite list; v8→v9 empty trigger list) and load-time
+  repair diagnostics for dangling references.
 
 Still open: per-scene ambient light and per-channel ambient (separate from R10);
-objects/triggers authored data (R11 I3 and later).
+object authored data (R11 I3 later successors only).
 
 ### Extensible per-cell block serialization — **Needs product decision**
 
@@ -393,8 +393,8 @@ edge wrapping, and capacity/performance policy beyond existing limits.
 camera-facing billboards (R11 I1: depth-tested against world geometry and
 decals, lit through the per-channel light map, no collision/ray/light/mirror
 effects). Scene v8 sprite placement/selection/persistence and undo/redo land
-with R11 I2 (code present in commit `277fb3c`; automated verification passed;
-manual acceptance pending).
+with R11 I2 (code present in commit `277fb3c`; automated verification and
+bundled I1+I2 manual acceptance passed).
 
 Still open: animation timeline/file format, playback, oriented versus billboard
 behavior, painting-tool reuse, live world preview of staged sprite edits, a
@@ -538,13 +538,24 @@ interaction to be independent typed fields rather than one flag.
 
 # Placed entities and gameplay authoring
 
-## Objects, triggers, and spawn editing — **Needs models and stable IDs**
+## Objects, triggers, and spawn editing — **Verified (R11 I3); broader models open**
 
-Define object/component and asset-reference models, transforms under the chosen
-world geometry, trigger shapes/conditions/actions, links and validation,
-single/multiple spawn semantics, selection/property workflows, serialization,
-missing references, and atomic undo/redo. Stable IDs and scene persistence are
-prerequisites.
+**Implemented trigger baseline (R11 I3, verified):**
+scene v9 owns bounded `enter_region` records with one closed typed action
+(`set_flag`, `teleport_to_spawn`, or `toggle_light`), stable-ID selection,
+reference validation, undo/redo, persistence, highlighting, and editor-Walk
+runtime firing. Still open: object/component and asset-reference models, broader
+trigger graphs/conditions/actions, and game-mode spawn semantics.
+
+## Start Game native-scene migration — **Post-editor cleanup**
+
+`APP_STATE_PLAYING` still loads the deprecated digit map plus legacy `WorldState`
+path and therefore does not consume native `SceneDocument` data such as authored
+cells, scene instances, or triggers. Do not maintain duplicate gameplay feature
+sources while editor architecture is changing rapidly. After the editor feature
+roadmap stabilizes, migrate Start Game transactionally to native-scene ownership,
+define scene selection/failure fallback, reuse the pure entity/trigger session,
+and remove the deprecated runtime loading path with compatibility evidence.
 
 ---
 
