@@ -231,5 +231,6 @@ material_1=1,2,1
 
 Whitespace/zero glyphs are transparent. Every visible pattern cell requires a
 loaded, nonzero material; missing assets and invalid references are safe no-ops.
-I1 renders existing `WorldState.sprites` only. Scene placement, selection, and
-persistence arrive in R11 I2.
+R11 I1 renders existing `WorldState.sprites`. R11 I2 (scene v8) adds authored
+sprite placement, selection, persistence, and undo/redo (code present in commit
+`277fb3c`; verification/record pending).

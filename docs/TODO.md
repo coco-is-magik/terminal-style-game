@@ -26,21 +26,31 @@ These labels describe readiness, not priority.
 
 ## Current constraints affecting future work
 
-1. The world is a fixed-size 2D grid. One material ID per cell means `0` is
-   empty/passable and values above `0` are full-height solid walls.
-2. Maps save one decimal digit per cell, so only material IDs `0..9` persist.
-3. Floors and ceilings are global fixed planes, not authored cell surfaces.
-4. Camera pitch shifts the screen horizon; it is not a true 3D pitch angle. The
-   camera and collision model have no Z coordinate.
-5. Lights, decals, sprites, and spawn live in runtime `WorldState`; the current
-   `SceneDocument` owns and saves only the map.
+1. The world is a fixed-size 2D grid (`SCENE_MAX_WIDTH`/`SCENE_MAX_HEIGHT`),
+   but cells are no longer full-height walls: authored cells carry occupancy,
+   wall/floor/ceiling materials, floor/ceiling presence and height steps, and
+   gravity data (R4/R8). Material `0` is empty/passable.
+2. Legacy digit-grid maps save one decimal digit per cell, so only material IDs
+   `0..9` persist through the legacy writer. Native `.tscene` scenes persist
+   three-digit material IDs `001..255` (README documents the split).
+3. Floors and ceilings are authored per-cell surfaces with presence and height
+   steps; they are not global fixed planes (R4/R8).
+4. Camera pitch remains a horizon offset; it is not a true 3D pitch angle and
+   true angular pitch is deferred (R8). The camera and collision model now have
+   a Z component through vertical physics (eye height, floor/ceiling heights).
+5. `SceneDocument` owns and saves the map, authored cells, spawn, movement
+   parameters, lights, decals, optical overrides, and (scene v8) sprite
+   instances. `WorldState` is a derived runtime rebuild, not a second authored
+   source of truth.
 6. A material references a shared palette and four distance-band glyphs.
-7. `decal_painter` and `decal_io` provide tested headless primitives, but no
-   integrated document, save/discard workflow, or UI.
+7. Decal authoring is integrated into the unified editor (surface-inspector
+   Decals submenu, undo/redo, native persistence). `decal_io` and
+   `decal_painter` remain available as tested headless primitives.
 8. The window resizes by scaling a fixed logical grid. UI assets mostly use
    absolute grid coordinates and do not responsively reflow.
-9. Rendering assumes the nearest opaque wall hit per column. Layered
-   transparency, reflected views, and stacked geometry are not primitives.
+9. Rendering supports layered optical composition (R9): translucent layers,
+   bounded one-bounce mirrors, per-column depth frontiers, and sprite/decal
+   overlay depth ordering. Nearest-opaque-column is no longer the only path.
 
 ## Build and performance maintenance
 
@@ -55,19 +65,22 @@ These labels describe readiness, not priority.
 
 ## Cross-cutting decisions for later discussion
 
-### Versioned scene persistence — **Needs architecture/design**
+### Versioned scene persistence — **Resolved 2026-08-28 (R1–R11 chain)**
 
-A future scene may own map dimensions/origin, wall/floor/ceiling surfaces,
-ambient settings, spawn, lights, decal instances, and later objects/triggers.
-Reusable material and decal assets should likely remain referenced assets.
+Scene v1–v8 resolve the earlier open questions:
 
-Questions:
+- One versioned `.tscene` file with strict unknown-key parsing and v1–v7
+  migration; canonical writes are v8 (R1/R2/R4/R6/R10/R11).
+- Legacy digit-grid maps import non-destructively through the chooser flow.
+- Native saves are atomic; `SceneDocument` owns map, cells, spawn, movement,
+  lights, decals, optical overrides, and sprite instances. `WorldState` is a
+  derived runtime rebuild.
+- Older scenes get deterministic migration defaults (e.g. v6→v7 exact point
+  lights; v7→v8 empty sprite list) and load-time repair diagnostics for
+  dangling references.
 
-- One versioned file, a manifest plus files, or a directory/package?
-- How are current digit maps imported and preserved?
-- Which multi-file saves must be atomic?
-- Which runtime data remains derived rather than serialized?
-- What compatibility guarantees do older scenes receive?
+Still open: per-scene ambient light and per-channel ambient (separate from R10);
+objects/triggers authored data (R11 I3 and later).
 
 ### Extensible per-cell block serialization — **Needs product decision**
 
@@ -118,20 +131,27 @@ These questions were answered in `R8_DECISION_RECORD_2026-08-19.md`:
   heightfield representation; sectors/portals, voxels, and full-3D geometry
   remain rejected (record Decision 1).
 
-### Geometry, collision, and appearance separation — **Needs design; scoped in the R9 research plan**
+### Geometry, collision, and appearance separation — **Resolved for optical/occupancy split; see open follow-ups**
 
 Mirrors, glass, invisible collision, and pass-through surfaces require separate
 properties for occupancy, player collision, ray/light interaction, visual
 material, opacity, and reflectivity. These must not remain encoded by the
-special meaning of material ID `0`. Scoped as RQ1/P1 in
-`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`.
+special meaning of material ID `0`. Resolved by the R9 optical model (see
+`R9_DECISION_RECORD_2026-08-24.md` and the R9 closeout): authored occupancy,
+per-channel transmission, opacity, sight-ray blocking, and reflectivity are
+distinct scene fields; mirrors are bounded to one-bounce, authored-positive
+reflectivity. Open follow-ups: per-face wall materials (deferred), reflected
+decals (documented limitation), and emissive surfaces (R10 I3 DEFER).
 
-### Stable IDs and atomic command groups — **Needs design**
+### Stable IDs and atomic command groups — **Resolved for instance content**
 
-Movable lights, decals, objects, bulk selections, and map resizing need stable
-instance IDs. Multi-target operations should apply completely or not at all and
-appear as one undoable user action. ID persistence/reuse, references after move
-or deletion, and selection survival need explicit rules.
+Movable lights, decals, sprites, and object-style scene instances use the
+64-bit `SceneInstanceId` namespace with `0` reserved and a persisted
+`next_instance_id` high-water mark. Multi-target operations apply through the
+transactional command system and appear as one undoable user action. ID
+persistence/reuse, references after move or deletion, and selection survival
+are covered for lights, decals, and sprites. Remaining: bulk selections, map
+resize batching, and object/trigger reference rules (R11 I3 and later).
 
 ---
 
@@ -335,76 +355,83 @@ Decide whether palettes stay shared, what “base color” means relative to thr
 color stops, whether shared-palette changes propagate live, deletion policy,
 and whether asset history is independent from scene history.
 
-## Paint/save/discard reusable decal assets — **Needs focused requirements**
+## Paint/save/discard reusable decal assets — **Resolved (R5/R6)**
 
-**Wanted:** Paint a decal, save specific changes or discard them, and reuse it.
+**Implemented (2026-08-13):** `DecalDocument` and material/document tooling
+provide owned working copies, dirty state, undo/redo, validation, atomic save,
+and discard (R5). Decal authoring is integrated into the unified editor's
+surface-inspector Decals submenu: **Add decal…** creates a new reusable pattern
+asset (editable columns/rows), refreshes the registry, and places a straight-up
+canvas instance; edits persist through native Save/Open (R6).
 
-Build a `DecalDocument` around `decal_painter`/`decal_io`: owned working grid,
-dirty/saved identity, undo/redo, validation, atomic Save/Save As/Discard,
-resize/crop, brushes, fill, erase, and preview. Keep reusable decal **assets**
-separate from placed **instances**. Decide overwrite/version/duplicate behavior,
-path/ID policy, and whether unsaved assets can be placed temporarily.
+Remaining polish: glyph-picker UI, multi-distance preview, brush painting tool,
+and explicit missing-reference UI beyond repair mode.
 
-## Paint decals directly on any surface — **Needs interaction/coordinate design**
+## Paint decals directly on any surface — **Partly ready; direct surface painting open**
 
-**Wanted:** Paint while viewing a wall, floor, ceiling, and eventually slopes.
+**Implemented baseline:** Placing/editing decals on wall, floor, and ceiling
+surfaces uses one surface-local origin/tangent/bitangent model; art remains
+surface-anchored, not camera-facing.
 
-Pointer hits should map into one surface-local origin/tangent/bitangent model and
-edit a fixed 2D `PatternCell` grid projected onto the surface. Art must remain
-surface-anchored, not camera-facing. Define brush footprint, clipping,
+**Still open:** Direct paint-while-viewing with a brush footprint, clipping,
 resolution/physical glyph size, seams/corners, cross-surface strokes, and whether
 painting starts a named unsaved asset requiring Save/Discard.
 
-## Spray/place saved decals — **Needs scene ownership, IDs, and commands**
+## Spray/place saved decals — **Resolved (R6)**
 
-**Wanted:** Repeatedly place saved decal instances on valid surfaces.
+**Implemented (2026-08-13):** Saved decal instances are placed on valid surfaces
+by stable ID, moved/rotated/scaled via bounded inspector fields, removed with
+confirmation, grouped into the same undo/redo history, and persisted in native
+Save/Open. Missing-asset support geometry uses visible repair mode.
 
-Needs scene-owned instances, preview, place/move/rotate/scale/duplicate/delete,
-stable anchors, grouped spray-stroke undo, overlap/layering rules, capacity and
-performance policy, missing-asset handling, and behavior when support geometry
-is removed. Decide spacing/randomization and edge wrapping.
+Remaining: grouped spray-stroke undo, overlap/layering UI, spacing/randomization,
+edge wrapping, and capacity/performance policy beyond existing limits.
 
-## Sprite and animation authoring — **Needs product and renderer requirements**
+## Sprite and animation authoring — **Placement resolved (R11 I1/I2); animation open**
 
-`SpriteAsset` exists, but generic sprite rendering does not. Define billboard
-versus oriented/world plane behavior, animation timeline/file format, playback,
-placement/IDs, painting-tool reuse, and occlusion with walls, decals,
-translucency, and mirrors before designing authoring UI.
+**Implemented (2026-08-28/09-02):** `SpriteAsset` patterns render as decorative
+camera-facing billboards (R11 I1: depth-tested against world geometry and
+decals, lit through the per-channel light map, no collision/ray/light/mirror
+effects). Scene v8 sprite placement/selection/persistence and undo/redo land
+with R11 I2 (code present in commit `277fb3c`; verification/record pending).
+
+Still open: animation timeline/file format, playback, oriented versus billboard
+behavior, painting-tool reuse, solid/occluding sprites, mirror visibility, and
+sprite-to-object attachment (recorded in the R11 stop boundary).
 
 ---
 
 # Lighting and environment
 
-## Place, select, move, and delete point lights — **Needs scene ownership**
+## Place, select, move, and delete point lights — **Resolved (R6) and spot lights (R10 I2)**
 
-**Wanted:** Author point lights interactively.
+**Implemented (2026-08-27):** Point lights are authored, selected, moved,
+edited, removed, and persisted with stable scene IDs, undo/redo, and explicit
+capacity errors through scene v7 (R6/R10). Spot lights add direction, cone, and
+falloff with a v6→v7 migration (R10 I2). Colored per-channel illumination and
+alpha authoring landed in R10 I1.
 
-Move lights from transient runtime ownership into saveable scene data; add
-stable IDs, highlights, place/move/delete commands, property inspection,
-explicit capacity errors, and narrow lighting recomputation. Define valid
-positions and drag/axis controls.
+## Edit brightness, radius, and color — **Resolved (R10 I1/I2)**
 
-## Edit brightness, radius, and color — **Partly ready after ownership**
+**Implemented:** Intensity/radius editing fits the current `Light`; negative
+anti-light subtracts per channel. `Map.light_map` is now a per-channel
+`LightLevel { red, green, blue }` (R10 I1), so colored lights tint surfaces,
+clamp per channel `[0,255]`, and compose through translucent layers. Alpha scales
+the emitted channel weight. See `R10_INCREMENT_I1/I2_IMPLEMENTATION_RECORD`.
 
-Intensity/radius editing fits the current `Light`; preserve negative anti-light
-unless deliberately changed. Full colored illumination needs design because
-`Map.light_map` stores scalar brightness despite `Light.color` existing.
-
-Decide RGB/stylized palette-relative mixing, clamping/overbright behavior,
-negative colored light, shadows during live dragging, and whether color affects
-surfaces, light billboards, or both.
-
-## Other light types — **Research track**
+## Other light types — **Research track (R10 I3 recorded, all DEFER/one REJECT)**
 
 Potential types:
 
-- spot: direction, cone, falloff, orientation controls;
-- directional: global direction and shadow policy;
-- area: multisampling/approximation with explicit cost/quality target;
-- emissive material: material-light coupling and update/bake behavior.
+- direction: global direction and shadow policy — DEFER (R10 I3 P1);
+- area: multisampling/approximation with explicit cost/quality target — discrete
+  DEFER, analytic REJECT (R10 I3 P2);
+- emissive material: material-light coupling and update/bake behavior — DEFER
+  with a documented v8 upgrade path (R10 I3 P3).
 
-Each needs a visual model, performance budget, serialization, selection,
-inspector fields, and deterministic tests. No implementation order is committed.
+Each deferred type needs a separate Q1 review and a paired
+`make benchmark-colored-lighting` extension before implementation. No
+implementation order is committed.
 
 ## Per-scene ambient light — **Ready for product planning; format-dependent**
 

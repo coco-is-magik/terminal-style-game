@@ -1,14 +1,18 @@
-# Active Handoff — R10 Released; R11 I1 Implemented — 2026-08-28
+# Active Handoff — R10 Released; R11 I1 Implemented and I2 Code Present — 2026-09-02
 
 ## Current status
 
 **R9 and R10 are Released and Verified** (automated gates plus manual acceptance
 on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and
-its automated gates pass; I2 authoring and I3 triggers are not implemented.
+its automated gates pass. **R11 I2 (scene v8 sprite authoring) is Implemented in
+the working tree (commit `277fb3c`, 2026-09-02) but its exit-gate
+verification, the dedicated implementation record, and the bundled I1+I2 manual
+visual/input acceptance are not recorded yet.** I3 triggers are not implemented.
 Manual sprite acceptance is bundled with I2 because I1 has no ordinary persisted
 placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`, and
-`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`.
+`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`. An
+`R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md` is the next deliverable.
 
 ## R11 Q1 planning (2026-08-28)
 
@@ -45,6 +49,20 @@ placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
 - Existing `benchmark-surface-render` reproduced its tracked flat-height issue:
   flat 8.332 ms fails 6 ms while raised 5.716 ms passes. This predates I1; the
   paired sprite benchmark isolates I1 overhead.
+
+## R11 I2 code present (2026-09-02, commit `277fb3c`)
+
+**Status: Implemented in the working tree; exit-gate verification and record
+not yet done.** Scene v8 sprite authoring is implemented but has no dedicated
+implementation record yet. Present: `SCENE_VERSION_V8`/`SCENE_MAX_SPRITES`,
+`SceneSpriteInstance`, `SCENE_ASSET_KIND_SPRITE_PATTERN`,
+`scene_format_migrate_v7_to_v8`, `[sprite_instance]` parse/write/validate/
+round-trip, `SceneDocument` sprite ownership and runtime rebuild,
+`command_history_{insert,set,remove}_sprite` undo/redo, sprite inspector
+(X/Y/Remove), `P`-key placement, and `SELECTION_SPRITE` picking. Tests exist in
+`test_scene_format`, `test_scene_document`, and `test_command_system`. The next
+required steps are the I2 exit-gate run, the bundled I1+I2 manual sprite
+acceptance, and `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`.
 
 ## R10 I2 implementation (2026-08-27)
 
@@ -131,7 +149,9 @@ The prior SMC handoff below is historical and remains preserved.
 - Reflected entities, horizontal mirrors, or recursive mirrors
 - R10 I1/I2 combined manual visual/input acceptance passed 2026-08-27; R10 is
   closed with I3 research evidence recorded (all candidates DEFER; one REJECT)
-- R11 increments I1–I3 (sprites, triggers, spawn) are planned; not implemented
+- R11 I3 triggers are planned but not implemented; I1 sprite runtime is
+  implemented (2026-08-28) and I2 scene v8 authoring code is present in the
+  working tree (commit 277fb3c) pending exit-gate verification/record
 - Responsive UI model (R12)
 
 ## Manual acceptance — passed
@@ -159,10 +179,12 @@ R10 I1 and I2 are marked Verified. R10 has no remaining open items.
 ## Stop boundary
 
 R9 and R10 are released. R11 I1 is Implemented with automated gates passing.
-Do not begin I2 scene v8/authoring or I3 triggers without explicit authorization;
-manual sprite acceptance is paired with I2. Animation, objects, game-mode spawn,
-solid/occluding sprites, and sprite attachment remain deferred. R12 and I8 also
-require separate authorization.
+**R11 I2 scene v8/authoring code is present in the working tree (commit
+`277fb3c`); it still requires the I2 exit-gate verification, a dedicated
+implementation record, and the bundled I1+I2 manual sprite acceptance before it
+is Verified.** I3 triggers, animation, objects, game-mode spawn, solid/occluding
+sprites, and sprite attachment remain deferred and require explicit
+authorization. R12 and I8 also require separate authorization.
 
 ## Automated gate evidence (final run 2026-08-26)
 

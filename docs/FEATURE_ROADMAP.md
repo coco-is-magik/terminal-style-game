@@ -225,8 +225,8 @@ Do not create empty review directories or placeholder review files.
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
-| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Released 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime implemented/automated gates passed 2026-08-28; I2 authoring next |
+| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime implemented/automated gates passed 2026-08-28; I2 scene v8 authoring implemented 2026-09-02 (commit 277fb3c); I2 verification + manual acceptance pending; I3 next |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
@@ -762,10 +762,11 @@ work. A second Review H remains required after the implemented phase.
 
 ## R10 — Colored and expanded lighting
 
-**Status:** Active — Q1 locked; I1 colored illumination and I2 spot lights are
-Implemented and Verified: automated gates passed and the combined manual
-visual/input acceptance passed 2026-08-27. I3 light-type research is recorded
-with all candidates DEFER (one REJECT). See
+**Status:** Verified 2026-08-27 — Q1 locked; I1 colored illumination and I2 spot
+lights are Implemented and Verified: automated gates passed and the combined
+manual visual/input acceptance passed 2026-08-27. I3 light-type research is
+recorded with all candidates DEFER (one REJECT). Closeout:
+`reviews/2026-08-27-roadmap-r10-closeout.md`. See
 `R10_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-27.md`,
 `R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`, and
 `R10_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-08-27.md`.
@@ -806,8 +807,11 @@ or scene ownership changes broadly.
 ## R11 — Sprites, animation, objects, triggers, and spawn authoring
 
 **Status:** Active — Q1 decision record locked; I1 sprite runtime Implemented
-with automated gates passing 2026-08-28; I2 authoring remains next. See
-`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
+with automated gates passing 2026-08-28. I2 scene v8 sprite authoring
+(placement, selection, undo/redo, persistence) is Implemented in commit
+`277fb3c` (2026-09-02); its exit-gate verification, implementation record, and
+the bundled I1+I2 manual acceptance remain pending. I3 triggers are planned but
+not started. See `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
 `R11_DECISION_RECORD_2026-08-28.md`, plus
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`.
 
@@ -973,21 +977,27 @@ until that evidence exists.
 
 **R0–R8 plus R9 are Verified.** R9 passed manual optical acceptance on
 2026-08-27; closeout and checklist:
-`reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`.
+`reviews/2026-08-26-roadmap-r9-implemented-phase-closeout.md`. R10 is also
+Verified (2026-08-27); closeout:
+`reviews/2026-08-27-roadmap-r10-closeout.md`.
 
-The active roadmap phase is **R10 — Colored and expanded lighting**. The Q1
-decision is locked — **RGB per-channel accumulation** — and
-the I1–I3 increment plan is recorded in `R10_DECISION_RECORD_2026-08-27.md` and
-`R10_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-27.md` (I1 colored
-illumination with a per-channel `light_map` and alpha authoring; I2 spot lights
-with a version bump and migration; I3 research track).
+The active roadmap phase is **R11 — Sprites, animation, objects, triggers, and
+spawn authoring**. Q1 is locked and the I1–I3 increment plan is recorded in
+`R11_DECISION_RECORD_2026-08-28.md` and
+`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`.
 
-I1 colored illumination and I2 spot lights are implemented and pass automated
-gates. The next action is **combined I1/I2 manual visual/input acceptance**. I3
-directional/area/emissive research remains separately gated.
+- **I1 sprite runtime:** Implemented; automated gates passed 2026-08-28.
+- **I2 sprite authoring (scene v8):** code is Implemented and committed in
+  `277fb3c` (2026-09-02), but its exit-gate verification, the dedicated
+  implementation record, and the bundled I1+I2 manual visual/input acceptance
+  have **not** been recorded yet. Manual sprite acceptance is intentionally
+  paired with I2.
+- **I3 minimal trigger pair:** planned; not started.
 
-R11 (sprites, animation, objects, and triggers) and R12 (responsive UI model)
-remain Proposed and follow once their prerequisites are reached. I8 quality
+The immediate next action is to **close out I2**: run the I2 exit-gate checks,
+record `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-28.md`, and perform the
+bundled I1+I2 manual sprite acceptance. I3 then follows (per authorization,
+after I2 is recorded). R12 (responsive UI model) remains Proposed. I8 quality
 presets stay deferred and require a fresh end-to-end assessment plus separate
 authorization. Open R9 follow-up: bring the current-renderer flat inherited path
 under the 6 ms surface-render budget.

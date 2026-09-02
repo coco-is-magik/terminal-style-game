@@ -1,5 +1,13 @@
 # R11 Decision Record — Sprites, Triggers, and Spawn — 2026-08-28
 
+> **Amendment (2026-09-02):** I1 sprite runtime is implemented and its
+> automated gates passed (2026-08-28); I2 scene v8 authoring code is present in
+> commit `277fb3c` with exit-gate verification, implementation record, and
+> bundled manual acceptance pending. The "decision time" code-grounding
+> statements below that describe sprite rendering/persistence as not yet
+> implemented are superseded for those increments. The decisions themselves
+> remain binding.
+
 ## Authority
 
 This record captures the product and architecture decisions made in the 2026-08-28

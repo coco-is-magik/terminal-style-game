@@ -5,9 +5,11 @@
 **Q1 decision record locked and I1–I3 increment plan recorded on 2026-08-28.**
 The Q1 decision record is `R11_DECISION_RECORD_2026-08-28.md`; this document is
 the Q2/Q3 increment plan. **I1 is Implemented and its automated exit gate passed
-on 2026-08-28.** Manual visual acceptance is intentionally paired with I2 because
-I1 has no ordinary scene placement/persistence path. R10 is released;
-prerequisites are satisfied.
+on 2026-08-28.** I2 scene v8 authoring code is present in the working tree
+(commit `277fb3c`, 2026-09-02) and its exit-gate verification, implementation
+record, and bundled manual acceptance are pending. Manual visual acceptance is
+intentionally paired with I2 because I1 has no ordinary scene
+placement/persistence path. R10 is released; prerequisites are satisfied.
 
 ## Scope
 
@@ -95,6 +97,14 @@ increment only adds the authoring seam.
    validation errors, never silently dropped.
 5. Missing patterns produce load repair diagnostics; save/reopen round-trips
    exactly.
+
+**Implementation status (I2, 2026-09-02):** Scene v8 sprite authoring code is
+present in the working tree (commit `277fb3c`) — `SCENE_ASSET_KIND_SPRITE_PATTERN`,
+`SceneSpriteInstance`, `scene_format_migrate_v7_to_v8`, the `[sprite_instance]`
+parser/writer, `SceneDocument` ownership, `command_history_{insert,set,remove}_sprite`,
+and editor `P`-key placement/selection with sprite inspector fields. The I2
+exit-gate verification, the dedicated implementation record, and the bundled
+I1+I2 manual acceptance are **not** recorded yet.
 
 ### Increment exit-gate (I2)
 

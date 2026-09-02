@@ -4,7 +4,13 @@
 
 **Implemented; automated verification passed on 2026-08-28.** Manual visual
 acceptance is intentionally paired with I2 because I1 provides no ordinary
-scene placement/persistence path. I2 and I3 remain unimplemented and gated.
+scene placement/persistence path.
+
+> **Amendment (2026-09-02):** I2 scene v8 authoring code is now present in the
+> working tree (commit `277fb3c`); the statement below that "I2 and I3 remain
+> unimplemented" is superseded for I2. I2's exit-gate verification, its
+> dedicated implementation record, and the bundled I1+I2 manual acceptance are
+> still pending. I3 remains unimplemented.
 
 ## Delivered behavior
 
@@ -115,6 +121,9 @@ billboarding while strafing, colored/anti-light shading, wall/decal occlusion,
 missing-asset safety, undo/redo, save, and reopen. Do not add a debug-only I1
 placement shortcut solely to manufacture manual acceptance.
 
-Do not begin I2 scene v8/placement/selection or I3 triggers without explicit
-authorization. Animation, objects/components, game-mode spawn expansion,
-solid/occluding sprites, mirrors, and sprite-to-object attachment remain deferred.
+> **Amendment (2026-09-02):** I2 scene v8/placement/selection is now present in
+> the working tree (commit `277fb3c`) and requires the bundled manual acceptance
+> above plus the I2 exit-gate verification and a dedicated implementation
+> record. I3 triggers still require explicit authorization. Animation,
+> objects/components, game-mode spawn expansion, solid/occluding sprites,
+> mirrors, and sprite-to-object attachment remain deferred.

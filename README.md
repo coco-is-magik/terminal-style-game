@@ -99,8 +99,8 @@ R11 I1 adds decorative camera-facing glyph-pattern sprites. They are depth-teste
 against current world geometry and decals, shade through the per-channel light
 map, and never affect collision, ray/light occlusion, or mirrors. The paired
 `benchmark-sprite-render` target compares an empty world with 128 active sprites
-against the 6 ms render budget. Scene placement and persistence are reserved for
-R11 I2.
+against the 6 ms render budget. R11 I2 adds scene v8 sprite authoring (place,
+select, move, remove, undo/redo, and native persistence; see below).
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -161,6 +161,7 @@ Game data is loaded from `assets/`:
   - `assets/materials/` — palette reference + four distance glyphs
   - `assets/decals/` — surface decals (wall, floor, ceiling)
   - `assets/lights/` — point lights
+  - `assets/sprites/` — sprite patterns (see below)
   - `assets/ui_elements/` — data-driven UI widgets
   - `assets/ui_layouts/` — UI screen composition
 
@@ -189,7 +190,7 @@ share one camera and one authoritative `SceneDocument`. Handled menu input is
 consumed before the new editor state updates, so the Enter used to choose
 **Editor** does not also select a file.
 
-The editor works on **native `.tscene` scenes** (canonical version 2; version 1 remains
+The editor works on **native `.tscene` scenes** (canonical version 8; versions 1–7 remain
 importable through transactional migration) and can
 **import** legacy lowercase `.txt` digit-grid maps. A legacy import is a
 non-destructive conversion: the source bytes are never changed, the document is
@@ -298,10 +299,17 @@ overrides together.
   RGB channels tint surface illumination independently, alpha scales emitted light,
   and negative intensity subtracts the selected channels. Type can switch between
   Point and Spot; spot Direction, Cone, and radial Falloff are bounded inspector
-  fields. Strict canonical scene v7 persists these fields and older native scenes migrate
-  to exact point-light defaults. The headless `make benchmark-colored-lighting`
+  fields. Strict canonical scene v8 persists these fields (v7 introduced them)
+  and older native scenes migrate to exact point-light defaults. The headless
+  `make benchmark-colored-lighting`
   gate compares deterministic white, colored, and spot workloads against a
   6 ms/update budget.
+- Sprites can be placed at aimed cell centers, selected by stable scene ID, moved
+  by X/Y inspector fields, and removed with confirmation. Placement, removal,
+  and edits share the same undo/redo history as walls, lights, and decals, and
+  persist in native Save/Open through the scene v8 `[sprite_instance]` records.
+  Decorative sprites render as depth-tested billboards (see the R11 overview
+  above); they never affect collision, ray/light occlusion, or mirrors.
 - Decals can be placed on wall, floor, and ceiling surfaces through the surface
   inspector's Decals submenu. **Add decal…** creates a new reusable pattern asset
   (default `1 × 1`, editable columns/rows), refreshes the registry, and places a
@@ -321,7 +329,10 @@ overrides together.
   editable paths, and recent files are not part of the current workflow.
 
 Deferred work includes per-face wall materials, material authoring, integrated painter
-UI, sprite placement, animation, objects, triggers, spawn editing, variable
-heights, and slopes. Reusable decal
+UI, animation, objects, triggers, and spawn editing. True angular camera pitch
+and stacked traversable rooms remain outside the current world model (R8).
+Reusable decal
 persistence (`decal_io`) and headless pattern painting (`decal_painter`) remain available
-and tested for later integration.
+and tested for later integration. Sprite animation, solid/occluding sprites,
+mirror visibility, collision, and sprite-to-object attachment remain deferred
+per the R11 stop boundary.
