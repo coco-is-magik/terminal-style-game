@@ -37,6 +37,7 @@
 #include "height_projection.h"
 #include "heightfield_trace.h"
 #include "raycast_internal.h"
+#include "sprite_render.h"
 #include <float.h>
 #include <math.h>             /* cos(), sin(), tan(), atan(), atan2(), fabs(),
                                  sqrt(), floor() */
@@ -270,15 +271,14 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                           AssetRegistry *assets, WorldState *world,
                           const double *z_buffer, int z_count,
                           const SceneHeightView *heights,
-                          bool bounded_occlusion) {
-    static double decal_depth[1024 * 1024];
+                          bool bounded_occlusion, double *overlay_depth) {
     static int decal_order[1024 * 1024];
     int cell_count = grid->width * grid->height;
 
-    if (cell_count > (int)(sizeof(decal_depth) / sizeof(decal_depth[0]))) return;
+    if (!overlay_depth ||
+        cell_count > (int)(sizeof(decal_order) / sizeof(decal_order[0]))) return;
 
     for (int i = 0; i < cell_count; i++) {
-        decal_depth[i] = 1.0e30;
         decal_order[i] = 2147483647;
     }
 
@@ -375,8 +375,8 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                     continue;
                 }
                 int source_order = i * 1000000 + py * d->pattern_cols + px;
-                if (depth > decal_depth[cell_index] + 0.000001) continue;
-                if (fabs(depth - decal_depth[cell_index]) <= 0.000001 &&
+                if (depth > overlay_depth[cell_index] + 0.000001) continue;
+                if (fabs(depth - overlay_depth[cell_index]) <= 0.000001 &&
                     source_order >= decal_order[cell_index]) {
                     continue;
                 }
@@ -390,7 +390,7 @@ static void render_decals(Grid *grid, Map *map, Camera *cam,
                 SDL_Color fg = palette_sample(&assets->palettes[d_mat->palette_id],
                                                depth, light_level);
                 grid_set(grid, screen_x, screen_y, pc.glyph, fg, existing.bg);
-                decal_depth[cell_index] = depth;
+                overlay_depth[cell_index] = depth;
                 decal_order[cell_index] = source_order;
 
                 if (DECAL_DEBUG_MODE) {
@@ -407,10 +407,17 @@ void raycast_render_world_overlays(Grid *grid, Map *map, Camera *cam,
                                    const SceneHeightView *heights,
                                    bool bounded_occlusion) {
     double *z_buffer;
-    if (!grid || !map || !cam || !assets || !world || !grid->column_depths) return;
+    size_t cell_count;
+    if (!grid || !map || !cam || !assets || !world || !grid->column_depths ||
+        !grid->overlay_depths) return;
     z_buffer = grid->column_depths;
+    cell_count = (size_t)grid->width * (size_t)grid->height;
+    for (size_t i = 0U; i < cell_count; i++) grid->overlay_depths[i] = DBL_MAX;
     render_decals(grid, map, cam, assets, world, z_buffer, grid->width,
-                  heights, bounded_occlusion);
+                  heights, bounded_occlusion, grid->overlay_depths);
+    sprite_render_world_overlays(grid, map, cam, assets, world, heights,
+                                 z_buffer, bounded_occlusion,
+                                 grid->overlay_depths);
     for (int i = 0; i < world->num_lights; i++) {
         Light *light = &world->lights[i];
         double sprite_x = light->pos.x - cam->transform.pos.x;

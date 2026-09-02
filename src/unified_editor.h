@@ -40,6 +40,7 @@ typedef enum {
     EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT,
     EDITOR_MODAL_LIGHT_REMOVE_PROMPT,
     EDITOR_MODAL_DECAL_REMOVE_PROMPT,
+    EDITOR_MODAL_SPRITE_REMOVE_PROMPT,
     EDITOR_MENU_SAVE
 } EditorModal;
 
@@ -192,6 +193,7 @@ typedef struct {
     size_t decal_shortlist_capacity;
     EditorLightField light_field;
     EditorDecalField decal_field;
+    EditorSpriteField sprite_field;
     char light_value_text[32];
     size_t light_value_text_length;
     bool light_value_editing;
@@ -352,6 +354,18 @@ CommandResult unified_editor_place_decal(
 CommandResult unified_editor_remove_decal(
     UnifiedEditorState *editor,
     SceneInstanceId id
+);
+CommandResult unified_editor_place_sprite(
+    UnifiedEditorState *editor, uint16_t asset_id
+);
+CommandResult unified_editor_remove_sprite(
+    UnifiedEditorState *editor, SceneInstanceId id
+);
+CommandResult unified_editor_step_sprite_field(
+    UnifiedEditorState *editor, EditorSpriteField field, int direction
+);
+CommandResult unified_editor_set_sprite_field_value(
+    UnifiedEditorState *editor, EditorSpriteField field, double value
 );
 CommandResult unified_editor_step_decal_field(
     UnifiedEditorState *editor,

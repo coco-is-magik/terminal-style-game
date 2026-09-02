@@ -84,6 +84,21 @@ bool scene_document_internal_decal_value_is_valid(
     const SceneDecalInstance *value
 );
 
+bool scene_document_internal_insert_sprite(
+    SceneDocument *document, size_t index, const SceneSpriteInstance *sprite
+);
+bool scene_document_internal_remove_sprite(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+);
+bool scene_document_internal_set_sprite(
+    SceneDocument *document, SceneInstanceId instance_id,
+    const SceneSpriteInstance *value
+);
+bool scene_document_internal_sprite_value_is_valid(
+    const SceneDocument *document, SceneInstanceId instance_id,
+    const SceneSpriteInstance *value
+);
+
 bool scene_document_internal_insert_light(
     SceneDocument *document,
     size_t index,

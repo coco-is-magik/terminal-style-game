@@ -39,6 +39,9 @@ typedef struct {
     SceneDecalInstance *decals;
     size_t decal_count;
     size_t decal_capacity;
+    SceneSpriteInstance *sprites;
+    size_t sprite_count;
+    size_t sprite_capacity;
     OpticalExtension *optical_material_defaults;
     size_t optical_material_capacity;
     size_t optical_material_storage_capacity;
@@ -243,6 +246,14 @@ const SceneDecalInstance *scene_document_get_decals(
     size_t *out_count
 );
 const SceneDecalInstance *scene_document_find_decal(
+    const SceneDocument *document,
+    SceneInstanceId instance_id
+);
+const SceneSpriteInstance *scene_document_get_sprites(
+    const SceneDocument *document,
+    size_t *out_count
+);
+const SceneSpriteInstance *scene_document_find_sprite(
     const SceneDocument *document,
     SceneInstanceId instance_id
 );

@@ -1,12 +1,50 @@
-# Active Handoff — R10 I1–I2 Verified — 2026-08-27
+# Active Handoff — R10 Released; R11 I1 Implemented — 2026-08-28
 
 ## Current status
 
-**R9 is Verified.** The manual optical acceptance passed on 2026-08-27; the R9
-closeout records the phase as verified. R10 I1 colored illumination and I2 spot
-lights are Implemented and Verified: automated gates pass and the combined
-manual visual/input acceptance passed on 2026-08-27. I2 record:
-`R10_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-08-27.md`.
+**R9 and R10 are Released and Verified** (automated gates plus manual acceptance
+on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and
+its automated gates pass; I2 authoring and I3 triggers are not implemented.
+Manual sprite acceptance is bundled with I2 because I1 has no ordinary persisted
+placement path. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
+`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`, and
+`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`.
+
+## R11 Q1 planning (2026-08-28)
+
+- D1 Scope B: I1 sprite runtime, I2 sprite authoring (scene v8), I3 minimal
+  trigger pair. Animation, objects, and game-mode spawn expansion deferred.
+- D2 Depth-sorted billboard rendering over the existing per-column z-buffer.
+- D3 Sprites are decorative and light-map-lit; no collision, ray, or shadow
+  occlusion.
+- D4 Scene v8 authored `[sprites]` block with `SCENE_ASSET_KIND_SPRITE_PATTERN`
+  refs, `SceneInstanceId` namespace, v7→v8 migration, undo/redo, and a new pure
+  entity/trigger session module (`tick(delta)`).
+- D5 One minimal trigger pair: closed enums only (condition `enter_region`;
+  actions `set_flag`, `teleport_to_spawn`, `toggle_light`); validated at load.
+- Invariants: v7 grammar/lighting stable; paired benchmark gate for any sprite
+  render path; no authoring UI before I1 runtime is tested.
+
+## R11 I1 implementation (2026-08-28)
+
+- `sprite_render` projects existing glyph/material patterns as camera-facing,
+  one-world-unit-tall billboards with aspect ratio preserved and local-floor
+  anchoring.
+- Sprites share the nearest decal/sprite per-cell depth frontier, remain behind
+  nearer world geometry, and never write world depth or affect collision/rays,
+  shadows, or mirrors.
+- Per-cell color uses the sprite anchor tile's RGB `LightLevel`; whitespace,
+  missing assets, unloaded materials, invalid IDs, and malformed patterns are
+  safe no-ops.
+- Focused tests 5/5; optical renderer 17/17; core 61/61; full strict, ASan, UBSan,
+  optimized build, smoke, and current-renderer guard pass.
+- Paired 160x90 benchmark (200 frames/path, 128 sprites, 6 ms gate): baseline
+  2.315 ms, sprites 2.677 ms, overhead 0.362 ms; deterministic checksums
+  `1846712605617511097` / `5403392855886966484`; PASS. A later noisy rerun also
+  passed at 5.461/4.212 ms; the gate is both paths under 6 ms, not subtraction.
+- Existing `benchmark-surface-render` reproduced its tracked flat-height issue:
+  flat 8.332 ms fails 6 ms while raised 5.716 ms passes. This predates I1; the
+  paired sprite benchmark isolates I1 overhead.
 
 ## R10 I2 implementation (2026-08-27)
 
@@ -93,7 +131,7 @@ The prior SMC handoff below is historical and remains preserved.
 - Reflected entities, horizontal mirrors, or recursive mirrors
 - R10 I1/I2 combined manual visual/input acceptance passed 2026-08-27; R10 is
   closed with I3 research evidence recorded (all candidates DEFER; one REJECT)
-- Sprites/entities/triggers (R11)
+- R11 increments I1–I3 (sprites, triggers, spawn) are planned; not implemented
 - Responsive UI model (R12)
 
 ## Manual acceptance — passed
@@ -120,10 +158,10 @@ R10 I1 and I2 are marked Verified. R10 has no remaining open items.
 
 ## Stop boundary
 
-R9 and R10 are released. R10 I1–I2 are Implemented and Verified (automated
-gates plus manual acceptance on 2026-08-27). R10 I3 research is recorded with
-all candidates DEFER (area-analytic REJECT); do not begin any v8 implementation
-without separate Q1 authorization and a paired benchmark. R11, R12, and I8 also
+R9 and R10 are released. R11 I1 is Implemented with automated gates passing.
+Do not begin I2 scene v8/authoring or I3 triggers without explicit authorization;
+manual sprite acceptance is paired with I2. Animation, objects, game-mode spawn,
+solid/occluding sprites, and sprite attachment remain deferred. R12 and I8 also
 require separate authorization.
 
 ## Automated gate evidence (final run 2026-08-26)

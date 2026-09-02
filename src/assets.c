@@ -279,3 +279,16 @@ const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void) {
     static DecalPatternAsset fallback = {2, 2, cells};
     return &fallback;
 }
+const SpriteAsset *asset_registry_get_sprite(
+    const AssetRegistry *reg, int id) {
+    if (!reg || id < 1 || id > 255 || !reg->sprites[id].pattern ||
+        reg->sprites[id].cols <= 0 || reg->sprites[id].rows <= 0) {
+        return NULL;
+    }
+    return &reg->sprites[id];
+}
+
+bool sprite_id_is_loaded(const AssetRegistry *reg, int id) {
+    return asset_registry_get_sprite(reg, id) != NULL;
+}
+

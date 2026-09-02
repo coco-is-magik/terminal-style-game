@@ -534,8 +534,8 @@ static bool load_light(WorldState *world, const char *filepath) {
  *
  * Unlike decals, sprites are stored in the AssetRegistry (indexed by
  * sprite ID) rather than placed directly into the world.  World sprite
- * instances can reference them by ID, although generic sprite rendering is
- * not currently implemented in raycast_render().
+ * instances reference them by ID and the world-overlay pass renders them as
+ * decorative camera-facing billboards.
  *
  * @param reg       AssetRegistry to store the sprite into
  * @param id        Sprite ID (1–255)

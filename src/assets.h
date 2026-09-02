@@ -75,7 +75,8 @@ typedef struct {
  *
  * Sprite assets are 2D glyph/material patterns intended for billboard-style
  * rendering.  The pattern grid (cols × rows) stores the glyph and material for
- * each cell.  Generic sprite rendering is not currently implemented.
+ * each cell. The world-overlay renderer projects this grid as a decorative
+ * camera-facing billboard.
  */
 typedef struct {
     int cols;                /* Number of columns in the pattern grid */
@@ -238,5 +239,14 @@ const DecalPatternAsset *asset_registry_get_decal_pattern(
 
 /** Return the process-lifetime built-in checker/! missing-reference pattern. */
 const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void);
+
+/** Return a borrowed loaded sprite definition, or NULL for an invalid/unloaded ID. */
+const SpriteAsset *asset_registry_get_sprite(
+    const AssetRegistry *reg,
+    int id
+);
+
+/** Check whether a sprite ID has a loaded pattern. */
+bool sprite_id_is_loaded(const AssetRegistry *reg, int id);
 
 #endif /* ASSETS_H */

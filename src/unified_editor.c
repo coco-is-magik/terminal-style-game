@@ -25,6 +25,7 @@
 #define EDITOR_PICKER_VISIBLE 4
 #define EDITOR_MAP_CHOOSER_VISIBLE 10
 #define EDITOR_LIGHT_PICK_RADIUS 0.50
+#define EDITOR_SPRITE_PICK_RADIUS 0.5
 #define EDITOR_LIGHT_REPEAT_DELAY_SECONDS 0.35
 #define EDITOR_LIGHT_REPEAT_INTERVAL_SECONDS 0.08
 #define EDITOR_LIGHT_REPEAT_MAX_STEPS_PER_FRAME 8
@@ -89,6 +90,7 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->material_collision_id = 0U;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->decal_field = EDITOR_DECAL_FIELD_POSITION_U;
+    editor->sprite_field = EDITOR_SPRITE_FIELD_X;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
     editor->light_value_editing = false;
@@ -503,6 +505,9 @@ static bool editor_selection_is_valid(
         return scene_document_find_decal(
             &editor->document, selection.value.decal.id) != NULL;
     }
+    if (selection.type == SELECTION_SPRITE)
+        return scene_document_find_sprite(
+            &editor->document, selection.value.sprite.id) != NULL;
     if (selection.type == SELECTION_FLOOR ||
         selection.type == SELECTION_CEILING) {
         return editor_selection_is_valid_for_map(
@@ -537,6 +542,9 @@ static bool editor_command_requires_runtime_refresh(const EditorCommand *command
             type == EDITOR_MUTATION_SET_DECAL ||
             type == EDITOR_MUTATION_INSERT_DECAL ||
             type == EDITOR_MUTATION_REMOVE_DECAL ||
+            type == EDITOR_MUTATION_SET_SPRITE ||
+            type == EDITOR_MUTATION_INSERT_SPRITE ||
+            type == EDITOR_MUTATION_REMOVE_SPRITE ||
             type == EDITOR_MUTATION_SET_AMBIENT_INTENSITY ||
             type == EDITOR_MUTATION_PLACE_WALL ||
             type == EDITOR_MUTATION_REMOVE_WALL ||
@@ -1854,6 +1862,154 @@ CommandResult unified_editor_set_decal_field_value(
     return result;
 }
 
+static uint16_t editor_find_loaded_sprite_id(
+    const UnifiedEditorState *editor
+) {
+    int id;
+    if (!editor || !editor->assets) return 0U;
+    for (id = 1; id <= 255; id++) {
+        if (sprite_id_is_loaded(editor->assets, id)) return (uint16_t)id;
+    }
+    return 0U;
+}
+
+CommandResult unified_editor_place_sprite(
+    UnifiedEditorState *editor, uint16_t asset_id
+) {
+    int map_x;
+    int map_y;
+    SceneSpriteInstance prototype;
+    SceneInstanceId new_id = SCENE_INSTANCE_ID_INVALID;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    SceneInstanceId old_next_instance;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    if (asset_id == 0U || !sprite_id_is_loaded(editor->assets, (int)asset_id)) {
+        editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    if (!editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
+        editor->status = EDITOR_STATUS_INVALID_SELECTION;
+        editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    memset(&prototype, 0, sizeof(prototype));
+    prototype.asset.kind = SCENE_ASSET_KIND_SPRITE_PATTERN;
+    prototype.asset.id = asset_id;
+    prototype.x = (double)map_x + 0.5;
+    prototype.y = (double)map_y + 0.5;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    old_next_instance = editor->document.next_instance_id;
+    result = command_history_insert_sprite(
+        &editor->history, &editor->document, &prototype, &new_id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next)) {
+        editor->document.next_instance_id = old_next_instance;
+        return CMD_RESULT_OUT_OF_MEMORY;
+    }
+    if (result == CMD_RESULT_OK) {
+        editor->selection.type = SELECTION_SPRITE;
+        editor->selection.value.sprite.id = new_id;
+        editor_reset_selection_set(editor);
+        editor->inspector_open = true;
+        editor->inspector_kind = EDITOR_INSPECTOR_SPRITE;
+        editor->sprite_field = EDITOR_SPRITE_FIELD_X;
+        editor_cancel_light_value_edit(editor);
+    }
+    return result;
+}
+
+CommandResult unified_editor_remove_sprite(
+    UnifiedEditorState *editor, SceneInstanceId id
+) {
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_remove_sprite(&editor->history, &editor->document, id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    }
+    return result;
+}
+
+CommandResult unified_editor_step_sprite_field(
+    UnifiedEditorState *editor, EditorSpriteField field, int direction
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active ||
+        !editor_domain_make_sprite_step_request(
+            &editor->document, editor->selection, field, direction, &request)) {
+        if (editor) {
+            editor->status = EDITOR_STATUS_INVALID_SELECTION;
+            editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        }
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+CommandResult unified_editor_set_sprite_field_value(
+    UnifiedEditorState *editor, EditorSpriteField field, double value
+) {
+    EditorMutationRequest request;
+    CommandResult result;
+    size_t old_count;
+    size_t old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active ||
+        !editor_domain_make_sprite_value_request(
+            &editor->document, editor->selection, field, value, &request)) {
+        if (editor) {
+            editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+            editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+        }
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    old_count = editor->history.count;
+    old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_execute_group(
+        &editor->history, &editor->document, &request, 1U);
+    editor_map_command_result(editor, result);
+    editor_revalidate_selection(editor);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+
 CommandResult unified_editor_step_light_field(
     UnifiedEditorState *editor,
     EditorLightField field,
@@ -2091,6 +2247,7 @@ static void editor_handle_select(
     editor->inspector_open = editor->inspector_kind != EDITOR_INSPECTOR_NONE;
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
+    editor->sprite_field = EDITOR_SPRITE_FIELD_X;
     editor->material_picker_open = false;
     editor_cancel_light_value_edit(editor);
     editor->light_repeat_direction = 0;
@@ -2580,6 +2737,37 @@ static void editor_handle_light_field_next(UnifiedEditorState *editor) {
     editor->light_field = (EditorLightField)(editor->light_field + 1);
     if (editor->light_field >= EDITOR_LIGHT_FIELD_COUNT)
         editor->light_field = EDITOR_LIGHT_FIELD_X;
+}
+
+static void editor_handle_sprite_field_prev(UnifiedEditorState *editor) {
+    editor_cancel_light_value_edit(editor);
+    if (editor->sprite_field == EDITOR_SPRITE_FIELD_X)
+        editor->sprite_field = EDITOR_SPRITE_FIELD_REMOVE;
+    else
+        editor->sprite_field = (EditorSpriteField)(editor->sprite_field - 1);
+}
+
+static void editor_handle_sprite_field_next(UnifiedEditorState *editor) {
+    editor_cancel_light_value_edit(editor);
+    editor->sprite_field = (EditorSpriteField)(editor->sprite_field + 1);
+    if (editor->sprite_field >= EDITOR_SPRITE_FIELD_COUNT)
+        editor->sprite_field = EDITOR_SPRITE_FIELD_X;
+}
+
+static bool editor_commit_sprite_value(UnifiedEditorState *editor) {
+    char *end = NULL;
+    double value;
+    if (!editor || !editor->light_value_editing ||
+        editor->light_value_text_length == 0U) return false;
+    value = strtod(editor->light_value_text, &end);
+    if (!end || *end != '\0' ||
+        unified_editor_set_sprite_field_value(
+            editor, editor->sprite_field, value) == CMD_RESULT_INVALID_TARGET) {
+        editor->status = EDITOR_STATUS_INVALID_NUMERIC_VALUE;
+        return true;
+    }
+    editor_cancel_light_value_edit(editor);
+    return true;
 }
 
 static void editor_cancel_light_value_edit(UnifiedEditorState *editor) {
@@ -3097,6 +3285,14 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
         return;
     }
 
+    if (editor->modal == EDITOR_MODAL_SPRITE_REMOVE_PROMPT) {
+        editor->modal = EDITOR_MODAL_NONE;
+        if (editor->selection.type == SELECTION_SPRITE)
+            (void)unified_editor_remove_sprite(
+                editor, editor->selection.value.sprite.id);
+        return;
+    }
+
     if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
         char path_copy[1024];
         path_copy[0] = '\0';
@@ -3354,6 +3550,14 @@ EditorInputConsumption unified_editor_update(
             editor->hover = editor_pick_light_selection(
                 camera, lights, light_count, hit, max_distance,
                 EDITOR_LIGHT_PICK_RADIUS);
+            {
+                size_t sprite_count = 0U;
+                const SceneSpriteInstance *sprites = scene_document_get_sprites(
+                    &editor->document, &sprite_count);
+                editor->hover = editor_pick_sprite_selection(
+                    camera, sprites, sprite_count, editor->hover, max_distance,
+                    EDITOR_SPRITE_PICK_RADIUS);
+            }
             editor->hover = editor_pick_horizontal_surface_selection_height(
                 camera, cmap, heights, editor->hover, viewport_rows, max_distance);
         }
@@ -3632,6 +3836,47 @@ EditorInputConsumption unified_editor_update(
                 (void)unified_editor_step_decal_field(
                     editor, editor->decal_field, 1);
             editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
+                   !editor->light_value_editing &&
+                   input->editor_confirm_pressed &&
+                   editor->sprite_field == EDITOR_SPRITE_FIELD_REMOVE) {
+            editor->modal = EDITOR_MODAL_SPRITE_REMOVE_PROMPT;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
+                   editor->light_value_editing &&
+                   input->editor_confirm_pressed) {
+            (void)editor_commit_sprite_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
+                   editor->light_value_editing &&
+                   input->editor_text_backspace_pressed) {
+            editor_backspace_light_value(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->inspector_kind == EDITOR_INSPECTOR_SPRITE &&
+                   editor->sprite_field != EDITOR_SPRITE_FIELD_REMOVE &&
+                   input->text_input_len > 0) {
+            editor_append_light_value_text(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
+            editor_handle_sprite_field_prev(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
+            editor_handle_sprite_field_next(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_decrease_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
+            if (editor->sprite_field != EDITOR_SPRITE_FIELD_REMOVE)
+                (void)unified_editor_step_sprite_field(
+                    editor, editor->sprite_field, -1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_increase_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
+            if (editor->sprite_field != EDITOR_SPRITE_FIELD_REMOVE)
+                (void)unified_editor_step_sprite_field(
+                    editor, editor->sprite_field, 1);
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_decrease_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             if (editor->light_field != EDITOR_LIGHT_FIELD_REMOVE) {
@@ -3701,6 +3946,15 @@ EditorInputConsumption unified_editor_update(
         } else if (input->editor_place_light_pressed) {
             (void)unified_editor_place_light(editor);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_place_sprite_pressed) {
+            uint16_t asset_id = editor_find_loaded_sprite_id(editor);
+            if (asset_id != 0U) {
+                (void)unified_editor_place_sprite(editor, asset_id);
+            } else {
+                editor->status = EDITOR_STATUS_INVALID_SELECTION;
+                editor->last_command_result = CMD_RESULT_INVALID_TARGET;
+            }
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
                    input->editor_confirm_pressed ||
@@ -3755,6 +4009,16 @@ void unified_editor_render_text_overlay(
                      editor->hover.target.value.light.id,
                      light ? light->x : 0.0, light ? light->y : 0.0,
                      editor->hover.distance);
+        } else if (editor->hover.valid &&
+                   editor->hover.target.type == SELECTION_SPRITE) {
+            const SceneSpriteInstance *sprite = scene_document_find_sprite(
+                &editor->document, editor->hover.target.value.sprite.id);
+            snprintf(line, sizeof(line),
+                     "Hover  sprite:%" PRIu64 " asset:%u pos:(%.2f,%.2f) dist:%.2f",
+                     editor->hover.target.value.sprite.id,
+                     sprite ? (unsigned)sprite->asset.id : 0U,
+                     sprite ? sprite->x : 0.0, sprite ? sprite->y : 0.0,
+                     editor->hover.distance);
         } else {
             snprintf(line, sizeof(line), "Hover  (none)");
         }
@@ -3784,6 +4048,14 @@ void unified_editor_render_text_overlay(
                      "Select decal:%" PRIu64 " asset:%u",
                      editor->selection.value.decal.id,
                      decal ? (unsigned)decal->asset.id : 0U);
+        } else if (editor->selection.type == SELECTION_SPRITE) {
+            const SceneSpriteInstance *sprite = scene_document_find_sprite(
+                &editor->document, editor->selection.value.sprite.id);
+            snprintf(line, sizeof(line),
+                     "Select sprite:%" PRIu64 " asset:%u pos:(%.2f,%.2f)",
+                     editor->selection.value.sprite.id,
+                     sprite ? (unsigned)sprite->asset.id : 0U,
+                     sprite ? sprite->x : 0.0, sprite ? sprite->y : 0.0);
         } else if (editor->selection.type == SELECTION_FLOOR ||
                    editor->selection.type == SELECTION_CEILING) {
             snprintf(line, sizeof(line), "Select %s (%d,%d) selected:%zu primary",
@@ -4214,6 +4486,34 @@ void unified_editor_render_text_overlay(
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
+        } else if (editor->inspector_open &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
+            EditorInspectorPresentation presentation;
+            const SceneSpriteInstance *sprite = scene_document_find_sprite(
+                &editor->document, editor->selection.value.sprite.id);
+            if (editor_domain_inspector_presentation(
+                    EDITOR_INSPECTOR_SPRITE, &presentation)) {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+                for (size_t field = 0U; field < presentation.field_count; field++) {
+                    EditorInspectorFieldPresentation fp;
+                    char value[32];
+                    bool selected = field == (size_t)editor->sprite_field;
+                    if (!sprite || !editor_domain_inspector_field_presentation(
+                            EDITOR_INSPECTOR_SPRITE, field,
+                            scene_document_get_map(&editor->document), &fp) ||
+                        !editor_domain_format_sprite_field(
+                            sprite, (EditorSpriteField)field, value, sizeof(value))) continue;
+                    if (selected && editor->light_value_editing)
+                        snprintf(line, sizeof(line), " > %-10s [%s_]",
+                                 fp.label, editor->light_value_text);
+                    else snprintf(line, sizeof(line), " %s %-10s %s",
+                                  selected ? ">" : " ", fp.label, value);
+                    grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
+                }
+                if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
+            }
         }
 
         if (editor_document_has_unsaveable_material(&editor->document) ||
@@ -4319,6 +4619,9 @@ void unified_editor_render_text_overlay(
         } else if (editor->modal == EDITOR_MODAL_DECAL_REMOVE_PROMPT) {
             grid_print(grid, 1, row++,
                        "Remove selected decal? Enter=yes  Esc=no", warn, bg);
+        } else if (editor->modal == EDITOR_MODAL_SPRITE_REMOVE_PROMPT) {
+            grid_print(grid, 1, row++,
+                       "Remove selected sprite? Enter=yes  Esc=no", warn, bg);
         } else if (editor->modal == EDITOR_MENU_SAVE) {
             const char *root = editor->scene_root
                 ? editor->scene_root : "assets/scenes";

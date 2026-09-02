@@ -1524,6 +1524,57 @@ static void test_optical_material_command_undo_redo_and_inherit(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_sprite_set_insert_remove_undo_redo_and_capacity(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    SceneSpriteInstance prototype = {
+        .asset = {SCENE_ASSET_KIND_SPRITE_PATTERN, 7U}, .x = 1.5, .y = 1.5
+    };
+    SceneSpriteInstance changed;
+    SceneInstanceId id = 0U;
+    (void)state;
+    load_fixture(&doc);
+    doc.next_instance_id = 40U;
+    command_history_init(&history, doc.current_state);
+    assert_int_equal(command_history_insert_sprite(
+        &history, &doc, &prototype, &id), CMD_RESULT_OK);
+    assert_int_equal(id, 40U);
+    assert_int_equal(doc.sprite_count, 1U);
+    assert_int_equal(doc.next_instance_id, 41U);
+    changed = *scene_document_find_sprite(&doc, id);
+    changed.x = 1.75;
+    assert_int_equal(command_history_set_sprite(
+        &history, &doc, id, &changed), CMD_RESULT_OK);
+    assert_true(scene_document_find_sprite(&doc, id)->x == 1.75);
+    assert_int_equal(command_history_remove_sprite(
+        &history, &doc, id), CMD_RESULT_OK);
+    assert_int_equal(doc.sprite_count, 0U);
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_find_sprite(&doc, id)->x == 1.75);
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_find_sprite(&doc, id)->x == 1.5);
+    assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_find_sprite(&doc, id)->x == 1.75);
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+
+    load_fixture(&doc);
+    command_history_init(&history, doc.current_state);
+    doc.next_instance_id = 50U;
+    doc.sprites = calloc(SCENE_MAX_SPRITES, sizeof(*doc.sprites));
+    assert_non_null(doc.sprites);
+    doc.sprite_count = doc.sprite_capacity = SCENE_MAX_SPRITES;
+    {
+        size_t before = history.count;
+        assert_int_equal(command_history_insert_sprite(
+            &history, &doc, &prototype, &id), CMD_RESULT_INVALID_TARGET);
+        assert_int_equal(doc.next_instance_id, 50U);
+        assert_int_equal(history.count, before);
+    }
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
 static void test_optical_cell_sparse_order_removal_and_allocation_failure(void **state) {
     SceneDocument doc;
     CommandHistory history;
@@ -1632,6 +1683,7 @@ int main(void) {
         cmocka_unit_test(test_decal_insert_failure_does_not_consume_id),
         cmocka_unit_test(test_decal_batch_insert_is_one_step_and_rolls_back_ids),
         cmocka_unit_test(test_history_memory_limit_is_bounded_and_atomic),
+        cmocka_unit_test(test_sprite_set_insert_remove_undo_redo_and_capacity),
         cmocka_unit_test(test_optical_material_command_undo_redo_and_inherit),
         cmocka_unit_test(test_optical_cell_sparse_order_removal_and_allocation_failure),
         cmocka_unit_test(test_optical_command_invalid_values_are_atomic),

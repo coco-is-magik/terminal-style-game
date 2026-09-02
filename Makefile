@@ -150,11 +150,13 @@ BENCH_HEIGHTFIELD_SELECTIVE_RUNNER := $(BUILD_DIR)/benchmark-heightfield-selecti
 TEST_MIRROR_TRACE_RUNNER := $(BUILD_DIR)/test-mirror-trace
 TEST_OPTICAL_RENDER_RUNNER := $(BUILD_DIR)/test-optical-render
 BENCH_OPTICAL_RENDER_RUNNER := $(BUILD_DIR)/benchmark-optical-render
+TEST_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/test-sprite-render
+BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
 
-.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render benchmark-colored-lighting r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
+.PHONY: all run test check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
 
 
 all: $(APP)
@@ -191,7 +193,7 @@ SRC_UI_ELE        := src/ui_ele.c
 SRC_MENU_STATE    := src/menu_state.c
 SRC_SCALE         := src/scale.c
 SRC_TIMING        := src/timing.c
-SRC_RAYCAST       := src/raycast.c src/decal_projection.c src/heightfield_trace.c src/smc_render_opt.c
+SRC_RAYCAST       := src/raycast.c src/decal_projection.c src/sprite_render.c src/heightfield_trace.c src/smc_render_opt.c
 SRC_RAYCAST_OPTICAL := $(SRC_RAYCAST) src/raycast_optical.c \
 	src/heightfield_trace_selective.c src/optical_runtime_view.c \
 	src/optical_compositor.c src/mirror_trace.c
@@ -746,6 +748,21 @@ $(TEST_OPTICAL_RENDER_RUNNER): tests/test_optical_render.c $(SRC_RAYCAST_OPTICAL
 		$(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) \
 		-o $(TEST_OPTICAL_RENDER_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_SPRITE_RENDER_RUNNER): tests/test_sprite_render.c src/sprite_render.c $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_sprite_render.c src/sprite_render.c \
+		$(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MATH) \
+		$(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) \
+		-o $(TEST_SPRITE_RENDER_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(BENCH_SPRITE_RENDER_RUNNER): tests/benchmark_sprite_render.c $(SRC_RAYCAST_OPTICAL) $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_sprite_render.c $(SRC_RAYCAST_OPTICAL) \
+		$(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) \
+		$(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) \
+		-o $(BENCH_SPRITE_RENDER_RUNNER) $(TEST_LIBS) $(RPATH)
+
+benchmark-sprite-render: $(BENCH_SPRITE_RENDER_RUNNER)
+	./$(BENCH_SPRITE_RENDER_RUNNER)
+
 $(BENCH_OPTICAL_RENDER_RUNNER): tests/benchmark_optical_render.c $(SRC_RAYCAST_OPTICAL) $(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) $(SRC_MATH) $(SRC_ASSETS) $(SRC_WORLD) $(SRC_INPUT) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_optical_render.c $(SRC_RAYCAST_OPTICAL) \
 		$(SRC_CHECKED_SIZE) $(SRC_GRID) $(SRC_MAP) $(SRC_CAMERA) $(SRC_CONFIG) \
@@ -769,7 +786,7 @@ run-normal: $(APP)
 run-stress: $(APP)
 	./$(APP) --mode stress
 
-test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_CAMERA_RUNNER) $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) $(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_ASSET_REFRESH_RUNNER) $(TEST_R9_OPTICAL_SEMANTICS_RUNNER) $(TEST_R9_MULTIHIT_TRACE_RUNNER) $(TEST_R9_OPTICAL_COMPOSITOR_RUNNER) $(TEST_R9_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) $(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RENDER_RUNNER)
+test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) $(TEST_UI_ELE_RUNNER) $(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) $(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_CAMERA_RUNNER) $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) $(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) $(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_ASSET_REFRESH_RUNNER) $(TEST_R9_OPTICAL_SEMANTICS_RUNNER) $(TEST_R9_MULTIHIT_TRACE_RUNNER) $(TEST_R9_OPTICAL_COMPOSITOR_RUNNER) $(TEST_R9_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) $(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RENDER_RUNNER) $(TEST_SPRITE_RENDER_RUNNER)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
 	./$(TEST_DECALS_RUNNER)
@@ -810,6 +827,7 @@ test: $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) $(TEST_MENU_
 	./$(TEST_HEIGHTFIELD_SELECTIVE_RUNNER)
 	./$(TEST_MIRROR_TRACE_RUNNER)
 	./$(TEST_OPTICAL_RENDER_RUNNER)
+	./$(TEST_SPRITE_RENDER_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
 check: all test check-current-renderer

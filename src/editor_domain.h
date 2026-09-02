@@ -20,7 +20,8 @@ typedef enum {
     EDITOR_INSPECTOR_LIGHT,
     EDITOR_INSPECTOR_FLOOR_SURFACE,
     EDITOR_INSPECTOR_CEILING_SURFACE,
-    EDITOR_INSPECTOR_DECAL
+    EDITOR_INSPECTOR_DECAL,
+    EDITOR_INSPECTOR_SPRITE
 } EditorInspectorKind;
 
 typedef enum {
@@ -115,6 +116,13 @@ typedef enum {
     EDITOR_DECAL_FIELD_REMOVE,
     EDITOR_DECAL_FIELD_COUNT
 } EditorDecalField;
+
+typedef enum {
+    EDITOR_SPRITE_FIELD_X = 0,
+    EDITOR_SPRITE_FIELD_Y,
+    EDITOR_SPRITE_FIELD_REMOVE,
+    EDITOR_SPRITE_FIELD_COUNT
+} EditorSpriteField;
 
 typedef enum {
     EDITOR_INSPECTOR_FIELD_CHOICE = 0,
@@ -297,6 +305,22 @@ bool editor_domain_make_decal_value_request(
     EditorDecalField field,
     double numeric_value,
     EditorMutationRequest *out_request
+);
+bool editor_domain_sprite_field_presentation(
+    EditorSpriteField field, const Map *map,
+    EditorInspectorFieldPresentation *out_presentation
+);
+bool editor_domain_format_sprite_field(
+    const SceneSpriteInstance *sprite, EditorSpriteField field,
+    char *out_text, size_t out_size
+);
+bool editor_domain_make_sprite_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorSpriteField field, int direction, EditorMutationRequest *out_request
+);
+bool editor_domain_make_sprite_value_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorSpriteField field, double value, EditorMutationRequest *out_request
 );
 
 #endif /* EDITOR_DOMAIN_H */

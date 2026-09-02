@@ -43,6 +43,11 @@ EditorHit editor_pick_light_selection(
     double max_distance,
     double pick_radius
 );
+EditorHit editor_pick_sprite_selection(
+    const Camera *camera, const SceneSpriteInstance *sprites,
+    size_t sprite_count, EditorHit existing_hit, double max_distance,
+    double pick_radius
+);
 
 EditorHit editor_pick_horizontal_surface_selection(
     const Camera *camera,

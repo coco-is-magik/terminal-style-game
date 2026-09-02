@@ -62,8 +62,8 @@ typedef struct {
  * SpriteEntity — An instance of a billboard sprite in the world
  *
  * References a sprite definition in the AssetRegistry by sprite_id.
- * Intended for billboard-style sprite instances.  Generic sprite rendering
- * is not currently implemented by raycast_render().
+ * Rendered as a decorative, light-map-lit billboard by the world-overlay pass.
+ * Sprite instances do not collide, block rays or light, or appear in mirrors.
  */
 typedef struct {
     Vec2 pos;               /* World position */

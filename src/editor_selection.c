@@ -34,6 +34,8 @@ static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
         return a.value.light.id == b.value.light.id;
     if (a.type == SELECTION_DECAL)
         return a.value.decal.id == b.value.decal.id;
+    if (a.type == SELECTION_SPRITE)
+        return a.value.sprite.id == b.value.sprite.id;
     return a.type == SELECTION_NONE;
 }
 
@@ -255,6 +257,48 @@ EditorHit editor_pick_light_selection(
         result.distance = best_forward;
         result.target.type = SELECTION_LIGHT;
         result.target.value.light.id = best_id;
+    }
+    return result;
+}
+
+EditorHit editor_pick_sprite_selection(
+    const Camera *camera, const SceneSpriteInstance *sprites,
+    size_t sprite_count, EditorHit existing_hit, double max_distance,
+    double pick_radius
+) {
+    EditorHit result = existing_hit;
+    double limit;
+    double radius_squared;
+    double dir_x;
+    double dir_y;
+    double best = 0.0;
+    SceneInstanceId best_id = SCENE_INSTANCE_ID_INVALID;
+    size_t i;
+    if (!camera || (!sprites && sprite_count > 0U) ||
+        !isfinite(max_distance) || max_distance <= 0.0 ||
+        !isfinite(pick_radius) || pick_radius <= 0.0) return result;
+    limit = existing_hit.valid ? existing_hit.distance : max_distance;
+    if (!isfinite(limit) || limit <= 0.0 || limit > max_distance) limit = max_distance;
+    radius_squared = pick_radius * pick_radius;
+    dir_x = cos(camera->transform.angle);
+    dir_y = sin(camera->transform.angle);
+    for (i = 0U; i < sprite_count; i++) {
+        double dx = sprites[i].x - camera->transform.pos.x;
+        double dy = sprites[i].y - camera->transform.pos.y;
+        double forward = dx * dir_x + dy * dir_y;
+        double side = dx * dir_y - dy * dir_x;
+        if (sprites[i].id == SCENE_INSTANCE_ID_INVALID || !isfinite(dx) ||
+            !isfinite(dy) || forward <= 0.0 || forward >= limit ||
+            side * side > radius_squared ||
+            (best_id != SCENE_INSTANCE_ID_INVALID && forward >= best)) continue;
+        best = forward;
+        best_id = sprites[i].id;
+    }
+    if (best_id != SCENE_INSTANCE_ID_INVALID) {
+        result.valid = true;
+        result.distance = best;
+        result.target.type = SELECTION_SPRITE;
+        result.target.value.sprite.id = best_id;
     }
     return result;
 }

@@ -80,6 +80,7 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     free(document->authored_cells);
     free(document->lights);
     free(document->decals);
+    free(document->sprites);
     free(document->optical_material_defaults);
     free(document->optical_cell_overrides);
     free(document->legacy_source_path);
@@ -92,6 +93,9 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->decals = NULL;
     document->decal_count = 0U;
     document->decal_capacity = 0U;
+    document->sprites = NULL;
+    document->sprite_count = 0U;
+    document->sprite_capacity = 0U;
     document->optical_material_defaults = NULL;
     document->optical_material_capacity = 0U;
     document->optical_material_storage_capacity = 0U;
@@ -480,6 +484,11 @@ static SceneLoadResult scene_document_commit_candidate(
     document->decal_capacity = candidate->decal_count;
     candidate->decals = NULL;
     candidate->decal_count = 0U;
+    document->sprites = candidate->sprites;
+    document->sprite_count = candidate->sprite_count;
+    document->sprite_capacity = candidate->sprite_count;
+    candidate->sprites = NULL;
+    candidate->sprite_count = 0U;
     document->optical_material_defaults = candidate->optical_material_defaults;
     document->optical_material_capacity = candidate->optical_material_capacity;
     document->optical_material_storage_capacity = candidate->optical_material_capacity;
@@ -540,6 +549,13 @@ static SceneLoadResult build_repair_diagnostics(
             }
         }
     }
+    for (size_t i = 0U; i < candidate->sprite_count; i++) {
+        const SceneSpriteInstance *sprite = &candidate->sprites[i];
+        const SpriteAsset *asset = assets && sprite->asset.id < SPRITE_ID_CAPACITY
+            ? &assets->sprites[sprite->asset.id] : NULL;
+        if (!asset || !asset->pattern || asset->cols <= 0 || asset->rows <= 0)
+            missing_count++;
+    }
     if (assets && candidate->authored_cells) {
         for (size_t i = 0U; i < candidate->authored_cell_count; i++) {
             const SceneAuthoredCell *cell = &candidate->authored_cells[i];
@@ -596,6 +612,27 @@ static SceneLoadResult build_repair_diagnostics(
                 diagnostics[written].instance_id = decal->id;
                 written++;
             }
+        }
+    }
+    for (size_t i = 0U;
+         i < candidate->sprite_count && written < missing_count; i++) {
+        const SceneSpriteInstance *sprite = &candidate->sprites[i];
+        const SpriteAsset *asset = assets && sprite->asset.id < SPRITE_ID_CAPACITY
+            ? &assets->sprites[sprite->asset.id] : NULL;
+        if (!asset || !asset->pattern || asset->cols <= 0 || asset->rows <= 0) {
+            char section[SCENE_DIAGNOSTIC_SECTION_MAX + 1U];
+            char detail[SCENE_DIAGNOSTIC_DETAIL_MAX + 1U];
+            (void)snprintf(section, sizeof(section), "sprite %llu",
+                           (unsigned long long)sprite->id);
+            (void)snprintf(detail, sizeof(detail),
+                           "sprite pattern asset %u is not loaded",
+                           (unsigned int)sprite->asset.id);
+            scene_diagnostic_set(&diagnostics[written],
+                SCENE_DIAGNOSTIC_INPUT_ASSET_MISSING,
+                SCENE_DIAGNOSTIC_SEVERITY_WARNING, path, section, "asset_id",
+                detail);
+            diagnostics[written].instance_id = sprite->id;
+            written++;
         }
     }
     if (assets && candidate->authored_cells) {
@@ -663,6 +700,8 @@ SceneLoadResult scene_document_refresh_repair_diagnostics(
     view.authored_cell_count = document->authored_cell_count;
     view.decals = document->decals;
     view.decal_count = document->decal_count;
+    view.sprites = document->sprites;
+    view.sprite_count = document->sprite_count;
     result = build_repair_diagnostics(&view, assets, document->path,
                                       &repairs, &count, diagnostic);
     if (result != SCENE_LOAD_OK) return result;
@@ -756,6 +795,14 @@ SceneLoadResult scene_document_load_native_with_assets(
     if (candidate.source_version == SCENE_VERSION_V6) {
         migration_pending = true;
         parse_result = scene_format_migrate_v6_to_v7(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
+    if (candidate.source_version == SCENE_VERSION_V7) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v7_to_v8(&candidate, diagnostic);
         if (parse_result != SCENE_FORMAT_OK) {
             scene_format_candidate_destroy(&candidate);
             return SCENE_LOAD_VALIDATION_FAILED;
@@ -1053,6 +1100,8 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.light_count = document->light_count;
     candidate.decals = document->decals;
     candidate.decal_count = document->decal_count;
+    candidate.sprites = document->sprites;
+    candidate.sprite_count = document->sprite_count;
     candidate.optical_material_defaults = document->optical_material_defaults;
     candidate.optical_material_capacity = document->optical_material_capacity;
     candidate.optical_cell_overrides = document->optical_cell_overrides;
@@ -1481,6 +1530,23 @@ const SceneDecalInstance *scene_document_find_decal(
     return NULL;
 }
 
+const SceneSpriteInstance *scene_document_get_sprites(
+    const SceneDocument *document, size_t *out_count
+) {
+    if (out_count) *out_count = document ? document->sprite_count : 0U;
+    return document ? document->sprites : NULL;
+}
+
+const SceneSpriteInstance *scene_document_find_sprite(
+    const SceneDocument *document, SceneInstanceId instance_id
+) {
+    size_t i;
+    if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (i = 0U; i < document->sprite_count; i++)
+        if (document->sprites[i].id == instance_id) return &document->sprites[i];
+    return NULL;
+}
+
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
     const SceneDocument *document,
     size_t *out_count
@@ -1586,6 +1652,15 @@ SceneRuntimeBuildResult scene_document_build_runtime_world(
         }
         if (world_add_resolved_decal(&temporary, decal) != WORLD_INSERT_OK) {
             free(decal.pattern);
+            world_clear(&temporary);
+            return SCENE_RUNTIME_BUILD_INVALID_DOCUMENT;
+        }
+    }
+
+    for (i = 0U; i < document->sprite_count; i++) {
+        const SceneSpriteInstance *source = &document->sprites[i];
+        if (world_add_sprite(&temporary, source->x, source->y,
+                             source->asset.id) != WORLD_INSERT_OK) {
             world_clear(&temporary);
             return SCENE_RUNTIME_BUILD_INVALID_DOCUMENT;
         }
@@ -1943,6 +2018,72 @@ bool scene_document_internal_set_decal(
     return false;
 }
 
+bool scene_document_internal_insert_sprite(
+    SceneDocument *document, size_t index, const SceneSpriteInstance *sprite
+) {
+    SceneSpriteInstance *grown;
+    size_t capacity;
+    if (!document || !sprite || index > document->sprite_count ||
+        document->sprite_count >= SCENE_MAX_SPRITES) return false;
+    if (document->sprite_count >= document->sprite_capacity) {
+        capacity = document->sprite_capacity ? document->sprite_capacity * 2U : 8U;
+        if (capacity > SCENE_MAX_SPRITES) capacity = SCENE_MAX_SPRITES;
+        if (capacity <= document->sprite_count) return false;
+        grown = realloc(document->sprites, capacity * sizeof(*document->sprites));
+        if (!grown) return false;
+        document->sprites = grown;
+        document->sprite_capacity = capacity;
+    }
+    if (index < document->sprite_count)
+        memmove(&document->sprites[index + 1U], &document->sprites[index],
+                (document->sprite_count - index) * sizeof(*document->sprites));
+    document->sprites[index] = *sprite;
+    document->sprite_count++;
+    return true;
+}
+
+bool scene_document_internal_remove_sprite(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+) {
+    if (!document || index >= document->sprite_count ||
+        document->sprites[index].id != expected_id) return false;
+    if (index + 1U < document->sprite_count)
+        memmove(&document->sprites[index], &document->sprites[index + 1U],
+                (document->sprite_count - index - 1U) * sizeof(*document->sprites));
+    document->sprite_count--;
+    return true;
+}
+
+bool scene_document_internal_sprite_value_is_valid(
+    const SceneDocument *document, SceneInstanceId instance_id,
+    const SceneSpriteInstance *value
+) {
+    return document && value && instance_id != SCENE_INSTANCE_ID_INVALID &&
+        value->id == instance_id &&
+        value->asset.kind == SCENE_ASSET_KIND_SPRITE_PATTERN &&
+        value->asset.id > 0U && value->asset.id < SPRITE_ID_CAPACITY &&
+        isfinite(value->x) && isfinite(value->y) && value->x >= 0.0 &&
+        value->x < document->map.width && value->y >= 0.0 &&
+        value->y < document->map.height &&
+        scene_document_find_sprite(document, instance_id) != NULL;
+}
+
+bool scene_document_internal_set_sprite(
+    SceneDocument *document, SceneInstanceId instance_id,
+    const SceneSpriteInstance *value
+) {
+    size_t i;
+    if (!scene_document_internal_sprite_value_is_valid(
+            document, instance_id, value)) return false;
+    for (i = 0U; i < document->sprite_count; i++) {
+        if (document->sprites[i].id == instance_id) {
+            document->sprites[i] = *value;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool scene_document_internal_insert_light(
     SceneDocument *document, size_t index, const SceneLight *light
 ) {
@@ -1993,6 +2134,9 @@ static bool resize_ring_has_content(const SceneDocument *document,
             if ((east ? decal->map_x : decal->map_y) >= new_dimension) return true;
         } else if ((east ? decal->x : decal->y) >= new_dimension) return true;
     }
+    for (i = 0U; i < document->sprite_count; i++)
+        if ((east ? document->sprites[i].x : document->sprites[i].y) >=
+            new_dimension) return true;
     for (i = 0U; i < document->optical_cell_override_count; i++) {
         uint32_t index = document->optical_cell_overrides[i].cell_index;
         int x = (int)(index % (uint32_t)document->map.width);

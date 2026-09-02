@@ -31,6 +31,8 @@ typedef struct {
     size_t light_count;
     SceneDecalInstance *decals;
     size_t decal_count;
+    SceneSpriteInstance *sprites;
+    size_t sprite_count;
     OpticalExtension *optical_material_defaults;
     size_t optical_material_capacity;
     OpticalCellOverride *optical_cell_overrides;
@@ -85,6 +87,12 @@ SceneFormatResult scene_format_migrate_v5_to_v6(
 
 /* Adds explicit point-light type/cone/falloff defaults to a parsed v6 candidate. */
 SceneFormatResult scene_format_migrate_v6_to_v7(
+    SceneFormatCandidate *candidate,
+    SceneDiagnostic *out_diagnostic
+);
+
+/* Adds the empty authored sprite collection to a parsed v7 candidate. */
+SceneFormatResult scene_format_migrate_v7_to_v8(
     SceneFormatCandidate *candidate,
     SceneDiagnostic *out_diagnostic
 );

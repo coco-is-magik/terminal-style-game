@@ -86,6 +86,7 @@ representative raycast workload.
 make test
 make benchmark
 make stability
+make benchmark-sprite-render
 
 
 `make benchmark` and `make stability` exercise the representative raycast
@@ -93,6 +94,13 @@ workload. They retain worst-frame and minimum-spare telemetry, but acceptance is
 based on allocation safety and sustained average render cost: `ideal` at
 `<= 4 ms`, `pass_minimum` at `<= 6 ms`. This avoids treating isolated
 scheduler/presentation spikes on low-end hardware as sustained regressions.
+
+R11 I1 adds decorative camera-facing glyph-pattern sprites. They are depth-tested
+against current world geometry and decals, shade through the per-channel light
+map, and never affect collision, ray/light occlusion, or mirrors. The paired
+`benchmark-sprite-render` target compares an empty world with 128 active sprites
+against the 6 ms render budget. Scene placement and persistence are reserved for
+R11 I2.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:

@@ -49,6 +49,7 @@ static void test_grid_init(void **state) {
     assert_non_null(g->column_depths);
     assert_non_null(g->world_depths);
     assert_non_null(g->world_hit_keys);
+    assert_non_null(g->overlay_depths);
     grid_destroy(g);
 }
 

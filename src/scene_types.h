@@ -19,8 +19,9 @@
 #define SCENE_VERSION_V5 5U
 #define SCENE_VERSION_V6 6U
 #define SCENE_VERSION_V7 7U
-/* Canonical writes use v7; v1-v6 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V7
+#define SCENE_VERSION_V8 8U
+/* Canonical writes use v8; v1-v7 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V8
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -29,6 +30,7 @@
 #define SCENE_MAX_HEIGHT 256
 #define SCENE_MAX_LIGHTS 64U
 #define SCENE_MAX_DECALS 256U
+#define SCENE_MAX_SPRITES 128U
 #define SCENE_MAX_REPAIR_DIAGNOSTICS 256U
 
 typedef uint64_t SceneInstanceId;
@@ -110,7 +112,8 @@ typedef enum {
 
 typedef enum {
     SCENE_ASSET_KIND_INVALID = 0,
-    SCENE_ASSET_KIND_DECAL_PATTERN
+    SCENE_ASSET_KIND_DECAL_PATTERN,
+    SCENE_ASSET_KIND_SPRITE_PATTERN
 } SceneAssetKind;
 
 typedef struct {
@@ -180,5 +183,12 @@ typedef struct {
     double depth;
     double rotation;
 } SceneDecalInstance;
+
+typedef struct {
+    SceneInstanceId id;
+    SceneAssetRef asset;
+    double x;
+    double y;
+} SceneSpriteInstance;
 
 #endif /* SCENE_TYPES_H */

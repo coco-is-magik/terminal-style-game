@@ -352,6 +352,7 @@ static void sync_editor_text_input(Renderer *renderer,
            (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
             (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
              editor->inspector_kind == EDITOR_INSPECTOR_DECAL ||
+             editor->inspector_kind == EDITOR_INSPECTOR_SPRITE ||
             editor->material_picker_open)));
     if (should_be_active && !SDL_TextInputActive(renderer->window)) {
         if (!SDL_StartTextInput(renderer->window)) {

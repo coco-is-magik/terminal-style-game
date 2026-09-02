@@ -28,6 +28,9 @@ typedef enum {
     EDITOR_MUTATION_SET_DECAL,
     EDITOR_MUTATION_INSERT_DECAL,
     EDITOR_MUTATION_REMOVE_DECAL,
+    EDITOR_MUTATION_SET_SPRITE,
+    EDITOR_MUTATION_INSERT_SPRITE,
+    EDITOR_MUTATION_REMOVE_SPRITE,
     EDITOR_MUTATION_GROW_EAST,
     EDITOR_MUTATION_GROW_SOUTH,
     EDITOR_MUTATION_SHRINK_EAST,
@@ -84,6 +87,9 @@ typedef struct {
         struct {
             SceneInstanceId id;
         } remove_decal;
+        struct { SceneInstanceId id; SceneSpriteInstance value; } sprite;
+        struct { SceneSpriteInstance value; } insert_sprite;
+        struct { SceneInstanceId id; } remove_sprite;
         struct { int trigger; } resize;
         struct {
             int map_x;
@@ -159,6 +165,17 @@ typedef struct {
             size_t index;
             SceneDecalInstance removed_value;
         } remove_decal;
+        struct {
+            SceneInstanceId id;
+            SceneSpriteInstance before;
+            SceneSpriteInstance after;
+        } sprite;
+        struct { SceneSpriteInstance value; } insert_sprite;
+        struct {
+            SceneInstanceId id;
+            size_t index;
+            SceneSpriteInstance removed_value;
+        } remove_sprite;
         struct { int trigger; } resize;
         struct {
             int map_x;
@@ -336,6 +353,18 @@ CommandResult command_history_remove_decal(
     CommandHistory *history,
     SceneDocument *document,
     SceneInstanceId id
+);
+
+CommandResult command_history_set_sprite(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id,
+    const SceneSpriteInstance *value
+);
+CommandResult command_history_insert_sprite(
+    CommandHistory *history, SceneDocument *document,
+    const SceneSpriteInstance *prototype, SceneInstanceId *out_id
+);
+CommandResult command_history_remove_sprite(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
 );
 
 CommandResult command_history_undo(CommandHistory *history, SceneDocument *document);

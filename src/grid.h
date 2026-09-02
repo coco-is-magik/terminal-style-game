@@ -37,6 +37,7 @@ typedef struct {
  * cells  — Linear array of Cells in row-major order (index = y * width + x)
  * column_depths — Reusable width-sized world-render depth workspace
  * world_depths/world_hit_keys — Reusable per-cell bounded-render occlusion data
+ * overlay_depths — Reusable nearest decal/sprite depth frontier
  */
 typedef struct {
     int width;               /* Grid width in cells */
@@ -46,6 +47,7 @@ typedef struct {
     double *column_depths;   /* Per-column world depth; owned by Grid */
     double *world_depths;    /* Per-cell nearest bounded-world depth; owned by Grid */
     uint64_t *world_hit_keys;/* Per-cell packed hit identity; owned by Grid */
+    double *overlay_depths;  /* Per-cell nearest world-overlay depth; owned by Grid */
 } Grid;
 
 /* ---- Grid API ---- */

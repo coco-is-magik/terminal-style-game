@@ -27,6 +27,7 @@ EditorInspectorKind editor_domain_inspector_kind(SelectionTarget target) {
     if (target.type == SELECTION_FLOOR) return EDITOR_INSPECTOR_FLOOR_SURFACE;
     if (target.type == SELECTION_CEILING) return EDITOR_INSPECTOR_CEILING_SURFACE;
     if (target.type == SELECTION_DECAL) return EDITOR_INSPECTOR_DECAL;
+    if (target.type == SELECTION_SPRITE) return EDITOR_INSPECTOR_SPRITE;
     return EDITOR_INSPECTOR_NONE;
 }
 
@@ -47,6 +48,12 @@ bool editor_domain_inspector_presentation(
             "decal instance", "Up/Down  Left/Right=edit  Type+Enter=set",
             "Reusable pattern; placement transform only",
             EDITOR_DECAL_FIELD_COUNT};
+        return true;
+    }
+    if (kind == EDITOR_INSPECTOR_SPRITE) {
+        *out_presentation = (EditorInspectorPresentation){
+            "sprite instance", "Up/Down  Left/Right=edit  Enter=remove",
+            "Decorative billboard; position only", EDITOR_SPRITE_FIELD_COUNT};
         return true;
     }
     if (kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||
@@ -116,6 +123,11 @@ bool editor_domain_inspector_field_presentation(
                 "Map movement", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
         }
         return true;
+    }
+    if (kind == EDITOR_INSPECTOR_SPRITE &&
+        field_index < EDITOR_SPRITE_FIELD_COUNT) {
+        return editor_domain_sprite_field_presentation(
+            (EditorSpriteField)field_index, map, out_presentation);
     }
     if (kind != EDITOR_INSPECTOR_LIGHT ||
         field_index >= EDITOR_LIGHT_FIELD_COUNT) return false;
@@ -258,6 +270,90 @@ bool editor_domain_make_decal_value_request(
 ) {
     return make_decal_value_request(
         document, target, field, numeric_value, out_request);
+}
+
+bool editor_domain_sprite_field_presentation(
+    EditorSpriteField field, const Map *map,
+    EditorInspectorFieldPresentation *out
+) {
+    if (!map || !out || map->width <= 0 || map->height <= 0) return false;
+    if (field == EDITOR_SPRITE_FIELD_X)
+        *out = (EditorInspectorFieldPresentation){
+            "X", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0, map->width - 0.01,
+            EDITOR_LIGHT_POSITION_STEP, 2U};
+    else if (field == EDITOR_SPRITE_FIELD_Y)
+        *out = (EditorInspectorFieldPresentation){
+            "Y", EDITOR_INSPECTOR_FIELD_NUMBER, 0.0, map->height - 0.01,
+            EDITOR_LIGHT_POSITION_STEP, 2U};
+    else if (field == EDITOR_SPRITE_FIELD_REMOVE)
+        *out = (EditorInspectorFieldPresentation){
+            "Remove", EDITOR_INSPECTOR_FIELD_CHOICE, 0.0, 0.0, 0.0, 0U};
+    else return false;
+    return true;
+}
+
+bool editor_domain_format_sprite_field(
+    const SceneSpriteInstance *sprite, EditorSpriteField field,
+    char *out_text, size_t out_size
+) {
+    int written;
+    if (!sprite || !out_text || out_size == 0U) return false;
+    if (field == EDITOR_SPRITE_FIELD_REMOVE)
+        written = snprintf(out_text, out_size, "Enter=remove");
+    else if (field == EDITOR_SPRITE_FIELD_X)
+        written = snprintf(out_text, out_size, "%.2f", sprite->x);
+    else if (field == EDITOR_SPRITE_FIELD_Y)
+        written = snprintf(out_text, out_size, "%.2f", sprite->y);
+    else return false;
+    return written >= 0 && (size_t)written < out_size;
+}
+
+bool editor_domain_make_sprite_value_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorSpriteField field, double numeric_value,
+    EditorMutationRequest *out_request
+) {
+    const SceneSpriteInstance *current;
+    EditorInspectorFieldPresentation presentation;
+    SceneSpriteInstance value;
+    if (!document || !out_request || target.type != SELECTION_SPRITE ||
+        !isfinite(numeric_value) || !editor_domain_sprite_field_presentation(
+            field, &document->map, &presentation) ||
+        presentation.kind != EDITOR_INSPECTOR_FIELD_NUMBER ||
+        numeric_value < presentation.minimum || numeric_value > presentation.maximum)
+        return false;
+    current = scene_document_find_sprite(document, target.value.sprite.id);
+    if (!current) return false;
+    value = *current;
+    if (field == EDITOR_SPRITE_FIELD_X) value.x = numeric_value;
+    else if (field == EDITOR_SPRITE_FIELD_Y) value.y = numeric_value;
+    else return false;
+    memset(out_request, 0, sizeof(*out_request));
+    out_request->type = EDITOR_MUTATION_SET_SPRITE;
+    out_request->data.sprite.id = target.value.sprite.id;
+    out_request->data.sprite.value = value;
+    return true;
+}
+
+bool editor_domain_make_sprite_step_request(
+    const SceneDocument *document, SelectionTarget target,
+    EditorSpriteField field, int direction, EditorMutationRequest *out_request
+) {
+    const SceneSpriteInstance *current;
+    EditorInspectorFieldPresentation presentation;
+    double value;
+    if (!document || direction == 0 || target.type != SELECTION_SPRITE ||
+        !editor_domain_sprite_field_presentation(
+            field, &document->map, &presentation) ||
+        presentation.kind != EDITOR_INSPECTOR_FIELD_NUMBER) return false;
+    current = scene_document_find_sprite(document, target.value.sprite.id);
+    if (!current) return false;
+    value = (field == EDITOR_SPRITE_FIELD_X ? current->x : current->y) +
+        (direction < 0 ? -presentation.step : presentation.step);
+    if (value < presentation.minimum) value = presentation.minimum;
+    if (value > presentation.maximum) value = presentation.maximum;
+    return editor_domain_make_sprite_value_request(
+        document, target, field, value, out_request);
 }
 
 bool editor_domain_make_surface_material_request(

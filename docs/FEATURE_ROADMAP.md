@@ -225,8 +225,8 @@ Do not create empty review directories or placeholder review files.
 | R7 | Structural editing and scale | R3–R6 | Resize-safe bulk world construction | Verified |
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
-| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Active — I1 implemented/automated gates passed 2026-08-27; manual acceptance pending |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Proposed |
+| R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Released 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime implemented/automated gates passed 2026-08-28; I2 authoring next |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
@@ -805,7 +805,11 @@ or scene ownership changes broadly.
 
 ## R11 — Sprites, animation, objects, triggers, and spawn authoring
 
-**Status:** Proposed
+**Status:** Active — Q1 decision record locked; I1 sprite runtime Implemented
+with automated gates passing 2026-08-28; I2 authoring remains next. See
+`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
+`R11_DECISION_RECORD_2026-08-28.md`, plus
+`R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`.
 
 **Purpose:** Add broader gameplay-authored entities using the existing scene,
 identity, command, selection, and vertical-world foundations.

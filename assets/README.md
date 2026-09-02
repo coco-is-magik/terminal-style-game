@@ -211,7 +211,25 @@ elements=main_menu_title,main_menu_start,main_menu_asset_editor,main_menu_quit
 
 ## Sprites (`assets/sprites/<id>.txt` — optional)
 
-Sprite support exists in the asset registry but no sprite rendering pipeline
-is currently implemented. Sprite patterns are limited to 255 columns and 32
-rows. The asset registry owns successfully loaded sprite patterns and releases
-them through `asset_registry_clear()`.
+Sprite patterns are camera-facing decorative billboards rendered by the world
+overlay pass. They are light-map-lit, depth-tested against world geometry and
+decals, and do not collide, block rays/light, or appear in mirrors. Patterns are
+limited to 255 columns and 32 rows. The asset registry owns successfully loaded
+patterns and releases them through `asset_registry_clear()`.
+
+Each numeric file uses:
+
+```ini
+cols=3
+rows=5
+default_material=1
+pattern_0= @ 
+pattern_1=/#\\
+material_0=1,1,1
+material_1=1,2,1
+```
+
+Whitespace/zero glyphs are transparent. Every visible pattern cell requires a
+loaded, nonzero material; missing assets and invalid references are safe no-ops.
+I1 renders existing `WorldState.sprites` only. Scene placement, selection, and
+persistence arrive in R11 I2.

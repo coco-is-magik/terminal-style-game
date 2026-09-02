@@ -101,6 +101,12 @@ static bool decals_equal(
     return memcmp(a, b, sizeof(*a)) == 0;
 }
 
+static bool sprites_equal(
+    const SceneSpriteInstance *a, const SceneSpriteInstance *b
+) {
+    return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 static bool cell_vertical_equal(const SceneCellVertical *a,
                                 const SceneCellVertical *b) {
     return a->floor_height_step == b->floor_height_step &&
@@ -205,6 +211,20 @@ static bool find_light_index(
     return false;
 }
 
+static bool find_sprite_index(
+    const SceneDocument *document, SceneInstanceId id, size_t *out_index
+) {
+    size_t i;
+    if (!document || id == SCENE_INSTANCE_ID_INVALID || !out_index) return false;
+    for (i = 0U; i < document->sprite_count; i++) {
+        if (document->sprites[i].id == id) {
+            *out_index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool mutation_is_surface(EditorMutationType type) {
     return type == EDITOR_MUTATION_SET_WALL_MATERIAL ||
         type == EDITOR_MUTATION_SET_FLOOR_MATERIAL ||
@@ -291,6 +311,19 @@ static bool mutations_target_same_field(
     if (a->type == EDITOR_MUTATION_INSERT_DECAL &&
         b->type == EDITOR_MUTATION_INSERT_DECAL)
         return a->data.insert_decal.value.id == b->data.insert_decal.value.id;
+    if ((a->type == EDITOR_MUTATION_SET_SPRITE ||
+         a->type == EDITOR_MUTATION_REMOVE_SPRITE) &&
+        (b->type == EDITOR_MUTATION_SET_SPRITE ||
+         b->type == EDITOR_MUTATION_REMOVE_SPRITE)) {
+        SceneInstanceId a_id = a->type == EDITOR_MUTATION_SET_SPRITE
+            ? a->data.sprite.id : a->data.remove_sprite.id;
+        SceneInstanceId b_id = b->type == EDITOR_MUTATION_SET_SPRITE
+            ? b->data.sprite.id : b->data.remove_sprite.id;
+        return a_id == b_id;
+    }
+    if (a->type == EDITOR_MUTATION_INSERT_SPRITE &&
+        b->type == EDITOR_MUTATION_INSERT_SPRITE)
+        return a->data.insert_sprite.value.id == b->data.insert_sprite.value.id;
     if (a->type == EDITOR_MUTATION_SET_CELL_VERTICAL &&
         b->type == EDITOR_MUTATION_SET_CELL_VERTICAL)
         return a->data.cell_vertical.map_x == b->data.cell_vertical.map_x &&
@@ -488,6 +521,44 @@ static bool prepare_mutation(
         *changed = true;
         return true;
     }
+    if (request->type == EDITOR_MUTATION_SET_SPRITE) {
+        const SceneSpriteInstance *before = scene_document_find_sprite(
+            document, request->data.sprite.id);
+        if (!before || !scene_document_internal_sprite_value_is_valid(
+                document, request->data.sprite.id,
+                &request->data.sprite.value)) return false;
+        mutation->data.sprite.id = request->data.sprite.id;
+        mutation->data.sprite.before = *before;
+        mutation->data.sprite.after = request->data.sprite.value;
+        *changed = !sprites_equal(before, &request->data.sprite.value);
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_INSERT_SPRITE) {
+        const SceneSpriteInstance *value = &request->data.insert_sprite.value;
+        if (document->sprite_count >= SCENE_MAX_SPRITES ||
+            value->id == SCENE_INSTANCE_ID_INVALID ||
+            value->asset.kind != SCENE_ASSET_KIND_SPRITE_PATTERN ||
+            value->asset.id == 0U || value->asset.id >= SPRITE_ID_CAPACITY ||
+            !isfinite(value->x) || !isfinite(value->y) || value->x < 0.0 ||
+            value->x >= document->map.width || value->y < 0.0 ||
+            value->y >= document->map.height ||
+            scene_document_find_sprite(document, value->id) ||
+            scene_document_find_light(document, value->id) ||
+            scene_document_find_decal(document, value->id)) return false;
+        mutation->data.insert_sprite.value = *value;
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_REMOVE_SPRITE) {
+        size_t index;
+        if (!find_sprite_index(document, request->data.remove_sprite.id, &index))
+            return false;
+        mutation->data.remove_sprite.id = request->data.remove_sprite.id;
+        mutation->data.remove_sprite.index = index;
+        mutation->data.remove_sprite.removed_value = document->sprites[index];
+        *changed = true;
+        return true;
+    }
     if (mutation_is_resize(request->type)) {
         mutation->data.resize.trigger = request->data.resize.trigger;
         *changed = true;
@@ -662,6 +733,30 @@ static bool apply_mutation(
         return scene_document_internal_insert_decal(
             document, mutation->data.remove_decal.index,
             &mutation->data.remove_decal.removed_value);
+    }
+    if (mutation->type == EDITOR_MUTATION_SET_SPRITE)
+        return scene_document_internal_set_sprite(
+            document, mutation->data.sprite.id,
+            after ? &mutation->data.sprite.after : &mutation->data.sprite.before);
+    if (mutation->type == EDITOR_MUTATION_INSERT_SPRITE) {
+        if (after) return scene_document_internal_insert_sprite(
+            document, document->sprite_count,
+            &mutation->data.insert_sprite.value);
+        {
+            size_t index;
+            if (!find_sprite_index(document,
+                    mutation->data.insert_sprite.value.id, &index)) return false;
+            return scene_document_internal_remove_sprite(
+                document, index, mutation->data.insert_sprite.value.id);
+        }
+    }
+    if (mutation->type == EDITOR_MUTATION_REMOVE_SPRITE) {
+        if (after) return scene_document_internal_remove_sprite(
+            document, mutation->data.remove_sprite.index,
+            mutation->data.remove_sprite.id);
+        return scene_document_internal_insert_sprite(
+            document, mutation->data.remove_sprite.index,
+            &mutation->data.remove_sprite.removed_value);
     }
     return false;
 }
@@ -1126,6 +1221,55 @@ CommandResult command_history_remove_decal(
     EditorMutationRequest request = {0};
     request.type = EDITOR_MUTATION_REMOVE_DECAL;
     request.data.remove_decal.id = id;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_sprite(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id,
+    const SceneSpriteInstance *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_SPRITE;
+    request.data.sprite.id = id;
+    request.data.sprite.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_insert_sprite(
+    CommandHistory *history, SceneDocument *document,
+    const SceneSpriteInstance *prototype, SceneInstanceId *out_id
+) {
+    EditorMutationRequest request = {0};
+    SceneInstanceId allocated;
+    SceneInstanceId next_before;
+    SceneIdAllocateResult alloc_result;
+    CommandResult result;
+    if (!history || !document || !prototype ||
+        document->sprite_count >= SCENE_MAX_SPRITES) return CMD_RESULT_INVALID_TARGET;
+    next_before = document->next_instance_id;
+    alloc_result = scene_document_internal_allocate_instance_id(document, &allocated);
+    if (alloc_result == SCENE_ID_ALLOCATE_EXHAUSTED)
+        return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (alloc_result != SCENE_ID_ALLOCATE_OK) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_INSERT_SPRITE;
+    request.data.insert_sprite.value = *prototype;
+    request.data.insert_sprite.value.id = allocated;
+    result = command_history_execute_group(history, document, &request, 1U);
+    if (result != CMD_RESULT_OK) {
+        document->next_instance_id = next_before;
+        return result;
+    }
+    if (out_id) *out_id = allocated;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_remove_sprite(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
+) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_REMOVE_SPRITE;
+    request.data.remove_sprite.id = id;
     return command_history_execute_group(history, document, &request, 1U);
 }
 
