@@ -835,6 +835,11 @@ identity, command, selection, and vertical-world foundations.
 component values, trigger graphs/actions, and spawn records are versioned data.
 Code supplies validated behavior handlers rather than one-off hard-coded objects.
 
+**Wishlist after I2 manual review:** Preview staged sprite-pattern edits live on
+the selected world sprite before Save, with an explicit toggle between the last
+saved pattern and current edits. This must preserve copied edit ownership and
+must not make scene persistence depend on unsaved asset bytes.
+
 **Forbidden shortcuts:**
 
 - No authoring UI before runtime semantics exist and are tested.
@@ -872,6 +877,9 @@ dependencies are stable.
 5. Add visual hierarchy, property, canvas, drag/resize/reparent, and ordering
    workflows.
 6. Add multi-resolution preview and action/reference validation.
+7. Add a reusable nested-inspector submenu element/controller so parent-row
+   highlight, child indentation, focus markers, insertion order, and Escape
+   navigation are defined once instead of hand-coded per editor domain.
 
 **Data-first opportunities:** Layout structure, style tokens, focus order,
 actions, bindings, constraints, templates, and responsive rules are validated

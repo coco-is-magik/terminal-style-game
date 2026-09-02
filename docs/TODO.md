@@ -397,8 +397,18 @@ with R11 I2 (code present in commit `277fb3c`; automated verification passed;
 manual acceptance pending).
 
 Still open: animation timeline/file format, playback, oriented versus billboard
-behavior, painting-tool reuse, solid/occluding sprites, mirror visibility, and
-sprite-to-object attachment (recorded in the R11 stop boundary).
+behavior, painting-tool reuse, live world preview of staged sprite edits, a
+saved-versus-current-edits world preview toggle, solid/occluding sprites, mirror
+visibility, and sprite-to-object attachment (recorded in the R11 stop boundary).
+
+## Reusable nested inspector submenu — **Wanted (R12)**
+
+The unified editor currently hand-codes nested inspector rows and navigation in
+`unified_editor.c`; `ui_ele` supplies generic data-driven elements and
+`menu_state` supplies the application menu stack, but neither defines the
+in-world nested-inspector pattern. Add one reusable component/controller for
+parent highlighting, indented child insertion, focus arrows, bounded visible
+rows, and consistent Escape behavior before adding more nested domain menus.
 
 ---
 

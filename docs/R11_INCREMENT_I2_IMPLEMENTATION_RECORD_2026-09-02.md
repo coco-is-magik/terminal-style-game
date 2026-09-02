@@ -106,3 +106,35 @@ Fresh post-remediation evidence:
 - `git diff --check`: **passed**.
 
 Manual visual/input acceptance remains pending after this remediation.
+
+### Manual-review polish follow-up
+
+The next live review identified four interaction defects, all corrected without
+changing scene v8 or introducing a separate editor state:
+
+- Pattern child options now render directly below the green Pattern parent,
+  indented with the focus arrow on the selected child; the open parent retains
+  its green highlight without an arrow. Later top-level fields follow the child
+  block.
+- Every explicit `E` selection attempt closes and releases transient sprite
+  Pattern state before validating the new target, preventing hidden submenu
+  state from trapping unrelated inspector navigation.
+- Save and Load now provide specific visible status feedback. Loading the
+  already-selected pattern is treated as a successful no-op rather than leaving
+  the Load list open; loading a different pattern remains undoable.
+- While Edit/Paint is active, keyboard translation/jump input is masked from the
+  camera while mouse yaw/pitch remains active. Printable text therefore paints
+  without moving the player.
+
+No reusable nested-inspector submenu component currently exists: `ui_ele`
+provides generic layout elements and `menu_state` provides the application-level
+menu stack, while inspector nesting is controller-local. A reusable component is
+now wishlisted under R12. Live world preview of staged sprite edits and a toggle
+between saved and edited appearance are wishlisted under R11.
+
+Follow-up verification passed: `test-unified-editor` **80/80**, complete strict
+`make -j2 check` **42 suites / 555 tests**, ASan, UBSan, smoke
+`{"smoke":"ok","map_width":10,"map_height":6}`, and `git diff --check`.
+`benchmark-sprite-render` remained deterministic and passed the 6 ms gate:
+baseline **4.219418 ms**, 128 sprites **4.247975 ms**, overhead **0.028557 ms**,
+checksums `1846712605617511097` / `5403392855886966484`.

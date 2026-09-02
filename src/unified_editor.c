@@ -43,6 +43,14 @@ static bool editor_rebuild_material_shortlist(UnifiedEditorState *editor);
 static bool editor_rebuild_decal_shortlist(UnifiedEditorState *editor);
 static void editor_rebuild_sprite_shortlist(UnifiedEditorState *editor);
 
+static void editor_close_sprite_menu(UnifiedEditorState *editor) {
+    if (!editor) return;
+    editor->sprite_menu_open = false;
+    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+    editor->sprite_menu_index = 0U;
+    sprite_document_destroy(&editor->sprite_document);
+}
+
 static void editor_clear_selection(UnifiedEditorState *editor) {
     editor->selection.type = SELECTION_NONE;
     memset(&editor->selection.value, 0, sizeof(editor->selection.value));
@@ -204,6 +212,8 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_INVALID_NUMERIC_VALUE: return "Invalid or out-of-range number";
         case EDITOR_STATUS_INVALID_DECAL:         return "Invalid decal operation";
         case EDITOR_STATUS_INVALID_SPRITE:        return "Invalid sprite operation";
+        case EDITOR_STATUS_SPRITE_PATTERN_SAVED: return "Sprite pattern saved";
+        case EDITOR_STATUS_SPRITE_PATTERN_LOADED: return "Sprite pattern loaded";
         case EDITOR_STATUS_WALL_ATTACHMENT_BLOCKED: return "Remove attached wall decal first";
         case EDITOR_STATUS_SPAWN_BLOCKED:          return "Cannot place wall at spawn";
         case EDITOR_STATUS_PLAYER_BLOCKED:         return "Leave cell before placing wall";
@@ -1944,7 +1954,7 @@ static bool editor_save_sprite_document(UnifiedEditorState *editor) {
         return false;
     }
     editor_rebuild_sprite_shortlist(editor);
-    editor->status = EDITOR_STATUS_SAVED;
+    editor->status = EDITOR_STATUS_SPRITE_PATTERN_SAVED;
     return true;
 }
 
@@ -1969,6 +1979,7 @@ static bool editor_set_selected_sprite_asset(UnifiedEditorState *editor,
     result = command_history_set_sprite(
         &editor->history, &editor->document, changed.id, &changed);
     editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_NO_CHANGE) return true;
     if (result != CMD_RESULT_OK) return false;
     return editor_command_commit_runtime(
         editor, result, old_count, old_cursor, old_next);
@@ -2121,6 +2132,7 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
                 editor_open_sprite_document(editor, id)) {
                 editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
                 editor->sprite_menu_index = 0U;
+                editor->status = EDITOR_STATUS_SPRITE_PATTERN_LOADED;
             }
         }
         return true;
@@ -2498,6 +2510,7 @@ static void editor_handle_select(
     EditorInputConsumption *consumed
 ) {
     editor_mark_keyboard(consumed);
+    editor_close_sprite_menu(editor);
 
     if (!editor->hover.valid ||
         !editor_selection_is_valid(editor, editor->hover.target)) {
@@ -3727,8 +3740,7 @@ EditorInputConsumption unified_editor_update(
                     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
                     editor->sprite_menu_index = 0U;
                 } else {
-                    editor->sprite_menu_open = false;
-                    sprite_document_destroy(&editor->sprite_document);
+                    editor_close_sprite_menu(editor);
                 }
                 editor_mark_keyboard(&consumed);
                 return consumed;
@@ -3777,6 +3789,16 @@ EditorInputConsumption unified_editor_update(
             bool backward = input->backward;
             bool left = input->left;
             bool right = input->right;
+            bool jump = input->editor_jump_pressed;
+            bool painting = editor->sprite_menu_open &&
+                editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT;
+            if (painting) {
+                input->forward = false;
+                input->backward = false;
+                input->left = false;
+                input->right = false;
+                input->editor_jump_pressed = false;
+            }
             if (scene_document_get_height_view(&editor->document, &height_view)) {
                 VerticalPhysicsResult physics_result;
                 if (input->editor_jump_pressed)
@@ -3797,8 +3819,6 @@ EditorInputConsumption unified_editor_update(
                     &editor->vertical_physics, camera, rmap, &height_view,
                     previous_x, previous_y, delta_seconds,
                     has_optical ? &optical_view : NULL, optical_generation);
-                input->forward = forward; input->backward = backward;
-                input->left = left; input->right = right;
                 if (physics_result == VERTICAL_PHYSICS_BLOCKED_STEP ||
                     physics_result == VERTICAL_PHYSICS_BLOCKED_CLEARANCE) {
                     editor->status = EDITOR_STATUS_PLAYER_BLOCKED;
@@ -3807,6 +3827,9 @@ EditorInputConsumption unified_editor_update(
                     editor->status = EDITOR_STATUS_NONE;
                 }
             }
+            input->forward = forward; input->backward = backward;
+            input->left = left; input->right = right;
+            input->editor_jump_pressed = jump;
         } else {
             consumed.pointer_consumed = true;
         }
@@ -4245,6 +4268,67 @@ EditorInputConsumption unified_editor_update(
     }
 
     return consumed;
+}
+
+static void editor_render_sprite_pattern_menu(
+    const UnifiedEditorState *editor, Grid *grid, int *row,
+    SDL_Color fg, SDL_Color bg, SDL_Color dim, SDL_Color warn, SDL_Color hi
+) {
+    static const char *actions[3] = {
+        "Load existing...", "Save pattern", "Edit/Paint"
+    };
+    char line[160];
+    if (!editor || !grid || !row || !editor->sprite_menu_open) return;
+    if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS) {
+        size_t action;
+        for (action = 0U; action < 3U; action++) {
+            snprintf(line, sizeof(line), "   %s %s",
+                     editor->sprite_menu_index == action ? ">" : " ",
+                     actions[action]);
+            grid_print(grid, 1, (*row)++, line,
+                       editor->sprite_menu_index == action ? hi : dim, bg);
+        }
+    } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
+        size_t index;
+        grid_print(grid, 1, (*row)++,
+                   "     LOAD SPRITE  Up/Down  Enter=load  Esc=back", fg, bg);
+        if (editor->sprite_shortlist_count == 0U)
+            grid_print(grid, 1, (*row)++, "     (no saved sprite files)", dim, bg);
+        for (index = 0U; index < editor->sprite_shortlist_count; index++) {
+            snprintf(line, sizeof(line), "     %s sprite pattern:%u",
+                     editor->sprite_menu_index == index ? ">" : " ",
+                     (unsigned)editor->sprite_shortlist[index]);
+            grid_print(grid, 1, (*row)++, line,
+                       editor->sprite_menu_index == index ? hi : dim, bg);
+        }
+    } else {
+        size_t y;
+        grid_print(grid, 1, (*row)++,
+                   "     SPRITE PAINT  Arrows=cursor  Type=paint  Backspace=erase",
+                   fg, bg);
+        snprintf(line, sizeof(line),
+                 "     [ / ]=material  Ctrl+S=save  Esc=back  material:%d%s",
+                 editor->sprite_paint_material,
+                 editor->sprite_document.dirty ? "  UNSAVED" : "");
+        grid_print(grid, 1, (*row)++, line, warn, bg);
+        for (y = 0U; y < editor->sprite_document.rows &&
+             *row < grid->height - 3; y++) {
+            int col = 6;
+            size_t x;
+            for (x = 0U; x < editor->sprite_document.cols && col < grid->width;
+                 x++, col++) {
+                PatternCell cell = editor->sprite_document.cells[
+                    y * editor->sprite_document.cols + x];
+                bool cursor = x == editor->sprite_paint_x &&
+                              y == editor->sprite_paint_y;
+                (void)grid_set(grid, col, *row,
+                    cursor && (cell.glyph == 0U || cell.glyph == (uint8_t)' ')
+                        ? (uint8_t)'_' : cell.glyph,
+                    cursor ? hi : fg, bg);
+            }
+            (*row)++;
+        }
+    }
 }
 
 void unified_editor_render_text_overlay(
@@ -4788,62 +4872,14 @@ void unified_editor_render_text_overlay(
                         snprintf(line, sizeof(line), " > %-10s [%s_]",
                                  fp.label, editor->light_value_text);
                     else snprintf(line, sizeof(line), " %s %-10s %s",
-                                  selected ? ">" : " ", fp.label, value);
+                                   selected && !(editor->sprite_menu_open &&
+                                       field == EDITOR_SPRITE_FIELD_PATTERN)
+                                       ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
-                }
-                if (editor->sprite_menu_open) {
-                    static const char *actions[3] = {
-                        "Load existing...", "Save pattern", "Edit/Paint"
-                    };
-                    if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS) {
-                        grid_print(grid, 1, row++,
-                                   "   PATTERN  Up/Down  Enter=open  Esc=back", fg, bg);
-                        for (size_t action = 0U; action < 3U; action++) {
-                            snprintf(line, sizeof(line), " %s %s",
-                                     editor->sprite_menu_index == action ? ">" : " ",
-                                     actions[action]);
-                            grid_print(grid, 1, row++, line,
-                                       editor->sprite_menu_index == action ? hi : dim, bg);
-                        }
-                    } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
-                        grid_print(grid, 1, row++,
-                                   "   LOAD SPRITE  Up/Down  Enter=load  Esc=back", fg, bg);
-                        if (editor->sprite_shortlist_count == 0U)
-                            grid_print(grid, 1, row++, "   (no saved sprite files)", dim, bg);
-                        for (size_t index = 0U;
-                             index < editor->sprite_shortlist_count; index++) {
-                            snprintf(line, sizeof(line), " %s sprite pattern:%u",
-                                     editor->sprite_menu_index == index ? ">" : " ",
-                                     (unsigned)editor->sprite_shortlist[index]);
-                            grid_print(grid, 1, row++, line,
-                                       editor->sprite_menu_index == index ? hi : dim, bg);
-                        }
-                    } else {
-                        grid_print(grid, 1, row++,
-                                   "   SPRITE PAINT  Arrows=cursor  Type=paint  Backspace=erase",
-                                   fg, bg);
-                        snprintf(line, sizeof(line),
-                                 "   [ / ]=material  Ctrl+S=save  Esc=back  material:%d%s",
-                                 editor->sprite_paint_material,
-                                 editor->sprite_document.dirty ? "  UNSAVED" : "");
-                        grid_print(grid, 1, row++, line, warn, bg);
-                        for (size_t y = 0U; y < editor->sprite_document.rows &&
-                             row < grid->height - 3; y++) {
-                            int col = 4;
-                            for (size_t x = 0U; x < editor->sprite_document.cols &&
-                                 col < grid->width; x++, col++) {
-                                PatternCell cell = editor->sprite_document.cells[
-                                    y * editor->sprite_document.cols + x];
-                                bool cursor = x == editor->sprite_paint_x &&
-                                              y == editor->sprite_paint_y;
-                                (void)grid_set(grid, col, row,
-                                    cursor && (cell.glyph == 0U ||
-                                               cell.glyph == (uint8_t)' ')
-                                        ? (uint8_t)'_' : cell.glyph,
-                                    cursor ? hi : fg, bg);
-                            }
-                            row++;
-                        }
+                    if (field == EDITOR_SPRITE_FIELD_PATTERN &&
+                        editor->sprite_menu_open) {
+                        editor_render_sprite_pattern_menu(
+                            editor, grid, &row, fg, bg, dim, warn, hi);
                     }
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);

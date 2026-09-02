@@ -296,6 +296,31 @@ static bool grid_contains_text(const Grid *grid, const char *text) {
     return false;
 }
 
+static bool grid_find_text(const Grid *grid, const char *text,
+                           int *out_x, int *out_y) {
+    size_t text_len;
+    int y;
+    int x;
+    if (!grid || !text) return false;
+    text_len = strlen(text);
+    if (text_len == 0U || text_len > (size_t)grid->width) return false;
+    for (y = 0; y < grid->height; y++) {
+        for (x = 0; x <= grid->width - (int)text_len; x++) {
+            size_t i;
+            for (i = 0U; i < text_len; i++) {
+                if (grid->cells[y * grid->width + x + (int)i].glyph !=
+                    (uint8_t)text[i]) break;
+            }
+            if (i == text_len) {
+                if (out_x) *out_x = x;
+                if (out_y) *out_y = y;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static int load_editor(UnifiedEditorState *ed, const char *name) {
     char path[512];
     path_in_tmpdir(path, sizeof(path), name);
@@ -1288,6 +1313,12 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     char created_path[512];
     char alternate_path[512];
     char map_path[512];
+    int pattern_x;
+    int pattern_y;
+    int load_x;
+    int load_y;
+    int edit_y;
+    int remove_y;
     (void)state;
 
     assert_int_equal(load_editor(&ed, "sprite_canvas.txt"), 0);
@@ -1329,6 +1360,17 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_true(grid_contains_text(grid, "Load existing..."));
     assert_true(grid_contains_text(grid, "Edit/Paint"));
     assert_true(grid_contains_text(grid, "P=new sprite canvas"));
+    assert_true(grid_find_text(grid, "Pattern...", &pattern_x, &pattern_y));
+    assert_true(grid_find_text(grid, "> Edit/Paint", NULL, &edit_y));
+    assert_true(grid_find_text(grid, "Load existing...", &load_x, &load_y));
+    assert_true(grid_find_text(grid, "Remove", NULL, &remove_y));
+    assert_true(load_x > pattern_x);
+    assert_true(pattern_y < load_y && load_y < edit_y && edit_y < remove_y);
+    assert_int_not_equal(grid->cells[pattern_y * grid->width + pattern_x - 1].glyph,
+                         (uint8_t)'>');
+    assert_int_equal(grid->cells[pattern_y * grid->width + pattern_x].fg.g, 220U);
+    assert_int_equal(grid->cells[edit_y * grid->width + 4].glyph, (uint8_t)'>');
+    assert_int_equal(grid->cells[edit_y * grid->width + 4].fg.g, 220U);
     grid_destroy(grid);
 
     zero_input(&in);
@@ -1336,10 +1378,19 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
     assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_PAINT);
     zero_input(&in);
-    in.text_input[0] = '#';
+    in.forward = true;
+    in.mouse_dx = 5.0f;
+    in.text_input[0] = 'w';
     in.text_input[1] = '\0';
     in.text_input_len = 1;
-    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    {
+        double before_x = cam.transform.pos.x;
+        double before_y = cam.transform.pos.y;
+        double before_angle = cam.transform.angle;
+        assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+        assert_true(cam.transform.pos.x == before_x && cam.transform.pos.y == before_y);
+        assert_true(cam.transform.angle != before_angle);
+    }
     assert_true(ed.sprite_document.dirty);
     assert_int_equal(asset_registry_get_sprite(
         &g_assets, created_id)->pattern[0].glyph, 0U);
@@ -1348,7 +1399,8 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
     assert_false(ed.sprite_document.dirty);
     assert_int_equal(asset_registry_get_sprite(
-        &g_assets, created_id)->pattern[0].glyph, (uint8_t)'#');
+        &g_assets, created_id)->pattern[0].glyph, (uint8_t)'w');
+    assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_SAVED);
 
     zero_input(&in);
     in.editor_cancel_pressed = true;
@@ -1365,10 +1417,36 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
     assert_int_equal(ed.document.sprites[0].asset.id, 2U);
+    assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_LOADED);
+
+    ed.sprite_menu_index = 0U;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_LOAD);
+    ed.sprite_menu_index = ed.sprite_shortlist[0] == 2U ? 0U : 1U;
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_LOADED);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_ACTIONS);
+
     assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
     assert_int_equal(ed.document.sprites[0].asset.id, created_id);
     assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
     assert_int_equal(ed.document.sprites[0].asset.id, 2U);
+
+    ed.sprite_menu_open = true;
+    ed.sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+    cam.transform.angle = PI;
+    zero_input(&in);
+    in.editor_select_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_false(ed.sprite_menu_open);
+    assert_null(ed.sprite_document.cells);
+    zero_input(&in);
+    in.editor_next_pressed = true;
+    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
 
     unified_editor_destroy(&ed);
     path_in_tmpdir(map_path, sizeof(map_path), "sprite_canvas.txt");
