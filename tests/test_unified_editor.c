@@ -1436,14 +1436,39 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_int_equal(unified_editor_redo(&ed), CMD_RESULT_OK);
     assert_int_equal(ed.document.sprites[0].asset.id, 2U);
 
+    g_assets.sprite_animations[4].frames = calloc(
+        2U, sizeof(*g_assets.sprite_animations[4].frames));
+    assert_non_null(g_assets.sprite_animations[4].frames);
+    g_assets.sprite_animations[4].frame_count = 2U;
+    g_assets.sprite_animations[4].frames_per_second = 4.0;
+    g_assets.sprite_animations[4].loop = true;
+    for (size_t i = 0U; i < 2U; i++) {
+        g_assets.sprite_animations[4].frames[i].cols = 1;
+        g_assets.sprite_animations[4].frames[i].rows = 1;
+        g_assets.sprite_animations[4].frames[i].pattern = malloc(sizeof(PatternCell));
+        assert_non_null(g_assets.sprite_animations[4].frames[i].pattern);
+        g_assets.sprite_animations[4].frames[i].pattern[0] =
+            (PatternCell){i == 0U ? (uint8_t)'A' : (uint8_t)'B', UINT16_C(1)};
+    }
     ed.sprite_menu_open = true;
     ed.sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
-    cam.transform.angle = PI;
-    sprite_document_destroy(&ed.sprite_document);
-    ed.sprite_menu_open = false;
+    ed.sprite_menu_index = 0U;
     zero_input(&in);
-    in.editor_next_pressed = true;
-    assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.sprite_menu_stage, EDITOR_SPRITE_MENU_LOAD);
+    for (size_t i = 0U; i < ed.sprite_shortlist_count; i++) {
+        if (ed.sprite_shortlist[i] == 4U) ed.sprite_menu_index = i;
+    }
+    zero_input(&in);
+    in.editor_confirm_pressed = true;
+    update_with(&ed, &cam, &in);
+    assert_int_equal(ed.document.sprites[0].asset.id, 4U);
+    assert_false(ed.sprite_menu_open);
+    assert_int_equal(ed.runtime_world.sprites[0].animation_frame, 0U);
+    assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_LOADED);
+    assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
+    assert_int_equal(ed.document.sprites[0].asset.id, 2U);
 
     unified_editor_destroy(&ed);
     path_in_tmpdir(map_path, sizeof(map_path), "sprite_canvas.txt");
@@ -1455,6 +1480,11 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     memset(&g_assets.sprites[created_id], 0, sizeof(g_assets.sprites[created_id]));
     free(g_assets.sprites[2].pattern);
     memset(&g_assets.sprites[2], 0, sizeof(g_assets.sprites[2]));
+    for (size_t i = 0U; i < g_assets.sprite_animations[4].frame_count; i++)
+        free(g_assets.sprite_animations[4].frames[i].pattern);
+    free(g_assets.sprite_animations[4].frames);
+    memset(&g_assets.sprite_animations[4], 0,
+           sizeof(g_assets.sprite_animations[4]));
 }
 
 static void test_object_place_runtime_edit_undo_and_remove(void **state) {

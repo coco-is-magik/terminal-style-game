@@ -68,6 +68,8 @@ typedef struct {
 typedef struct {
     Vec2 pos;               /* World position */
     int sprite_id;          /* Index into AssetRegistry.sprites[] */
+    size_t animation_frame; /* Transient current frame; never scene-authored. */
+    double animation_elapsed;
 } SpriteEntity;
 
 typedef struct {

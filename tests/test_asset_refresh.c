@@ -21,6 +21,7 @@ static char palettes[1024];
 static char materials[1024];
 static char decals[1024];
 static char objects[1024];
+static char sprites[1024];
 
 static void make_path(char *out, size_t capacity, const char *directory,
                       const char *name) {
@@ -44,8 +45,10 @@ static int setup(void **state) {
     make_path(materials, sizeof(materials), root, "materials");
     make_path(decals, sizeof(decals), root, "decals");
     make_path(objects, sizeof(objects), root, "objects");
+    make_path(sprites, sizeof(sprites), root, "sprites");
     if (mkdir(palettes, 0700) != 0 || mkdir(materials, 0700) != 0 ||
-        mkdir(decals, 0700) != 0 || mkdir(objects, 0700) != 0) return -1;
+        mkdir(decals, 0700) != 0 || mkdir(objects, 0700) != 0 ||
+        mkdir(sprites, 0700) != 0) return -1;
     make_path(path, sizeof(path), palettes, "1.txt");
     write_file(path, "near=10,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n");
     make_path(path, sizeof(path), materials, "1.txt");
@@ -59,6 +62,8 @@ static int teardown(void **state) {
     const char *material_files[] = {"1.txt", "brick.txt", "50000.txt"};
     const char *decal_files[] = {"1.txt", "2.txt"};
     const char *object_files[] = {"1.txt", "2.txt"};
+    const char *sprite_files[] = {"5.txt", "9.txt"};
+    const char *animation_dirs[] = {"7", "8", "9"};
     (void)state;
     asset_refresh_set_registry_init_failure_for_test(false);
     for (size_t i = 0U; i < sizeof(material_files) / sizeof(material_files[0]); i++) {
@@ -73,12 +78,27 @@ static int teardown(void **state) {
         make_path(path, sizeof(path), objects, object_files[i]);
         (void)unlink(path);
     }
+    for (size_t i = 0U; i < sizeof(sprite_files) / sizeof(sprite_files[0]); i++) {
+        make_path(path, sizeof(path), sprites, sprite_files[i]);
+        (void)unlink(path);
+    }
+    for (size_t i = 0U; i < sizeof(animation_dirs) / sizeof(animation_dirs[0]); i++) {
+        char directory[1024];
+        const char *files[] = {"animation.txt", "first.txt", "second.txt"};
+        make_path(directory, sizeof(directory), sprites, animation_dirs[i]);
+        for (size_t j = 0U; j < sizeof(files) / sizeof(files[0]); j++) {
+            make_path(path, sizeof(path), directory, files[j]);
+            (void)unlink(path);
+        }
+        (void)rmdir(directory);
+    }
     make_path(path, sizeof(path), palettes, "1.txt");
     (void)unlink(path);
     (void)rmdir(palettes);
     (void)rmdir(materials);
     (void)rmdir(decals);
     (void)rmdir(objects);
+    (void)rmdir(sprites);
     (void)rmdir(root);
     return 0;
 }
@@ -294,6 +314,56 @@ static void test_object_asset_requires_complete_simple_definition(void **state) 
     asset_registry_clear(&registry);
 }
 
+static void test_sprite_animation_folder_loads_strict_order_and_rejects_conflicts(
+    void **state
+) {
+    AssetRegistry registry;
+    const SpriteAnimationAsset *animation;
+    char path[1024];
+    char directory[1024];
+    const char *first = "cols=1\nrows=1\ndefault_material=1\npattern_0=A\nmaterial_0=1\n";
+    const char *second = "cols=1\nrows=1\ndefault_material=1\npattern_0=B\nmaterial_0=1\n";
+    (void)state;
+
+    make_path(path, sizeof(path), sprites, "5.txt");
+    write_file(path, first);
+    make_path(directory, sizeof(directory), sprites, "7");
+    assert_int_equal(mkdir(directory, 0700), 0);
+    make_path(path, sizeof(path), directory, "animation.txt");
+    write_file(path, "fps=8\nframe=second.txt\nframe=first.txt\n");
+    make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
+    make_path(path, sizeof(path), directory, "second.txt"); write_file(path, second);
+
+    make_path(directory, sizeof(directory), sprites, "8");
+    assert_int_equal(mkdir(directory, 0700), 0);
+    make_path(path, sizeof(path), directory, "animation.txt");
+    write_file(path, "fps=0\nframe=first.txt\n");
+    make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
+
+    make_path(path, sizeof(path), sprites, "9.txt"); write_file(path, first);
+    make_path(directory, sizeof(directory), sprites, "9");
+    assert_int_equal(mkdir(directory, 0700), 0);
+    make_path(path, sizeof(path), directory, "animation.txt");
+    write_file(path, "fps=4\nframe=first.txt\n");
+    make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
+
+    assert_true(asset_registry_init(&registry));
+    assert_true(asset_loader_load_registry(&registry, root));
+    assert_non_null(asset_registry_get_sprite(&registry, 5));
+    animation = asset_registry_get_sprite_animation(&registry, 7);
+    assert_non_null(animation);
+    assert_int_equal(animation->frame_count, 2U);
+    assert_true(animation->loop);
+    assert_true(animation->frames_per_second == 8.0);
+    assert_int_equal(asset_registry_get_sprite_frame(&registry, 7, 0U)->pattern[0].glyph,
+                     'B');
+    assert_int_equal(asset_registry_get_sprite_frame(&registry, 7, 1U)->pattern[0].glyph,
+                     'A');
+    assert_false(sprite_id_is_loaded(&registry, 8));
+    assert_false(sprite_id_is_loaded(&registry, 9));
+    asset_registry_clear(&registry);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(
@@ -310,6 +380,9 @@ int main(void) {
             setup, teardown),
         cmocka_unit_test_setup_teardown(
             test_object_asset_requires_complete_simple_definition,
+            setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_sprite_animation_folder_loads_strict_order_and_rejects_conflicts,
             setup, teardown)
     };
     config_init_defaults();

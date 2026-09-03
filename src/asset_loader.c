@@ -38,9 +38,8 @@
  *       intensity=<double>    (negative → anti-light / darkness)
  *       radius=<double>
  *
- *   Sprites   (assets/sprites/<id>.txt)
- *     A 2D pattern asset intended for billboard-style rendering.  Format uses
- *     the same pattern_<row>/material_<row> scheme as decals.
+ *   Sprites   (assets/sprites/<id>.txt or assets/sprites/<id>/animation.txt)
+ *     A static 2D pattern or an ordered folder of ordinary pattern frames.
  *
  *   Objects   (assets/objects/<id>.txt)
  *     A named sprite reference, front direction, and closed `simple` attribute.
@@ -543,10 +542,10 @@ static bool load_light(WorldState *world, const char *filepath) {
  * @param filepath  Full path to the sprite definition file
  * @return          true on success, false if the file could not be opened
  */
-static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
+static bool load_sprite_file(SpriteAsset *out, const char *filepath) {
     bool valid = true;
     FILE *f = fopen(filepath, "r");
-    if (!reg || id < 1 || id > 255 || !f) return false;
+    if (!out || !f) return false;
 
     SpriteAsset s;
     memset(&s, 0, sizeof(SpriteAsset));
@@ -618,8 +617,101 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
             }
     }
     
+    *out = s;
+    return true;
+}
+
+static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
+    SpriteAsset sprite = {0};
+    if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY ||
+        reg->sprite_animations[id].frames ||
+        !load_sprite_file(&sprite, filepath)) return false;
     free(reg->sprites[id].pattern);
-    reg->sprites[id] = s;             /* Store directly (struct copy) into registry */
+    reg->sprites[id] = sprite;
+    return true;
+}
+
+static bool animation_frame_name_is_valid(const char *name) {
+    size_t length;
+    if (!name || name[0] == '\0' || strchr(name, '/') || strchr(name, '\\') ||
+        strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return false;
+    length = strlen(name);
+    return length > 4U && length < 128U &&
+           strcmp(name + length - 4U, ".txt") == 0 &&
+           strcmp(name, "animation.txt") != 0;
+}
+
+static void clear_sprite_animation(SpriteAnimationAsset *animation) {
+    if (!animation) return;
+    for (size_t i = 0U; i < animation->frame_count; i++)
+        free(animation->frames[i].pattern);
+    free(animation->frames);
+    memset(animation, 0, sizeof(*animation));
+}
+
+static bool load_sprite_animation(AssetRegistry *reg, int id,
+                                  const char *directory) {
+    char metadata_path[512];
+    char frame_names[SPRITE_ANIMATION_MAX_FRAMES][128];
+    SpriteAnimationAsset animation = {0};
+    FILE *file;
+    char line[256];
+    bool seen_fps = false;
+    bool seen_loop = false;
+    bool valid = true;
+    int written;
+    if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY || !directory ||
+        reg->sprites[id].pattern) return false;
+    written = snprintf(metadata_path, sizeof(metadata_path), "%s/animation.txt",
+                       directory);
+    if (written < 0 || (size_t)written >= sizeof(metadata_path)) return false;
+    file = fopen(metadata_path, "r");
+    if (!file) return false;
+    animation.loop = true;
+    while (valid && fgets(line, sizeof(line), file)) {
+        char *key = NULL;
+        char *value = NULL;
+        parse_key_val(line, &key, &value);
+        if (!key && !value) continue;
+        if (!key || !value) { valid = false; continue; }
+        if (strcmp(key, "fps") == 0) {
+            if (seen_fps || !parse_finite_double(value, 0.1, true,
+                                                  &animation.frames_per_second) ||
+                animation.frames_per_second > 120.0) valid = false;
+            seen_fps = true;
+        } else if (strcmp(key, "loop") == 0) {
+            if (seen_loop) valid = false;
+            else if (strcmp(value, "true") == 0) animation.loop = true;
+            else if (strcmp(value, "false") == 0) animation.loop = false;
+            else valid = false;
+            seen_loop = true;
+        } else if (strcmp(key, "frame") == 0) {
+            if (animation.frame_count >= SPRITE_ANIMATION_MAX_FRAMES ||
+                !animation_frame_name_is_valid(value)) valid = false;
+            for (size_t i = 0U; valid && i < animation.frame_count; i++)
+                if (strcmp(frame_names[i], value) == 0) valid = false;
+            if (valid) {
+                memcpy(frame_names[animation.frame_count], value,
+                       strlen(value) + 1U);
+                animation.frame_count++;
+            }
+        } else valid = false;
+    }
+    if (ferror(file) || fclose(file) != 0) valid = false;
+    if (!valid || !seen_fps || animation.frame_count == 0U) return false;
+    animation.frames = calloc(animation.frame_count, sizeof(*animation.frames));
+    if (!animation.frames) return false;
+    for (size_t i = 0U; i < animation.frame_count; i++) {
+        char path[640];
+        written = snprintf(path, sizeof(path), "%s/%s", directory, frame_names[i]);
+        if (written < 0 || (size_t)written >= sizeof(path) ||
+            !load_sprite_file(&animation.frames[i], path)) {
+            clear_sprite_animation(&animation);
+            return false;
+        }
+    }
+    clear_sprite_animation(&reg->sprite_animations[id]);
+    reg->sprite_animations[id] = animation;
     return true;
 }
 
@@ -805,6 +897,45 @@ static void load_numeric_asset_directory(AssetRegistry *reg, const char *directo
     closedir(dir);
 }
 
+static void load_sprite_directory(AssetRegistry *reg, const char *directory) {
+    DIR *dir = opendir(directory);
+    struct dirent *entry;
+    bool static_ids[SPRITE_ID_CAPACITY] = {false};
+    bool animated_ids[SPRITE_ID_CAPACITY] = {false};
+    if (!dir) return;
+    while ((entry = readdir(dir)) != NULL) {
+        size_t length = strlen(entry->d_name);
+        char base[16];
+        char canonical[24];
+        int id;
+        if (length > 4U && length < sizeof(base) + 4U &&
+            strcmp(entry->d_name + length - 4U, ".txt") == 0) {
+            memcpy(base, entry->d_name, length - 4U);
+            base[length - 4U] = '\0';
+            if (parse_bounded_int(base, 1, (int)SPRITE_ID_CAPACITY - 1, &id) &&
+                snprintf(canonical, sizeof(canonical), "%d.txt", id) >= 0 &&
+                strcmp(canonical, entry->d_name) == 0) static_ids[id] = true;
+        } else if (length < sizeof(base) &&
+                   parse_bounded_int(entry->d_name, 1,
+                                     (int)SPRITE_ID_CAPACITY - 1, &id) &&
+                   snprintf(canonical, sizeof(canonical), "%d", id) >= 0 &&
+                   strcmp(canonical, entry->d_name) == 0) {
+            animated_ids[id] = true;
+        }
+    }
+    closedir(dir);
+    for (int id = 1; id < (int)SPRITE_ID_CAPACITY; id++) {
+        char path[512];
+        int written;
+        if (static_ids[id] == animated_ids[id]) continue;
+        written = snprintf(path, sizeof(path), static_ids[id] ? "%s/%d.txt" : "%s/%d",
+                           directory, id);
+        if (written < 0 || (size_t)written >= sizeof(path)) continue;
+        if (static_ids[id]) (void)load_sprite(reg, id, path);
+        else (void)load_sprite_animation(reg, id, path);
+    }
+}
+
 /* ===================================================================
  *  Public API — bulk asset loading
  * =================================================================== */
@@ -812,14 +943,12 @@ static void load_numeric_asset_directory(AssetRegistry *reg, const char *directo
 /**
  * asset_loader_load_registry() — Load all generic assets from disk
  *
- * Enumerates existing palette, material, and decal files across IDs 1–65535.
- * Sprite loading intentionally remains the legacy contiguous 1–255 probe.
+ * Enumerates existing palette, material, decal, sprite, and object assets.
  *
  * @param reg       AssetRegistry to populate
  * @param base_path Root directory for assets (e.g. "assets")
  */
 bool asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
-    char filepath[512];
     char directory[512];
     DIR *root;
     if (!reg || !reg->palettes || !reg->materials || !reg->decal_patterns ||
@@ -839,13 +968,9 @@ bool asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
         asset_loader_load_materials(reg, mat_dir);
     }
     
-    /* ---- Load sprites (IDs 1 to 255) ---- */
-    for (int i = 1; i < (int)SPRITE_ID_CAPACITY; i++) {
-        snprintf(filepath, sizeof(filepath), "%s/sprites/%d.txt", base_path, i);
-        if (!load_sprite(reg, i, filepath)) {
-            if (i > 10) break;
-        }
-    }
+    /* ---- Load static files or animated numeric sprite folders ---- */
+    snprintf(directory, sizeof(directory), "%s/sprites", base_path);
+    load_sprite_directory(reg, directory);
 
     /* ---- Load existing reusable decal patterns (IDs 1 to 65535) ---- */
     snprintf(directory, sizeof(directory), "%s/decals", base_path);

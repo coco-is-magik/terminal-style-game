@@ -146,6 +146,8 @@ WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sp
     s->pos.x     = x;
     s->pos.y     = y;
     s->sprite_id = sprite_id;
+    s->animation_frame = 0U;
+    s->animation_elapsed = 0.0;
     return WORLD_INSERT_OK;
 }
 

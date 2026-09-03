@@ -517,6 +517,14 @@ interaction with translucency/invisible geometry. Scoped as RQ4/P4 in
 `R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md` (single bounded bounce first;
 mirror-facing-mirror stays out of the prototype).
 
+**Manual observation — deferred fix (2026-09-03):** At certain viewing angles,
+the image projected on a reflective surface appears to curve or warp. The cause is
+unverified; it may be a minor mismatch in reflected projection/interpolation rather
+than the mirror trace itself. Preserve this as a later renderer investigation:
+capture a deterministic scene/camera fixture, compare direct and reflected
+projection geometry, add a regression test, and correct it without broadening the
+current one-bounce mirror scope.
+
 ## Translucent materials — **Needs design and renderer research**
 
 **Wanted:** Visible surfaces such as glass through which the world remains seen.
@@ -540,14 +548,19 @@ interaction to be independent typed fields rather than one flag.
 
 # Placed entities and gameplay authoring
 
-## Objects, triggers, and spawn editing — **Verified (R11 I3); broader models open**
+## Objects, triggers, sprite animation, and spawn — **R11 baselines delivered**
 
 **Implemented trigger baseline (R11 I3, verified):**
 scene v9 owns bounded `enter_region` records with one closed typed action
 (`set_flag`, `teleport_to_spawn`, or `toggle_light`), stable-ID selection,
 reference validation, undo/redo, persistence, highlighting, and editor-Walk
-runtime firing. Still open: object/component and asset-reference models, broader
-trigger graphs/conditions/actions, and game-mode spawn semantics.
+runtime firing. R11 I4 verifies static `simple` object assets/instances, basic
+player collision, and per-instance sprite selection. R11 I5 verifies strict
+folder-backed sprite-animation data and time-based runtime playback; timeline and
+animated-folder authoring UI remain open. Broader object attributes and trigger
+graphs/conditions/actions remain future work. Game-mode spawn expansion is
+explicitly unnecessary/deferred because no game modes or mature testing workflow
+exist; the single authored spawn remains the verified baseline.
 
 ## Start Game native-scene migration — **Post-editor cleanup**
 

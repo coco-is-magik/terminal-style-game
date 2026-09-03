@@ -2,8 +2,8 @@
 
 ## Status
 
-**Implemented; automated gates passed on 2026-09-03. Manual visual/input
-acceptance remains pending.** This record defines the minimum contracts used by
+**Verified on 2026-09-03; automated gates and manual visual/input acceptance
+passed.** This record defines the minimum contracts used by
 the implementation; evidence and implementation details are in
 `R11_INCREMENT_I4_IMPLEMENTATION_RECORD_2026-09-03.md`.
 

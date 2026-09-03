@@ -111,10 +111,38 @@ static void test_invalid_inputs_are_transactional(void **state) {
     asset_registry_clear(&assets);
 }
 
+static void test_animated_sprite_is_not_opened_as_static_document(void **state) {
+    AssetRegistry assets;
+    SpriteDocument document;
+    SpriteAnimationAsset *animation;
+    (void)state;
+    assert_true(asset_registry_init(&assets));
+    sprite_document_init(&document);
+    animation = &assets.sprite_animations[3];
+    animation->frames = calloc(1U, sizeof(*animation->frames));
+    assert_non_null(animation->frames);
+    animation->frame_count = 1U;
+    animation->frames_per_second = 8.0;
+    animation->loop = true;
+    animation->frames[0].cols = 1;
+    animation->frames[0].rows = 1;
+    animation->frames[0].pattern = malloc(sizeof(PatternCell));
+    assert_non_null(animation->frames[0].pattern);
+    animation->frames[0].pattern[0] =
+        (PatternCell){(uint8_t)'A', UINT16_C(1)};
+    assert_int_equal(sprite_document_open_loaded(
+        &document, &assets, 3U, "/tmp"), SPRITE_DOCUMENT_INVALID_ARGUMENT);
+    assert_null(document.cells);
+    assert_null(document.path);
+    sprite_document_destroy(&document);
+    asset_registry_clear(&assets);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_create_paint_save_commit_and_reopen),
         cmocka_unit_test(test_invalid_inputs_are_transactional),
+        cmocka_unit_test(test_animated_sprite_is_not_opened_as_static_document),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

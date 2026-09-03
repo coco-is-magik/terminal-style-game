@@ -71,6 +71,8 @@ SpriteDocumentResult sprite_document_open_loaded(SpriteDocument *document,
     size_t bytes;
     if (!document || !assets || !sprite_directory || sprite_directory[0] == '\0')
         return SPRITE_DOCUMENT_INVALID_ARGUMENT;
+    if (asset_registry_get_sprite_animation(assets, (int)id))
+        return SPRITE_DOCUMENT_INVALID_ARGUMENT;
     asset = asset_registry_get_sprite(assets, (int)id);
     if (!asset || !valid_dimensions((size_t)asset->cols, (size_t)asset->rows, &count) ||
         !checked_size_bytes(count, sizeof(*cells), &bytes))

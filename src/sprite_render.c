@@ -77,7 +77,9 @@ static void render_sprite(
     int max_y;
     if (instance->sprite_id <= 0 ||
         instance->sprite_id >= (int)SPRITE_ID_CAPACITY) return;
-    sprite = &assets->sprites[instance->sprite_id];
+    sprite = asset_registry_get_sprite_frame(
+        assets, instance->sprite_id, instance->animation_frame);
+    if (!sprite) return;
     if (!sprite->pattern || sprite->cols <= 0 || sprite->rows <= 0 ||
         sprite->cols > 255 || sprite->rows > 32) return;
     if (!sprite_anchor_floor(map, heights, instance->pos.x, instance->pos.y,

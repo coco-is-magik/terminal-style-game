@@ -9,6 +9,7 @@
 #include "asset_refresh.h"
 #include "editor_domain.h"
 #include "editor_highlight.h"
+#include "sprite_animation_player.h"
 
 #include "camera.h"
 #include "config.h"
@@ -2221,11 +2222,15 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
     if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
         if (editor->sprite_menu_index < editor->sprite_shortlist_count) {
             uint16_t id = editor->sprite_shortlist[editor->sprite_menu_index];
-            if (editor_set_selected_sprite_asset(editor, id) &&
-                editor_open_sprite_document(editor, id)) {
-                editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
-                editor->sprite_menu_index = 0U;
+            if (editor_set_selected_sprite_asset(editor, id)) {
                 editor->status = EDITOR_STATUS_SPRITE_PATTERN_LOADED;
+                if (asset_registry_get_sprite_animation(editor->assets, id)) {
+                    sprite_document_destroy(&editor->sprite_document);
+                    editor->sprite_menu_open = false;
+                } else if (editor_open_sprite_document(editor, id)) {
+                    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+                    editor->sprite_menu_index = 0U;
+                }
             }
         }
         return true;
@@ -3969,6 +3974,8 @@ EditorInputConsumption unified_editor_update(
     EditorInputConsumption consumed = {false, false};
 
     if (!editor || !editor->active || !input) return consumed;
+    sprite_animation_player_tick(&editor->runtime_world, editor->assets,
+                                 delta_seconds);
     if (camera && isfinite(camera->transform.pos.x) &&
         isfinite(camera->transform.pos.y)) {
         editor->has_player_cell = true;

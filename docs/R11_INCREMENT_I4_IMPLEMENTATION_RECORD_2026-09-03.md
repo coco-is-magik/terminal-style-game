@@ -2,8 +2,8 @@
 
 ## Status
 
-**Implemented; automated verification passed on 2026-09-03.** Manual visual/input
-acceptance is still pending, so this increment is not yet labeled Verified.
+**Verified on 2026-09-03.** Automated verification and manual visual/input
+acceptance passed.
 
 ## Delivered behavior
 
@@ -126,7 +126,9 @@ scene document **48/48** passed focused strict runs. Full strict `make test`,
 `make smoke`, and `make check-current-renderer` passed. A combined ASan+UBSan
 unified-editor run passed **84/84** with leak detection enabled.
 
-## Manual acceptance still required
+## Manual acceptance — passed 2026-09-03
+
+The user accepted the complete I4 object workflow, including:
 
 1. Press `B` at an aimed empty cell; confirm the billboard and Walk-mode collision.
 2. Select it with `E`; step X, Y, and Direction.

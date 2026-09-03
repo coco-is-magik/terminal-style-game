@@ -1,4 +1,4 @@
-# Active Handoff — R11 I4 Implemented; Manual Acceptance Pending — 2026-09-03
+# Active Handoff — R11 I5 Verified; Animation Authoring Planning Next — 2026-09-03
 
 ## Current status
 
@@ -8,15 +8,21 @@ its automated gates pass. **R11 I2 (scene v8 sprite authoring) is Implemented in
 the working tree (commit `277fb3c`, 2026-09-02); its automated exit gate has
 passed, the dedicated implementation record exists, and bundled I1+I2 manual
 visual/input acceptance passed after workflow polish.** I3 scene v9 minimal triggers are verified: automated gates, Q4 review, and manual
-acceptance all passed. **I4 simple objects are implemented and all automated gates
-pass; manual visual/input acceptance remains pending.** I4 adds object assets,
+acceptance all passed. **I4 simple objects are Verified after manual acceptance.**
+I4 adds object assets,
 scene v10 persistence, stable-ID editor authoring, billboard derivation, and basic
 player collision. Same-day follow-ups isolate all text-entry submenus from
 movement/selection/letter actions and replace definition reassignment with an
 undoable per-instance sprite picker. Direction visual confirmation remains
 deferred until directional sprite selection exists.
+**I5 sprite-animation runtime/data is Verified:** numeric sprite folders own
+ordered ordinary sprite frames and strict `animation.txt` metadata; elapsed-time
+playback is per runtime instance and defaults to looping; automated gates and
+manual visual acceptance passed. Animation authoring UI remains. Game-mode spawn expansion is explicitly
+deferred as unnecessary without game modes and an editor mature enough to test them.
 Evidence is in
-`R11_INCREMENT_I4_IMPLEMENTATION_RECORD_2026-09-03.md`. R11 records include `R11_DECISION_RECORD_2026-08-28.md`,
+`R11_INCREMENT_I4_IMPLEMENTATION_RECORD_2026-09-03.md` and
+`R11_INCREMENT_I5_IMPLEMENTATION_RECORD_2026-09-03.md`. R11 records include `R11_DECISION_RECORD_2026-08-28.md`,
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`,
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`, and
 `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`, plus
@@ -188,9 +194,24 @@ R10 I1 and I2 are marked Verified. R10 has no remaining open items.
 R9 and R10 are released. R11 I1, I2, and I3 are Verified: all three
 increments implemented, automated gates passed, Q4 review passed, and bundled
 manual acceptance passed. The approved I1–I3 scope is closed.
-Animation, objects, game-mode spawn expansion, solid/occluding sprites, and
-sprite attachment remain deferred and require separate Q1 authorization. R12 and
-I8 also require separate authorization.
+I4 objects and I5 animation runtime/data are Verified. Animation authoring remains
+the next R11 increment. Game-mode spawn expansion is explicitly unnecessary without
+game modes. Solid/occluding sprites and sprite attachment
+remain deferred and require separate Q1 authorization. R12 and I8 also require
+separate authorization.
+
+## Immediate next work
+
+1. Draft and approve an I6 animation-authoring requirements/UX plan. Keep scope to
+   creating/editing one sprite animation folder: FPS, loop, frame add/remove/order,
+   frame selection, and preview/save/discard behavior.
+2. Implement I6 through an owned animation document with undoable/staged edits and
+   atomic folder persistence; do not introduce clips, state machines, events, or
+   object-transform animation.
+3. Run strict, sanitizer, matrix, smoke, sprite-render benchmark, malformed-input,
+   failure-restoration, and manual editor acceptance gates.
+4. Perform the final R11 entity/sprite boundary Q4 review and reconcile roadmap,
+   TODO, README, asset format docs, and handoff before marking R11 Verified.
 
 `APP_STATE_PLAYING` remains on the deprecated legacy map/`WorldState` loader and
 is intentionally not updated during fast-moving editor feature work. Native-scene

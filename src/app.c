@@ -17,6 +17,7 @@
 #include "raycast.h"
 #include "assets.h"
 #include "asset_loader.h"
+#include "sprite_animation_player.h"
 #include "lighting.h"
 #ifdef USE_LIGHTING_CACHE
 #include "lighting_cache.h"
@@ -868,6 +869,7 @@ int app_main(int argc, char* argv[]) {
             if (visual_mode == VISUAL_RAYCAST) {
                 frame_dispatch_apply_scenario(grid, &cam, benchmark_scenario, frame_count);
                 camera_update(&cam, map, &input, delta_time_sec, grid->height);
+                sprite_animation_player_tick(&world, &assets, delta_time_sec);
                 lighting_update_optical(map, &world, NULL, 0U);
                 raycast_render(grid, map, &cam, &assets, &world, NULL);
             } else if (visual_mode == VISUAL_STRESS) {

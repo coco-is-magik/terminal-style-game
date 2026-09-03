@@ -217,13 +217,43 @@ static void test_sprite_respects_existing_decal_depth_frontier(void **state) {
     fixture_destroy(&fixture);
 }
 
+static void test_animated_sprite_renders_selected_runtime_frame(void **state) {
+    Fixture fixture;
+    SpriteAnimationAsset *animation;
+    (void)state;
+    fixture_init(&fixture);
+    add_material(&fixture, 1, (SDL_Color){255, 255, 255, 255});
+    animation = &fixture.assets.sprite_animations[7];
+    animation->frames = calloc(2U, sizeof(*animation->frames));
+    assert_non_null(animation->frames);
+    animation->frame_count = 2U;
+    animation->frames_per_second = 8.0;
+    animation->loop = true;
+    for (size_t i = 0U; i < 2U; i++) {
+        animation->frames[i].cols = 1;
+        animation->frames[i].rows = 1;
+        animation->frames[i].pattern = malloc(sizeof(PatternCell));
+        assert_non_null(animation->frames[i].pattern);
+        animation->frames[i].pattern[0] =
+            (PatternCell){i == 0U ? (uint8_t)'A' : (uint8_t)'B', UINT16_C(1)};
+    }
+    assert_int_equal(world_add_sprite(&fixture.world, 3.5, 2.5, 7),
+                     WORLD_INSERT_OK);
+    fixture.world.sprites[0].animation_frame = 1U;
+    render(&fixture, true);
+    assert_true(find_glyph(fixture.grid, 'B', NULL, NULL));
+    assert_false(find_glyph(fixture.grid, 'A', NULL, NULL));
+    fixture_destroy(&fixture);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_visible_sprite_is_projected_and_lit),
         cmocka_unit_test(test_world_and_column_depth_occlude_sprite),
         cmocka_unit_test(test_nearest_sprite_wins_independent_of_array_order),
         cmocka_unit_test(test_missing_transparent_and_invalid_assets_are_noops),
-        cmocka_unit_test(test_sprite_respects_existing_decal_depth_frontier)
+        cmocka_unit_test(test_sprite_respects_existing_decal_depth_frontier),
+        cmocka_unit_test(test_animated_sprite_renders_selected_runtime_frame)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

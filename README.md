@@ -108,6 +108,10 @@ default sprite, placed instances preserve their own sprite reference,
 position/front direction, and stable identity, and player movement collides with
 them without changing map occupancy. Objects do not affect rays, light, mirrors,
 triggers, animation, or destruction.
+R11 I5 adds sprite-owned animation: a numeric sprite folder contains ordinary
+sprite-pattern frames plus `animation.txt`, whose ordered `frame=` entries and
+`fps` drive time-based per-instance playback. Existing numeric sprite files stay
+static and scene/object references remain unchanged.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:

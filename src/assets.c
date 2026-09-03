@@ -56,6 +56,14 @@ void asset_registry_clear(AssetRegistry *reg) {
     for (size_t id = 0U; id < SPRITE_ID_CAPACITY; id++) {
         free(reg->sprites[id].pattern);
         reg->sprites[id].pattern = NULL;
+        if (reg->sprite_animations[id].frames) {
+            for (size_t frame = 0U;
+                 frame < reg->sprite_animations[id].frame_count; frame++) {
+                free(reg->sprite_animations[id].frames[frame].pattern);
+            }
+            free(reg->sprite_animations[id].frames);
+            reg->sprite_animations[id].frames = NULL;
+        }
     }
     if (reg->decal_patterns) {
         for (size_t id = 0U; id < ASSET_ID_CAPACITY; id++) {
@@ -281,11 +289,30 @@ const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void) {
 }
 const SpriteAsset *asset_registry_get_sprite(
     const AssetRegistry *reg, int id) {
-    if (!reg || id < 1 || id > 255 || !reg->sprites[id].pattern ||
-        reg->sprites[id].cols <= 0 || reg->sprites[id].rows <= 0) {
-        return NULL;
+    return asset_registry_get_sprite_frame(reg, id, 0U);
+}
+
+const SpriteAsset *asset_registry_get_sprite_frame(
+    const AssetRegistry *reg, int id, size_t frame_index) {
+    const SpriteAnimationAsset *animation;
+    if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY) return NULL;
+    animation = &reg->sprite_animations[id];
+    if (animation->frames && animation->frame_count > 0U) {
+        const SpriteAsset *frame = &animation->frames[
+            frame_index < animation->frame_count ? frame_index : 0U];
+        return frame->pattern && frame->cols > 0 && frame->rows > 0 ? frame : NULL;
     }
+    if (!reg->sprites[id].pattern || reg->sprites[id].cols <= 0 ||
+        reg->sprites[id].rows <= 0) return NULL;
     return &reg->sprites[id];
+}
+
+const SpriteAnimationAsset *asset_registry_get_sprite_animation(
+    const AssetRegistry *reg, int id) {
+    const SpriteAnimationAsset *animation;
+    if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY) return NULL;
+    animation = &reg->sprite_animations[id];
+    return animation->frames && animation->frame_count > 0U ? animation : NULL;
 }
 
 bool sprite_id_is_loaded(const AssetRegistry *reg, int id) {
@@ -313,6 +340,7 @@ bool asset_registry_set_sprite(AssetRegistry *reg, uint16_t id, int cols, int ro
     copy = malloc(bytes);
     if (!copy) return false;
     memcpy(copy, pattern, bytes);
+    if (reg->sprite_animations[id].frames) return free(copy), false;
     free(reg->sprites[id].pattern);
     reg->sprites[id].cols = cols;
     reg->sprites[id].rows = rows;

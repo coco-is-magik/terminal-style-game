@@ -209,7 +209,7 @@ type=layout
 elements=main_menu_title,main_menu_start,main_menu_asset_editor,main_menu_quit
 ```
 
-## Sprites (`assets/sprites/<id>.txt` — optional)
+## Sprites (`assets/sprites/<id>.txt` or `<id>/` — optional)
 
 Sprite patterns are camera-facing decorative billboards rendered by the world
 overlay pass. They are light-map-lit, depth-tested against world geometry and
@@ -238,6 +238,37 @@ In the unified editor, `P` creates and places an 8×8 canvas. Select a sprite an
 open **Pattern...** to load another numeric sprite file, save the current pattern,
 or paint it in place. Pattern edits are copied and do not replace the live
 registry asset until Save succeeds.
+
+An animated sprite uses a numeric folder instead of the same ID's static file:
+
+```text
+assets/sprites/4/
+  animation.txt
+  wide.txt
+  tall.txt
+```
+
+`animation.txt` lists frames in playback order and sets the time-based rate:
+
+```ini
+fps=4
+loop=true
+frame=wide.txt
+frame=tall.txt
+```
+
+`fps` is required and must be finite in `0.1..120`. `loop` is optional and
+defaults to `true`. One to 256 `frame` entries are required. Frame names are
+unique local `.txt` basenames and each frame uses the ordinary sprite-pattern
+format above. Unknown or duplicate metadata fields, missing/malformed frames,
+paths, and an ID having both `<id>.txt` and `<id>/` leave that sprite ID unloaded.
+Scene and object instances continue to reference only the numeric sprite ID.
+Playback phase is per runtime instance, starts at frame zero, and is not saved.
+
+The current Pattern painter authors static `<id>.txt` assets only. Pattern Load
+can assign an animated folder and closes the submenu for world preview; opening
+Pattern on an already animated instance is rejected until animation authoring UI
+is implemented.
 
 ## Objects (`assets/objects/<id>.txt` — optional)
 

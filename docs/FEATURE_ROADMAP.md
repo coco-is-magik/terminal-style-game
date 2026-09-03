@@ -226,7 +226,7 @@ Do not create empty review directories or placeholder review files.
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — I1–I3 verified; I4 simple objects implemented with automated gates passed, manual acceptance pending; animation and spawn expansion remain deferred |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — I1–I5 verified; animation authoring remains; game-mode spawn expansion explicitly deferred as unnecessary without game modes |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
@@ -806,17 +806,17 @@ or scene ownership changes broadly.
 
 ## R11 — Sprites, animation, objects, triggers, and spawn authoring
 
-**Status:** Active — Q1 decision record locked. I1 sprite runtime, I2 sprite
-authoring, and I3 scene v9 minimal triggers are all Implemented and Verified:
-automated gates, Q4 reviews, and bundled manual visual/input acceptance passed.
-The approved I1–I3 scope is closed. The broader R11 phase remains Active because
-animation, typed objects/components, and game-mode spawn expansion are still
-deferred pending separate Q1 authorization. See
+**Status:** Active. I1–I4 and I5 sprite-animation runtime/data are Verified. I5
+provides strict folder metadata, elapsed-time per-instance playback, static
+compatibility, and passed manual visual acceptance. Animation authoring UI remains.
+Game-mode spawn expansion is explicitly unnecessary without game modes and
+an editor mature enough to test mode-dependent selection. See
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
 `R11_DECISION_RECORD_2026-08-28.md`, plus
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md` and
 `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md` and
-`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`.
+`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`, plus the I4 and I5
+decision/implementation records.
 
 **Purpose:** Add broader gameplay-authored entities using the existing scene,
 identity, command, selection, and vertical-world foundations.

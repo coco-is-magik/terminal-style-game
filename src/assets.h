@@ -31,6 +31,7 @@
 #define OBJECT_NAME_CAPACITY 64U
 #define SPRITE_PATTERN_MAX_COLS 255
 #define SPRITE_PATTERN_MAX_ROWS 32
+#define SPRITE_ANIMATION_MAX_FRAMES 256U
 #define MATERIAL_NAME_CAPACITY 64U
 
 /**
@@ -88,6 +89,14 @@ typedef struct {
     PatternCell *pattern;    /* Dynamically allocated pattern array (cols × rows) */
 } SpriteAsset;
 
+/** Asset-owned ordered sprite frames and their default playback policy. */
+typedef struct {
+    SpriteAsset *frames;
+    size_t frame_count;
+    double frames_per_second;
+    bool loop;
+} SpriteAnimationAsset;
+
 typedef enum {
     OBJECT_ATTRIBUTE_NONE = 0,
     OBJECT_ATTRIBUTE_SIMPLE = 1U << 0
@@ -125,6 +134,7 @@ typedef struct {
     Palette *palettes;                    /* Fixed-capacity, direct-indexed storage */
     Material *materials;                  /* Fixed-capacity, direct-indexed storage */
     SpriteAsset sprites[SPRITE_ID_CAPACITY]; /* Sprite widening remains deferred */
+    SpriteAnimationAsset sprite_animations[SPRITE_ID_CAPACITY];
     ObjectAsset objects[OBJECT_ID_CAPACITY];
     DecalPatternAsset *decal_patterns;    /* Fixed-capacity reusable decal storage */
     char (*material_names)[MATERIAL_NAME_CAPACITY];
@@ -261,6 +271,19 @@ const DecalPatternAsset *asset_registry_get_missing_decal_pattern(void);
 
 /** Return a borrowed loaded sprite definition, or NULL for an invalid/unloaded ID. */
 const SpriteAsset *asset_registry_get_sprite(
+    const AssetRegistry *reg,
+    int id
+);
+
+/** Resolve one frame; static sprites ignore frame_index. */
+const SpriteAsset *asset_registry_get_sprite_frame(
+    const AssetRegistry *reg,
+    int id,
+    size_t frame_index
+);
+
+/** Return animation metadata, or NULL when the ID is static/unloaded. */
+const SpriteAnimationAsset *asset_registry_get_sprite_animation(
     const AssetRegistry *reg,
     int id
 );
