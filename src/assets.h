@@ -27,6 +27,8 @@
 #define ASSET_ID_CAPACITY 65536U
 #define ASSET_ID_MAX 65535
 #define SPRITE_ID_CAPACITY 256U
+#define OBJECT_ID_CAPACITY 256U
+#define OBJECT_NAME_CAPACITY 64U
 #define SPRITE_PATTERN_MAX_COLS 255
 #define SPRITE_PATTERN_MAX_ROWS 32
 #define MATERIAL_NAME_CAPACITY 64U
@@ -86,6 +88,20 @@ typedef struct {
     PatternCell *pattern;    /* Dynamically allocated pattern array (cols × rows) */
 } SpriteAsset;
 
+typedef enum {
+    OBJECT_ATTRIBUTE_NONE = 0,
+    OBJECT_ATTRIBUTE_SIMPLE = 1U << 0
+} ObjectAttribute;
+
+/** Reusable object definition. I4 supports exactly the `simple` attribute. */
+typedef struct {
+    char name[OBJECT_NAME_CAPACITY];
+    uint16_t sprite_id;
+    double front_direction;
+    uint8_t attributes;
+    bool loaded;
+} ObjectAsset;
+
 /** Reusable decal appearance. Placement remains authored by SceneDocument. */
 typedef struct {
     int cols;
@@ -109,6 +125,7 @@ typedef struct {
     Palette *palettes;                    /* Fixed-capacity, direct-indexed storage */
     Material *materials;                  /* Fixed-capacity, direct-indexed storage */
     SpriteAsset sprites[SPRITE_ID_CAPACITY]; /* Sprite widening remains deferred */
+    ObjectAsset objects[OBJECT_ID_CAPACITY];
     DecalPatternAsset *decal_patterns;    /* Fixed-capacity reusable decal storage */
     char (*material_names)[MATERIAL_NAME_CAPACITY];
     size_t material_count;

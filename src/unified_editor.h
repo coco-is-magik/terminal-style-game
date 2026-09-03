@@ -19,6 +19,7 @@
 #include "input.h"
 #include "map_catalog.h"
 #include "material_document.h"
+#include "object_document.h"
 #include "scene_document.h"
 #include "sprite_document.h"
 #include "vertical_physics.h"
@@ -44,6 +45,7 @@ typedef enum {
     EDITOR_MODAL_DECAL_REMOVE_PROMPT,
     EDITOR_MODAL_SPRITE_REMOVE_PROMPT,
     EDITOR_MODAL_TRIGGER_REMOVE_PROMPT,
+    EDITOR_MODAL_OBJECT_REMOVE_PROMPT,
     EDITOR_MENU_SAVE
 } EditorModal;
 
@@ -101,7 +103,6 @@ typedef enum {
     EDITOR_SPRITE_MENU_PAINT
 } EditorSpriteMenuStage;
 
-
 typedef enum {
     EDITOR_STATUS_NONE = 0,
     EDITOR_STATUS_SAVED,
@@ -130,6 +131,7 @@ typedef enum {
     ,EDITOR_STATUS_HISTORY_LIMIT
     ,EDITOR_STATUS_INVALID_TRIGGER
     ,EDITOR_STATUS_TRIGGER_REFERENCE_BLOCKED
+    ,EDITOR_STATUS_INVALID_OBJECT
 } EditorStatus;
 
 typedef struct {
@@ -177,6 +179,12 @@ typedef struct {
     MaterialId highlighted_material;
     EditorSurfaceField surface_field;
     bool material_picker_open;
+    bool object_picker_open;
+    size_t object_picker_index;
+    uint16_t object_search_results[OBJECT_ID_CAPACITY - 1U];
+    size_t object_search_result_count;
+    char object_search_text[OBJECT_NAME_CAPACITY];
+    size_t object_search_text_length;
     bool decal_menu_open;
     bool movement_menu_open;
     EditorMovementField movement_field;
@@ -210,6 +218,7 @@ typedef struct {
     EditorDecalField decal_field;
     EditorSpriteField sprite_field;
     EditorTriggerField trigger_field;
+    EditorObjectField object_field;
     bool sprite_menu_open;
     EditorSpriteMenuStage sprite_menu_stage;
     size_t sprite_menu_index;
@@ -394,6 +403,10 @@ CommandResult unified_editor_set_sprite_field_value(
 );
 CommandResult unified_editor_place_trigger(UnifiedEditorState *editor);
 CommandResult unified_editor_remove_trigger(
+    UnifiedEditorState *editor, SceneInstanceId id
+);
+CommandResult unified_editor_place_object(UnifiedEditorState *editor, uint16_t asset_id);
+CommandResult unified_editor_remove_object(
     UnifiedEditorState *editor, SceneInstanceId id
 );
 CommandResult unified_editor_step_trigger_field(

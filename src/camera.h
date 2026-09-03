@@ -17,6 +17,7 @@
 #include "map.h"       /* Map — needed for collision in camera_update() */
 #include "input.h"     /* InputState — WASD + mouse for movement/look */
 #include "optical_runtime_view.h"
+#include "world.h"
 
 /**
  * Camera — The player's viewpoint in the world
@@ -64,6 +65,12 @@ void camera_update_optical(
     Camera *cam, Map *map, InputState *input,
     double delta_time_sec, int viewport_rows,
     const OpticalRuntimeView *optical_view, uint32_t optical_generation
+);
+void camera_update_with_objects(
+    Camera *cam, Map *map, InputState *input,
+    double delta_time_sec, int viewport_rows,
+    const OpticalRuntimeView *optical_view, uint32_t optical_generation,
+    const ObjectEntity *objects, size_t object_count
 );
 
 #endif /* CAMERA_H */

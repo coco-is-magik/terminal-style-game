@@ -1607,6 +1607,35 @@ static void test_trigger_set_insert_remove_undo_redo(void **state) {
     scene_document_destroy(&doc);
 }
 
+static void test_object_set_insert_remove_undo_redo(void **state) {
+    SceneDocument doc;
+    CommandHistory history;
+    SceneObjectInstance prototype = {.asset = {SCENE_ASSET_KIND_OBJECT, 1U},
+        .x = 1.5, .y = 1.5, .front_direction = 0.0};
+    SceneObjectInstance changed;
+    SceneInstanceId id = 0U;
+    (void)state;
+    load_fixture(&doc);
+    doc.next_instance_id = 60U;
+    command_history_init(&history, doc.current_state);
+    assert_int_equal(command_history_insert_object(&history, &doc, &prototype, &id),
+                     CMD_RESULT_OK);
+    assert_int_equal(id, 60U);
+    changed = *scene_document_find_object(&doc, id);
+    changed.front_direction = 1.0;
+    assert_int_equal(command_history_set_object(&history, &doc, id, &changed),
+                     CMD_RESULT_OK);
+    assert_true(scene_document_find_object(&doc, id)->front_direction == 1.0);
+    assert_int_equal(command_history_remove_object(&history, &doc, id), CMD_RESULT_OK);
+    assert_null(scene_document_find_object(&doc, id));
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_non_null(scene_document_find_object(&doc, id));
+    assert_int_equal(command_history_undo(&history, &doc), CMD_RESULT_OK);
+    assert_true(scene_document_find_object(&doc, id)->front_direction == 0.0);
+    command_history_destroy(&history);
+    scene_document_destroy(&doc);
+}
+
 static void test_referenced_light_removal_is_blocked(void **state) {
     SceneDocument doc;
     CommandHistory history;
@@ -1745,6 +1774,7 @@ int main(void) {
         cmocka_unit_test(test_history_memory_limit_is_bounded_and_atomic),
         cmocka_unit_test(test_sprite_set_insert_remove_undo_redo_and_capacity),
         cmocka_unit_test(test_trigger_set_insert_remove_undo_redo),
+        cmocka_unit_test(test_object_set_insert_remove_undo_redo),
         cmocka_unit_test(test_referenced_light_removal_is_blocked),
         cmocka_unit_test(test_optical_material_command_undo_redo_and_inherit),
         cmocka_unit_test(test_optical_cell_sparse_order_removal_and_allocation_failure),

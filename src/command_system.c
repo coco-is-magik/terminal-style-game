@@ -243,6 +243,14 @@ static bool find_trigger_index(const SceneDocument *document, SceneInstanceId id
     return false;
 }
 
+static bool find_object_index(const SceneDocument *document, SceneInstanceId id,
+                              size_t *out_index) {
+    if (!document || !out_index || id == 0U) return false;
+    for (size_t i = 0U; i < document->object_count; i++)
+        if (document->objects[i].id == id) { *out_index = i; return true; }
+    return false;
+}
+
 static bool light_is_referenced(const SceneDocument *document, SceneInstanceId id) {
     size_t i;
     for (i = 0U; i < document->trigger_count; i++)
@@ -614,6 +622,46 @@ static bool prepare_mutation(
         *changed = !triggers_equal(before, &request->data.trigger.value);
         return true;
     }
+    if (request->type == EDITOR_MUTATION_SET_OBJECT) {
+        const SceneObjectInstance *before = scene_document_find_object(
+            document, request->data.object.id);
+        if (!before || !scene_document_internal_object_value_is_valid(
+                document, request->data.object.id, &request->data.object.value))
+            return false;
+        mutation->data.object.id = request->data.object.id;
+        mutation->data.object.before = *before;
+        mutation->data.object.after = request->data.object.value;
+        *changed = memcmp(before, &request->data.object.value, sizeof(*before)) != 0;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_INSERT_OBJECT) {
+        const SceneObjectInstance *value = &request->data.insert_object.value;
+        if (document->object_count >= SCENE_MAX_OBJECTS || value->id == 0U ||
+            value->asset.kind != SCENE_ASSET_KIND_OBJECT || value->asset.id == 0U ||
+            value->asset.id >= OBJECT_ID_CAPACITY ||
+            value->sprite_asset >= SPRITE_ID_CAPACITY || !isfinite(value->x) ||
+            !isfinite(value->y) || !isfinite(value->front_direction) || value->x < 0.0 ||
+            value->x >= document->map.width || value->y < 0.0 ||
+            value->y >= document->map.height || value->front_direction < 0.0 ||
+            value->front_direction >= SCENE_LIGHT_DIRECTION_MAX ||
+            scene_document_find_light(document, value->id) ||
+            scene_document_find_decal(document, value->id) ||
+            scene_document_find_sprite(document, value->id) ||
+            scene_document_find_trigger(document, value->id) ||
+            scene_document_find_object(document, value->id)) return false;
+        mutation->data.insert_object.value = *value;
+        *changed = true;
+        return true;
+    }
+    if (request->type == EDITOR_MUTATION_REMOVE_OBJECT) {
+        size_t index;
+        if (!find_object_index(document, request->data.remove_object.id, &index)) return false;
+        mutation->data.remove_object.id = request->data.remove_object.id;
+        mutation->data.remove_object.index = index;
+        mutation->data.remove_object.removed_value = document->objects[index];
+        *changed = true;
+        return true;
+    }
     if (request->type == EDITOR_MUTATION_INSERT_TRIGGER) {
         const SceneTrigger *value = &request->data.insert_trigger.value;
         if (document->trigger_count >= SCENE_MAX_TRIGGERS ||
@@ -857,6 +905,23 @@ static bool apply_mutation(
         return scene_document_internal_insert_trigger(
             document, mutation->data.remove_trigger.index,
             &mutation->data.remove_trigger.removed_value);
+    }
+    if (mutation->type == EDITOR_MUTATION_SET_OBJECT)
+        return scene_document_internal_set_object(document, mutation->data.object.id,
+            after ? &mutation->data.object.after : &mutation->data.object.before);
+    if (mutation->type == EDITOR_MUTATION_INSERT_OBJECT) {
+        if (after) return scene_document_internal_insert_object(document,
+            document->object_count, &mutation->data.insert_object.value);
+        { size_t index; if (!find_object_index(document,
+              mutation->data.insert_object.value.id, &index)) return false;
+          return scene_document_internal_remove_object(document, index,
+              mutation->data.insert_object.value.id); }
+    }
+    if (mutation->type == EDITOR_MUTATION_REMOVE_OBJECT) {
+        if (after) return scene_document_internal_remove_object(document,
+            mutation->data.remove_object.index, mutation->data.remove_object.id);
+        return scene_document_internal_insert_object(document,
+            mutation->data.remove_object.index, &mutation->data.remove_object.removed_value);
     }
     return false;
 }
@@ -1417,6 +1482,50 @@ CommandResult command_history_remove_trigger(
     EditorMutationRequest request = {0};
     request.type = EDITOR_MUTATION_REMOVE_TRIGGER;
     request.data.remove_trigger.id = id;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_set_object(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id,
+    const SceneObjectInstance *value
+) {
+    EditorMutationRequest request = {0};
+    if (!value) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_SET_OBJECT;
+    request.data.object.id = id;
+    request.data.object.value = *value;
+    return command_history_execute_group(history, document, &request, 1U);
+}
+
+CommandResult command_history_insert_object(
+    CommandHistory *history, SceneDocument *document,
+    const SceneObjectInstance *prototype, SceneInstanceId *out_id
+) {
+    EditorMutationRequest request = {0};
+    SceneInstanceId allocated, next_before;
+    SceneIdAllocateResult allocation;
+    CommandResult result;
+    if (!history || !document || !prototype ||
+        document->object_count >= SCENE_MAX_OBJECTS) return CMD_RESULT_INVALID_TARGET;
+    next_before = document->next_instance_id;
+    allocation = scene_document_internal_allocate_instance_id(document, &allocated);
+    if (allocation == SCENE_ID_ALLOCATE_EXHAUSTED) return CMD_RESULT_STATE_ID_EXHAUSTED;
+    if (allocation != SCENE_ID_ALLOCATE_OK) return CMD_RESULT_INVALID_TARGET;
+    request.type = EDITOR_MUTATION_INSERT_OBJECT;
+    request.data.insert_object.value = *prototype;
+    request.data.insert_object.value.id = allocated;
+    result = command_history_execute_group(history, document, &request, 1U);
+    if (result != CMD_RESULT_OK) { document->next_instance_id = next_before; return result; }
+    if (out_id) *out_id = allocated;
+    return CMD_RESULT_OK;
+}
+
+CommandResult command_history_remove_object(
+    CommandHistory *history, SceneDocument *document, SceneInstanceId id
+) {
+    EditorMutationRequest request = {0};
+    request.type = EDITOR_MUTATION_REMOVE_OBJECT;
+    request.data.remove_object.id = id;
     return command_history_execute_group(history, document, &request, 1U);
 }
 

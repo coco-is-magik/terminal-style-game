@@ -1439,11 +1439,8 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     ed.sprite_menu_open = true;
     ed.sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
     cam.transform.angle = PI;
-    zero_input(&in);
-    in.editor_select_pressed = true;
-    update_with(&ed, &cam, &in);
-    assert_false(ed.sprite_menu_open);
-    assert_null(ed.sprite_document.cells);
+    sprite_document_destroy(&ed.sprite_document);
+    ed.sprite_menu_open = false;
     zero_input(&in);
     in.editor_next_pressed = true;
     assert_true(update_with(&ed, &cam, &in).keyboard_consumed);
@@ -1456,6 +1453,196 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     rmdir(sprite_dir);
     free(g_assets.sprites[created_id].pattern);
     memset(&g_assets.sprites[created_id], 0, sizeof(g_assets.sprites[created_id]));
+    free(g_assets.sprites[2].pattern);
+    memset(&g_assets.sprites[2], 0, sizeof(g_assets.sprites[2]));
+}
+
+static void test_object_place_runtime_edit_undo_and_remove(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    PatternCell pattern = {(uint8_t)'O', UINT16_C(1)};
+    SceneInstanceId id;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "object.txt"), 0);
+    assert_true(asset_registry_set_sprite(&g_assets, 1U, 1, 1, &pattern));
+    g_assets.objects[1] = (ObjectAsset){.name = "crate", .sprite_id = 1U,
+        .front_direction = 0.0, .attributes = OBJECT_ATTRIBUTE_SIMPLE, .loaded = true};
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input);
+    input.editor_place_object_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.document.object_count, 1U);
+    assert_int_equal(editor.runtime_world.num_objects, 1);
+    assert_int_equal(editor.runtime_world.num_sprites, 1);
+    assert_int_equal(editor.selection.type, SELECTION_OBJECT);
+    id = editor.document.objects[0].id;
+    editor.object_field = EDITOR_OBJECT_FIELD_DIRECTION;
+    zero_input(&input); input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(scene_document_find_object(&editor.document, id)->front_direction == 0.25);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_true(scene_document_find_object(&editor.document, id)->front_direction == 0.0);
+    assert_int_equal(unified_editor_remove_object(&editor, id), CMD_RESULT_OK);
+    assert_int_equal(editor.document.object_count, 0U);
+    unified_editor_destroy(&editor);
+}
+
+static void test_text_entry_submenus_block_movement_select_and_letter_actions(
+    void **state
+) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    PatternCell glyph = {(uint8_t)'S', UINT16_C(1)};
+    SelectionTarget original;
+    double x;
+    double y;
+    size_t light_count;
+    size_t sprite_count;
+    size_t trigger_count;
+    size_t object_count;
+    char light_path[512];
+    (void)state;
+
+    assert_int_equal(load_editor(&editor, "text_lock_material.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_east_wall(&editor);
+    original = editor.selection;
+    editor.material_picker_open = true;
+    x = camera.transform.pos.x;
+    y = camera.transform.pos.y;
+    light_count = editor.document.light_count;
+    sprite_count = editor.document.sprite_count;
+    trigger_count = editor.document.trigger_count;
+    object_count = editor.document.object_count;
+    zero_input(&input);
+    input.forward = true;
+    input.editor_select_pressed = true;
+    input.editor_place_light_pressed = true;
+    input.editor_place_sprite_pressed = true;
+    input.editor_place_trigger_pressed = true;
+    input.editor_place_object_pressed = true;
+    strcpy(input.text_input, "e");
+    input.text_input_len = 1;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(camera.transform.pos.x == x && camera.transform.pos.y == y);
+    assert_memory_equal(&editor.selection, &original, sizeof(original));
+    assert_string_equal(editor.material_search_text, "e");
+    assert_int_equal(editor.document.light_count, light_count);
+    assert_int_equal(editor.document.sprite_count, sprite_count);
+    assert_int_equal(editor.document.trigger_count, trigger_count);
+    assert_int_equal(editor.document.object_count, object_count);
+    unified_editor_destroy(&editor);
+
+    assert_int_equal(load_editor(&editor, "text_lock_object.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_east_wall(&editor);
+    original = editor.selection;
+    editor.object_picker_open = true;
+    x = camera.transform.pos.x;
+    y = camera.transform.pos.y;
+    zero_input(&input);
+    input.forward = true;
+    input.editor_select_pressed = true;
+    strcpy(input.text_input, "e");
+    input.text_input_len = 1;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(camera.transform.pos.x == x && camera.transform.pos.y == y);
+    assert_memory_equal(&editor.selection, &original, sizeof(original));
+    assert_string_equal(editor.object_search_text, "e");
+    unified_editor_destroy(&editor);
+
+    path_in_tmpdir(light_path, sizeof(light_path), "text_lock_light.tscene");
+    open_pickable_light(&editor, &camera, light_path);
+    original = editor.selection;
+    editor.light_value_editing = true;
+    editor.light_value_text[0] = '\0';
+    editor.light_value_text_length = 0U;
+    x = camera.transform.pos.x;
+    y = camera.transform.pos.y;
+    zero_input(&input);
+    input.forward = true;
+    input.editor_select_pressed = true;
+    strcpy(input.text_input, "2");
+    input.text_input_len = 1;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(camera.transform.pos.x == x && camera.transform.pos.y == y);
+    assert_memory_equal(&editor.selection, &original, sizeof(original));
+    assert_string_equal(editor.light_value_text, "2");
+    unified_editor_destroy(&editor);
+    remove(light_path);
+
+    assert_int_equal(load_editor(&editor, "text_lock_paint.txt"), 0);
+    assert_true(asset_registry_set_sprite(&g_assets, 1U, 1, 1, &glyph));
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    select_east_wall(&editor);
+    original = editor.selection;
+    assert_int_equal(sprite_document_create(
+        &editor.sprite_document, &g_assets, 1U, 1U), SPRITE_DOCUMENT_OK);
+    editor.sprite_menu_open = true;
+    editor.sprite_menu_stage = EDITOR_SPRITE_MENU_PAINT;
+    editor.sprite_paint_material = 1U;
+    zero_input(&input);
+    input.editor_select_pressed = true;
+    strcpy(input.text_input, "e");
+    input.text_input_len = 1;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_memory_equal(&editor.selection, &original, sizeof(original));
+    assert_int_equal(editor.sprite_document.cells[0].glyph, (uint8_t)'e');
+    unified_editor_destroy(&editor);
+    free(g_assets.sprites[1].pattern);
+    memset(&g_assets.sprites[1], 0, sizeof(g_assets.sprites[1]));
+}
+
+static void test_object_sprite_picker_assignment_and_undo(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    PatternCell first = {(uint8_t)'1', UINT16_C(1)};
+    PatternCell second = {(uint8_t)'2', UINT16_C(1)};
+    (void)state;
+    assert_int_equal(load_editor(&editor, "object_picker.txt"), 0);
+    assert_true(asset_registry_set_sprite(&g_assets, 1U, 1, 1, &first));
+    assert_true(asset_registry_set_sprite(&g_assets, 2U, 1, 1, &second));
+    g_assets.objects[1] = (ObjectAsset){.name = "crate", .sprite_id = 1U,
+        .attributes = OBJECT_ATTRIBUTE_SIMPLE, .loaded = true};
+    g_assets.objects[2] = (ObjectAsset){.name = "barrel", .sprite_id = 2U,
+        .attributes = OBJECT_ATTRIBUTE_SIMPLE, .loaded = true};
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input);
+    update_with(&editor, &camera, &input);
+    assert_int_equal(unified_editor_place_object(&editor, 1U), CMD_RESULT_OK);
+    assert_int_equal(editor.document.objects[0].sprite_asset, 1U);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Sprite"));
+    assert_true(grid_contains_text(grid, "Remove"));
+    assert_false(grid_contains_text(grid, "Create def"));
+    grid_destroy(grid);
+
+    editor.object_field = EDITOR_OBJECT_FIELD_ASSET;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.object_picker_open);
+    zero_input(&input); snprintf(input.text_input, sizeof(input.text_input), "2");
+    input.text_input_len = 1;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.object_search_result_count, 1U);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.object_picker_open);
+    assert_int_equal(editor.document.objects[0].sprite_asset, 2U);
+    assert_int_equal(editor.document.objects[0].asset.id, 1U);
+    assert_int_equal(editor.runtime_world.objects[0].sprite_id, 2U);
+    assert_int_equal(editor.runtime_world.sprites[0].sprite_id, 2U);
+    assert_int_equal(unified_editor_undo(&editor), CMD_RESULT_OK);
+    assert_int_equal(editor.document.objects[0].sprite_asset, 1U);
+    unified_editor_destroy(&editor);
+    free(g_assets.sprites[1].pattern);
+    memset(&g_assets.sprites[1], 0, sizeof(g_assets.sprites[1]));
     free(g_assets.sprites[2].pattern);
     memset(&g_assets.sprites[2], 0, sizeof(g_assets.sprites[2]));
 }
@@ -4307,6 +4494,8 @@ int main(void) {
         cmocka_unit_test(test_light_remove_prompt_cancel_confirm_and_undo_redo),
         cmocka_unit_test(test_placed_light_native_save_reopen_round_trip),
         cmocka_unit_test(test_sprite_p_creates_canvas_and_pattern_workflow),
+        cmocka_unit_test(test_object_place_runtime_edit_undo_and_remove),
+        cmocka_unit_test(test_text_entry_submenus_block_movement_select_and_letter_actions),
         cmocka_unit_test(test_trigger_place_inspect_runtime_remove_and_round_trip),
         cmocka_unit_test(test_decal_place_each_surface_defaults_and_undo_redo),
         cmocka_unit_test(test_decal_surface_menu_selects_stable_id),
@@ -4373,6 +4562,8 @@ int main(void) {
         cmocka_unit_test(test_r9_i6_optical_authoring_undo_save_reopen),
         cmocka_unit_test(test_r9_i6_optical_submenu_input_and_overlay),
         cmocka_unit_test(test_r9_transparency_submenu_master_custom_undo_and_round_trip),
+        /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */
+        cmocka_unit_test(test_object_sprite_picker_assignment_and_undo),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
 }

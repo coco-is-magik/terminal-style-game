@@ -239,9 +239,29 @@ open **Pattern...** to load another numeric sprite file, save the current patter
 or paint it in place. Pattern edits are copied and do not replace the live
 registry asset until Save succeeds.
 
-## Native scene v9 triggers
+## Objects (`assets/objects/<id>.txt` — optional)
 
-Canonical `.tscene` v9 files may contain repeated trigger blocks after sprite
+Object definitions are numeric, reusable assets. I4 accepts exactly these fields:
+
+```ini
+name=training_marker
+sprite_id=1
+front_direction=0
+attributes=simple
+```
+
+`simple` objects are static sprite billboards with player collision. Their
+direction uses 0=east, π/2=south, π=west, and 3π/2=north. They do not block rays
+or light and do not interact with mirrors, triggers, animation, or destruction.
+
+In the unified editor, the object inspector's Sprite row opens a searchable
+picker over loaded numeric sprite IDs. Choosing one changes only the selected
+object instance through scene command history; it does not mutate the reusable
+object definition.
+
+## Native scene v10 triggers and objects
+
+Canonical `.tscene` v10 files may contain repeated trigger blocks after sprite
 instances. Identity is the scene-wide stable ID in the block header:
 
 ```ini
@@ -261,4 +281,8 @@ Actions have exact payloads: `set_flag` requires `flag_id` (`1..64`) and
 requires `target_id` resolving to a scene light. Regions are finite positive
 half-open rectangles contained by the map. Unknown/inapplicable fields, unknown
 tokens, duplicate IDs, and dangling targets reject the scene transactionally.
-Versions 1–8 remain readable and migrate forward; canonical Save writes v9.
+Object instances use `[object <stable-id>]` with `asset_kind = object`, `asset_id`,
+`sprite_asset_id`, `position`, and `front_direction`. The sprite field is
+per-instance; old v10 records that omit it default to the definition's sprite on
+asset-aware load. Versions 1–9 remain readable and migrate forward; canonical
+Save writes v10.

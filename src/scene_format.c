@@ -46,6 +46,7 @@ typedef enum {
     SECTION_DECAL,
     SECTION_SPRITE,
     SECTION_TRIGGER,
+    SECTION_OBJECT,
     SECTION_OPTICAL_MATERIAL,
     SECTION_OPTICAL_CELL
 } SectionKind;
@@ -132,6 +133,7 @@ void scene_format_candidate_destroy(SceneFormatCandidate *candidate) {
     free(candidate->decals);
     free(candidate->sprites);
     free(candidate->triggers);
+    free(candidate->objects);
     free(candidate->optical_material_defaults);
     free(candidate->optical_cell_overrides);
     free(candidate->legacy_source_path);
@@ -386,6 +388,7 @@ static bool parse_header(char *text, SectionHeader *header) {
     else if (strcmp(inside, "decal_instance") == 0) header->kind = SECTION_DECAL;
     else if (strcmp(inside, "sprite_instance") == 0) header->kind = SECTION_SPRITE;
     else if (strcmp(inside, "trigger") == 0) header->kind = SECTION_TRIGGER;
+    else if (strcmp(inside, "object") == 0) header->kind = SECTION_OBJECT;
     else if (strcmp(inside, "optical_material") == 0)
         header->kind = SECTION_OPTICAL_MATERIAL;
     else if (strcmp(inside, "optical_cell") == 0)
@@ -426,6 +429,8 @@ static bool candidate_has_id(const SceneFormatCandidate *candidate,
     }
     for (i = 0U; i < candidate->trigger_count; i++)
         if (candidate->triggers[i].id == id) return true;
+    for (i = 0U; i < candidate->object_count; i++)
+        if (candidate->objects[i].id == id) return true;
     return false;
 }
 
@@ -573,6 +578,20 @@ SceneFormatResult scene_format_migrate_v8_to_v9(
     result = scene_format_validate(candidate, NULL, diagnostic);
     if (result != SCENE_FORMAT_OK) return result;
     candidate->source_version = SCENE_VERSION_V9;
+    return SCENE_FORMAT_OK;
+}
+
+SceneFormatResult scene_format_migrate_v9_to_v10(
+    SceneFormatCandidate *candidate, SceneDiagnostic *diagnostic
+) {
+    SceneFormatResult result;
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate || candidate->source_version != SCENE_VERSION_V9 ||
+        candidate->objects || candidate->object_count != 0U)
+        return SCENE_FORMAT_INVALID_ARGUMENT;
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    candidate->source_version = SCENE_VERSION_V10;
     return SCENE_FORMAT_OK;
 }
 
@@ -872,17 +891,50 @@ duplicate_trigger:
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_INSTANCE_ID, path,
                       "trigger", NULL, "duplicate instance ID", 0U, trigger->id);
     }
+    for (i = 0U; i < candidate->object_count; i++) {
+        const SceneObjectInstance *object = &candidate->objects[i];
+        if (object->id == 0U || object->asset.kind != SCENE_ASSET_KIND_OBJECT ||
+            object->asset.id == 0U || object->asset.id >= OBJECT_ID_CAPACITY ||
+            object->sprite_asset >= SPRITE_ID_CAPACITY ||
+            !isfinite(object->x) || !isfinite(object->y) ||
+            !isfinite(object->front_direction) || object->x < 0.0 ||
+            object->x >= candidate->map.width || object->y < 0.0 ||
+            object->y >= candidate->map.height || object->front_direction < 0.0 ||
+            object->front_direction >= SCENE_LIGHT_DIRECTION_MAX)
+            return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
+                          "object", NULL, "invalid object value", 0U, object->id);
+        for (size_t j = 0U; j < candidate->light_count; j++)
+            if (candidate->lights[j].id == object->id) goto duplicate_object;
+        for (size_t j = 0U; j < candidate->decal_count; j++)
+            if (candidate->decals[j].id == object->id) goto duplicate_object;
+        for (size_t j = 0U; j < candidate->sprite_count; j++)
+            if (candidate->sprites[j].id == object->id) goto duplicate_object;
+        for (size_t j = 0U; j < candidate->trigger_count; j++)
+            if (candidate->triggers[j].id == object->id) goto duplicate_object;
+        for (size_t j = 0U; j < i; j++)
+            if (candidate->objects[j].id == object->id) goto duplicate_object;
+        if (object->id > maximum_id) maximum_id = object->id;
+        continue;
+duplicate_object:
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_INSTANCE_ID, path,
+                      "object", NULL, "duplicate instance ID", 0U, object->id);
+    }
     if (candidate->next_instance_id == 0U ||
         candidate->next_instance_id <= maximum_id) {
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_HIGH_WATER, path, NULL,
                       "next_instance_id", "ID high-water mark is invalid", 0U, 0U);
     }
+    if (candidate->sprite_count + candidate->object_count > SCENE_MAX_SPRITES)
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
+                      NULL, "sprites plus objects exceed runtime billboard capacity",
+                      0U, 0U);
     return SCENE_FORMAT_OK;
 }
 
 static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candidate,
                                                    size_t lights, size_t decals,
                                                     size_t sprites, size_t triggers,
+                                                    size_t objects,
                                                    size_t optical_material_capacity,
                                                    size_t optical_cells,
                                                    const char *path,
@@ -920,6 +972,10 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
     if (triggers) {
         candidate->triggers = calloc(triggers, sizeof(*candidate->triggers));
         if (!candidate->triggers) goto allocation_failed;
+    }
+    if (objects) {
+        candidate->objects = calloc(objects, sizeof(*candidate->objects));
+        if (!candidate->objects) goto allocation_failed;
     }
     if (optical_material_capacity) {
         candidate->optical_material_defaults = calloc(
@@ -1015,7 +1071,7 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
                    parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4 &&
                    parsed != SCENE_VERSION_V5 && parsed != SCENE_VERSION_V6 &&
                     parsed != SCENE_VERSION_V7 && parsed != SCENE_VERSION_V8 &&
-                    parsed != SCENE_VERSION_V9))
+                    parsed != SCENE_VERSION_V9 && parsed != SCENE_VERSION_V10))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -1517,6 +1573,44 @@ numeric:
                   sprite->id);
 }
 
+static SceneFormatResult parse_object_field(
+    SceneObjectInstance *object, unsigned *seen, char *key, char *value,
+    const char *path, size_t line, SceneDiagnostic *diagnostic
+) {
+    unsigned bit;
+    unsigned number;
+    double tuple[2];
+    if (strcmp(key, "asset_kind") == 0) bit = 1U;
+    else if (strcmp(key, "asset_id") == 0) bit = 2U;
+    else if (strcmp(key, "position") == 0) bit = 4U;
+    else if (strcmp(key, "front_direction") == 0) bit = 8U;
+    else if (strcmp(key, "sprite_asset_id") == 0) bit = 16U;
+    else return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNKNOWN, path,
+                       "object", key, "unknown object field", line, object->id);
+    if ((*seen & bit) != 0U)
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
+                      "object", key, "duplicate object field", line, object->id);
+    *seen |= bit;
+    if (bit == 1U) {
+        if (strcmp(value, "object") != 0) goto numeric;
+        object->asset.kind = SCENE_ASSET_KIND_OBJECT;
+    } else if (bit == 2U) {
+        if (!parse_uint_range(value, OBJECT_ID_CAPACITY - 1U, &number) || !number)
+            goto numeric;
+        object->asset.id = (uint16_t)number;
+    } else if (bit == 4U) {
+        if (!parse_double_tuple(value, tuple, 2U)) goto numeric;
+        object->x = tuple[0]; object->y = tuple[1];
+    } else if (bit == 16U) {
+        if (!parse_uint_range(value, SPRITE_ID_CAPACITY - 1U, &number)) goto numeric;
+        object->sprite_asset = (uint16_t)number;
+    } else if (!parse_double_c(value, &object->front_direction)) goto numeric;
+    return SCENE_FORMAT_OK;
+numeric:
+    return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path, "object",
+                  key, "invalid object field value", line, object->id);
+}
+
 static SceneFormatResult parse_trigger_field(
     SceneTrigger *trigger, unsigned *seen, char *key, char *value,
     const char *path, size_t line, SceneDiagnostic *diagnostic
@@ -1625,6 +1719,7 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
     else if (header.kind == SECTION_LIGHT) required = source_version >= SCENE_VERSION_V7
         ? 255U : 15U;
     else if (header.kind == SECTION_SPRITE) required = 7U;
+    else if (header.kind == SECTION_OBJECT) required = 15U;
     else if (header.kind == SECTION_TRIGGER) {
         required = 63U;
         if (trigger_action == SCENE_TRIGGER_ACTION_SET_FLAG) required |= 64U | 128U;
@@ -1663,6 +1758,7 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
                        header.kind == SECTION_LIGHT ? "light" :
                        header.kind == SECTION_SPRITE ? "sprite_instance" :
                        header.kind == SECTION_TRIGGER ? "trigger" :
+                       header.kind == SECTION_OBJECT ? "object" :
                        "decal_instance",
                       NULL, "required section field is missing", line, header.id);
     return SCENE_FORMAT_OK;
@@ -1679,6 +1775,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
     SectionKind current = SECTION_NONE;
     unsigned metadata_seen = 0U;
     size_t light_count = 0U, decal_count = 0U, sprite_count = 0U, trigger_count = 0U;
+    size_t object_count = 0U;
     size_t cells_sections = 0U;
     size_t occupancy_sections = 0U, wall_sections = 0U;
     size_t floor_sections = 0U, ceiling_sections = 0U;
@@ -1744,6 +1841,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
             else if (current == SECTION_DECAL) decal_count++;
             else if (current == SECTION_SPRITE) sprite_count++;
             else if (current == SECTION_TRIGGER) trigger_count++;
+            else if (current == SECTION_OBJECT) object_count++;
             else if (current == SECTION_OPTICAL_MATERIAL) {
                 if (header.id >= OPTICAL_MATERIAL_CAPACITY_MAX) {
                     result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC,
@@ -1766,7 +1864,8 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 goto done;
             }
             if (light_count > SCENE_MAX_LIGHTS || decal_count > SCENE_MAX_DECALS ||
-                sprite_count > SCENE_MAX_SPRITES || trigger_count > SCENE_MAX_TRIGGERS) {
+                sprite_count > SCENE_MAX_SPRITES || trigger_count > SCENE_MAX_TRIGGERS ||
+                object_count > SCENE_MAX_OBJECTS) {
                 result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
                                 NULL, NULL, "instance count exceeds v1 limit",
                                 line.number, header.id); goto done;
@@ -1825,6 +1924,12 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                         "trigger blocks require scene version 9", 0U, 0U);
         goto done;
     }
+    if (temporary.source_version < SCENE_VERSION_V10 && object_count != 0U) {
+        result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
+                        path, NULL, "scene_version",
+                        "object blocks require scene version 10", 0U, 0U);
+        goto done;
+    }
     if ((metadata_seen & (temporary.source_version >= SCENE_VERSION_V3
                               ? META_V3_REQUIRED : META_REQUIRED)) !=
             (temporary.source_version >= SCENE_VERSION_V3
@@ -1851,7 +1956,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
         goto done;
     }
     result = allocate_candidate_arrays(
-        &temporary, light_count, decal_count, sprite_count, trigger_count,
+        &temporary, light_count, decal_count, sprite_count, trigger_count, object_count,
         optical_material_capacity,
         optical_cell_count, path, diagnostic);
     if (result != SCENE_FORMAT_OK) goto done;
@@ -1864,6 +1969,7 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
         unsigned fields_seen = 0U;
         size_t rows[11] = {0U};
         size_t light_index = 0U, decal_index = 0U, sprite_index = 0U, trigger_index = 0U;
+        size_t object_index = 0U;
         size_t optical_cell_index = 0U;
         while (line_reader_next(&reader, &line)) {
             char *text = trim(line.text);
@@ -1884,12 +1990,14 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 current = header.kind;
                 fields_seen = 0U;
                 if ((current == SECTION_LIGHT || current == SECTION_DECAL ||
-                     current == SECTION_SPRITE || current == SECTION_TRIGGER) &&
+                      current == SECTION_SPRITE || current == SECTION_TRIGGER ||
+                      current == SECTION_OBJECT) &&
                     (header.id == 0U || candidate_has_id(&temporary, header.id))) {
                     result = reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_INSTANCE_ID,
                                     path, current == SECTION_LIGHT ? "light" :
                                     current == SECTION_SPRITE ? "sprite_instance" :
                                     current == SECTION_TRIGGER ? "trigger" :
+                                    current == SECTION_OBJECT ? "object" :
                                     "decal_instance",
                                     NULL, "zero or duplicate instance ID", line.number,
                                     header.id); goto done;
@@ -1907,6 +2015,9 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 } else if (current == SECTION_TRIGGER) {
                     temporary.triggers[trigger_index].id = header.id;
                     temporary.trigger_count = ++trigger_index;
+                } else if (current == SECTION_OBJECT) {
+                    temporary.objects[object_index].id = header.id;
+                    temporary.object_count = ++object_index;
                 } else if (current == SECTION_OPTICAL_MATERIAL) {
                     OpticalExtension *extension =
                         &temporary.optical_material_defaults[header.id];
@@ -2000,6 +2111,10 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                 else if (current == SECTION_TRIGGER)
                     result = parse_trigger_field(
                         &temporary.triggers[trigger_index - 1U], &fields_seen,
+                        key, value, path, line.number, diagnostic);
+                else if (current == SECTION_OBJECT)
+                    result = parse_object_field(
+                        &temporary.objects[object_index - 1U], &fields_seen,
                         key, value, path, line.number, diagnostic);
                 else if (current == SECTION_OPTICAL_MATERIAL)
                     result = parse_optical_field(
@@ -2163,6 +2278,12 @@ static int compare_trigger_ptrs(const void *left, const void *right) {
     return a->id < b->id ? -1 : a->id > b->id;
 }
 
+static int compare_object_ptrs(const void *left, const void *right) {
+    const SceneObjectInstance *a = *(const SceneObjectInstance *const *)left;
+    const SceneObjectInstance *b = *(const SceneObjectInstance *const *)right;
+    return a->id < b->id ? -1 : a->id > b->id;
+}
+
 static int compare_optical_cell_overrides(const void *left, const void *right) {
     const OpticalCellOverride *a = left;
     const OpticalCellOverride *b = right;
@@ -2212,6 +2333,7 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     const SceneDecalInstance *decals[SCENE_MAX_DECALS];
     const SceneSpriteInstance *sprites[SCENE_MAX_SPRITES];
     const SceneTrigger *triggers[SCENE_MAX_TRIGGERS];
+    const SceneObjectInstance *objects[SCENE_MAX_OBJECTS];
     size_t i, x, y;
     locale_t c_locale;
     locale_t previous;
@@ -2234,10 +2356,12 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     for (i = 0U; i < candidate->decal_count; i++) decals[i] = &candidate->decals[i];
     for (i = 0U; i < candidate->sprite_count; i++) sprites[i] = &candidate->sprites[i];
     for (i = 0U; i < candidate->trigger_count; i++) triggers[i] = &candidate->triggers[i];
+    for (i = 0U; i < candidate->object_count; i++) objects[i] = &candidate->objects[i];
     qsort(lights, candidate->light_count, sizeof(lights[0]), compare_light_ptrs);
     qsort(decals, candidate->decal_count, sizeof(decals[0]), compare_decal_ptrs);
     qsort(sprites, candidate->sprite_count, sizeof(sprites[0]), compare_sprite_ptrs);
     qsort(triggers, candidate->trigger_count, sizeof(triggers[0]), compare_trigger_ptrs);
+    qsort(objects, candidate->object_count, sizeof(objects[0]), compare_object_ptrs);
 #define APPEND(expression) do { if (!(expression)) goto allocation_failed; } while (0)
     APPEND(writer_printf(&writer, "scene_type = terminal_scene\nscene_version = %u\nname = ",
                          output_version));
@@ -2432,6 +2556,20 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
             APPEND(writer_double(&writer, sprite->x));
             APPEND(writer_append(&writer, ","));
             APPEND(writer_double(&writer, sprite->y));
+            APPEND(writer_append(&writer, "\n"));
+        }
+    }
+    if (output_version >= SCENE_VERSION_V10) {
+        for (i = 0U; i < candidate->object_count; i++) {
+            const SceneObjectInstance *object = objects[i];
+            APPEND(writer_printf(&writer, "\n[object %" PRIu64 "]\n"
+                "asset_kind = object\nasset_id = %u\nsprite_asset_id = %u\nposition = ",
+                object->id, object->asset.id, object->sprite_asset));
+            APPEND(writer_double(&writer, object->x));
+            APPEND(writer_append(&writer, ","));
+            APPEND(writer_double(&writer, object->y));
+            APPEND(writer_append(&writer, "\nfront_direction = "));
+            APPEND(writer_double(&writer, object->front_direction));
             APPEND(writer_append(&writer, "\n"));
         }
     }

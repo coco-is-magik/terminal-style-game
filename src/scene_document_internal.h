@@ -111,6 +111,20 @@ bool scene_document_internal_trigger_value_is_valid(
     const SceneDocument *document, SceneInstanceId instance_id,
     const SceneTrigger *value
 );
+bool scene_document_internal_insert_object(
+    SceneDocument *document, size_t index, const SceneObjectInstance *object
+);
+bool scene_document_internal_remove_object(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+);
+bool scene_document_internal_set_object(
+    SceneDocument *document, SceneInstanceId instance_id,
+    const SceneObjectInstance *value
+);
+bool scene_document_internal_object_value_is_valid(
+    const SceneDocument *document, SceneInstanceId instance_id,
+    const SceneObjectInstance *value
+);
 
 bool scene_document_internal_insert_light(
     SceneDocument *document,

@@ -21,8 +21,9 @@
 #define SCENE_VERSION_V7 7U
 #define SCENE_VERSION_V8 8U
 #define SCENE_VERSION_V9 9U
-/* Canonical writes use v9; v1-v8 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V9
+#define SCENE_VERSION_V10 10U
+/* Canonical writes use v10; v1-v9 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V10
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -33,6 +34,7 @@
 #define SCENE_MAX_DECALS 256U
 #define SCENE_MAX_SPRITES 128U
 #define SCENE_MAX_TRIGGERS 128U
+#define SCENE_MAX_OBJECTS 128U
 #define SCENE_TRIGGER_FLAG_CAPACITY 64U
 #define SCENE_MAX_REPAIR_DIAGNOSTICS 256U
 
@@ -116,7 +118,8 @@ typedef enum {
 typedef enum {
     SCENE_ASSET_KIND_INVALID = 0,
     SCENE_ASSET_KIND_DECAL_PATTERN,
-    SCENE_ASSET_KIND_SPRITE_PATTERN
+    SCENE_ASSET_KIND_SPRITE_PATTERN,
+    SCENE_ASSET_KIND_OBJECT
 } SceneAssetKind;
 
 typedef struct {
@@ -193,6 +196,15 @@ typedef struct {
     double x;
     double y;
 } SceneSpriteInstance;
+
+typedef struct {
+    SceneInstanceId id;
+    SceneAssetRef asset;
+    uint16_t sprite_asset;   /* Per-instance sprite override (0 = use definition). */
+    double x;
+    double y;
+    double front_direction;
+} SceneObjectInstance;
 
 typedef enum {
     SCENE_TRIGGER_CONDITION_ENTER_REGION = 0

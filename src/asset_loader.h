@@ -22,8 +22,7 @@
 /**
  * asset_loader_load_registry() — Load all generic assets from disk
  *
- * Enumerates palette, material, and reusable decal files through the 16-bit
- * asset-ID range. Sprite loading retains its legacy 1–255 probe behavior.
+ * Enumerates palette, material, reusable decal, sprite, and object files.
  *
  * @param reg       AssetRegistry to populate
  * @param base_path Root asset directory (e.g. "assets")

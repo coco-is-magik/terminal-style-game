@@ -103,6 +103,11 @@ against the 6 ms render budget. R11 I2 adds sprite authoring (place, select, mov
 remove, undo/redo, and native persistence). R11 I3 adds scene v9 authored
 enter-region triggers and the closed actions set flag, teleport to spawn, and
 toggle light in native-scene editor Walk mode.
+R11 I4 adds scene v10 `simple` objects: reusable object definitions reference a
+default sprite, placed instances preserve their own sprite reference,
+position/front direction, and stable identity, and player movement collides with
+them without changing map occupancy. Objects do not affect rays, light, mirrors,
+triggers, animation, or destruction.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -218,12 +223,13 @@ Closing the inspector clears that persistent selection.
 |---|---|
 | `W` / `A` / `S` / `D` and mouse | Move and look while in walk mode |
 | `Tab` | Toggle walk/edit mode; edit mode freezes movement and mouse-look |
-| `E` | Select the aimed wall, floor, ceiling, point light, decal, or sprite and open its inspector / surface submenu |
+| `E` | Select the aimed wall, floor, ceiling, point light, decal, sprite, trigger, or object and open its inspector / surface submenu |
 | `L` | Place an undoable point light at the aimed cell center (wall face uses the adjacent cell) |
 | `P` | Create an 8×8 sprite canvas, place it at the aimed cell center, select it, and open its Pattern actions |
+| `B` | Place the lowest loaded `simple` object at the aimed cell center and open its object inspector |
 | `Up` / `Down` | Move through the active inspector/menu level |
 | `Ctrl` + arrow keys | Extend a surface multiselect along the same visible wall/floor/ceiling axis (up to 8 faces) |
-| `Left` / `Right` | Edit point-light/decal fields, selected floor/ceiling height and gravity, or the active movement parameter |
+| `Left` / `Right` | Edit light, decal, trigger, object, selected-surface, or movement fields |
 | `Enter` | Open/apply a surface submenu or modal, execute construction, commit a typed value, or confirm |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+N` | New scene (dirty, unsaved, 10 by 6 bordered) |
@@ -324,6 +330,13 @@ overrides together.
   selected by stable scene ID. Actions run once per distinct entry in editor Walk
   mode. Flags and light enabled state are session-only and never dirty the scene;
   trigger records persist through canonical scene v9 Save/Open.
+- `B` places a loaded object asset. Object X/Y and front direction are undoable
+  stepped fields; Remove asks for confirmation. The Sprite row opens a searchable
+  loaded-sprite picker and assigns only the selected instance, undoably.
+  Direction is stored and serialized but cannot be visually confirmed until
+  directional sprites exist, since objects billboard. Canonical scene v10
+  `[object <id>]` records preserve stable identity, per-instance sprite, and
+  direction; Walk-mode collision uses a small fixed circular body.
 - Decals can be placed on wall, floor, and ceiling surfaces through the surface
   inspector's Decals submenu. **Add decal…** creates a new reusable pattern asset
   (default `1 × 1`, editable columns/rows), refreshes the registry, and places a

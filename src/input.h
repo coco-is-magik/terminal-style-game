@@ -30,7 +30,7 @@ typedef enum {
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
     INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
     INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO, INPUT_KEY_L, INPUT_KEY_P,
-    INPUT_KEY_T
+    INPUT_KEY_T, INPUT_KEY_B
 } InputKey;
 
 typedef struct {
@@ -111,6 +111,7 @@ typedef struct {
     bool editor_place_light_pressed; /* L — place a point light at hovered cell */
     bool editor_place_sprite_pressed; /* P — create and place a sprite canvas */
     bool editor_place_trigger_pressed; /* T — place an enter-region trigger */
+    bool editor_place_object_pressed; /* B — place the first loaded object */
     bool editor_jump_pressed;        /* Space — jump in editor walk mode */
 
   /* Held state — physically depressed this frame.

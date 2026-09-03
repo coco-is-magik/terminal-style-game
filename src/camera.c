@@ -99,10 +99,24 @@ static bool camera_cell_player_passable(
     return !resolved.player_blocks;
 }
 
-void camera_update_optical(
+static bool camera_position_clear_of_objects(double x, double y,
+                                             const ObjectEntity *objects,
+                                             size_t object_count) {
+    const double combined_radius = 0.4;
+    if (!objects && object_count > 0U) return false;
+    for (size_t i = 0U; i < object_count; i++) {
+        double dx = x - objects[i].pos.x;
+        double dy = y - objects[i].pos.y;
+        if (dx * dx + dy * dy < combined_radius * combined_radius) return false;
+    }
+    return true;
+}
+
+void camera_update_with_objects(
     Camera *cam, Map *map, InputState *input,
     double delta_time_sec, int viewport_rows,
-    const OpticalRuntimeView *optical_view, uint32_t optical_generation
+    const OpticalRuntimeView *optical_view, uint32_t optical_generation,
+    const ObjectEntity *objects, size_t object_count
 ) {
     if (!cam || !map || !input) return;
 
@@ -184,7 +198,9 @@ void camera_update_optical(
     int map_x = (int)(cam->transform.pos.x + move_x + (move_x > 0 ? radius : -radius));
     if (camera_cell_player_passable(
             map, map_x, (int)cam->transform.pos.y,
-            optical_view, optical_generation)) {
+            optical_view, optical_generation) &&
+        camera_position_clear_of_objects(cam->transform.pos.x + move_x,
+                                         cam->transform.pos.y, objects, object_count)) {
         cam->transform.pos.x += move_x;
     }
     /* If blocked, move_x is discarded — no X movement this frame. */
@@ -196,10 +212,22 @@ void camera_update_optical(
     int map_y = (int)(cam->transform.pos.y + move_y + (move_y > 0 ? radius : -radius));
     if (camera_cell_player_passable(
             map, (int)cam->transform.pos.x, map_y,
-            optical_view, optical_generation)) {
+            optical_view, optical_generation) &&
+        camera_position_clear_of_objects(cam->transform.pos.x,
+                                         cam->transform.pos.y + move_y,
+                                         objects, object_count)) {
         cam->transform.pos.y += move_y;
     }
     /* If blocked, move_y is discarded. */
+}
+
+void camera_update_optical(
+    Camera *cam, Map *map, InputState *input,
+    double delta_time_sec, int viewport_rows,
+    const OpticalRuntimeView *optical_view, uint32_t optical_generation
+) {
+    camera_update_with_objects(cam, map, input, delta_time_sec, viewport_rows,
+                               optical_view, optical_generation, NULL, 0U);
 }
 
 void camera_update(Camera *cam, Map *map, InputState *input,

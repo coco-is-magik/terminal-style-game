@@ -67,20 +67,22 @@ These labels describe readiness, not priority.
 
 ### Versioned scene persistence — **Resolved 2026-08-28 (R1–R11 chain)**
 
-Scene v1–v9 resolve the earlier open questions:
+Scene v1–v10 resolve the earlier open questions:
 
-- One versioned `.tscene` file with strict unknown-key parsing and v1–v8
-  migration; canonical writes are v9 (R1/R2/R4/R6/R10/R11).
+- One versioned `.tscene` file with strict unknown-key parsing and v1–v9
+  migration; canonical writes are v10 (R1/R2/R4/R6/R10/R11).
 - Legacy digit-grid maps import non-destructively through the chooser flow.
 - Native saves are atomic; `SceneDocument` owns map, cells, spawn, movement,
-  lights, decals, optical overrides, and sprite instances. `WorldState` is a
+  lights, decals, optical overrides, sprite instances, triggers, and simple
+  objects. `WorldState` is a
   derived runtime rebuild.
 - Older scenes get deterministic migration defaults (e.g. v6→v7 exact point
-  lights; v7→v8 empty sprite list; v8→v9 empty trigger list) and load-time
+  lights; v7→v8 empty sprite list; v8→v9 empty trigger list; v9→v10 empty object
+  list) and load-time
   repair diagnostics for dangling references.
 
-Still open: per-scene ambient light and per-channel ambient (separate from R10);
-object authored data (R11 I3 later successors only).
+Still open: per-scene ambient light and per-channel ambient (separate from R10),
+and richer object attributes beyond `simple`.
 
 ### Extensible per-cell block serialization — **Needs product decision**
 

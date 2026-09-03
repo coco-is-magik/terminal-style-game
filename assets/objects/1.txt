@@ -1,0 +1,4 @@
+name=training_marker
+sprite_id=1
+front_direction=0
+attributes=simple

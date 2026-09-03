@@ -41,6 +41,9 @@
  *   Sprites   (assets/sprites/<id>.txt)
  *     A 2D pattern asset intended for billboard-style rendering.  Format uses
  *     the same pattern_<row>/material_<row> scheme as decals.
+ *
+ *   Objects   (assets/objects/<id>.txt)
+ *     A named sprite reference, front direction, and closed `simple` attribute.
  */
 
 #include "asset_loader.h"    /* Public API: asset_loader_load_registry(),
@@ -620,6 +623,46 @@ static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
     return true;
 }
 
+static bool load_object(AssetRegistry *reg, int id, const char *filepath) {
+    FILE *file;
+    ObjectAsset object = {0};
+    char line[256];
+    unsigned seen = 0U;
+    bool valid = true;
+    int sprite_id = 0;
+    if (!reg || id < 1 || id >= (int)OBJECT_ID_CAPACITY || !filepath) return false;
+    file = fopen(filepath, "r");
+    if (!file) return false;
+    while (fgets(line, sizeof(line), file)) {
+        char *key = NULL;
+        char *value = NULL;
+        parse_key_val(line, &key, &value);
+        if (!key || !value) continue;
+        if (strcmp(key, "name") == 0) {
+            if ((seen & 1U) || value[0] == '\0' || strlen(value) >= sizeof(object.name))
+                valid = false;
+            else { memcpy(object.name, value, strlen(value) + 1U); seen |= 1U; }
+        } else if (strcmp(key, "sprite_id") == 0) {
+            if ((seen & 2U) || !parse_bounded_int(value, 1,
+                    (int)SPRITE_ID_CAPACITY - 1, &sprite_id)) valid = false;
+            else { object.sprite_id = (uint16_t)sprite_id; seen |= 2U; }
+        } else if (strcmp(key, "front_direction") == 0) {
+            if ((seen & 4U) || !parse_finite_double(value, 0.0, true,
+                    &object.front_direction) ||
+                object.front_direction >= SCENE_LIGHT_DIRECTION_MAX) valid = false;
+            else seen |= 4U;
+        } else if (strcmp(key, "attributes") == 0) {
+            if ((seen & 8U) || strcmp(value, "simple") != 0) valid = false;
+            else { object.attributes = OBJECT_ATTRIBUTE_SIMPLE; seen |= 8U; }
+        } else valid = false;
+    }
+    if (ferror(file) || fclose(file) != 0) valid = false;
+    if (!valid || seen != 15U) return false;
+    object.loaded = true;
+    reg->objects[id] = object;
+    return true;
+}
+
 /* ===================================================================
  *  Public API — materials directory scan
  * =================================================================== */
@@ -807,6 +850,8 @@ bool asset_loader_load_registry(AssetRegistry *reg, const char *base_path) {
     /* ---- Load existing reusable decal patterns (IDs 1 to 65535) ---- */
     snprintf(directory, sizeof(directory), "%s/decals", base_path);
     load_numeric_asset_directory(reg, directory, load_decal_pattern);
+    snprintf(directory, sizeof(directory), "%s/objects", base_path);
+    load_numeric_asset_directory(reg, directory, load_object);
     (void)asset_registry_bump_generation(reg);
     return true;
 }

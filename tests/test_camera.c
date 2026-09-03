@@ -97,6 +97,25 @@ static void test_optical_player_blocking_is_independent_and_stale_safe(void **st
     map_destroy(map);
 }
 
+static void test_simple_object_blocks_player_without_changing_map(void **state) {
+    Map *map = map_create(5, 3);
+    Camera camera;
+    InputState input = {0};
+    ObjectEntity object = {.pos = {2.0, 1.5}, .object_id = 1U};
+    (void)state;
+    assert_non_null(map);
+    input.forward = true;
+    camera_init(&camera, 1.5, 1.5, 0.0, PI / 2.0);
+    camera_update_with_objects(&camera, map, &input, 0.2, 40, NULL, 0U,
+                               &object, 1U);
+    assert_true(camera.transform.pos.x == 1.5);
+    assert_int_equal(map_get(map, 2, 1)->material_id, 0);
+    camera_update_with_objects(&camera, map, &input, 0.2, 40, NULL, 0U,
+                               NULL, 0U);
+    assert_true(camera.transform.pos.x > 1.5);
+    map_destroy(map);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_clamp_policy),
@@ -105,6 +124,7 @@ int main(void) {
         cmocka_unit_test(test_update_recovers_non_finite_offset),
         cmocka_unit_test(test_init_sets_flat_world_eye_height),
         cmocka_unit_test(test_optical_player_blocking_is_independent_and_stale_safe),
+        cmocka_unit_test(test_simple_object_blocks_player_without_changing_map),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

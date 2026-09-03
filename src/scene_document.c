@@ -82,6 +82,7 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     free(document->decals);
     free(document->sprites);
     free(document->triggers);
+    free(document->objects);
     free(document->optical_material_defaults);
     free(document->optical_cell_overrides);
     free(document->legacy_source_path);
@@ -100,6 +101,9 @@ static void scene_authored_collections_clear(SceneDocument *document) {
     document->triggers = NULL;
     document->trigger_count = 0U;
     document->trigger_capacity = 0U;
+    document->objects = NULL;
+    document->object_count = 0U;
+    document->object_capacity = 0U;
     document->optical_material_defaults = NULL;
     document->optical_material_capacity = 0U;
     document->optical_material_storage_capacity = 0U;
@@ -498,6 +502,11 @@ static SceneLoadResult scene_document_commit_candidate(
     document->trigger_capacity = candidate->trigger_count;
     candidate->triggers = NULL;
     candidate->trigger_count = 0U;
+    document->objects = candidate->objects;
+    document->object_count = candidate->object_count;
+    document->object_capacity = candidate->object_count;
+    candidate->objects = NULL;
+    candidate->object_count = 0U;
     document->optical_material_defaults = candidate->optical_material_defaults;
     document->optical_material_capacity = candidate->optical_material_capacity;
     document->optical_material_storage_capacity = candidate->optical_material_capacity;
@@ -564,6 +573,16 @@ static SceneLoadResult build_repair_diagnostics(
             ? &assets->sprites[sprite->asset.id] : NULL;
         if (!asset || !asset->pattern || asset->cols <= 0 || asset->rows <= 0)
             missing_count++;
+    }
+    for (size_t i = 0U; i < candidate->object_count; i++) {
+        const SceneObjectInstance *instance = &candidate->objects[i];
+        const ObjectAsset *object = assets && instance->asset.id < OBJECT_ID_CAPACITY
+            ? &assets->objects[instance->asset.id] : NULL;
+        uint16_t sprite_id = instance->sprite_asset != 0U
+            ? instance->sprite_asset : (object ? object->sprite_id : 0U);
+        if (!object || !object->loaded || sprite_id == 0U ||
+            sprite_id >= SPRITE_ID_CAPACITY ||
+            !assets || !assets->sprites[sprite_id].pattern) missing_count++;
     }
     if (assets && candidate->authored_cells) {
         for (size_t i = 0U; i < candidate->authored_cell_count; i++) {
@@ -641,6 +660,30 @@ static SceneLoadResult build_repair_diagnostics(
                 SCENE_DIAGNOSTIC_SEVERITY_WARNING, path, section, "asset_id",
                 detail);
             diagnostics[written].instance_id = sprite->id;
+            written++;
+        }
+    }
+    for (size_t i = 0U;
+         i < candidate->object_count && written < missing_count; i++) {
+        const SceneObjectInstance *instance = &candidate->objects[i];
+        const ObjectAsset *object = assets && instance->asset.id < OBJECT_ID_CAPACITY
+            ? &assets->objects[instance->asset.id] : NULL;
+        uint16_t sprite_id = instance->sprite_asset != 0U
+            ? instance->sprite_asset : (object ? object->sprite_id : 0U);
+        if (!object || !object->loaded || sprite_id == 0U ||
+            sprite_id >= SPRITE_ID_CAPACITY ||
+            !assets || !assets->sprites[sprite_id].pattern) {
+            char section[SCENE_DIAGNOSTIC_SECTION_MAX + 1U];
+            char detail[SCENE_DIAGNOSTIC_DETAIL_MAX + 1U];
+            (void)snprintf(section, sizeof(section), "object %llu",
+                           (unsigned long long)instance->id);
+            (void)snprintf(detail, sizeof(detail),
+                           "object asset %u or sprite asset %u is not loaded",
+                           (unsigned)instance->asset.id, (unsigned)sprite_id);
+            scene_diagnostic_set(&diagnostics[written],
+                SCENE_DIAGNOSTIC_INPUT_ASSET_MISSING,
+                SCENE_DIAGNOSTIC_SEVERITY_WARNING, path, section, "asset_id", detail);
+            diagnostics[written].instance_id = instance->id;
             written++;
         }
     }
@@ -738,6 +781,7 @@ SceneLoadResult scene_document_load_native_with_assets(
     char *source;
     char *new_path;
     size_t source_size = 0U;
+    size_t i;
     SceneDiagnostic *repair_diagnostics = NULL;
     size_t repair_diagnostic_count = 0U;
     bool migration_pending = false;
@@ -825,6 +869,14 @@ SceneLoadResult scene_document_load_native_with_assets(
             return SCENE_LOAD_VALIDATION_FAILED;
         }
     }
+    if (candidate.source_version == SCENE_VERSION_V9) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v9_to_v10(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
     new_path = duplicate_path(path);
     if (!new_path) {
         scene_format_candidate_destroy(&candidate);
@@ -840,6 +892,14 @@ SceneLoadResult scene_document_load_native_with_assets(
         free(new_path);
         scene_format_candidate_destroy(&candidate);
         return read_result;
+    }
+    for (i = 0U; i < candidate.object_count; i++) {
+        SceneObjectInstance *object = &candidate.objects[i];
+        if (assets && object->sprite_asset == 0U && object->asset.id > 0U &&
+            object->asset.id < OBJECT_ID_CAPACITY &&
+            assets->objects[object->asset.id].loaded) {
+            object->sprite_asset = assets->objects[object->asset.id].sprite_id;
+        }
     }
     scene_document_commit_candidate(document, &candidate, new_path, false,
                                     migration_pending,
@@ -1121,6 +1181,8 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     candidate.sprite_count = document->sprite_count;
     candidate.triggers = document->triggers;
     candidate.trigger_count = document->trigger_count;
+    candidate.objects = document->objects;
+    candidate.object_count = document->object_count;
     candidate.optical_material_defaults = document->optical_material_defaults;
     candidate.optical_material_capacity = document->optical_material_capacity;
     candidate.optical_cell_overrides = document->optical_cell_overrides;
@@ -1583,6 +1645,22 @@ const SceneTrigger *scene_document_find_trigger(
     return NULL;
 }
 
+const SceneObjectInstance *scene_document_get_objects(
+    const SceneDocument *document, size_t *out_count
+) {
+    if (out_count) *out_count = document ? document->object_count : 0U;
+    return document ? document->objects : NULL;
+}
+
+const SceneObjectInstance *scene_document_find_object(
+    const SceneDocument *document, SceneInstanceId instance_id
+) {
+    if (!document || instance_id == SCENE_INSTANCE_ID_INVALID) return NULL;
+    for (size_t i = 0U; i < document->object_count; i++)
+        if (document->objects[i].id == instance_id) return &document->objects[i];
+    return NULL;
+}
+
 const SceneDiagnostic *scene_document_get_repair_diagnostics(
     const SceneDocument *document,
     size_t *out_count
@@ -1697,6 +1775,25 @@ SceneRuntimeBuildResult scene_document_build_runtime_world(
         const SceneSpriteInstance *source = &document->sprites[i];
         if (world_add_sprite(&temporary, source->x, source->y,
                              source->asset.id) != WORLD_INSERT_OK) {
+            world_clear(&temporary);
+            return SCENE_RUNTIME_BUILD_INVALID_DOCUMENT;
+        }
+    }
+
+    for (i = 0U; i < document->object_count; i++) {
+        const SceneObjectInstance *source = &document->objects[i];
+        const ObjectAsset *asset = source->asset.id < OBJECT_ID_CAPACITY
+            ? &assets->objects[source->asset.id] : NULL;
+        uint16_t sprite_id = (source->sprite_asset > 0U &&
+                              source->sprite_asset < SPRITE_ID_CAPACITY)
+            ? source->sprite_asset
+            : (asset ? asset->sprite_id : 0U);
+        if (!asset || !asset->loaded ||
+            world_add_object(&temporary, source->x, source->y,
+                             source->front_direction, source->asset.id,
+                             sprite_id) != WORLD_INSERT_OK ||
+            world_add_sprite(&temporary, source->x, source->y,
+                             (int)sprite_id) != WORLD_INSERT_OK) {
             world_clear(&temporary);
             return SCENE_RUNTIME_BUILD_INVALID_DOCUMENT;
         }
@@ -2117,6 +2214,70 @@ bool scene_document_internal_set_sprite(
             return true;
         }
     }
+    return false;
+}
+
+bool scene_document_internal_insert_object(
+    SceneDocument *document, size_t index, const SceneObjectInstance *object
+) {
+    SceneObjectInstance *grown;
+    size_t capacity;
+    if (!document || !object || index > document->object_count ||
+        document->object_count >= SCENE_MAX_OBJECTS) return false;
+    if (document->object_count >= document->object_capacity) {
+        capacity = document->object_capacity ? document->object_capacity * 2U : 8U;
+        if (capacity > SCENE_MAX_OBJECTS) capacity = SCENE_MAX_OBJECTS;
+        grown = realloc(document->objects, capacity * sizeof(*document->objects));
+        if (!grown) return false;
+        document->objects = grown;
+        document->object_capacity = capacity;
+    }
+    if (index < document->object_count)
+        memmove(&document->objects[index + 1U], &document->objects[index],
+                (document->object_count - index) * sizeof(*document->objects));
+    document->objects[index] = *object;
+    document->object_count++;
+    return true;
+}
+
+bool scene_document_internal_remove_object(
+    SceneDocument *document, size_t index, SceneInstanceId expected_id
+) {
+    if (!document || index >= document->object_count ||
+        document->objects[index].id != expected_id) return false;
+    if (index + 1U < document->object_count)
+        memmove(&document->objects[index], &document->objects[index + 1U],
+                (document->object_count - index - 1U) * sizeof(*document->objects));
+    document->object_count--;
+    return true;
+}
+
+bool scene_document_internal_object_value_is_valid(
+    const SceneDocument *document, SceneInstanceId instance_id,
+    const SceneObjectInstance *value
+) {
+    return document && value && instance_id != 0U && value->id == instance_id &&
+        value->asset.kind == SCENE_ASSET_KIND_OBJECT && value->asset.id > 0U &&
+        value->asset.id < OBJECT_ID_CAPACITY &&
+        value->sprite_asset < SPRITE_ID_CAPACITY && isfinite(value->x) &&
+        isfinite(value->y) && isfinite(value->front_direction) && value->x >= 0.0 &&
+        value->x < document->map.width && value->y >= 0.0 &&
+        value->y < document->map.height && value->front_direction >= 0.0 &&
+        value->front_direction < SCENE_LIGHT_DIRECTION_MAX &&
+        scene_document_find_object(document, instance_id) != NULL;
+}
+
+bool scene_document_internal_set_object(
+    SceneDocument *document, SceneInstanceId instance_id,
+    const SceneObjectInstance *value
+) {
+    if (!scene_document_internal_object_value_is_valid(document, instance_id, value))
+        return false;
+    for (size_t i = 0U; i < document->object_count; i++)
+        if (document->objects[i].id == instance_id) {
+            document->objects[i] = *value;
+            return true;
+        }
     return false;
 }
 

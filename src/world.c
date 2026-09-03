@@ -149,6 +149,23 @@ WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sp
     return WORLD_INSERT_OK;
 }
 
+WorldInsertResult world_add_object(WorldState *world, double x, double y,
+                                   double front_direction, uint16_t object_id,
+                                   uint16_t sprite_id) {
+    ObjectEntity *object;
+    if (!world || !isfinite(x) || !isfinite(y) || !isfinite(front_direction) ||
+        front_direction < 0.0 || front_direction >= SCENE_LIGHT_DIRECTION_MAX ||
+        object_id == 0U || object_id >= OBJECT_ID_CAPACITY)
+        return WORLD_INSERT_INVALID;
+    if (world->num_objects >= MAX_OBJECTS) return WORLD_INSERT_FULL;
+    object = &world->objects[world->num_objects++];
+    object->pos = (Vec2){x, y};
+    object->front_direction = front_direction;
+    object->object_id = object_id;
+    object->sprite_id = sprite_id;
+    return WORLD_INSERT_OK;
+}
+
 /**
  * world_add_decal() — Add a surface decoration to the world
  *

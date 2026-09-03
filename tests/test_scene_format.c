@@ -1069,12 +1069,64 @@ static void test_v9_trigger_migration_round_trip_and_diagnostics(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v10_object_migration_round_trip_and_diagnostics(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    char *bad;
+    (void)state;
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_to_v5(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v5_to_v6(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v6_to_v7(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v7_to_v8(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v8_to_v9(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v9_to_v10(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    candidate.objects = calloc(1U, sizeof(*candidate.objects));
+    assert_non_null(candidate.objects);
+    candidate.object_count = 1U;
+    candidate.objects[0] = (SceneObjectInstance){.id = 2U,
+        .asset = {SCENE_ASSET_KIND_OBJECT, 7U}, .sprite_asset = 9U,
+        .x = 1.25, .y = 0.75,
+        .front_direction = 1.5};
+    candidate.next_instance_id = 3U;
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic), SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "scene_version = 10\n"));
+    assert_non_null(strstr(buffer.data, "[object 2]\nasset_kind = object\n"
+        "asset_id = 7\nsprite_asset_id = 9\nposition = 1.25,0.75\n"
+        "front_direction = 1.5\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v10.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.object_count, 1U);
+    assert_int_equal(reparsed.objects[0].sprite_asset, 9U);
+    assert_true(reparsed.objects[0].front_direction == 1.5);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_init(&reparsed);
+    bad = replace_once(buffer.data, "sprite_asset_id = 9\n", "");
+    assert_int_equal(scene_format_parse(bad, strlen(bad), "old-v10.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.objects[0].sprite_asset, 0U);
+    free(bad);
+    bad = replace_once(buffer.data, "front_direction = 1.5", "front_direction = 7");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
         cmocka_unit_test(test_failed_parse_preserves_candidate),
         cmocka_unit_test(test_required_duplicate_unknown_and_syntax_diagnostics),
         cmocka_unit_test(test_numeric_dimensions_and_cells_diagnostics),
+        cmocka_unit_test(test_v10_object_migration_round_trip_and_diagnostics),
         cmocka_unit_test(test_instance_identity_and_section_fields),
         cmocka_unit_test(test_surface_applicability_and_bounds),
         cmocka_unit_test(test_exhausted_sentinel_and_negative_zero),

@@ -38,6 +38,8 @@ static bool selection_targets_equal(SelectionTarget a, SelectionTarget b) {
         return a.value.sprite.id == b.value.sprite.id;
     if (a.type == SELECTION_TRIGGER)
         return a.value.trigger.id == b.value.trigger.id;
+    if (a.type == SELECTION_OBJECT)
+        return a.value.object.id == b.value.object.id;
     return a.type == SELECTION_NONE;
 }
 
@@ -344,6 +346,37 @@ EditorHit editor_pick_trigger_selection(
         result.valid = true; result.distance = best;
         result.target.type = SELECTION_TRIGGER;
         result.target.value.trigger.id = best_id;
+    }
+    return result;
+}
+
+EditorHit editor_pick_object_selection(
+    const Camera *camera, const SceneObjectInstance *objects,
+    size_t object_count, EditorHit existing_hit, double max_distance,
+    double pick_radius
+) {
+    EditorHit result = existing_hit;
+    double limit, radius_squared, dir_x, dir_y, best = 0.0;
+    SceneInstanceId best_id = 0U;
+    if (!camera || (!objects && object_count) || !isfinite(max_distance) ||
+        max_distance <= 0.0 || !isfinite(pick_radius) || pick_radius <= 0.0)
+        return result;
+    limit = existing_hit.valid ? existing_hit.distance : max_distance;
+    radius_squared = pick_radius * pick_radius;
+    dir_x = cos(camera->transform.angle); dir_y = sin(camera->transform.angle);
+    for (size_t i = 0U; i < object_count; i++) {
+        double dx = objects[i].x - camera->transform.pos.x;
+        double dy = objects[i].y - camera->transform.pos.y;
+        double forward = dx * dir_x + dy * dir_y;
+        double side = dx * dir_y - dy * dir_x;
+        if (!objects[i].id || forward <= 0.0 || forward >= limit ||
+            side * side > radius_squared || (best_id && forward >= best)) continue;
+        best = forward; best_id = objects[i].id;
+    }
+    if (best_id) {
+        result.valid = true; result.distance = best;
+        result.target.type = SELECTION_OBJECT;
+        result.target.value.object.id = best_id;
     }
     return result;
 }

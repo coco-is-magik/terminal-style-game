@@ -80,6 +80,11 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->highlighted_material = 0;
     editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->material_picker_open = false;
+    editor->object_picker_open = false;
+    editor->object_picker_index = 0U;
+    editor->object_search_result_count = 0U;
+    editor->object_search_text[0] = '\0';
+    editor->object_search_text_length = 0U;
     editor->decal_menu_open = false;
     editor->decal_menu_open = false;
     editor->movement_menu_open = false;
@@ -137,6 +142,14 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->save_return_menu = EDITOR_MODAL_NONE;
     editor->save_force_new_path = false;
     editor_clear_selection(editor);
+}
+
+static bool editor_has_text_entry(const UnifiedEditorState *editor) {
+    if (!editor) return false;
+    return editor->material_picker_open ||
+           editor->sprite_menu_open ||
+           editor->object_picker_open ||
+           editor->light_value_editing;
 }
 
 static char *editor_duplicate_string(const char *text) {
@@ -226,6 +239,7 @@ static const char *editor_status_label(EditorStatus status) {
         case EDITOR_STATUS_HISTORY_LIMIT:          return "Command history memory limit reached";
         case EDITOR_STATUS_INVALID_TRIGGER:        return "Invalid trigger operation";
         case EDITOR_STATUS_TRIGGER_REFERENCE_BLOCKED: return "Light is referenced by a trigger";
+        case EDITOR_STATUS_INVALID_OBJECT: return "Invalid object operation";
         case EDITOR_STATUS_NONE:
         default:                                   return "";
     }
@@ -379,6 +393,35 @@ static bool editor_rebuild_decal_shortlist(UnifiedEditorState *editor) {
 static bool editor_rebuild_asset_shortlists(UnifiedEditorState *editor) {
     return editor_rebuild_material_shortlist(editor) &&
            editor_rebuild_decal_shortlist(editor);
+}
+
+static bool editor_sprite_id_name_has_prefix(uint16_t id, const char *prefix) {
+    char id_text[8];
+    if (!prefix) return false;
+    snprintf(id_text, sizeof(id_text), "%u", (unsigned)id);
+    return object_asset_name_has_prefix(id_text, prefix);
+}
+
+static void editor_rebuild_object_search(UnifiedEditorState *editor) {
+    if (!editor || !editor->assets) return;
+    editor->object_search_result_count = 0U;
+    for (uint16_t id = 1U; id < SPRITE_ID_CAPACITY; id++) {
+        if (sprite_id_is_loaded(editor->assets, (int)id) &&
+            editor_sprite_id_name_has_prefix(id, editor->object_search_text))
+            editor->object_search_results[editor->object_search_result_count++] = id;
+    }
+    for (size_t i = 1U; i < editor->object_search_result_count; i++) {
+        uint16_t value = editor->object_search_results[i];
+        size_t j = i;
+        while (j > 0U) {
+            uint16_t previous = editor->object_search_results[j - 1U];
+            if (previous < value) break;
+            editor->object_search_results[j] = previous;
+            j--;
+        }
+        editor->object_search_results[j] = value;
+    }
+    editor->object_picker_index = 0U;
 }
 
 static bool editor_find_search_index(const UnifiedEditorState *editor,
@@ -540,6 +583,9 @@ static bool editor_selection_is_valid(
     if (selection.type == SELECTION_TRIGGER)
         return scene_document_find_trigger(
             &editor->document, selection.value.trigger.id) != NULL;
+    if (selection.type == SELECTION_OBJECT)
+        return scene_document_find_object(
+            &editor->document, selection.value.object.id) != NULL;
     if (selection.type == SELECTION_FLOOR ||
         selection.type == SELECTION_CEILING) {
         return editor_selection_is_valid_for_map(
@@ -2272,6 +2318,151 @@ CommandResult unified_editor_remove_sprite(
     return result;
 }
 
+CommandResult unified_editor_place_object(UnifiedEditorState *editor, uint16_t asset_id) {
+    SceneObjectInstance prototype = {0};
+    SceneInstanceId new_id = 0U;
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    int map_x, map_y;
+    if (!editor || !editor->active || asset_id == 0U ||
+        asset_id >= OBJECT_ID_CAPACITY || !editor->assets->objects[asset_id].loaded ||
+        !editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
+        if (editor) editor->status = EDITOR_STATUS_INVALID_OBJECT;
+        return CMD_RESULT_INVALID_TARGET;
+    }
+    prototype.asset = (SceneAssetRef){SCENE_ASSET_KIND_OBJECT, asset_id};
+    prototype.x = map_x + 0.5; prototype.y = map_y + 0.5;
+    prototype.front_direction = editor->assets->objects[asset_id].front_direction;
+    prototype.sprite_asset = editor->assets->objects[asset_id].sprite_id;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_insert_object(&editor->history, &editor->document,
+                                           &prototype, &new_id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor->selection.type = SELECTION_OBJECT;
+        editor->selection.value.object.id = new_id;
+        editor_reset_selection_set(editor);
+        editor->inspector_open = true;
+        editor->inspector_kind = EDITOR_INSPECTOR_OBJECT;
+        editor->object_field = EDITOR_OBJECT_FIELD_X;
+    }
+    return result;
+}
+
+CommandResult unified_editor_remove_object(UnifiedEditorState *editor,
+                                           SceneInstanceId id) {
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || !editor->active) return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_remove_object(&editor->history, &editor->document, id);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    if (result == CMD_RESULT_OK) {
+        editor_clear_selection(editor);
+        editor->inspector_open = false;
+        editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    }
+    return result;
+}
+
+static CommandResult editor_step_object_field(UnifiedEditorState *editor, int direction) {
+    const SceneObjectInstance *current;
+    SceneObjectInstance changed;
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || direction == 0 || editor->selection.type != SELECTION_OBJECT)
+        return CMD_RESULT_INVALID_TARGET;
+    current = scene_document_find_object(&editor->document,
+                                         editor->selection.value.object.id);
+    if (!current) return CMD_RESULT_INVALID_TARGET;
+    changed = *current;
+    if (editor->object_field == EDITOR_OBJECT_FIELD_X)
+        changed.x = fmin(editor->document.map.width - 0.01,
+                         fmax(0.0, changed.x + direction * 0.25));
+    else if (editor->object_field == EDITOR_OBJECT_FIELD_Y)
+        changed.y = fmin(editor->document.map.height - 0.01,
+                         fmax(0.0, changed.y + direction * 0.25));
+    else if (editor->object_field == EDITOR_OBJECT_FIELD_DIRECTION) {
+        changed.front_direction = normalize_angle(changed.front_direction + direction * 0.25);
+    } else return CMD_RESULT_INVALID_TARGET;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_set_object(&editor->history, &editor->document,
+                                        changed.id, &changed);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next))
+        return CMD_RESULT_OUT_OF_MEMORY;
+    return result;
+}
+
+static bool editor_set_selected_object_sprite(UnifiedEditorState *editor, uint16_t sprite_id) {
+    const SceneObjectInstance *current;
+    SceneObjectInstance changed;
+    CommandResult result;
+    size_t old_count, old_cursor;
+    DocumentStateId old_next;
+    if (!editor || editor->selection.type != SELECTION_OBJECT || sprite_id == 0U ||
+        sprite_id >= SPRITE_ID_CAPACITY || !sprite_id_is_loaded(editor->assets, (int)sprite_id))
+        return false;
+    current = scene_document_find_object(&editor->document,
+                                         editor->selection.value.object.id);
+    if (!current) return false;
+    changed = *current;
+    changed.sprite_asset = sprite_id;
+    old_count = editor->history.count; old_cursor = editor->history.cursor;
+    old_next = editor->history.next_state_id;
+    result = command_history_set_object(&editor->history, &editor->document,
+                                        changed.id, &changed);
+    editor_map_command_result(editor, result);
+    if (result == CMD_RESULT_OK && !editor_command_commit_runtime(
+            editor, result, old_count, old_cursor, old_next)) return false;
+    if (result != CMD_RESULT_OK && result != CMD_RESULT_NO_CHANGE) return false;
+    editor->object_picker_open = false;
+    editor->object_search_text[0] = '\0';
+    editor->object_search_text_length = 0U;
+    return true;
+}
+
+static void editor_append_object_search(UnifiedEditorState *editor,
+                                        const char *text) {
+    if (!editor || !text) return;
+    for (const char *cursor = text; *cursor; cursor++) {
+        unsigned char ch = (unsigned char)*cursor;
+        if (!(isalnum(ch) || ch == '_' || ch == '-') ||
+            editor->object_search_text_length + 1U >=
+                sizeof(editor->object_search_text)) continue;
+        editor->object_search_text[editor->object_search_text_length++] = (char)ch;
+        editor->object_search_text[editor->object_search_text_length] = '\0';
+    }
+    editor_rebuild_object_search(editor);
+}
+
+static void editor_backspace_object_search(UnifiedEditorState *editor) {
+    if (!editor || editor->object_search_text_length == 0U) return;
+    editor->object_search_text[--editor->object_search_text_length] = '\0';
+    editor_rebuild_object_search(editor);
+}
+
+static void editor_confirm_object_picker(UnifiedEditorState *editor) {
+    if (!editor) return;
+    if (editor->object_picker_index < editor->object_search_result_count) {
+        (void)editor_set_selected_object_sprite(
+            editor, editor->object_search_results[editor->object_picker_index]);
+    }
+}
+
 CommandResult unified_editor_step_sprite_field(
     UnifiedEditorState *editor, EditorSpriteField field, int direction
 ) {
@@ -2605,6 +2796,13 @@ static void editor_handle_escape(
         editor_mark_keyboard(consumed);
         return;
     }
+    if (editor->object_picker_open) {
+        editor->object_picker_open = false;
+        editor->object_search_text[0] = '\0';
+        editor->object_search_text_length = 0U;
+        editor_mark_keyboard(consumed);
+        return;
+    }
 
     if (editor->movement_menu_open) {
         editor->movement_menu_open = false;
@@ -2675,6 +2873,7 @@ static void editor_handle_select(
     editor->light_field = EDITOR_LIGHT_FIELD_X;
     editor->surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
     editor->sprite_field = EDITOR_SPRITE_FIELD_X;
+    editor->object_field = EDITOR_OBJECT_FIELD_X;
     editor->material_picker_open = false;
     editor_cancel_light_value_edit(editor);
     editor->light_repeat_direction = 0;
@@ -3726,6 +3925,13 @@ static void editor_handle_modal_confirm(UnifiedEditorState *editor) {
                 editor, editor->selection.value.trigger.id);
         return;
     }
+    if (editor->modal == EDITOR_MODAL_OBJECT_REMOVE_PROMPT) {
+        editor->modal = EDITOR_MODAL_NONE;
+        if (editor->selection.type == SELECTION_OBJECT)
+            (void)unified_editor_remove_object(
+                editor, editor->selection.value.object.id);
+        return;
+    }
 
     if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
         char path_copy[1024];
@@ -3891,7 +4097,13 @@ EditorInputConsumption unified_editor_update(
 
         /* 3. Inline numeric entry precedes the normal escape hierarchy. */
         if (input->editor_cancel_pressed) {
-            if (editor->sprite_menu_open) {
+            if (editor->object_picker_open) {
+                editor->object_picker_open = false;
+                editor->object_search_text[0] = '\0';
+                editor->object_search_text_length = 0U;
+                editor_mark_keyboard(&consumed);
+                return consumed;
+            } else if (editor->sprite_menu_open) {
                 if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT ||
                     editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
                     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
@@ -3947,9 +4159,8 @@ EditorInputConsumption unified_editor_update(
             bool left = input->left;
             bool right = input->right;
             bool jump = input->editor_jump_pressed;
-            bool painting = editor->sprite_menu_open &&
-                editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT;
-            if (painting) {
+            bool suppress_movement = editor_has_text_entry(editor);
+            if (suppress_movement) {
                 input->forward = false;
                 input->backward = false;
                 input->left = false;
@@ -3962,9 +4173,11 @@ EditorInputConsumption unified_editor_update(
                     (void)vertical_physics_jump_optical(
                         &editor->vertical_physics, camera, rmap, &height_view,
                         has_optical ? &optical_view : NULL, optical_generation);
-                camera_update_optical(
+                camera_update_with_objects(
                     camera, rmap, input, delta_seconds, viewport_rows,
-                    has_optical ? &optical_view : NULL, optical_generation);
+                    has_optical ? &optical_view : NULL, optical_generation,
+                    editor->runtime_world.objects,
+                    (size_t)editor->runtime_world.num_objects);
                 if (!editor->vertical_physics.grounded) {
                     double scale = height_view.movement.air_control_scale;
                     camera->transform.pos.x = previous_x +
@@ -4006,6 +4219,9 @@ EditorInputConsumption unified_editor_update(
             editor->hover = editor_pick_light_selection(
                 camera, lights, light_count, hit, max_distance,
                 EDITOR_LIGHT_PICK_RADIUS);
+            editor->hover = editor_pick_object_selection(
+                camera, editor->document.objects, editor->document.object_count,
+                editor->hover, max_distance, EDITOR_LIGHT_PICK_RADIUS);
             {
                 size_t sprite_count = 0U;
                 const SceneSpriteInstance *sprites = scene_document_get_sprites(
@@ -4027,7 +4243,8 @@ EditorInputConsumption unified_editor_update(
     }
 
     /* 7. Select hovered wall. */
-    if (input->editor_select_pressed && !consumed.keyboard_consumed) {
+    if (input->editor_select_pressed && !consumed.keyboard_consumed &&
+        !editor_has_text_entry(editor)) {
         editor_handle_select(editor, &consumed);
     }
 
@@ -4041,7 +4258,27 @@ EditorInputConsumption unified_editor_update(
 
     /* 8. Inspector navigation (only while open). */
     if (!consumed.keyboard_consumed && editor->inspector_open) {
-        if (editor_handle_sprite_menu_input(editor, input)) {
+        if (editor->object_picker_open && input->editor_text_backspace_pressed) {
+            editor_backspace_object_search(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->object_picker_open && input->text_input_len > 0) {
+            editor_append_object_search(editor, input->text_input);
+            editor_mark_keyboard(&consumed);
+        } else if (editor->object_picker_open && input->editor_previous_pressed) {
+            size_t count = editor->object_search_result_count;
+            if (count > 0U) editor->object_picker_index =
+                editor->object_picker_index == 0U ? count - 1U
+                                                  : editor->object_picker_index - 1U;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->object_picker_open && input->editor_next_pressed) {
+            size_t count = editor->object_search_result_count;
+            if (count > 0U) editor->object_picker_index =
+                (editor->object_picker_index + 1U) % count;
+            editor_mark_keyboard(&consumed);
+        } else if (editor->object_picker_open && input->editor_confirm_pressed) {
+            editor_confirm_object_picker(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (editor_handle_sprite_menu_input(editor, input)) {
             editor_mark_keyboard(&consumed);
         } else if (editor_is_surface_inspector(editor) && editor->optical_menu_open &&
             editor->transparency_menu_open && input->editor_previous_pressed) {
@@ -4289,6 +4526,38 @@ EditorInputConsumption unified_editor_update(
                 ? EDITOR_TRIGGER_FIELD_REMOVE
                 : (EditorTriggerField)(editor->trigger_field - 1);
             editor_mark_keyboard(&consumed);
+        } else if (input->editor_previous_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_OBJECT) {
+            editor->object_field = editor->object_field == EDITOR_OBJECT_FIELD_X
+                ? EDITOR_OBJECT_FIELD_REMOVE
+                : (EditorObjectField)(editor->object_field - 1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_next_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_OBJECT) {
+            editor->object_field = (EditorObjectField)(
+                (editor->object_field + 1) % EDITOR_OBJECT_FIELD_COUNT);
+            editor_mark_keyboard(&consumed);
+        } else if ((input->editor_decrease_pressed || input->editor_increase_pressed) &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_OBJECT &&
+                   (editor->object_field == EDITOR_OBJECT_FIELD_X ||
+                    editor->object_field == EDITOR_OBJECT_FIELD_Y ||
+                    editor->object_field == EDITOR_OBJECT_FIELD_DIRECTION)) {
+            (void)editor_step_object_field(
+                editor, input->editor_decrease_pressed ? -1 : 1);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_confirm_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_OBJECT &&
+                   editor->object_field == EDITOR_OBJECT_FIELD_ASSET) {
+            editor->object_picker_open = true;
+            editor->object_search_text[0] = '\0';
+            editor->object_search_text_length = 0U;
+            editor_rebuild_object_search(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_confirm_pressed &&
+                   editor->inspector_kind == EDITOR_INSPECTOR_OBJECT &&
+                   editor->object_field == EDITOR_OBJECT_FIELD_REMOVE) {
+            editor->modal = EDITOR_MODAL_OBJECT_REMOVE_PROMPT;
+            editor_mark_keyboard(&consumed);
         } else if (input->editor_next_pressed &&
                    editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
             editor->trigger_field = (EditorTriggerField)(
@@ -4419,7 +4688,6 @@ EditorInputConsumption unified_editor_update(
             if (repeat != 0) editor_mark_keyboard(&consumed);
         }
     }
-
     /* 9. Global edit actions. */
     if (!consumed.keyboard_consumed) {
         if (input->editor_undo_pressed) {
@@ -4446,14 +4714,24 @@ EditorInputConsumption unified_editor_update(
         } else if (input->editor_reload_pressed) {
             editor_handle_reload_request(editor);
             editor_mark_keyboard(&consumed);
-        } else if (input->editor_place_light_pressed) {
+        } else if (input->editor_place_light_pressed &&
+                   !editor_has_text_entry(editor)) {
             (void)unified_editor_place_light(editor);
             editor_mark_keyboard(&consumed);
-        } else if (input->editor_place_sprite_pressed) {
+        } else if (input->editor_place_sprite_pressed &&
+                   !editor_has_text_entry(editor)) {
             (void)editor_create_and_place_sprite_canvas(editor);
             editor_mark_keyboard(&consumed);
-        } else if (input->editor_place_trigger_pressed) {
+        } else if (input->editor_place_trigger_pressed &&
+                   !editor_has_text_entry(editor)) {
             (void)unified_editor_place_trigger(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_place_object_pressed &&
+                   !editor_has_text_entry(editor)) {
+            uint16_t object_id = 0U;
+            for (uint16_t id = 1U; id < OBJECT_ID_CAPACITY; id++)
+                if (editor->assets->objects[id].loaded) { object_id = id; break; }
+            (void)unified_editor_place_object(editor, object_id);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_previous_pressed ||
                    input->editor_next_pressed ||
@@ -4620,6 +4898,13 @@ void unified_editor_render_text_overlay(
         } else if (editor->selection.type == SELECTION_TRIGGER) {
             snprintf(line, sizeof(line), "Select trigger:%" PRIu64,
                      editor->selection.value.trigger.id);
+        } else if (editor->selection.type == SELECTION_OBJECT) {
+            const SceneObjectInstance *object = scene_document_find_object(
+                &editor->document, editor->selection.value.object.id);
+            snprintf(line, sizeof(line), "Select object:%" PRIu64 " sprite:%u pos:(%.2f,%.2f)",
+                     editor->selection.value.object.id,
+                     object ? (unsigned)object->sprite_asset : 0U,
+                     object ? object->x : 0.0, object ? object->y : 0.0);
         } else if (editor->selection.type == SELECTION_FLOOR ||
                    editor->selection.type == SELECTION_CEILING) {
             snprintf(line, sizeof(line), "Select %s (%d,%d) selected:%zu primary",
@@ -5109,6 +5394,59 @@ void unified_editor_render_text_overlay(
                 }
             }
         }
+        if (editor->inspector_open &&
+            editor->inspector_kind == EDITOR_INSPECTOR_OBJECT) {
+            EditorInspectorPresentation presentation;
+            const SceneObjectInstance *object = scene_document_find_object(
+                &editor->document, editor->selection.value.object.id);
+            static const char *labels[EDITOR_OBJECT_FIELD_COUNT] = {
+                "X", "Y", "Direction", "Sprite", "Remove"
+            };
+            if (object && editor_domain_inspector_presentation(
+                    EDITOR_INSPECTOR_OBJECT, &presentation)) {
+                snprintf(line, sizeof(line), "Inspector: %s  %s",
+                         presentation.title, presentation.controls);
+                grid_print(grid, 1, row++, line, fg, bg);
+                for (size_t field = 0U; field < EDITOR_OBJECT_FIELD_COUNT; field++) {
+                    bool selected = field == (size_t)editor->object_field;
+                    if (field == EDITOR_OBJECT_FIELD_X)
+                        snprintf(line, sizeof(line), " %s %-10s %.2f", selected ? ">" : " ", labels[field], object->x);
+                    else if (field == EDITOR_OBJECT_FIELD_Y)
+                        snprintf(line, sizeof(line), " %s %-10s %.2f", selected ? ">" : " ", labels[field], object->y);
+                    else if (field == EDITOR_OBJECT_FIELD_DIRECTION)
+                        snprintf(line, sizeof(line), " %s %-10s %.2f", selected ? ">" : " ", labels[field], object->front_direction);
+                    else if (field == EDITOR_OBJECT_FIELD_ASSET) {
+                        const char *sprite_label = "missing";
+                        if (object->sprite_asset > 0U &&
+                            object->sprite_asset < SPRITE_ID_CAPACITY &&
+                            sprite_id_is_loaded(editor->assets, (int)object->sprite_asset))
+                            sprite_label = "sprite";
+                        snprintf(line, sizeof(line), " %s %-10s %s:%u Enter=open",
+                            selected && !editor->object_picker_open ? ">" : " ",
+                            labels[field], sprite_label,
+                            (unsigned)object->sprite_asset);
+                } else snprintf(line, sizeof(line), " %s %-10s Enter=remove", selected ? ">" : " ", labels[field]);
+                    grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
+                    if (field == EDITOR_OBJECT_FIELD_ASSET && editor->object_picker_open) {
+                        size_t start = editor->object_picker_index >= EDITOR_PICKER_VISIBLE
+                            ? editor->object_picker_index - EDITOR_PICKER_VISIBLE + 1U : 0U;
+                        snprintf(line, sizeof(line), "   Sprite search: %s_",
+                                 editor->object_search_text);
+                        grid_print(grid, 1, row++, line, fg, bg);
+                        for (size_t i = start; i < editor->object_search_result_count &&
+                             i < start + EDITOR_PICKER_VISIBLE; i++) {
+                            uint16_t id = editor->object_search_results[i];
+                            snprintf(line, sizeof(line), " %s sprite:%u",
+                                i == editor->object_picker_index ? ">" : " ",
+                                (unsigned)id);
+                            grid_print(grid, 1, row++, line,
+                                i == editor->object_picker_index ? hi : dim, bg);
+                        }
+                    }
+                }
+                grid_print(grid, 1, row++, presentation.note, warn, bg);
+            }
+        }
 
         if (editor_document_has_unsaveable_material(&editor->document) ||
             editor->status == EDITOR_STATUS_UNSAVABLE_MATERIAL_ID) {
@@ -5143,6 +5481,8 @@ void unified_editor_render_text_overlay(
             }
         } else if (editor->modal == EDITOR_MODAL_TRIGGER_REMOVE_PROMPT) {
             grid_print(grid, 1, row++, "Remove trigger? Enter=yes Esc=cancel", warn, bg);
+        } else if (editor->modal == EDITOR_MODAL_OBJECT_REMOVE_PROMPT) {
+            grid_print(grid, 1, row++, "Remove object? Enter=yes Esc=cancel", warn, bg);
         } else if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
             grid_print(grid, 1, row + 1,
                        "Reload scene? Enter=yes  Esc=cancel", warn, bg);
@@ -5263,7 +5603,7 @@ void unified_editor_render_text_overlay(
             }
         }
         grid_print(grid, 1, grid->height - 2,
-                   "Tab=walk/edit  E=select  L=place light  P=new sprite canvas  Enter=apply",
+                   "Tab=walk/edit E=select L=place light P=new sprite canvas B=object",
                    dim, bg);
         grid_print(grid, 1, grid->height - 1,
                    "Ctrl+Z/Y=undo/redo  Ctrl+N=new  Ctrl+S=save  Ctrl+O=open",

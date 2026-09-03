@@ -2,7 +2,10 @@
 
 ## Status
 
-**Planning record; implementation not yet started.** This record defines the minimum contracts required before the first object increment can begin. Implementation details not listed here will be chosen while coding and documented in the I4 implementation record.
+**Implemented; automated gates passed on 2026-09-03. Manual visual/input
+acceptance remains pending.** This record defines the minimum contracts used by
+the implementation; evidence and implementation details are in
+`R11_INCREMENT_I4_IMPLEMENTATION_RECORD_2026-09-03.md`.
 
 ## Scope
 

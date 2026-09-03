@@ -52,6 +52,11 @@ EditorHit editor_pick_trigger_selection(
     const Camera *camera, const SceneTrigger *triggers, size_t trigger_count,
     EditorHit existing_hit, double max_distance
 );
+EditorHit editor_pick_object_selection(
+    const Camera *camera, const SceneObjectInstance *objects,
+    size_t object_count, EditorHit existing_hit, double max_distance,
+    double pick_radius
+);
 
 EditorHit editor_pick_horizontal_surface_selection(
     const Camera *camera,

@@ -70,6 +70,13 @@ typedef struct {
     int sprite_id;          /* Index into AssetRegistry.sprites[] */
 } SpriteEntity;
 
+typedef struct {
+    Vec2 pos;
+    double front_direction;
+    uint16_t object_id;
+    uint16_t sprite_id;        /* Per-instance sprite reference for rendering. */
+} ObjectEntity;
+
 /* ===================================================================
  *  Capacity constants
  * =================================================================== */
@@ -77,6 +84,7 @@ typedef struct {
 #define MAX_LIGHTS  64     /* Maximum number of simultaneous lights */
 #define MAX_SPRITES 128    /* Maximum number of sprite instances */
 #define MAX_DECALS  256    /* Maximum number of decal instances */
+#define MAX_OBJECTS 128
 
 /* ===================================================================
  *  WorldState — the top-level world container
@@ -96,6 +104,9 @@ typedef struct {
 
     SpriteEntity  sprites[MAX_SPRITES];   /* Intended billboard-style sprite instances */
     int           num_sprites;            /* Number of active sprites */
+
+    ObjectEntity  objects[MAX_OBJECTS];
+    int           num_objects;
 
     Decal         decals[MAX_DECALS];     /* Surface decorations */
     int           num_decals;             /* Number of active decals */
@@ -167,6 +178,9 @@ WorldInsertResult world_add_spot_light(
  * @param sprite_id Index into AssetRegistry.sprites[]
  */
 WorldInsertResult world_add_sprite(WorldState *world, double x, double y, int sprite_id);
+WorldInsertResult world_add_object(WorldState *world, double x, double y,
+                                   double front_direction, uint16_t object_id,
+                                   uint16_t sprite_id);
 
 /**
  * world_add_decal() — Add a surface decoration to the world

@@ -1,4 +1,4 @@
-# Active Handoff — R10 Released; R11 I1–I3 Verified — 2026-09-02
+# Active Handoff — R11 I4 Implemented; Manual Acceptance Pending — 2026-09-03
 
 ## Current status
 
@@ -8,7 +8,15 @@ its automated gates pass. **R11 I2 (scene v8 sprite authoring) is Implemented in
 the working tree (commit `277fb3c`, 2026-09-02); its automated exit gate has
 passed, the dedicated implementation record exists, and bundled I1+I2 manual
 visual/input acceptance passed after workflow polish.** I3 scene v9 minimal triggers are verified: automated gates, Q4 review, and manual
-acceptance all passed. R11 records: `R11_DECISION_RECORD_2026-08-28.md`,
+acceptance all passed. **I4 simple objects are implemented and all automated gates
+pass; manual visual/input acceptance remains pending.** I4 adds object assets,
+scene v10 persistence, stable-ID editor authoring, billboard derivation, and basic
+player collision. Same-day follow-ups isolate all text-entry submenus from
+movement/selection/letter actions and replace definition reassignment with an
+undoable per-instance sprite picker. Direction visual confirmation remains
+deferred until directional sprite selection exists.
+Evidence is in
+`R11_INCREMENT_I4_IMPLEMENTATION_RECORD_2026-09-03.md`. R11 records include `R11_DECISION_RECORD_2026-08-28.md`,
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`,
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md`, and
 `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md`, plus

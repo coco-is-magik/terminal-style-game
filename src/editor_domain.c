@@ -29,6 +29,7 @@ EditorInspectorKind editor_domain_inspector_kind(SelectionTarget target) {
     if (target.type == SELECTION_DECAL) return EDITOR_INSPECTOR_DECAL;
     if (target.type == SELECTION_SPRITE) return EDITOR_INSPECTOR_SPRITE;
     if (target.type == SELECTION_TRIGGER) return EDITOR_INSPECTOR_TRIGGER;
+    if (target.type == SELECTION_OBJECT) return EDITOR_INSPECTOR_OBJECT;
     return EDITOR_INSPECTOR_NONE;
 }
 
@@ -61,6 +62,13 @@ bool editor_domain_inspector_presentation(
         *out_presentation = (EditorInspectorPresentation){
             "trigger", "Up/Down=choose  Left/Right=edit  Enter=set",
             "Enter-region; runtime state is not authored", EDITOR_TRIGGER_FIELD_COUNT};
+        return true;
+    }
+    if (kind == EDITOR_INSPECTOR_OBJECT) {
+        *out_presentation = (EditorInspectorPresentation){
+            "object", "Up/Down=choose  Left/Right=edit  Enter=open/remove",
+            "Direction is stored; billboard visuals cannot confirm it yet",
+            EDITOR_OBJECT_FIELD_COUNT};
         return true;
     }
     if (kind == EDITOR_INSPECTOR_FLOOR_SURFACE ||

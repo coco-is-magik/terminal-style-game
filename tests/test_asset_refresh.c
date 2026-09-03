@@ -20,6 +20,7 @@ static char root[] = "/tmp/tsg_asset_refresh_XXXXXX";
 static char palettes[1024];
 static char materials[1024];
 static char decals[1024];
+static char objects[1024];
 
 static void make_path(char *out, size_t capacity, const char *directory,
                       const char *name) {
@@ -42,8 +43,9 @@ static int setup(void **state) {
     make_path(palettes, sizeof(palettes), root, "palettes");
     make_path(materials, sizeof(materials), root, "materials");
     make_path(decals, sizeof(decals), root, "decals");
+    make_path(objects, sizeof(objects), root, "objects");
     if (mkdir(palettes, 0700) != 0 || mkdir(materials, 0700) != 0 ||
-        mkdir(decals, 0700) != 0) return -1;
+        mkdir(decals, 0700) != 0 || mkdir(objects, 0700) != 0) return -1;
     make_path(path, sizeof(path), palettes, "1.txt");
     write_file(path, "near=10,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n");
     make_path(path, sizeof(path), materials, "1.txt");
@@ -56,6 +58,7 @@ static int teardown(void **state) {
     char path[1024];
     const char *material_files[] = {"1.txt", "brick.txt", "50000.txt"};
     const char *decal_files[] = {"1.txt", "2.txt"};
+    const char *object_files[] = {"1.txt", "2.txt"};
     (void)state;
     asset_refresh_set_registry_init_failure_for_test(false);
     for (size_t i = 0U; i < sizeof(material_files) / sizeof(material_files[0]); i++) {
@@ -66,11 +69,16 @@ static int teardown(void **state) {
         make_path(path, sizeof(path), decals, decal_files[i]);
         (void)unlink(path);
     }
+    for (size_t i = 0U; i < sizeof(object_files) / sizeof(object_files[0]); i++) {
+        make_path(path, sizeof(path), objects, object_files[i]);
+        (void)unlink(path);
+    }
     make_path(path, sizeof(path), palettes, "1.txt");
     (void)unlink(path);
     (void)rmdir(palettes);
     (void)rmdir(materials);
     (void)rmdir(decals);
+    (void)rmdir(objects);
     (void)rmdir(root);
     return 0;
 }
@@ -269,6 +277,23 @@ static void test_refresh_rollback_and_scene_save_asset_history_boundary(void **s
     (void)unlink(scene_path);
 }
 
+static void test_object_asset_requires_complete_simple_definition(void **state) {
+    AssetRegistry registry;
+    char path[1024];
+    (void)state;
+    make_path(path, sizeof(path), objects, "1.txt");
+    write_file(path, "name=crate\nsprite_id=1\nfront_direction=0\nattributes=simple\n");
+    make_path(path, sizeof(path), objects, "2.txt");
+    write_file(path, "name=bad\nsprite_id=1\nattributes=script\n");
+    assert_true(asset_registry_init(&registry));
+    assert_true(asset_loader_load_registry(&registry, root));
+    assert_true(registry.objects[1].loaded);
+    assert_string_equal(registry.objects[1].name, "crate");
+    assert_int_equal(registry.objects[1].attributes, OBJECT_ATTRIBUTE_SIMPLE);
+    assert_false(registry.objects[2].loaded);
+    asset_registry_clear(&registry);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(
@@ -282,6 +307,9 @@ int main(void) {
             setup, teardown),
         cmocka_unit_test_setup_teardown(
             test_refresh_rollback_and_scene_save_asset_history_boundary,
+            setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_object_asset_requires_complete_simple_definition,
             setup, teardown)
     };
     config_init_defaults();

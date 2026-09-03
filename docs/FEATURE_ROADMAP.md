@@ -226,7 +226,7 @@ Do not create empty review directories or placeholder review files.
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — Q1 locked; I1 runtime, I2 sprite authoring, and I3 scene v9 triggers implemented and verified including bundled manual acceptance; approved I1–I3 scope closed |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — I1–I3 verified; I4 simple objects implemented with automated gates passed, manual acceptance pending; animation and spawn expansion remain deferred |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or

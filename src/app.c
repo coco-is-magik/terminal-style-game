@@ -353,7 +353,7 @@ static void sync_editor_text_input(Renderer *renderer,
             (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
              editor->inspector_kind == EDITOR_INSPECTOR_DECAL ||
              editor->inspector_kind == EDITOR_INSPECTOR_SPRITE ||
-            editor->material_picker_open)));
+             editor->material_picker_open || editor->object_picker_open)));
     if (should_be_active && !SDL_TextInputActive(renderer->window)) {
         if (!SDL_StartTextInput(renderer->window)) {
             fprintf(stderr, "Failed to start editor text input: %s\n", SDL_GetError());
@@ -798,6 +798,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_place_light_pressed = false;
                 input.editor_place_sprite_pressed = false;
                 input.editor_place_trigger_pressed = false;
+                input.editor_place_object_pressed = false;
                 input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {
