@@ -1311,6 +1311,9 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     uint16_t created_id;
     char sprite_dir[512];
     char created_path[512];
+    char created_frame_path[512];
+    char alternate_dir[512];
+    char alternate_manifest[512];
     char alternate_path[512];
     char map_path[512];
     int pattern_x;
@@ -1326,8 +1329,14 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     path_in_tmpdir(sprite_dir, sizeof(sprite_dir), "sprites");
     assert_int_equal(mkdir(sprite_dir, 0700), 0);
     assert_true(asset_registry_set_sprite(&g_assets, 2U, 1, 1, &alternate));
+    assert_true(snprintf(alternate_dir, sizeof(alternate_dir),
+                         "%s/2", sprite_dir) > 0);
+    assert_int_equal(mkdir(alternate_dir, 0700), 0);
+    assert_true(snprintf(alternate_manifest, sizeof(alternate_manifest),
+                         "%s/animation.txt", alternate_dir) > 0);
+    assert_int_equal(write_text_file(alternate_manifest, "static\n"), 0);
     assert_true(snprintf(alternate_path, sizeof(alternate_path),
-                         "%s/2.txt", sprite_dir) > 0);
+                         "%s/frame_000.txt", alternate_dir) > 0);
     assert_int_equal(write_text_file(
         alternate_path,
         "cols=1\nrows=1\ndefault_material=2\npattern_0=B\nmaterial_0=2\n"), 0);
@@ -1350,10 +1359,14 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_int_equal(ed.sprite_document.rows, 8U);
     assert_non_null(asset_registry_get_sprite(&g_assets, created_id));
     assert_true(snprintf(created_path, sizeof(created_path),
-                         "%s/%u.txt", sprite_dir, (unsigned)created_id) > 0);
+                         "%s/%u/animation.txt", sprite_dir, (unsigned)created_id) > 0);
     assert_int_equal(access(created_path, F_OK), 0);
+    assert_true(snprintf(created_frame_path, sizeof(created_frame_path),
+                         "%s/%u/frame_000.txt", sprite_dir,
+                         (unsigned)created_id) > 0);
+    assert_int_equal(access(created_frame_path, F_OK), 0);
 
-    grid = grid_create(160, 80);
+    grid = grid_create(160, 160);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid);
     assert_true(grid_contains_text(grid, "Pattern..."));
@@ -1464,7 +1477,8 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
     assert_int_equal(ed.document.sprites[0].asset.id, 4U);
-    assert_false(ed.sprite_menu_open);
+    assert_true(ed.sprite_menu_open);
+    assert_int_equal(ed.sprite_document.frame_count, 2U);
     assert_int_equal(ed.runtime_world.sprites[0].animation_frame, 0U);
     assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_LOADED);
     assert_int_equal(unified_editor_undo(&ed), CMD_RESULT_OK);
@@ -1474,7 +1488,16 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     path_in_tmpdir(map_path, sizeof(map_path), "sprite_canvas.txt");
     remove(map_path);
     remove(created_path);
+    remove(created_frame_path);
+    {
+        char created_dir[512];
+        assert_true(snprintf(created_dir, sizeof(created_dir), "%s/%u", sprite_dir,
+                             (unsigned)created_id) > 0);
+        rmdir(created_dir);
+    }
+    remove(alternate_manifest);
     remove(alternate_path);
+    rmdir(alternate_dir);
     rmdir(sprite_dir);
     free(g_assets.sprites[created_id].pattern);
     memset(&g_assets.sprites[created_id], 0, sizeof(g_assets.sprites[created_id]));
@@ -1485,6 +1508,105 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     free(g_assets.sprite_animations[4].frames);
     memset(&g_assets.sprite_animations[4], 0,
            sizeof(g_assets.sprite_animations[4]));
+}
+
+static void test_sprite_animation_painter_focus_frames_save_and_discard(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    SpriteAsset frames[2];
+    PatternCell first = {(uint8_t)'A', UINT16_C(1)};
+    PatternCell second = {(uint8_t)'B', UINT16_C(1)};
+    char sprite_root[512];
+    char sprite_directory[512];
+    char path[512];
+    (void)state;
+
+    assert_int_equal(load_editor(&editor, "sprite_animation_painter.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, g_tmpdir));
+    path_in_tmpdir(sprite_root, sizeof(sprite_root), "sprites");
+    assert_int_equal(mkdir(sprite_root, 0700), 0);
+    frames[0] = (SpriteAsset){1, 1, &first};
+    frames[1] = (SpriteAsset){1, 1, &second};
+    assert_true(asset_registry_set_sprite_animation(
+        &g_assets, 4U, frames, 2U, 4.0, true));
+    set_horizontal_hover(&editor, SELECTION_FLOOR, 3, 2);
+    assert_int_equal(unified_editor_place_sprite(&editor, 4U), CMD_RESULT_OK);
+    assert_int_equal(sprite_document_open_loaded(
+        &editor.sprite_document, &g_assets, 4U, sprite_root), SPRITE_DOCUMENT_OK);
+    editor.sprite_field = EDITOR_SPRITE_FIELD_PATTERN;
+    editor.sprite_menu_open = true;
+    editor.sprite_menu_stage = EDITOR_SPRITE_MENU_PAINT;
+    editor.sprite_paint_material = 1U;
+    editor.sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    assert_true(editor.inspector_open);
+    assert_int_equal(editor.inspector_kind, EDITOR_INSPECTOR_SPRITE);
+    assert_int_equal(editor.selection.type, SELECTION_SPRITE);
+    assert_int_equal(editor.sprite_document.frame_count, 2U);
+    assert_int_equal(editor.sprite_menu_stage, EDITOR_SPRITE_MENU_PAINT);
+
+    grid = grid_create(160, 160);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Pattern..."));
+    assert_true(grid_contains_text(grid, "SPRITE PAINT"));
+    assert_true(grid_contains_text(grid, "previous"));
+    assert_true(grid_contains_text(grid, "active"));
+    assert_true(grid_contains_text(grid, "next"));
+    assert_true(grid_contains_text(grid, "Add frame"));
+    grid_destroy(grid);
+
+    zero_input(&input);
+    input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.sprite_paint_focus, EDITOR_SPRITE_PAINT_FOCUS_MENU);
+    zero_input(&input);
+    strcpy(input.text_input, "X");
+    input.text_input_len = 1;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.sprite_document.cells[0].glyph, 'A');
+
+    editor.sprite_paint_menu_index = 3U;
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.sprite_document.frame_count, 1U);
+    assert_int_equal(editor.sprite_document.cells[0].glyph, 'B');
+    zero_input(&input);
+    input.editor_save_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.sprite_document.dirty);
+    assert_null(asset_registry_get_sprite_animation(&g_assets, 4));
+    assert_int_equal(asset_registry_get_sprite(&g_assets, 4)->pattern[0].glyph, 'B');
+
+    editor.sprite_paint_menu_index = 2U;
+    zero_input(&input);
+    input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.sprite_document.frame_count, 2U);
+    assert_true(editor.sprite_document.dirty);
+    zero_input(&input);
+    input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.sprite_menu_stage, EDITOR_SPRITE_MENU_ACTIONS);
+    assert_int_equal(editor.sprite_document.frame_count, 1U);
+    assert_false(editor.sprite_document.dirty);
+
+    unified_editor_destroy(&editor);
+    path_in_tmpdir(path, sizeof(path), "sprite_animation_painter.txt");
+    remove(path);
+    assert_true(snprintf(sprite_directory, sizeof(sprite_directory), "%s/4",
+                         sprite_root) > 0);
+    assert_true(snprintf(path, sizeof(path), "%s/animation.txt", sprite_directory) > 0);
+    remove(path);
+    assert_true(snprintf(path, sizeof(path), "%s/frame_000.txt", sprite_directory) > 0);
+    remove(path);
+    rmdir(sprite_directory);
+    rmdir(sprite_root);
+    free(g_assets.sprites[4].pattern);
+    memset(&g_assets.sprites[4], 0, sizeof(g_assets.sprites[4]));
 }
 
 static void test_object_place_runtime_edit_undo_and_remove(void **state) {
@@ -4524,6 +4646,7 @@ int main(void) {
         cmocka_unit_test(test_light_remove_prompt_cancel_confirm_and_undo_redo),
         cmocka_unit_test(test_placed_light_native_save_reopen_round_trip),
         cmocka_unit_test(test_sprite_p_creates_canvas_and_pattern_workflow),
+        cmocka_unit_test(test_sprite_animation_painter_focus_frames_save_and_discard),
         cmocka_unit_test(test_object_place_runtime_edit_undo_and_remove),
         cmocka_unit_test(test_text_entry_submenus_block_movement_select_and_letter_actions),
         cmocka_unit_test(test_trigger_place_inspect_runtime_remove_and_round_trip),

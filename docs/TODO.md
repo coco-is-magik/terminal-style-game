@@ -389,7 +389,7 @@ Save/Open. Missing-asset support geometry uses visible repair mode.
 Remaining: grouped spray-stroke undo, overlap/layering UI, spacing/randomization,
 edge wrapping, and capacity/performance policy beyond existing limits.
 
-## Sprite and animation authoring — **Placement resolved (R11 I1/I2); animation open**
+## Sprite and animation authoring — **R11 I6 verified; improvements planned**
 
 **Implemented (2026-08-28/09-02):** `SpriteAsset` patterns render as decorative
 camera-facing billboards (R11 I1: depth-tested against world geometry and
@@ -398,9 +398,21 @@ effects). Scene v8 sprite placement/selection/persistence and undo/redo land
 with R11 I2 (code present in commit `277fb3c`; automated verification and
 bundled I1+I2 manual acceptance passed).
 
-Still open: animation timeline/file format, playback, oriented versus billboard
-behavior, painting-tool reuse, live world preview of staged sprite edits, a
-saved-versus-current-edits world preview toggle, solid/occluding sprites, mirror
+R11 I5 verifies per-instance time-based playback. I6 implements folder-only static
+and animated assets, integrated painter frame authoring, circular neighbor previews,
+FPS/loop editing, staged Save/Discard, and atomic folder replacement. Automated
+gates, manual acceptance, and the final R11 boundary review passed on 2026-09-04.
+
+Planned improvements are tracked separately in
+`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`:
+
+1. investigate subtle frame-change flicker/jitter without assuming its cause;
+2. add a convenience option to insert a copied frame;
+3. expose sprite search/create/edit from object/entity sprite workflows; and
+4. research sprite stacking and multiple-angle sprites.
+
+Still open: oriented versus billboard behavior, live world preview of staged sprite
+edits, a saved-versus-current-edits preview toggle, solid/occluding sprites, mirror
 visibility, and sprite-to-object attachment (recorded in the R11 stop boundary).
 
 ## Reusable nested inspector submenu — **Wanted (R12)**
@@ -556,9 +568,10 @@ scene v9 owns bounded `enter_region` records with one closed typed action
 reference validation, undo/redo, persistence, highlighting, and editor-Walk
 runtime firing. R11 I4 verifies static `simple` object assets/instances, basic
 player collision, and per-instance sprite selection. R11 I5 verifies strict
-folder-backed sprite-animation data and time-based runtime playback; timeline and
-animated-folder authoring UI remain open. Broader object attributes and trigger
-graphs/conditions/actions remain future work. Game-mode spawn expansion is
+folder-backed sprite-animation data and time-based runtime playback; R11 I6 verifies
+folder-only static/animated authoring in the integrated sprite painter. Planned
+follow-ups are in `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`. Broader object
+attributes and trigger graphs/conditions/actions remain future work. Game-mode spawn expansion is
 explicitly unnecessary/deferred because no game modes or mature testing workflow
 exist; the single authored spawn remains the verified baseline.
 

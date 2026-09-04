@@ -104,6 +104,11 @@ typedef enum {
 } EditorSpriteMenuStage;
 
 typedef enum {
+    EDITOR_SPRITE_PAINT_FOCUS_CANVAS = 0,
+    EDITOR_SPRITE_PAINT_FOCUS_MENU
+} EditorSpritePaintFocus;
+
+typedef enum {
     EDITOR_STATUS_NONE = 0,
     EDITOR_STATUS_SAVED,
     EDITOR_STATUS_SAVE_FAILED,
@@ -228,6 +233,8 @@ typedef struct {
     size_t sprite_paint_x;
     size_t sprite_paint_y;
     MaterialId sprite_paint_material;
+    EditorSpritePaintFocus sprite_paint_focus;
+    size_t sprite_paint_menu_index;
     char light_value_text[32];
     size_t light_value_text_length;
     bool light_value_editing;

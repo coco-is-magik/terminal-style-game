@@ -209,7 +209,7 @@ type=layout
 elements=main_menu_title,main_menu_start,main_menu_asset_editor,main_menu_quit
 ```
 
-## Sprites (`assets/sprites/<id>.txt` or `<id>/` — optional)
+## Sprites (`assets/sprites/<id>/` — optional)
 
 Sprite patterns are camera-facing decorative billboards rendered by the world
 overlay pass. They are light-map-lit, depth-tested against world geometry and
@@ -217,7 +217,8 @@ decals, and do not collide, block rays/light, or appear in mirrors. Patterns are
 limited to 255 columns and 32 rows. The asset registry owns successfully loaded
 patterns and releases them through `asset_registry_clear()`.
 
-Each numeric file uses:
+Every numeric sprite folder contains `animation.txt` and ordinary pattern frame
+files. Each frame uses:
 
 ```ini
 cols=3
@@ -234,12 +235,22 @@ loaded, nonzero material; missing assets and invalid references are safe no-ops.
 R11 I1 renders existing `WorldState.sprites`. R11 I2 adds authored
 sprite placement, selection, persistence, and undo/redo (code present in commit
 `277fb3c`; automated and bundled manual verification passed).
-In the unified editor, `P` creates and places an 8×8 canvas. Select a sprite and
-open **Pattern...** to load another numeric sprite file, save the current pattern,
-or paint it in place. Pattern edits are copied and do not replace the live
-registry asset until Save succeeds.
+In the unified editor, `P` creates and places an 8×8 static canvas. Select a sprite
+and open **Pattern...** to load another numeric sprite folder, save the current
+sprite, or paint its selected frame. Pattern edits are staged and do not replace
+the live registry asset until Save succeeds. Escape from the painter discards the
+staged document.
 
-An animated sprite uses a numeric folder instead of the same ID's static file:
+A static sprite folder has exactly one frame and an `animation.txt` containing the
+literal word `static`:
+
+```text
+assets/sprites/1/
+  animation.txt
+  frame_000.txt
+```
+
+An animated sprite folder has at least two frames:
 
 ```text
 assets/sprites/4/
@@ -258,17 +269,19 @@ frame=tall.txt
 ```
 
 `fps` is required and must be finite in `0.1..120`. `loop` is optional and
-defaults to `true`. One to 256 `frame` entries are required. Frame names are
+defaults to `true`. Two to 256 `frame` entries are required. Frame names are
 unique local `.txt` basenames and each frame uses the ordinary sprite-pattern
 format above. Unknown or duplicate metadata fields, missing/malformed frames,
-paths, and an ID having both `<id>.txt` and `<id>/` leave that sprite ID unloaded.
+paths, one-frame animation metadata, and static folders with zero or multiple frame
+files leave that sprite ID unloaded. Root-level numeric sprite files are not loaded.
 Scene and object instances continue to reference only the numeric sprite ID.
 Playback phase is per runtime instance, starts at frame zero, and is not saved.
 
-The current Pattern painter authors static `<id>.txt` assets only. Pattern Load
-can assign an animated folder and closes the submenu for world preview; opening
-Pattern on an already animated instance is rejected until animation authoring UI
-is implemented.
+The Pattern painter authors static and animated folders. Right at the canvas edge
+moves focus to the frame menu; Left returns to the canvas. The menu selects frames,
+adds immediately after the selected frame, removes the selected frame, and edits
+FPS/loop. Neighbor previews wrap circularly. Removing from two frames to one writes
+literal-static mode and removes stale animation metadata/files on Save.
 
 ## Objects (`assets/objects/<id>.txt` — optional)
 

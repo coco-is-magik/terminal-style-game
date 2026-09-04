@@ -23,6 +23,7 @@
 
 #include "assets.h"        /* AssetRegistry, Palette, Material, SpriteAsset, PatternCell */
 #include "checked_size.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>        /* memset(), strlen(), strcmp() */
 
@@ -340,11 +341,60 @@ bool asset_registry_set_sprite(AssetRegistry *reg, uint16_t id, int cols, int ro
     copy = malloc(bytes);
     if (!copy) return false;
     memcpy(copy, pattern, bytes);
-    if (reg->sprite_animations[id].frames) return free(copy), false;
+    if (reg->sprite_animations[id].frames) {
+        for (size_t frame = 0U;
+             frame < reg->sprite_animations[id].frame_count; frame++)
+            free(reg->sprite_animations[id].frames[frame].pattern);
+        free(reg->sprite_animations[id].frames);
+        memset(&reg->sprite_animations[id], 0, sizeof(reg->sprite_animations[id]));
+    }
     free(reg->sprites[id].pattern);
     reg->sprites[id].cols = cols;
     reg->sprites[id].rows = rows;
     reg->sprites[id].pattern = copy;
     return true;
+}
+
+bool asset_registry_set_sprite_animation(AssetRegistry *reg, uint16_t id,
+                                         const SpriteAsset *frames, size_t frame_count,
+                                         double frames_per_second, bool loop) {
+    SpriteAsset *copy;
+    size_t i;
+    if (!reg || id == 0U || id >= SPRITE_ID_CAPACITY || !frames ||
+        frame_count < 2U || frame_count > SPRITE_ANIMATION_MAX_FRAMES ||
+        !isfinite(frames_per_second) || frames_per_second < 0.1 ||
+        frames_per_second > 120.0) return false;
+    copy = calloc(frame_count, sizeof(*copy));
+    if (!copy) return false;
+    for (i = 0U; i < frame_count; i++) {
+        size_t count;
+        size_t bytes;
+        if (frames[i].cols <= 0 || frames[i].rows <= 0 ||
+            frames[i].cols > SPRITE_PATTERN_MAX_COLS ||
+            frames[i].rows > SPRITE_PATTERN_MAX_ROWS || !frames[i].pattern ||
+            !checked_size_2d(frames[i].cols, frames[i].rows, &count) ||
+            !checked_size_bytes(count, sizeof(*copy[i].pattern), &bytes)) goto fail;
+        copy[i].pattern = malloc(bytes);
+        if (!copy[i].pattern) goto fail;
+        memcpy(copy[i].pattern, frames[i].pattern, bytes);
+        copy[i].cols = frames[i].cols;
+        copy[i].rows = frames[i].rows;
+    }
+    free(reg->sprites[id].pattern);
+    memset(&reg->sprites[id], 0, sizeof(reg->sprites[id]));
+    if (reg->sprite_animations[id].frames) {
+        for (i = 0U; i < reg->sprite_animations[id].frame_count; i++)
+            free(reg->sprite_animations[id].frames[i].pattern);
+        free(reg->sprite_animations[id].frames);
+    }
+    reg->sprite_animations[id].frames = copy;
+    reg->sprite_animations[id].frame_count = frame_count;
+    reg->sprite_animations[id].frames_per_second = frames_per_second;
+    reg->sprite_animations[id].loop = loop;
+    return true;
+fail:
+    for (i = 0U; i < frame_count; i++) free(copy[i].pattern);
+    free(copy);
+    return false;
 }
 

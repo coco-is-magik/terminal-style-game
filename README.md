@@ -108,10 +108,13 @@ default sprite, placed instances preserve their own sprite reference,
 position/front direction, and stable identity, and player movement collides with
 them without changing map occupancy. Objects do not affect rays, light, mirrors,
 triggers, animation, or destruction.
-R11 I5 adds sprite-owned animation: a numeric sprite folder contains ordinary
-sprite-pattern frames plus `animation.txt`, whose ordered `frame=` entries and
-`fps` drive time-based per-instance playback. Existing numeric sprite files stay
-static and scene/object references remain unchanged.
+R11 I5 adds sprite-owned animation and I6 standardizes every numeric sprite as a
+folder with `animation.txt`. Literal `static` selects exactly one frame; animated
+metadata orders at least two frames and supplies `fps`/optional `loop`. Elapsed
+seconds drive per-instance playback. Scene/object references remain numeric. R11 I6
+passed automated and manual acceptance on 2026-09-04. Final review:
+`docs/reviews/2026-09-04-roadmap-r11-closeout.md`. Planned improvements:
+`docs/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -245,10 +248,12 @@ Closing the inspector clears that persistent selection.
 | `Escape` | Move up one submenu level, close/deselect at inspector top, then open exit prompt |
 
 The selected sprite inspector includes **Pattern...** with **Load existing...**,
-**Save pattern**, and **Edit/Paint**. In the painter, arrows move the cursor,
-typing paints a glyph, Backspace erases, `[` / `]` cycle loaded materials, and
-`Ctrl+S` saves the standalone `assets/sprites/<id>.txt` pattern. Scene save still
-persists the sprite instance position, stable ID, and pattern reference.
+**Save pattern**, and **Edit/Paint**. In the painter, typing paints the selected
+frame, Backspace erases, and `[` / `]` cycle loaded materials. Right at the canvas
+edge moves focus to the frame menu; Left returns. The menu selects/adds/removes
+frames and edits FPS/loop. `Ctrl+S` atomically saves the complete
+`assets/sprites/<id>/` folder; Escape discards staged sprite edits. Scene save still
+persists only the sprite instance position, stable ID, and numeric pattern reference.
 
 The exit prompt offers Resume, Save and Exit, Discard and Exit, and Cancel.
 A failed save does not discard edits or history.

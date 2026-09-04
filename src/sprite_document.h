@@ -1,4 +1,4 @@
-/** sprite_document.h — Owned editable sprite-pattern file document. */
+/** sprite_document.h — Owned staged static/animated sprite-folder document. */
 #ifndef SPRITE_DOCUMENT_H
 #define SPRITE_DOCUMENT_H
 
@@ -20,11 +20,23 @@ typedef enum {
 } SpriteDocumentResult;
 
 typedef struct {
-    uint16_t id;
     size_t cols;
     size_t rows;
     PatternCell *cells;
-    char *path;
+} SpriteDocumentFrame;
+
+typedef struct {
+    uint16_t id;
+    SpriteDocumentFrame *frames;
+    size_t frame_count;
+    size_t selected_frame;
+    double frames_per_second;
+    bool loop;
+    /* Borrowed aliases for the selected frame, retained for painter simplicity. */
+    size_t cols;
+    size_t rows;
+    PatternCell *cells;
+    char *path; /* Owned numeric sprite-folder path after open/save. */
     bool dirty;
 } SpriteDocument;
 
@@ -43,9 +55,21 @@ SpriteDocumentResult sprite_document_paint_cell(SpriteDocument *document,
                                                 PatternCell cell);
 SpriteDocumentResult sprite_document_erase_cell(SpriteDocument *document,
                                                 size_t x, size_t y);
+SpriteDocumentResult sprite_document_select_frame(SpriteDocument *document,
+                                                  size_t frame_index);
+SpriteDocumentResult sprite_document_select_previous_frame(SpriteDocument *document);
+SpriteDocumentResult sprite_document_select_next_frame(SpriteDocument *document);
+SpriteDocumentResult sprite_document_add_frame_after_selected(SpriteDocument *document);
+SpriteDocumentResult sprite_document_remove_selected_frame(SpriteDocument *document);
+SpriteDocumentResult sprite_document_set_frames_per_second(SpriteDocument *document,
+                                                           double fps);
+SpriteDocumentResult sprite_document_set_loop(SpriteDocument *document, bool loop);
+const SpriteDocumentFrame *sprite_document_previous_frame(const SpriteDocument *document);
+const SpriteDocumentFrame *sprite_document_next_frame(const SpriteDocument *document);
 SpriteDocumentResult sprite_document_save(SpriteDocument *document,
                                           const AssetRegistry *assets,
                                           const char *sprite_directory);
+SpriteDocumentResult sprite_document_delete_saved(const SpriteDocument *document);
 SpriteDocumentResult sprite_document_commit_to_registry(
     const SpriteDocument *document, AssetRegistry *assets);
 

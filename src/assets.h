@@ -295,5 +295,9 @@ uint16_t asset_registry_allocate_sprite_id(const AssetRegistry *reg);
 /** Deep-copy a sprite pattern into the registry. */
 bool asset_registry_set_sprite(AssetRegistry *reg, uint16_t id, int cols, int rows,
                                const PatternCell *pattern);
+/** Deep-copy two or more ordered frames and playback metadata into the registry. */
+bool asset_registry_set_sprite_animation(AssetRegistry *reg, uint16_t id,
+                                         const SpriteAsset *frames, size_t frame_count,
+                                         double frames_per_second, bool loop);
 
 #endif /* ASSETS_H */

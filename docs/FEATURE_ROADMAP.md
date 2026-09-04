@@ -226,7 +226,7 @@ Do not create empty review directories or placeholder review files.
 | R8 | Vertical-world implementation | R1 contract; R4; R7 semantics; R8 decision record | Heights, slopes, vertical movement, true pitch deferred | Verified |
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
-| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Active — I1–I5 verified; animation authoring remains; game-mode spawn expansion explicitly deferred as unnecessary without game modes |
+| R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Verified 2026-09-04 — I1–I6 automated/manual gates and final boundary review passed; single-spawn baseline accepted, game-mode expansion unnecessary |
 | R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
@@ -806,17 +806,18 @@ or scene ownership changes broadly.
 
 ## R11 — Sprites, animation, objects, triggers, and spawn authoring
 
-**Status:** Active. I1–I4 and I5 sprite-animation runtime/data are Verified. I5
-provides strict folder metadata, elapsed-time per-instance playback, static
-compatibility, and passed manual visual acceptance. Animation authoring UI remains.
-Game-mode spawn expansion is explicitly unnecessary without game modes and
-an editor mature enough to test mode-dependent selection. See
+**Status:** Verified 2026-09-04. I1–I6 automated and applicable manual gates passed,
+including folder-only static/animated assets and integrated animation authoring.
+Game-mode spawn expansion is explicitly unnecessary without game modes; the single
+authored spawn remains the verified baseline. Final review:
+`reviews/2026-09-04-roadmap-r11-closeout.md`. Planned follow-ups:
+`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`. See
 `R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md` and
 `R11_DECISION_RECORD_2026-08-28.md`, plus
 `R11_INCREMENT_I1_IMPLEMENTATION_RECORD_2026-08-28.md` and
 `R11_INCREMENT_I2_IMPLEMENTATION_RECORD_2026-09-02.md` and
-`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`, plus the I4 and I5
-decision/implementation records.
+`R11_INCREMENT_I3_IMPLEMENTATION_RECORD_2026-09-02.md`, plus the I4/I5 records and
+`R11_I6_SPRITE_PAINTER_ANIMATION_PLAN_2026-09-03.md`.
 
 **Purpose:** Add broader gameplay-authored entities using the existing scene,
 identity, command, selection, and vertical-world foundations.
@@ -992,22 +993,23 @@ until that evidence exists.
 Verified (2026-08-27); closeout:
 `reviews/2026-08-27-roadmap-r10-closeout.md`.
 
-The active roadmap phase is **R11 — Sprites, animation, objects, triggers, and
-spawn authoring**. Q1 is locked and the I1–I3 increment plan is recorded in
-`R11_DECISION_RECORD_2026-08-28.md` and
-`R11_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-28.md`.
+**R11 is Verified as of 2026-09-04.** Final entity/sprite boundary review and
+closeout: `reviews/2026-09-04-roadmap-r11-closeout.md`.
 
 - **I1 sprite runtime:** Implemented; automated gates passed 2026-08-28.
 - **I2 sprite authoring:** Implemented and verified, including bundled manual
   visual/input acceptance after workflow polish.
 - **I3 minimal triggers (scene v9):** Verified; automated gates, Q4 review, and
   manual visual/input acceptance all passed on 2026-09-02.
+- **I4 simple objects:** Verified, including manual acceptance.
+- **I5 sprite-animation runtime/data:** Verified, including manual acceptance.
+- **I6 folder-only sprite animation authoring:** Verified; all automated gates,
+  manual acceptance, and final boundary review passed on 2026-09-04.
 
-The approved I1–I3 scope is now closed. The immediate next action is beginning
-Q1 planning for the next R11 feature decision: animation, typed
-objects/components, or Spawn expansion (the latter only if a game-mode
-requirement is supplied). Start Game native-scene loading is post-editor
-cleanup. R12 remains Proposed. I8 quality presets stay deferred and require a
-fresh end-to-end assessment plus separate authorization. Open R9 follow-up:
+Four non-blocking animation/sprite follow-ups are recorded in
+`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`; each requires separate
+investigation or Q1 planning. Start Game native-scene loading is post-editor cleanup.
+R12 remains Proposed. I8 quality presets stay deferred and require a fresh
+end-to-end assessment plus separate authorization. Open R9 follow-up:
 bring the current-renderer flat inherited path under the 6 ms surface-render
 budget.

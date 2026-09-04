@@ -38,8 +38,8 @@
  *       intensity=<double>    (negative → anti-light / darkness)
  *       radius=<double>
  *
- *   Sprites   (assets/sprites/<id>.txt or assets/sprites/<id>/animation.txt)
- *     A static 2D pattern or an ordered folder of ordinary pattern frames.
+ *   Sprites   (assets/sprites/<id>/animation.txt)
+ *     A folder containing one static frame or ordered animated frames.
  *
  *   Objects   (assets/objects/<id>.txt)
  *     A named sprite reference, front direction, and closed `simple` attribute.
@@ -621,16 +621,6 @@ static bool load_sprite_file(SpriteAsset *out, const char *filepath) {
     return true;
 }
 
-static bool load_sprite(AssetRegistry *reg, int id, const char *filepath) {
-    SpriteAsset sprite = {0};
-    if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY ||
-        reg->sprite_animations[id].frames ||
-        !load_sprite_file(&sprite, filepath)) return false;
-    free(reg->sprites[id].pattern);
-    reg->sprites[id] = sprite;
-    return true;
-}
-
 static bool animation_frame_name_is_valid(const char *name) {
     size_t length;
     if (!name || name[0] == '\0' || strchr(name, '/') || strchr(name, '\\') ||
@@ -649,8 +639,21 @@ static void clear_sprite_animation(SpriteAnimationAsset *animation) {
     memset(animation, 0, sizeof(*animation));
 }
 
-static bool load_sprite_animation(AssetRegistry *reg, int id,
-                                  const char *directory) {
+static bool find_static_frame_name(const char *directory, char out[128]) {
+    DIR *dir = opendir(directory);
+    struct dirent *entry;
+    size_t count = 0U;
+    if (!dir) return false;
+    while ((entry = readdir(dir)) != NULL) {
+        if (!animation_frame_name_is_valid(entry->d_name)) continue;
+        if (++count == 1U) memcpy(out, entry->d_name, strlen(entry->d_name) + 1U);
+    }
+    (void)closedir(dir);
+    return count == 1U;
+}
+
+static bool load_sprite_folder(AssetRegistry *reg, int id,
+                               const char *directory) {
     char metadata_path[512];
     char frame_names[SPRITE_ANIMATION_MAX_FRAMES][128];
     SpriteAnimationAsset animation = {0};
@@ -658,6 +661,7 @@ static bool load_sprite_animation(AssetRegistry *reg, int id,
     char line[256];
     bool seen_fps = false;
     bool seen_loop = false;
+    bool is_static = false;
     bool valid = true;
     int written;
     if (!reg || id < 1 || id >= (int)SPRITE_ID_CAPACITY || !directory ||
@@ -667,6 +671,26 @@ static bool load_sprite_animation(AssetRegistry *reg, int id,
     if (written < 0 || (size_t)written >= sizeof(metadata_path)) return false;
     file = fopen(metadata_path, "r");
     if (!file) return false;
+    if (fgets(line, sizeof(line), file) &&
+        (strcmp(line, "static\n") == 0 || strcmp(line, "static") == 0)) {
+        int next = fgetc(file);
+        is_static = next == EOF && !ferror(file);
+    } else {
+        rewind(file);
+    }
+    if (is_static) {
+        char path[640];
+        SpriteAsset sprite = {0};
+        if (fclose(file) != 0 || !find_static_frame_name(directory, frame_names[0]))
+            return false;
+        written = snprintf(path, sizeof(path), "%s/%s", directory, frame_names[0]);
+        if (written < 0 || (size_t)written >= sizeof(path) ||
+            !load_sprite_file(&sprite, path)) return false;
+        free(reg->sprites[id].pattern);
+        reg->sprites[id] = sprite;
+        clear_sprite_animation(&reg->sprite_animations[id]);
+        return true;
+    }
     animation.loop = true;
     while (valid && fgets(line, sizeof(line), file)) {
         char *key = NULL;
@@ -698,7 +722,7 @@ static bool load_sprite_animation(AssetRegistry *reg, int id,
         } else valid = false;
     }
     if (ferror(file) || fclose(file) != 0) valid = false;
-    if (!valid || !seen_fps || animation.frame_count == 0U) return false;
+    if (!valid || !seen_fps || animation.frame_count < 2U) return false;
     animation.frames = calloc(animation.frame_count, sizeof(*animation.frames));
     if (!animation.frames) return false;
     for (size_t i = 0U; i < animation.frame_count; i++) {
@@ -900,39 +924,28 @@ static void load_numeric_asset_directory(AssetRegistry *reg, const char *directo
 static void load_sprite_directory(AssetRegistry *reg, const char *directory) {
     DIR *dir = opendir(directory);
     struct dirent *entry;
-    bool static_ids[SPRITE_ID_CAPACITY] = {false};
-    bool animated_ids[SPRITE_ID_CAPACITY] = {false};
+    bool folder_ids[SPRITE_ID_CAPACITY] = {false};
     if (!dir) return;
     while ((entry = readdir(dir)) != NULL) {
         size_t length = strlen(entry->d_name);
         char base[16];
         char canonical[24];
         int id;
-        if (length > 4U && length < sizeof(base) + 4U &&
-            strcmp(entry->d_name + length - 4U, ".txt") == 0) {
-            memcpy(base, entry->d_name, length - 4U);
-            base[length - 4U] = '\0';
-            if (parse_bounded_int(base, 1, (int)SPRITE_ID_CAPACITY - 1, &id) &&
-                snprintf(canonical, sizeof(canonical), "%d.txt", id) >= 0 &&
-                strcmp(canonical, entry->d_name) == 0) static_ids[id] = true;
-        } else if (length < sizeof(base) &&
-                   parse_bounded_int(entry->d_name, 1,
-                                     (int)SPRITE_ID_CAPACITY - 1, &id) &&
-                   snprintf(canonical, sizeof(canonical), "%d", id) >= 0 &&
-                   strcmp(canonical, entry->d_name) == 0) {
-            animated_ids[id] = true;
+        if (length < sizeof(base) && parse_bounded_int(entry->d_name, 1,
+                (int)SPRITE_ID_CAPACITY - 1, &id) &&
+            snprintf(canonical, sizeof(canonical), "%d", id) >= 0 &&
+            strcmp(canonical, entry->d_name) == 0) {
+            folder_ids[id] = true;
         }
     }
     closedir(dir);
     for (int id = 1; id < (int)SPRITE_ID_CAPACITY; id++) {
         char path[512];
         int written;
-        if (static_ids[id] == animated_ids[id]) continue;
-        written = snprintf(path, sizeof(path), static_ids[id] ? "%s/%d.txt" : "%s/%d",
-                           directory, id);
+        if (!folder_ids[id]) continue;
+        written = snprintf(path, sizeof(path), "%s/%d", directory, id);
         if (written < 0 || (size_t)written >= sizeof(path)) continue;
-        if (static_ids[id]) (void)load_sprite(reg, id, path);
-        else (void)load_sprite_animation(reg, id, path);
+        (void)load_sprite_folder(reg, id, path);
     }
 }
 

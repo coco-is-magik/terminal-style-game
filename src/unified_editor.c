@@ -118,6 +118,8 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->sprite_paint_x = 0U;
     editor->sprite_paint_y = 0U;
     editor->sprite_paint_material = 1U;
+    editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+    editor->sprite_paint_menu_index = 0U;
     editor->light_value_text[0] = '\0';
     editor->light_value_text_length = 0U;
     editor->light_value_editing = false;
@@ -2019,6 +2021,8 @@ static bool editor_open_sprite_document(UnifiedEditorState *editor,
     }
     editor->sprite_paint_x = 0U;
     editor->sprite_paint_y = 0U;
+    editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+    editor->sprite_paint_menu_index = 0U;
     editor->sprite_paint_material = 1U;
     while (editor->sprite_paint_material <= ASSET_ID_MAX &&
            !material_id_is_loaded(editor->assets,
@@ -2081,7 +2085,6 @@ static bool editor_set_selected_sprite_asset(UnifiedEditorState *editor,
 
 static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
     char directory[1024];
-    char path[1060];
     int map_x;
     int map_y;
     uint16_t asset_id;
@@ -2106,9 +2109,8 @@ static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
         result = sprite_document_commit_to_registry(
             &editor->sprite_document, editor->assets);
     if (result != SPRITE_DOCUMENT_OK) {
-        if (editor->sprite_document.path) {
-            (void)unlink(editor->sprite_document.path);
-        }
+        if (editor->sprite_document.path)
+            (void)sprite_document_delete_saved(&editor->sprite_document);
         sprite_document_destroy(&editor->sprite_document);
         editor->status = result == SPRITE_DOCUMENT_OUT_OF_MEMORY
             ? EDITOR_STATUS_OUT_OF_MEMORY : EDITOR_STATUS_SAVE_FAILED;
@@ -2120,10 +2122,8 @@ static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
         free(editor->assets->sprites[asset_id].pattern);
         memset(&editor->assets->sprites[asset_id], 0,
                sizeof(editor->assets->sprites[asset_id]));
-        if (snprintf(path, sizeof(path), "%s/%u.txt", directory,
-                     (unsigned)asset_id) >= 0 && strlen(path) < sizeof(path)) {
-            (void)unlink(path);
-        }
+        if (editor->sprite_document.path)
+            (void)sprite_document_delete_saved(&editor->sprite_document);
         sprite_document_destroy(&editor->sprite_document);
         editor_rebuild_sprite_shortlist(editor);
         return false;
@@ -2169,10 +2169,53 @@ static bool editor_begin_selected_sprite_pattern(UnifiedEditorState *editor) {
 
 static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
                                             const InputState *input) {
+    enum { SPRITE_PAINT_MENU_COUNT = 7 };
     if (!editor || !input || !editor->sprite_menu_open) return false;
     if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT) {
         if (input->editor_save_pressed) {
             (void)editor_save_sprite_document(editor);
+        } else if (editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_MENU) {
+            if (input->editor_previous_pressed) {
+                editor->sprite_paint_menu_index = editor->sprite_paint_menu_index == 0U
+                    ? SPRITE_PAINT_MENU_COUNT - 1U : editor->sprite_paint_menu_index - 1U;
+            } else if (input->editor_next_pressed) {
+                editor->sprite_paint_menu_index =
+                    (editor->sprite_paint_menu_index + 1U) % SPRITE_PAINT_MENU_COUNT;
+            } else if (input->editor_decrease_pressed) {
+                editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+            } else if (input->editor_confirm_pressed) {
+                SpriteDocumentResult result = SPRITE_DOCUMENT_NO_CHANGE;
+                switch (editor->sprite_paint_menu_index) {
+                    case 0U: result = sprite_document_select_previous_frame(
+                        &editor->sprite_document); break;
+                    case 1U: result = sprite_document_select_next_frame(
+                        &editor->sprite_document); break;
+                    case 2U: result = sprite_document_add_frame_after_selected(
+                        &editor->sprite_document); break;
+                    case 3U: result = sprite_document_remove_selected_frame(
+                        &editor->sprite_document); break;
+                    case 4U: result = sprite_document_set_frames_per_second(
+                        &editor->sprite_document,
+                        editor->sprite_document.frames_per_second > 1.0
+                            ? editor->sprite_document.frames_per_second - 1.0 : 0.1); break;
+                    case 5U: result = sprite_document_set_frames_per_second(
+                        &editor->sprite_document,
+                        editor->sprite_document.frames_per_second < 119.0
+                            ? editor->sprite_document.frames_per_second + 1.0 : 120.0); break;
+                    case 6U: result = sprite_document_set_loop(
+                        &editor->sprite_document, !editor->sprite_document.loop); break;
+                    default: break;
+                }
+                if (result == SPRITE_DOCUMENT_OUT_OF_MEMORY)
+                    editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+                else if (result != SPRITE_DOCUMENT_OK &&
+                         result != SPRITE_DOCUMENT_NO_CHANGE)
+                    editor->status = EDITOR_STATUS_INVALID_SPRITE;
+                if (editor->sprite_paint_x >= editor->sprite_document.cols)
+                    editor->sprite_paint_x = editor->sprite_document.cols - 1U;
+                if (editor->sprite_paint_y >= editor->sprite_document.rows)
+                    editor->sprite_paint_y = editor->sprite_document.rows - 1U;
+            }
         } else if (input->editor_previous_pressed && editor->sprite_paint_y > 0U) {
             editor->sprite_paint_y--;
         } else if (input->editor_next_pressed &&
@@ -2180,9 +2223,10 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
             editor->sprite_paint_y++;
         } else if (input->editor_decrease_pressed && editor->sprite_paint_x > 0U) {
             editor->sprite_paint_x--;
-        } else if (input->editor_increase_pressed &&
-                   editor->sprite_paint_x + 1U < editor->sprite_document.cols) {
-            editor->sprite_paint_x++;
+        } else if (input->editor_increase_pressed) {
+            if (editor->sprite_paint_x + 1U < editor->sprite_document.cols)
+                editor->sprite_paint_x++;
+            else editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_MENU;
         } else if (input->prev_glyph) {
             editor_cycle_sprite_paint_material(editor, -1);
         } else if (input->next_glyph) {
@@ -2224,10 +2268,7 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
             uint16_t id = editor->sprite_shortlist[editor->sprite_menu_index];
             if (editor_set_selected_sprite_asset(editor, id)) {
                 editor->status = EDITOR_STATUS_SPRITE_PATTERN_LOADED;
-                if (asset_registry_get_sprite_animation(editor->assets, id)) {
-                    sprite_document_destroy(&editor->sprite_document);
-                    editor->sprite_menu_open = false;
-                } else if (editor_open_sprite_document(editor, id)) {
+                if (editor_open_sprite_document(editor, id)) {
                     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
                     editor->sprite_menu_index = 0U;
                 }
@@ -2243,6 +2284,8 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
         (void)editor_save_sprite_document(editor);
     } else {
         editor->sprite_menu_stage = EDITOR_SPRITE_MENU_PAINT;
+        editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+        editor->sprite_paint_menu_index = 0U;
     }
     return true;
 }
@@ -4111,8 +4154,16 @@ EditorInputConsumption unified_editor_update(
                 editor_mark_keyboard(&consumed);
                 return consumed;
             } else if (editor->sprite_menu_open) {
-                if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT ||
-                    editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
+                if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT) {
+                    uint16_t id = editor->sprite_document.id;
+                    if (!editor_open_sprite_document(editor, id)) {
+                        editor_close_sprite_menu(editor);
+                        editor_mark_keyboard(&consumed);
+                        return consumed;
+                    }
+                    editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
+                    editor->sprite_menu_index = 0U;
+                } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
                     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
                     editor->sprite_menu_index = 0U;
                 } else {
@@ -4785,32 +4836,80 @@ static void editor_render_sprite_pattern_menu(
                        editor->sprite_menu_index == index ? hi : dim, bg);
         }
     } else {
+        static const char *frame_actions[7] = {
+            "Previous frame", "Next frame", "Add frame", "Remove frame",
+            "FPS -1", "FPS +1", "Toggle loop"
+        };
+        const SpriteDocumentFrame *previous =
+            sprite_document_previous_frame(&editor->sprite_document);
+        const SpriteDocumentFrame *next =
+            sprite_document_next_frame(&editor->sprite_document);
+        size_t previous_slot = previous && previous->cols > 8U ? previous->cols : 8U;
+        size_t active_slot = editor->sprite_document.cols > 32U
+            ? editor->sprite_document.cols : 32U;
+        size_t next_slot = next && next->cols > 4U ? next->cols : 4U;
+        int active_col = 6 + (previous ? (int)previous_slot + 3 : 0);
+        int next_col = active_col + (int)active_slot + 3;
+        int menu_col = next_col + (next ? (int)next_slot + 3 : 0);
+        int canvas_row;
         size_t y;
         grid_print(grid, 1, (*row)++,
-                   "     SPRITE PAINT  Arrows=cursor  Type=paint  Backspace=erase",
+                   "     SPRITE PAINT  Right=edge enters menu  Left=canvas  Esc=discard",
                    fg, bg);
         snprintf(line, sizeof(line),
-                 "     [ / ]=material  Ctrl+S=save  Esc=back  material:%d%s",
+                 "     Type=paint  Backspace=erase  [ / ]=material:%d  Ctrl+S=save%s",
                  editor->sprite_paint_material,
                  editor->sprite_document.dirty ? "  UNSAVED" : "");
         grid_print(grid, 1, (*row)++, line, warn, bg);
+        snprintf(line, sizeof(line), "frame %zu/%zu  fps:%.3g  loop:%s",
+                 editor->sprite_document.selected_frame + 1U,
+                 editor->sprite_document.frame_count,
+                 editor->sprite_document.frames_per_second,
+                 editor->sprite_document.loop ? "true" : "false");
+        grid_print(grid, active_col, *row, line,
+                   editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_CANVAS
+                       ? hi : fg, bg);
+        (*row)++;
+        if (previous) grid_print(grid, 6, *row, "previous", dim, bg);
+        grid_print(grid, active_col, *row, "active", hi, bg);
+        if (next) grid_print(grid, next_col, *row, "next", dim, bg);
+        canvas_row = ++(*row);
         for (y = 0U; y < editor->sprite_document.rows &&
-             *row < grid->height - 3; y++) {
-            int col = 6;
+             canvas_row + (int)y < grid->height - 3; y++) {
             size_t x;
-            for (x = 0U; x < editor->sprite_document.cols && col < grid->width;
-                 x++, col++) {
+            if (previous && y < previous->rows) {
+                for (x = 0U; x < previous->cols && 6 + (int)x < grid->width; x++)
+                    (void)grid_set(grid, 6 + (int)x, canvas_row + (int)y,
+                                   previous->cells[y * previous->cols + x].glyph,
+                                   dim, bg);
+            }
+            for (x = 0U; x < editor->sprite_document.cols &&
+                 active_col + (int)x < grid->width; x++) {
                 PatternCell cell = editor->sprite_document.cells[
                     y * editor->sprite_document.cols + x];
                 bool cursor = x == editor->sprite_paint_x &&
-                              y == editor->sprite_paint_y;
-                (void)grid_set(grid, col, *row,
+                              y == editor->sprite_paint_y &&
+                              editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
+                (void)grid_set(grid, active_col + (int)x, canvas_row + (int)y,
                     cursor && (cell.glyph == 0U || cell.glyph == (uint8_t)' ')
                         ? (uint8_t)'_' : cell.glyph,
                     cursor ? hi : fg, bg);
             }
-            (*row)++;
+            if (next && y < next->rows) {
+                for (x = 0U; x < next->cols && next_col + (int)x < grid->width; x++)
+                    (void)grid_set(grid, next_col + (int)x, canvas_row + (int)y,
+                                   next->cells[y * next->cols + x].glyph, dim, bg);
+            }
         }
+        for (size_t action = 0U; action < 7U; action++) {
+            bool selected = editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_MENU &&
+                            editor->sprite_paint_menu_index == action;
+            snprintf(line, sizeof(line), "%s %s", selected ? ">" : " ",
+                     frame_actions[action]);
+            grid_print(grid, menu_col, canvas_row + (int)action, line,
+                       selected ? hi : dim, bg);
+        }
+        *row = canvas_row + (int)editor->sprite_document.rows;
     }
 }
 

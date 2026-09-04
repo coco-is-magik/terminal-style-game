@@ -1,0 +1,10 @@
+fps=4
+loop=true
+frame=frame_000.txt
+frame=frame_001.txt
+frame=frame_002.txt
+frame=frame_003.txt
+frame=frame_004.txt
+frame=frame_005.txt
+frame=frame_006.txt
+frame=frame_007.txt
