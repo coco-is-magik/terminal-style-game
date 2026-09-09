@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -872,6 +873,14 @@ SceneLoadResult scene_document_load_native_with_assets(
     if (candidate.source_version == SCENE_VERSION_V9) {
         migration_pending = true;
         parse_result = scene_format_migrate_v9_to_v10(&candidate, diagnostic);
+        if (parse_result != SCENE_FORMAT_OK) {
+            scene_format_candidate_destroy(&candidate);
+            return SCENE_LOAD_VALIDATION_FAILED;
+        }
+    }
+    if (candidate.source_version == SCENE_VERSION_V10) {
+        migration_pending = true;
+        parse_result = scene_format_migrate_v10_to_v11(&candidate, diagnostic);
         if (parse_result != SCENE_FORMAT_OK) {
             scene_format_candidate_destroy(&candidate);
             return SCENE_LOAD_VALIDATION_FAILED;
@@ -2321,6 +2330,41 @@ static bool document_has_light_id(const SceneDocument *document, SceneInstanceId
     return scene_document_find_light(document, id) != NULL;
 }
 
+static bool trigger_flow_port_is_unique(const SceneDocument *document,
+                                        SceneInstanceId instance_id,
+                                        const char *flow_port) {
+    size_t i;
+    for (i = 0U; i < document->trigger_count; i++) {
+        const SceneTrigger *trigger = &document->triggers[i];
+        if (trigger->id != instance_id &&
+            trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+            strncmp(trigger->flow_port, flow_port,
+                    SCENE_TRIGGER_FLOW_PORT_CAPACITY) == 0) return false;
+    }
+    return true;
+}
+
+static bool trigger_flow_port_capacity_available(const SceneDocument *document,
+                                                 SceneInstanceId instance_id) {
+    size_t i;
+    size_t count = 0U;
+    for (i = 0U; i < document->trigger_count; i++)
+        if (document->triggers[i].id != instance_id &&
+            document->triggers[i].action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+            count++;
+    return count < SCENE_MAX_FLOW_EXITS;
+}
+
+static bool valid_trigger_flow_port(const char *port) {
+    size_t i;
+    if (!port || port[0] == '\0') return false;
+    for (i = 0U; i < SCENE_TRIGGER_FLOW_PORT_CAPACITY && port[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)port[i];
+        if (!(isalnum(c) || c == '_' || c == '-')) return false;
+    }
+    return i < SCENE_TRIGGER_FLOW_PORT_CAPACITY;
+}
+
 bool scene_document_internal_trigger_value_is_valid(
     const SceneDocument *document, SceneInstanceId instance_id,
     const SceneTrigger *value
@@ -2333,15 +2377,22 @@ bool scene_document_internal_trigger_value_is_valid(
         value->min_x < value->max_x && value->min_y < value->max_y &&
         value->condition == SCENE_TRIGGER_CONDITION_ENTER_REGION &&
         value->action >= SCENE_TRIGGER_ACTION_SET_FLAG &&
-        value->action <= SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
+        value->action <= SCENE_TRIGGER_ACTION_EXIT_FLOW &&
         (value->action != SCENE_TRIGGER_ACTION_SET_FLAG ||
          (value->flag_id >= 1U && value->flag_id <= SCENE_TRIGGER_FLAG_CAPACITY &&
-          value->target_id == 0U)) &&
+           value->target_id == 0U && value->flow_port[0] == '\0')) &&
         (value->action != SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN ||
-         (value->flag_id == 0U && !value->flag_value && value->target_id == 0U)) &&
+         (value->flag_id == 0U && !value->flag_value && value->target_id == 0U &&
+          value->flow_port[0] == '\0')) &&
         (value->action != SCENE_TRIGGER_ACTION_TOGGLE_LIGHT ||
          (value->flag_id == 0U && !value->flag_value &&
-          document_has_light_id(document, value->target_id)));
+           document_has_light_id(document, value->target_id) &&
+           value->flow_port[0] == '\0')) &&
+        (value->action != SCENE_TRIGGER_ACTION_EXIT_FLOW ||
+         (value->flag_id == 0U && !value->flag_value && value->target_id == 0U &&
+          valid_trigger_flow_port(value->flow_port) &&
+          trigger_flow_port_capacity_available(document, instance_id) &&
+          trigger_flow_port_is_unique(document, instance_id, value->flow_port)));
 }
 
 bool scene_document_internal_set_trigger(

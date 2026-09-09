@@ -227,7 +227,7 @@ Do not create empty review directories or placeholder review files.
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Verified 2026-09-04 — I1–I6 automated/manual gates and final boundary review passed; single-spawn baseline accepted, game-mode expansion unnecessary |
-| R12 | Responsive UI model and UI/menu authoring | R0 UI evidence; stable editor domain patterns | Visual UI authoring | Proposed |
+| R12 | Authored game-flow and responsive UI/menu authoring | R0 UI evidence; stable editor domain patterns | Player-facing visual UI authoring | Active — I1–I6 graph through headless rendering/interaction implemented; automated gates passed |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
 Q4 review findings.
@@ -854,12 +854,23 @@ undo/redo, and handle missing assets/actions safely; Q1–Q3 pass.
 
 **Review checkpoint:** Q4 after major entity/trigger boundaries stabilize.
 
-## R12 — Responsive UI model and UI/menu authoring
+## R12 — Authored game-flow and responsive UI/menu authoring
 
-**Status:** Proposed
+**Status:** Active. Detailed phase plan:
+`R12_UI_MENU_AUTHORING_PLAN_2026-09-04.md`. I1 decision/implementation record:
+`R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`. I2 record:
+`R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`. I3 record:
+`R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`. I4 record:
+`R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md`. I5 record:
+`R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md`. I6 record:
+`R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md`. I7 record:
+`R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`. I8 record:
+`R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`. I9 record:
+`R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`. I10 record:
+`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`.
 
-**Purpose:** Define the long-term responsive UI data model before building a
-visual editor for it.
+**Purpose:** Author the player-facing UI and game progression of a game built in the
+unified editor. This does not replace the editor shell or application menus.
 
 **Prerequisites:** R0 scale evidence and mature document/inspector patterns from
 R3/R5. This phase may move earlier only after a Q4 review confirms its
@@ -868,18 +879,51 @@ dependencies are stable.
 **Required outcomes:**
 
 1. Define anchors, constraints, flow, sizing, resolution, and focus semantics.
-2. Version/migrate existing UI element/layout assets with compatibility tests.
-3. Make game and editor UI responsive and independently scalable as specified.
-   This includes reviewing the R0 ordered-layer seam and, where requirements
-   justify it, adding versioned per-role or element-subtree scale overrides with
-   deterministic overlap, inheritance, clipping, focus/hit-testing, reset, and
-   missing-role behavior. Do not expose arbitrary asset names or unbounded layers
-   as persistent user settings.
-4. Add `UiDocument` with document lifecycle and validation.
-5. Add visual hierarchy, property, canvas, drag/resize/reparent, and ordering
+2. Define versioned progression connecting Start Game, scenes, scene exits, menus,
+   and menu buttons. **I1 implemented:** separate strict `FlowDocument` graph with
+   typed nodes/ports, stable IDs, cycle support, reachability validation, and atomic
+   persistence.
+   **I2 implemented:** a borrowed typed asset/port catalog validates graph references,
+   and a pure runtime session navigates named edges deterministically without I/O,
+   rendering, UI, time, or global state.
+   **I7 implemented:** scene v11 adds validated named `exit_flow` trigger ports;
+   trigger ticks return deterministic borrowed exit requests, and a pure adapter
+   derives Scene catalog entries for I2 validation.
+   **I8 implemented:** typed Button and scene-exit activations require matching
+   Menu/Scene source nodes, advance a copied runtime session by named port, and return
+   failure-atomic typed Scene/Menu target requests without loading or I/O.
+3. Define the authored-UI format and compatibility relationship with existing
+   application-owned UI element/layout assets. Existing editor/app UI is not an
+   R12 authoring target.
+4. Make authored game UI responsive with per-item scale and deterministic overlap,
+   parent-relative resolution, clipping, focus, and hit-testing. Existing global UI scale remains
+   an app/editor readability setting.
+   **I4 foundation implemented:** `UiDocument` v2 persists integer cell rectangles,
+   independent Start/Center/End/Stretch anchors, and bounded local scale; a pure
+   resolver produces parent/viewport-clipped geometry in document paint order.
+   **I6 implemented:** pure Button eligibility, painter-order hit testing, wrapped and
+   directional focus, and typed activation use stable IDs and explicit transient state.
+5. Add `UiDocument` with document lifecycle and validation.
+   **I3 implemented:** versioned Menu documents own a validated stable-ID
+   Container/Text/Button tree, dirty/path state, atomic persistence, and derived
+   Button-port views for I2 validation. I3 deliberately deferred responsive visual
+   fields, which were added only after the I4/I5 decisions.
+   **I5 implemented:** `UiDocument` v3 persists native visual intent and numeric
+   sprite references; transient state/theme inputs and a failure-atomic headless
+   adapter render I4 geometry into `UiCanvas`; I6 supplies focus and hit testing.
+   **I9 implemented:** a headless authored Menu host owns focus/pressed/visibility state,
+   maps explicit logical input through I6, renders through I5, and hands successful
+   Button activations through I8 without loading targets or owning app/editor state.
+6. Add visual hierarchy, property, canvas, drag/resize/reparent, and ordering
    workflows.
-6. Add multi-resolution preview and action/reference validation.
-7. Add a reusable nested-inspector submenu element/controller so parent-row
+   **I10 flow-workspace foundation implemented:** non-repeating `G` opens a headless
+   staged graph controller inside the unified editor; Start/Scene/Menu nodes and named
+   connections are presented, existing edge targets can be rewired with bounded
+   undo/redo, and atomic Save/Discard uses the conventional project `game.flow`.
+   Focused controller/editor tests, full ASan/LeakSanitizer, full UBSan, optimized
+   aggregate tests, strict application build, and smoke pass.
+7. Add multi-resolution preview and action/reference validation.
+8. Add a reusable nested-inspector submenu element/controller so parent-row
    highlight, child indentation, focus markers, insertion order, and Escape
    navigation are defined once instead of hand-coded per editor domain.
 
@@ -892,11 +936,13 @@ UI data.
 - No visual editor for an absolute-coordinate format scheduled for replacement.
 - No hard-coded resolution-specific branches as the responsive model.
 - No return to disconnected editor application states.
-- No editor that can corrupt the UI assets required to recover/edit it.
+- No editor-shell self-editing or application-menu replacement through R12.
+- No authored-UI editor that can corrupt its own staged/saved game UI assets.
 
-**Exit gate:** Existing UI migrates without regression; multiple supported
-resolutions/scales pass layout, focus, pointer, keyboard, and accessibility
-checks; authoring Save/Discard is transactional; Q1–Q3 pass.
+**Exit gate:** Existing app/editor UI remains unchanged; authored game UI passes
+multiple supported resolution, layout, focus, pointer, keyboard, and accessibility
+checks; progression and UI references validate; authoring Save/Discard is
+transactional; Q1–Q3 pass.
 
 **Review checkpoint:** Q4 before format commitment and after visual authoring is
 integrated.
@@ -1009,7 +1055,19 @@ closeout: `reviews/2026-09-04-roadmap-r11-closeout.md`.
 Four non-blocking animation/sprite follow-ups are recorded in
 `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`; each requires separate
 investigation or Q1 planning. Start Game native-scene loading is post-editor cleanup.
-R12 remains Proposed. I8 quality presets stay deferred and require a fresh
+R12 is Active; I1 `FlowDocument` and I2 typed reference validation/pure runtime
+navigation plus I3 Menu `UiDocument` are implemented and their automated gates pass.
+I4 responsive geometry/per-item scale and v1→v2 migration are also implemented with
+automated gates passing. I5 native/sprite visuals, v1/v2→v3 migration, transient
+state/theme input, and headless rendering are implemented with automated gates passing.
+I6 pure hit testing, focus/navigation, and activation is implemented with automated
+gates passing. I7 scene v11 exit-flow authoring, runtime exit requests, and borrowed
+Scene catalog adaptation are implemented with automated gates passing. I8 pure typed
+activation-to-flow binding and I9 headless authored Menu runtime hosting are implemented
+with automated gates passing. I10's minimum unified-editor game-flow workspace,
+edge-target history, conventional project flow loading, and Save/Discard are implemented
+with automated gates passing. Next: catalog-backed graph construction workflows. I8
+quality presets stay deferred and require a fresh
 end-to-end assessment plus separate authorization. Open R9 follow-up:
 bring the current-renderer flat inherited path under the 6 ms surface-render
 budget.

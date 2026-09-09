@@ -112,7 +112,9 @@ static bool triggers_equal(const SceneTrigger *a, const SceneTrigger *b) {
         a->max_x == b->max_x && a->max_y == b->max_y &&
         a->condition == b->condition && a->action == b->action &&
         a->flag_id == b->flag_id && a->flag_value == b->flag_value &&
-        a->target_id == b->target_id;
+        a->target_id == b->target_id &&
+        strncmp(a->flow_port, b->flow_port,
+                SCENE_TRIGGER_FLOW_PORT_CAPACITY) == 0;
 }
 
 static bool cell_vertical_equal(const SceneCellVertical *a,

@@ -81,6 +81,24 @@ The `run` target starts the raycast world. `run-normal` and `run-stress` start
 software-renderer diagnostic patterns; the acceptance benchmark uses the
 representative raycast workload.
 
+### Unified editor game-flow workspace
+
+Open the existing unified editor from the main menu, then press `G` to open the
+game-flow workspace. The first entry loads `assets/game.flow`; the checked-in graph
+connects Start to the existing `testscene` scene.
+
+- `Up` / `Down`: select a node, outgoing named connection, target, or close choice.
+- `Enter`: descend into connections/targets or commit the selected rewire.
+- `Escape` or `G`: go back; closing a dirty graph opens Save/Discard/Cancel.
+- `Ctrl+Z` / `Ctrl+Y`: undo/redo staged edge-target rewires.
+- `Ctrl+S`: atomically save a graph that already has a path.
+
+The workspace remains inside the unified editor and suppresses scene movement/look while
+open. I10 browses Start/Scene/Menu nodes and rewires existing authored connections. It
+does not yet create/remove nodes or ports; those workflows require the next
+catalog-backed graph-construction increment. Existing application menus are not treated
+as authored game Menu assets.
+
 ## Test
 
 make test
@@ -115,6 +133,14 @@ seconds drive per-instance playback. Scene/object references remain numeric. R11
 passed automated and manual acceptance on 2026-09-04. Final review:
 `docs/reviews/2026-09-04-roadmap-r11-closeout.md`. Planned improvements:
 `docs/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`.
+R12 I7 advances canonical scenes to v11 with bounded named `exit_flow` trigger
+ports. Entering one reports a deterministic progression request; a borrowed adapter
+exports scene exits for validation with authored menu Button ports. Target loading and
+application flow invocation remain later R12 integration work. R12 I8 adds the pure
+typed bridge from Menu Button or scene-exit activations to failure-atomic Scene/Menu
+flow target requests. R12 I9 adds a headless authored Menu runtime host that composes
+responsive rendering, keyboard/pointer-style logical interaction, transient state, and
+typed target handoff; it still performs no loading or application-state changes.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:
@@ -338,7 +364,9 @@ overrides together.
   edit its quarter-cell bounds, action, and payload; regions are highlighted and
   selected by stable scene ID. Actions run once per distinct entry in editor Walk
   mode. Flags and light enabled state are session-only and never dirty the scene;
-  trigger records persist through canonical scene v9 Save/Open.
+  `exit flow` assigns a unique conventional progression port (`exit`, `exit-2`, and
+  so on). Trigger records persist through canonical scene v11 Save/Open; versions
+  1–10 remain readable and migrate forward.
 - `B` places a loaded object asset. Object X/Y and front direction are undoable
   stepped fields; Remove asks for confirmation. The Sprite row opens a searchable
   loaded-sprite picker and assigns only the selected instance, undoably.

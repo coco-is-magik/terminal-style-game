@@ -1528,7 +1528,7 @@ static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
     assert_non_null(saved);
-    assert_non_null(strstr(saved, "scene_version = 10\n"));
+    assert_non_null(strstr(saved, "scene_version = 11\n"));
     assert_non_null(strstr(saved, "east_growth = -\n"));
     assert_non_null(strstr(saved, "south_growth = -\n"));
     assert_non_null(strstr(saved, "[occupancy]\n"));
@@ -1645,7 +1645,7 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     assert_non_null(fixture_text);
     assert_non_null(saved_text);
     assert_non_null(strstr(fixture_text, "scene_version = 3\n"));
-    assert_non_null(strstr(saved_text, "scene_version = 10\n"));
+    assert_non_null(strstr(saved_text, "scene_version = 11\n"));
     assert_false(document.migration_pending);
     assert_false(scene_document_is_dirty(&document));
     free(saved_text);

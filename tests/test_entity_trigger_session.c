@@ -3,14 +3,21 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
+#include <string.h>
+
 #include "../src/entity_trigger_session.h"
 
 static SceneTrigger make_trigger(SceneInstanceId id, SceneTriggerActionType action) {
     SceneTrigger trigger = {
         .id = id, .min_x = 1.0, .min_y = 1.0, .max_x = 2.0, .max_y = 2.0,
-        .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION, .action = action,
-        .flag_id = 1U, .flag_value = true, .target_id = 9U
+        .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION, .action = action
     };
+    if (action == SCENE_TRIGGER_ACTION_SET_FLAG) {
+        trigger.flag_id = 1U;
+        trigger.flag_value = true;
+    } else if (action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT) {
+        trigger.target_id = 9U;
+    }
     return trigger;
 }
 
@@ -98,12 +105,57 @@ static void test_reordering_preserves_inside_identity(void **state) {
         0.0, 0.0, 0.0, 1.5, 1.5, 0.1, &result), ENTITY_TRIGGER_INVALID_DATA);
 }
 
+static void test_exit_flow_reports_lowest_id_and_validates_port(void **state) {
+    EntityTriggerSession session;
+    EntityTriggerSession before;
+    EntityTriggerTickResult result;
+    EntityTriggerTickResult output_before;
+    SceneTrigger triggers[2] = {
+        make_trigger(8U, SCENE_TRIGGER_ACTION_EXIT_FLOW),
+        make_trigger(3U, SCENE_TRIGGER_ACTION_EXIT_FLOW)
+    };
+    (void)state;
+    memset(triggers[0].flow_port, 0, sizeof(triggers[0].flow_port));
+    memset(triggers[1].flow_port, 0, sizeof(triggers[1].flow_port));
+    memcpy(triggers[0].flow_port, "failure", sizeof("failure"));
+    memcpy(triggers[1].flow_port, "complete", sizeof("complete"));
+    triggers[0].flag_id = triggers[1].flag_id = 0U;
+    triggers[0].flag_value = triggers[1].flag_value = false;
+    triggers[0].target_id = triggers[1].target_id = 0U;
+    entity_trigger_session_init(&session);
+    assert_int_equal(entity_trigger_session_tick(&session, triggers, 2U, NULL, 0U,
+        0.0, 0.0, 0.0, 1.5, 1.5, 0.1, &result), ENTITY_TRIGGER_OK);
+    assert_int_equal(result.fired_count, 2U);
+    assert_true(result.flow_exit_requested);
+    assert_int_equal(result.flow_exit_trigger_id, 3U);
+    assert_string_equal(result.flow_exit_port, "complete");
+    before = session;
+    output_before = result;
+    triggers[0].flow_port[0] = '/';
+    assert_int_equal(entity_trigger_session_tick(&session, triggers, 2U, NULL, 0U,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.1, &result), ENTITY_TRIGGER_INVALID_DATA);
+    assert_memory_equal(&session, &before, sizeof(session));
+    assert_memory_equal(&result, &output_before, sizeof(result));
+    memset(triggers[0].flow_port, 0, sizeof(triggers[0].flow_port));
+    memcpy(triggers[0].flow_port, "complete", sizeof("complete"));
+    assert_int_equal(entity_trigger_session_tick(&session, triggers, 2U, NULL, 0U,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.1, &result), ENTITY_TRIGGER_INVALID_DATA);
+    assert_memory_equal(&session, &before, sizeof(session));
+    assert_memory_equal(&result, &output_before, sizeof(result));
+    memset(triggers[0].flow_port, 'x', sizeof(triggers[0].flow_port));
+    assert_int_equal(entity_trigger_session_tick(&session, triggers, 2U, NULL, 0U,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.1, &result), ENTITY_TRIGGER_INVALID_DATA);
+    assert_memory_equal(&session, &before, sizeof(session));
+    assert_memory_equal(&result, &output_before, sizeof(result));
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_once_per_entry_and_half_open_edges),
         cmocka_unit_test(test_teleport_is_nonrecursive_and_recomputes_inside),
         cmocka_unit_test(test_toggle_light_reset_and_invalid_atomic)
         ,cmocka_unit_test(test_reordering_preserves_inside_identity)
+        ,cmocka_unit_test(test_exit_flow_reports_lowest_id_and_validates_port)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

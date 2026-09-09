@@ -22,8 +22,9 @@
 #define SCENE_VERSION_V8 8U
 #define SCENE_VERSION_V9 9U
 #define SCENE_VERSION_V10 10U
-/* Canonical writes use v10; v1-v9 remain accepted migration inputs. */
-#define SCENE_VERSION SCENE_VERSION_V10
+#define SCENE_VERSION_V11 11U
+/* Canonical writes use v11; v1-v10 remain accepted migration inputs. */
+#define SCENE_VERSION SCENE_VERSION_V11
 #define SCENE_FILE_MAX_BYTES (8U * 1024U * 1024U)
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
@@ -36,6 +37,8 @@
 #define SCENE_MAX_TRIGGERS 128U
 #define SCENE_MAX_OBJECTS 128U
 #define SCENE_TRIGGER_FLAG_CAPACITY 64U
+#define SCENE_TRIGGER_FLOW_PORT_CAPACITY 64U
+#define SCENE_MAX_FLOW_EXITS 16U
 #define SCENE_MAX_REPAIR_DIAGNOSTICS 256U
 
 typedef uint64_t SceneInstanceId;
@@ -213,7 +216,8 @@ typedef enum {
 typedef enum {
     SCENE_TRIGGER_ACTION_SET_FLAG = 0,
     SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN,
-    SCENE_TRIGGER_ACTION_TOGGLE_LIGHT
+    SCENE_TRIGGER_ACTION_TOGGLE_LIGHT,
+    SCENE_TRIGGER_ACTION_EXIT_FLOW
 } SceneTriggerActionType;
 
 typedef struct {
@@ -227,6 +231,7 @@ typedef struct {
     uint8_t flag_id;
     bool flag_value;
     SceneInstanceId target_id;
+    char flow_port[SCENE_TRIGGER_FLOW_PORT_CAPACITY];
 } SceneTrigger;
 
 #endif /* SCENE_TYPES_H */

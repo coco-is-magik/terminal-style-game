@@ -1120,6 +1120,66 @@ static void test_v10_object_migration_round_trip_and_diagnostics(void **state) {
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_v11_flow_exit_migration_round_trip_and_diagnostics(void **state) {
+    SceneFormatCandidate candidate;
+    SceneFormatCandidate reparsed;
+    SceneFormatBuffer buffer = {0};
+    SceneDiagnostic diagnostic;
+    char *bad;
+    (void)state;
+    scene_format_candidate_init(&candidate);
+    scene_format_candidate_init(&reparsed);
+    assert_int_equal(scene_format_parse(V4_SCENE, strlen(V4_SCENE), "v4.tscene",
+                                        &candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_to_v5(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v5_to_v6(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v6_to_v7(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v7_to_v8(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v8_to_v9(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v9_to_v10(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(scene_format_migrate_v10_to_v11(&candidate, &diagnostic), SCENE_FORMAT_OK);
+    candidate.triggers = calloc(2U, sizeof(*candidate.triggers));
+    assert_non_null(candidate.triggers);
+    candidate.trigger_count = 2U;
+    candidate.triggers[0] = (SceneTrigger){.id = 2U, .min_x = 0.0, .min_y = 0.0,
+        .max_x = 1.0, .max_y = 1.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_EXIT_FLOW};
+    memcpy(candidate.triggers[0].flow_port, "complete", sizeof("complete"));
+    candidate.triggers[1] = (SceneTrigger){.id = 3U, .min_x = 1.0, .min_y = 0.0,
+        .max_x = 2.0, .max_y = 1.0, .condition = SCENE_TRIGGER_CONDITION_ENTER_REGION,
+        .action = SCENE_TRIGGER_ACTION_EXIT_FLOW};
+    memcpy(candidate.triggers[1].flow_port, "back", sizeof("back"));
+    candidate.next_instance_id = 4U;
+    assert_int_equal(scene_format_serialize(&candidate, &buffer, &diagnostic), SCENE_FORMAT_OK);
+    assert_non_null(strstr(buffer.data, "scene_version = 11\n"));
+    assert_non_null(strstr(buffer.data, "action = exit_flow\nflow_port = complete\n"));
+    assert_int_equal(scene_format_parse(buffer.data, buffer.size, "v11.tscene",
+                                        &reparsed, &diagnostic), SCENE_FORMAT_OK);
+    assert_int_equal(reparsed.trigger_count, 2U);
+    assert_string_equal(reparsed.triggers[0].flow_port, "complete");
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_init(&reparsed);
+    bad = replace_once(buffer.data, "flow_port = complete\n", "");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING);
+    free(bad);
+    bad = replace_once(buffer.data, "flow_port = complete", "flow_port = bad/name");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_NUMERIC);
+    free(bad);
+    bad = replace_once(buffer.data, "flow_port = back", "flow_port = complete");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_DUPLICATE);
+    free(bad);
+    bad = replace_once(buffer.data, "scene_version = 11", "scene_version = 10");
+    diagnostic = parse_rejected(bad, &reparsed);
+    assert_int_equal(diagnostic.code, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION);
+    free(bad);
+    scene_format_buffer_destroy(&buffer);
+    scene_format_candidate_destroy(&reparsed);
+    scene_format_candidate_destroy(&candidate);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -1127,6 +1187,7 @@ int main(void) {
         cmocka_unit_test(test_required_duplicate_unknown_and_syntax_diagnostics),
         cmocka_unit_test(test_numeric_dimensions_and_cells_diagnostics),
         cmocka_unit_test(test_v10_object_migration_round_trip_and_diagnostics),
+        cmocka_unit_test(test_v11_flow_exit_migration_round_trip_and_diagnostics),
         cmocka_unit_test(test_instance_identity_and_section_fields),
         cmocka_unit_test(test_surface_applicability_and_bounds),
         cmocka_unit_test(test_exhausted_sentinel_and_negative_zero),

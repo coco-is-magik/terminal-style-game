@@ -1,4 +1,4 @@
-# Active Handoff — R11 Verified; Planned Animation Improvements Recorded — 2026-09-04
+# Active Handoff — R12 I6 Headless Interaction Implemented — 2026-09-04
 
 ## Current status
 
@@ -204,15 +204,47 @@ I4 objects and I5 animation runtime/data are Verified. I6 animation authoring an
 R11 as a whole are Verified after automated gates, manual acceptance, and final
 boundary review. Game-mode spawn expansion is explicitly unnecessary without
 game modes. Solid/occluding sprites and sprite attachment
-remain deferred and require separate Q1 authorization. R12 and I8 also require
-separate authorization.
+remain deferred and require separate Q1 authorization. R12 is Active; I8 still
+requires separate authorization.
 
 ## Immediate next work
 
-R11 is closed. Do not reopen I6 for the non-blocking observations. Future
-animation/sprite work starts from
-`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`; investigate the flicker first,
-then authorize convenience/workflow/directional work separately.
+R11 is closed. R12 is Active. I1 implements the separate versioned `FlowDocument`
+graph. I2 adds borrowed typed Scene/Menu asset and port validation plus a pure
+allocation-free current-node navigation session. I3 adds versioned authored Menu
+documents with stable Container/Text/Button trees and Button-port export. I4 upgrades
+them to v2 with responsive anchors/Stretch, local per-item scale, deterministic
+clipping/order, pure layout resolution, and v1 migration. I5 upgrades to v3 with
+native/sprite visuals, transient state/theme input, and failure-atomic headless canvas
+rendering. I6 adds pure clipped pointer hit testing, wrapped/directional focus, and
+typed Button activation. I7 adds native scene v11 named exit-flow triggers,
+deterministic runtime exit requests, and borrowed Scene catalog adaptation. I8 adds
+pure failure-atomic typed activation-to-flow target binding. I9 adds the headless
+authored Menu runtime host with logical input, transient state, I5 rendering, I6
+interaction, and I8 target handoff. I10 adds the unified-editor `G` game-flow workspace,
+staged edge-target rewiring, bounded undo/redo, conventional `game.flow` loading, and
+transactional Save/Discard. Focused
+strict tests pass at FlowDocument 6/6, FlowWorkspace 6/6, input 14/14, and unified
+editor 87/87. Full ASan/LeakSanitizer, full UBSan, clean optimized aggregate tests,
+strict application build, and smoke pass. See
+`R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`,
+`R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`, and
+`R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`, plus
+`R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md`, plus
+`R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md`, plus
+`R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md`, plus
+`R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`, plus
+`R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`, plus
+`R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`, plus
+`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`, plus
+`R12_UI_MENU_AUTHORING_PLAN_2026-09-04.md`.
+
+Next: add catalog-backed graph construction for existing authored Scene/Menu assets and
+their validated ports. Do not treat existing
+application-owned UI layouts as game menus. Input routing, target asset loading, and
+application-state transitions remain later adapters. R11 follow-ups
+remain separately planned in
+`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`.
 
 `APP_STATE_PLAYING` remains on the deprecated legacy map/`WorldState` loader and
 is intentionally not updated during fast-moving editor feature work. Native-scene

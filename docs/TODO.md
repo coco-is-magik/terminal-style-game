@@ -589,11 +589,84 @@ and remove the deprecated runtime loading path with compatibility evidence.
 
 # Interface, UI, and menu authoring
 
-## Unified-editor UI/menu workspace — **Separate feature-planning push**
+## Unified-editor game-flow and UI/menu workspace — **R12 Active**
 
 **Wanted:** Visually author interfaces, layouts, and menus instead of manually
 editing text assets. Keep this as a workspace/submode inside the unified Editor,
 not a return to disconnected application states.
+
+**R12 I1 implemented (2026-09-04):** a separate versioned `FlowDocument` directed
+graph owns Start/Scene/Menu nodes and named progression edges. Stable IDs, cycles,
+reachability, strict parsing, transactional load, and atomic save are covered by the
+focused runner. Editor canvas and application/runtime integration remain later
+increments. See `R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`.
+
+**R12 I2 implemented (2026-09-04):** a borrowed typed catalog validates Scene/Menu
+asset names and declared outgoing ports, while a pure allocation-free runtime session
+navigates the current node through explicit named edges. It owns no I/O, rendering,
+input, time, trigger state, or editor behavior. See
+`R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`.
+
+**R12 I3 implemented (2026-09-04):** versioned Menu `UiDocument` data owns one
+validated stable-ID Container/Text/Button tree, transactional load, atomic save,
+dirty identity, and derived unique Button flow ports compatible with I2. Layout,
+scale, sprite/style, rendering, and editor integration remain absent by design. See
+`R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`.
+
+**R12 I4 implemented (2026-09-04):** `UiDocument` v2 adds design dimensions,
+parent-relative integer rectangles, independent Start/Center/End/Stretch anchors, and
+bounded local per-item scale. The pure allocation-free resolver returns deterministic
+parent/viewport-clipped geometry in document paint order. Version 1 migrates to
+explicit safe defaults. No renderer/editor/global-scale coupling was added. See
+`R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md`.
+
+**R12 I5 implemented (2026-09-04):** `UiDocument` v3 adds native colors,
+fill/border glyph policy, text alignment, default visibility, and numeric sprite visual
+references. Transient focused/pressed/disabled/visible state stays outside persistence;
+state colors use one caller theme and Buttons retain non-color-only markers. The pure
+headless adapter renders into `UiCanvas`, clips all work, and preserves the destination
+on invalid state or missing assets/materials. See
+`R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md`.
+
+**R12 I6 implemented (2026-09-04):** a pure allocation-free interaction module owns
+only focused stable element identity and provides painter-order clipped hit testing,
+wrapped next/previous focus, deterministic four-way directional navigation, transient
+hidden/disabled eligibility, pointer focus, and typed Button activation results. It
+does not route input or invoke flow transitions. See
+`R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md`.
+
+**R12 I7 implemented (2026-09-09):** native scene v11 adds unique bounded named
+`exit_flow` trigger ports. Trigger ticks expose one deterministic borrowed exit request,
+and `scene_flow_adapter` derives borrowed Scene entries for complete I2 catalog/graph
+validation. The existing trigger inspector can designate an exit with a conventional
+unique name. It does not invoke flow navigation or load targets. See
+`R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`.
+
+**R12 I8 implemented (2026-09-09):** `flow_binding` accepts either an I6 Button
+activation from a Menu node or an I7 scene-exit request from a Scene node, advances a
+local copy of `FlowRuntimeSession`, and returns a typed borrowed Scene/Menu target
+request. Wrong source types, invalid activations, missing ports, invalid graphs/sessions,
+and Start targets preserve session/output. It performs no loading, rendering, input,
+I/O, or app/editor mutation. See
+`R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`.
+
+**R12 I9 implemented (2026-09-09):** `UiMenuRuntime` borrows authored Menu/render/flow
+dependencies and owns only transient focus, pressed, visibility/disabled, viewport, and
+active state. Explicit logical keyboard/pointer commands route through I6, rendering
+routes through I5, and successful release hands a typed target through I8 before the
+host deactivates. Menu reset/switch is transactional; the host performs no SDL event
+processing, loading, persistence, or app/editor mutation. See
+`R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`.
+
+**R12 I10 implemented (2026-09-09):** non-repeating `G` opens a game-flow workspace
+inside the unified editor. A headless staged controller presents Start/Scene/Menu nodes,
+outgoing named connections, target choices, and dirty-close choices. Existing edge
+targets can be rewired with bounded Ctrl+Z/Y history and atomic Ctrl+S/Save As/Discard.
+First entry loads `<asset-root>/game.flow` transactionally; malformed input preserves a
+recoverable retained graph. Scene editor state, app menus, and target loading remain
+separate. Focused controller/editor tests, full sanitizers, optimized aggregate tests,
+strict application build, and smoke pass. See
+`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`.
 
 Likely capabilities:
 
@@ -606,11 +679,10 @@ Likely capabilities:
 - preview across logical resolutions and UI scales;
 - keyboard and pointer authoring with visible focus.
 
-First decide absolute coordinates versus anchors/constraints/flow, responsive
-behavior, supported resolutions, interactive preview, templates/styles, safe
-self-editing, and migration of current assets. Building a visual editor for the
-current absolute format immediately before replacing it would create avoidable
-migration work.
+Next add authoritative project catalog composition and graph construction workflows for
+existing Scene/Menu assets and their ports. Interactive preview and the
+compatibility boundary with current application-owned UI assets remain later work.
+R12 does not replace or self-edit the existing editor shell or application menus.
 
 ---
 

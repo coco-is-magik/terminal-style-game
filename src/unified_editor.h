@@ -24,6 +24,7 @@
 #include "sprite_document.h"
 #include "vertical_physics.h"
 #include "entity_trigger_session.h"
+#include "flow_workspace.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -177,6 +178,8 @@ typedef struct {
     int player_map_y;
     VerticalPhysicsState vertical_physics;
     EntityTriggerSession trigger_session;
+    FlowWorkspace flow_workspace;
+    FlowWorkspaceResult last_flow_result;
 
     bool inspector_open;
     EditorInspectorKind inspector_kind;
@@ -301,6 +304,11 @@ SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
 SceneLoadResult unified_editor_import_legacy(UnifiedEditorState *editor,
                                              const char *path);
 SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor);
+FlowWorkspaceResult unified_editor_open_flow_workspace(UnifiedEditorState *editor);
+FlowWorkspaceResult unified_editor_load_flow_workspace(UnifiedEditorState *editor,
+                                                       const char *path);
+FlowWorkspaceResult unified_editor_save_flow_workspace_as(UnifiedEditorState *editor,
+                                                          const char *path);
 
 EditorInputConsumption unified_editor_update(
     UnifiedEditorState *editor,

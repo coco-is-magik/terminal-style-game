@@ -6,6 +6,7 @@
 #include "scene_block_codec.h"
 
 #include <float.h>
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -595,6 +596,29 @@ SceneFormatResult scene_format_migrate_v9_to_v10(
     return SCENE_FORMAT_OK;
 }
 
+SceneFormatResult scene_format_migrate_v10_to_v11(
+    SceneFormatCandidate *candidate, SceneDiagnostic *diagnostic
+) {
+    SceneFormatResult result;
+    if (diagnostic) scene_diagnostic_reset(diagnostic);
+    if (!candidate || candidate->source_version != SCENE_VERSION_V10)
+        return SCENE_FORMAT_INVALID_ARGUMENT;
+    result = scene_format_validate(candidate, NULL, diagnostic);
+    if (result != SCENE_FORMAT_OK) return result;
+    candidate->source_version = SCENE_VERSION_V11;
+    return SCENE_FORMAT_OK;
+}
+
+static bool valid_flow_port(const char *port) {
+    size_t i;
+    if (!port || port[0] == '\0') return false;
+    for (i = 0U; i < SCENE_TRIGGER_FLOW_PORT_CAPACITY && port[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)port[i];
+        if (!(isalnum(c) || c == '_' || c == '-')) return false;
+    }
+    return i < SCENE_TRIGGER_FLOW_PORT_CAPACITY;
+}
+
 SceneFormatResult scene_format_validate(const SceneFormatCandidate *candidate,
                                         const char *path,
                                         SceneDiagnostic *diagnostic) {
@@ -852,6 +876,7 @@ duplicate_sprite:
     for (i = 0U; i < candidate->trigger_count; i++) {
         const SceneTrigger *trigger = &candidate->triggers[i];
         size_t j;
+        size_t exit_count = 0U;
         bool target_found = trigger->action != SCENE_TRIGGER_ACTION_TOGGLE_LIGHT;
         if (trigger->id == 0U || !isfinite(trigger->min_x) ||
             !isfinite(trigger->min_y) || !isfinite(trigger->max_x) ||
@@ -861,16 +886,30 @@ duplicate_sprite:
             trigger->min_x >= trigger->max_x || trigger->min_y >= trigger->max_y ||
             trigger->condition != SCENE_TRIGGER_CONDITION_ENTER_REGION ||
             trigger->action < SCENE_TRIGGER_ACTION_SET_FLAG ||
-            trigger->action > SCENE_TRIGGER_ACTION_TOGGLE_LIGHT ||
+            trigger->action > SCENE_TRIGGER_ACTION_EXIT_FLOW ||
             (trigger->action == SCENE_TRIGGER_ACTION_SET_FLAG &&
              (trigger->flag_id < 1U || trigger->flag_id > SCENE_TRIGGER_FLAG_CAPACITY ||
-              trigger->target_id != 0U)) ||
+               trigger->target_id != 0U || trigger->flow_port[0] != '\0')) ||
             (trigger->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN &&
-             (trigger->flag_id != 0U || trigger->flag_value || trigger->target_id != 0U)) ||
+             (trigger->flag_id != 0U || trigger->flag_value || trigger->target_id != 0U ||
+              trigger->flow_port[0] != '\0')) ||
             (trigger->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
-             (trigger->flag_id != 0U || trigger->flag_value || trigger->target_id == 0U)))
+              (trigger->flag_id != 0U || trigger->flag_value || trigger->target_id == 0U ||
+               trigger->flow_port[0] != '\0')) ||
+            (trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+             (trigger->flag_id != 0U || trigger->flag_value || trigger->target_id != 0U ||
+              !valid_flow_port(trigger->flow_port))))
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                           "trigger", NULL, "invalid trigger value", 0U, trigger->id);
+        if (trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW) {
+            for (j = 0U; j < candidate->trigger_count; j++)
+                if (candidate->triggers[j].action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+                    exit_count++;
+            if (exit_count > SCENE_MAX_FLOW_EXITS)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                              "trigger", "flow_port",
+                              "scene has more than 16 flow exits", 0U, trigger->id);
+        }
         for (j = 0U; j < candidate->light_count; j++) {
             if (candidate->lights[j].id == trigger->id) goto duplicate_trigger;
             if (candidate->lights[j].id == trigger->target_id) target_found = true;
@@ -881,6 +920,13 @@ duplicate_sprite:
             if (candidate->sprites[j].id == trigger->id) goto duplicate_trigger;
         for (j = 0U; j < i; j++)
             if (candidate->triggers[j].id == trigger->id) goto duplicate_trigger;
+            else if (trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+                     candidate->triggers[j].action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+                     strncmp(candidate->triggers[j].flow_port, trigger->flow_port,
+                             SCENE_TRIGGER_FLOW_PORT_CAPACITY) == 0)
+                return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DUPLICATE, path,
+                              "trigger", "flow_port", "duplicate scene flow port",
+                              0U, trigger->id);
         if (!target_found)
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_INSTANCE_REFERENCE, path,
                           "trigger", "target_id", "dangling light target", 0U,
@@ -1071,7 +1117,8 @@ static SceneFormatResult parse_metadata_value(SceneFormatCandidate *candidate,
                    parsed != SCENE_VERSION_V3 && parsed != SCENE_VERSION_V4 &&
                    parsed != SCENE_VERSION_V5 && parsed != SCENE_VERSION_V6 &&
                     parsed != SCENE_VERSION_V7 && parsed != SCENE_VERSION_V8 &&
-                    parsed != SCENE_VERSION_V9 && parsed != SCENE_VERSION_V10))
+                     parsed != SCENE_VERSION_V9 && parsed != SCENE_VERSION_V10 &&
+                     parsed != SCENE_VERSION_V11))
                 return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION,
                               path, NULL, "scene_version", "unsupported scene version",
                               line, 0U);
@@ -1625,6 +1672,7 @@ static SceneFormatResult parse_trigger_field(
     else if (strcmp(key, "flag_id") == 0) bit = 64U;
     else if (strcmp(key, "flag_value") == 0) bit = 128U;
     else if (strcmp(key, "target_id") == 0) bit = 256U;
+    else if (strcmp(key, "flow_port") == 0) bit = 512U;
     else return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_UNKNOWN, path,
                        "trigger", key, "unknown trigger field", line, trigger->id);
     if ((*seen & bit) != 0U)
@@ -1644,6 +1692,8 @@ static SceneFormatResult parse_trigger_field(
             trigger->action = SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN;
         else if (strcmp(value, "toggle_light") == 0)
             trigger->action = SCENE_TRIGGER_ACTION_TOGGLE_LIGHT;
+        else if (strcmp(value, "exit_flow") == 0)
+            trigger->action = SCENE_TRIGGER_ACTION_EXIT_FLOW;
         else goto numeric;
     } else if (bit == 64U) {
         if (!parse_uint_range(value, SCENE_TRIGGER_FLAG_CAPACITY, &number) || !number)
@@ -1652,8 +1702,13 @@ static SceneFormatResult parse_trigger_field(
     } else if (bit == 128U) {
         if (!parse_uint_range(value, 1U, &number)) goto numeric;
         trigger->flag_value = number != 0U;
-    } else if (!parse_u64(value, &trigger->target_id) || trigger->target_id == 0U)
-        goto numeric;
+    } else if (bit == 256U) {
+        if (!parse_u64(value, &trigger->target_id) || trigger->target_id == 0U)
+            goto numeric;
+    } else {
+        if (!valid_flow_port(value)) goto numeric;
+        memcpy(trigger->flow_port, value, strlen(value) + 1U);
+    }
     return SCENE_FORMAT_OK;
 numeric:
     return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_NUMERIC, path, "trigger",
@@ -1724,6 +1779,7 @@ static SceneFormatResult finalize_section(SectionHeader header, unsigned seen,
         required = 63U;
         if (trigger_action == SCENE_TRIGGER_ACTION_SET_FLAG) required |= 64U | 128U;
         else if (trigger_action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT) required |= 256U;
+        else if (trigger_action == SCENE_TRIGGER_ACTION_EXIT_FLOW) required |= 512U;
         if (seen != required)
             return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_REQUIRED_MISSING, path,
                           "trigger", NULL, "missing or inapplicable trigger field",
@@ -2180,6 +2236,20 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
               sizeof(*temporary.optical_cell_overrides),
               compare_optical_cell_overrides);
     }
+    if (temporary.source_version < SCENE_VERSION_V11) {
+        size_t trigger_index;
+        for (trigger_index = 0U; trigger_index < temporary.trigger_count;
+             trigger_index++) {
+            if (temporary.triggers[trigger_index].action ==
+                SCENE_TRIGGER_ACTION_EXIT_FLOW) {
+                result = reject(diagnostic,
+                    SCENE_DIAGNOSTIC_INPUT_UNSUPPORTED_VERSION, path, "trigger",
+                    "action", "exit_flow requires scene version 11", 0U,
+                    temporary.triggers[trigger_index].id);
+                goto done;
+            }
+        }
+    }
     result = scene_format_validate(&temporary, path, diagnostic);
     if (result == SCENE_FORMAT_OK) {
         scene_format_candidate_destroy(out_candidate);
@@ -2578,7 +2648,8 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
             const SceneTrigger *trigger = triggers[i];
             const char *action = trigger->action == SCENE_TRIGGER_ACTION_SET_FLAG
                 ? "set_flag" : trigger->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN
-                ? "teleport_to_spawn" : "toggle_light";
+                ? "teleport_to_spawn" : trigger->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT
+                ? "toggle_light" : "exit_flow";
             APPEND(writer_printf(&writer, "\n[trigger %" PRIu64 "]\nmin_x = ",
                                  trigger->id));
             APPEND(writer_double(&writer, trigger->min_x));
@@ -2596,6 +2667,9 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
             else if (trigger->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT)
                 APPEND(writer_printf(&writer, "target_id = %" PRIu64 "\n",
                                      trigger->target_id));
+            else if (trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+                APPEND(writer_printf(&writer, "flow_port = %s\n",
+                                     trigger->flow_port));
         }
     }
     if (output_version >= SCENE_VERSION_V6) {

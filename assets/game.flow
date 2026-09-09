@@ -1,0 +1,16 @@
+flow_version=1
+next_node_id=3
+next_edge_id=2
+[node]
+id=1
+type=start
+asset=
+[node]
+id=2
+type=scene
+asset=testscene
+[edge]
+id=1
+source=1
+port=start
+target=2

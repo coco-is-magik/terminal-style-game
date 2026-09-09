@@ -1603,6 +1603,27 @@ static void test_trigger_set_insert_remove_undo_redo(void **state) {
     assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 1U);
     assert_int_equal(command_history_redo(&history, &doc), CMD_RESULT_OK);
     assert_int_equal(scene_document_find_trigger(&doc, id)->flag_id, 2U);
+    changed = *scene_document_find_trigger(&doc, id);
+    changed.action = SCENE_TRIGGER_ACTION_EXIT_FLOW;
+    changed.flag_id = 0U;
+    changed.flag_value = false;
+    memcpy(changed.flow_port, "exit", sizeof("exit"));
+    assert_int_equal(command_history_set_trigger(&history, &doc, id, &changed),
+                     CMD_RESULT_OK);
+    prototype.action = SCENE_TRIGGER_ACTION_EXIT_FLOW;
+    prototype.flag_id = 0U;
+    prototype.flag_value = false;
+    memcpy(prototype.flow_port, "exit", sizeof("exit"));
+    {
+        size_t history_count = history.count;
+        size_t trigger_count = doc.trigger_count;
+        SceneInstanceId next_id = doc.next_instance_id;
+        assert_int_equal(command_history_insert_trigger(&history, &doc, &prototype, NULL),
+                         CMD_RESULT_INVALID_TARGET);
+        assert_int_equal(history.count, history_count);
+        assert_int_equal(doc.trigger_count, trigger_count);
+        assert_int_equal(doc.next_instance_id, next_id);
+    }
     command_history_destroy(&history);
     scene_document_destroy(&doc);
 }

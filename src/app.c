@@ -724,6 +724,7 @@ int app_main(int argc, char* argv[]) {
                                      && ued.active
                                      && ued.mode == EDITOR_MODE_WALK
                                       && ued.modal == EDITOR_MODAL_NONE
+                                      && !ued.flow_workspace.active
                                       && unified_editor_has_document(&ued)));
             if (want_lock != mouse_locked) {
                 SDL_SetWindowRelativeMouseMode(ren->window, want_lock);
@@ -800,6 +801,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_place_sprite_pressed = false;
                 input.editor_place_trigger_pressed = false;
                 input.editor_place_object_pressed = false;
+                input.editor_flow_workspace_pressed = false;
                 input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {

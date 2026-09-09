@@ -645,6 +645,25 @@ static void test_trigger_inspector_and_requests(void **state) {
     assert_int_equal(request.data.trigger.value.action,
                      SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN);
     assert_int_equal(request.data.trigger.value.flag_id, 0U);
+    document.triggers[0] = request.data.trigger.value;
+    assert_true(editor_domain_make_trigger_step_request(
+        &document, target, EDITOR_TRIGGER_FIELD_ACTION, 1, &request));
+    document.triggers[0] = request.data.trigger.value;
+    assert_true(editor_domain_make_trigger_step_request(
+        &document, target, EDITOR_TRIGGER_FIELD_ACTION, 1, &request));
+    assert_int_equal(request.data.trigger.value.action, SCENE_TRIGGER_ACTION_EXIT_FLOW);
+    assert_string_equal(request.data.trigger.value.flow_port, "exit");
+    assert_true(editor_domain_format_trigger_field(
+        &request.data.trigger.value, EDITOR_TRIGGER_FIELD_PAYLOAD, text, sizeof(text)));
+    assert_string_equal(text, "exit");
+    document.triggers[0] = request.data.trigger.value;
+    document.light_count = 0U;
+    document.triggers[0].action = SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN;
+    memset(document.triggers[0].flow_port, 0,
+           sizeof(document.triggers[0].flow_port));
+    assert_true(editor_domain_make_trigger_step_request(
+        &document, target, EDITOR_TRIGGER_FIELD_ACTION, 1, &request));
+    assert_int_equal(request.data.trigger.value.action, SCENE_TRIGGER_ACTION_EXIT_FLOW);
     document.triggers[0].min_x = 1.75;
     assert_false(editor_domain_make_trigger_step_request(
         &document, target, EDITOR_TRIGGER_FIELD_MIN_X, 1, &request));

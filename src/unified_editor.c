@@ -110,6 +110,7 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->sprite_field = EDITOR_SPRITE_FIELD_X;
     editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
     entity_trigger_session_reset(&editor->trigger_session);
+    editor->last_flow_result = FLOW_WORKSPACE_OK;
     editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
     editor->sprite_menu_open = false;
     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
@@ -198,6 +199,20 @@ static const char *editor_save_choice_label(EditorSaveChoice choice) {
 
 static void editor_mark_keyboard(EditorInputConsumption *c) {
     c->keyboard_consumed = true;
+}
+
+static FlowWorkspaceInput editor_flow_input(const InputState *input, bool *handled) {
+    *handled = true;
+    if (input->editor_previous_pressed) return FLOW_WORKSPACE_INPUT_PREVIOUS;
+    if (input->editor_next_pressed) return FLOW_WORKSPACE_INPUT_NEXT;
+    if (input->editor_confirm_pressed) return FLOW_WORKSPACE_INPUT_CONFIRM;
+    if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed)
+        return FLOW_WORKSPACE_INPUT_ESCAPE;
+    if (input->editor_save_pressed) return FLOW_WORKSPACE_INPUT_SAVE;
+    if (input->editor_undo_pressed) return FLOW_WORKSPACE_INPUT_UNDO;
+    if (input->editor_redo_pressed) return FLOW_WORKSPACE_INPUT_REDO;
+    *handled = false;
+    return FLOW_WORKSPACE_INPUT_NEXT;
 }
 
 static const char *editor_mode_label(EditorMode mode) {
@@ -738,6 +753,7 @@ bool unified_editor_init(
     command_history_init(&editor->history, 1);
     map_catalog_init(&editor->map_catalog);
     vertical_physics_init(&editor->vertical_physics);
+    flow_workspace_init(&editor->flow_workspace);
     editor->assets = assets;
     editor_reset_session_ui(editor);
     editor->active = true;
@@ -775,8 +791,52 @@ void unified_editor_destroy(UnifiedEditorState *editor) {
     editor->decal_shortlist_capacity = 0U;
     sprite_document_destroy(&editor->sprite_document);
     editor->assets = NULL;
+    flow_workspace_init(&editor->flow_workspace);
     editor->active = false;
     editor_reset_session_ui(editor);
+}
+
+FlowWorkspaceResult unified_editor_open_flow_workspace(UnifiedEditorState *editor) {
+    FlowDocument retained;
+    char path[FLOW_PATH_CAPACITY];
+    int written;
+    if (!editor || !editor->active) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    if (editor->flow_workspace.active) return FLOW_WORKSPACE_OK;
+    if (editor->flow_workspace.document.path[0] == '\0' && editor->asset_root) {
+        written = snprintf(path, sizeof(path), "%s/game.flow", editor->asset_root);
+        if (written < 0 || (size_t)written >= sizeof(path)) {
+            editor->last_flow_result = FLOW_WORKSPACE_INVALID_ARGUMENT;
+            return editor->last_flow_result;
+        }
+        if (access(path, F_OK) == 0) {
+            editor->last_flow_result = flow_workspace_load(
+                &editor->flow_workspace, path);
+            if (editor->last_flow_result == FLOW_WORKSPACE_OK)
+                return editor->last_flow_result;
+            retained = editor->flow_workspace.document;
+            if (flow_workspace_open_document(&editor->flow_workspace, &retained) !=
+                FLOW_WORKSPACE_OK) return editor->last_flow_result;
+            return editor->last_flow_result;
+        }
+    }
+    retained = editor->flow_workspace.document;
+    editor->last_flow_result = flow_workspace_open_document(
+        &editor->flow_workspace, &retained);
+    return editor->last_flow_result;
+}
+
+FlowWorkspaceResult unified_editor_load_flow_workspace(UnifiedEditorState *editor,
+                                                       const char *path) {
+    if (!editor || !editor->active) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    editor->last_flow_result = flow_workspace_load(&editor->flow_workspace, path);
+    return editor->last_flow_result;
+}
+
+FlowWorkspaceResult unified_editor_save_flow_workspace_as(UnifiedEditorState *editor,
+                                                          const char *path) {
+    if (!editor || !editor->active) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    editor->last_flow_result = flow_workspace_save_as(&editor->flow_workspace, path);
+    return editor->last_flow_result;
 }
 
 bool unified_editor_set_material_root(UnifiedEditorState *editor,
@@ -4138,9 +4198,29 @@ EditorInputConsumption unified_editor_update(
                        input->editor_next_pressed ||
                        input->editor_decrease_pressed ||
                        input->editor_increase_pressed ||
-                       input->editor_overwrite_pressed) {
+                       input->editor_overwrite_pressed ||
+                       input->editor_flow_workspace_pressed) {
                 editor_mark_keyboard(&consumed);
             }
+            return consumed;
+        }
+
+        if (editor->flow_workspace.active) {
+            bool handled;
+            FlowWorkspaceInput flow_input = editor_flow_input(input, &handled);
+            if (handled) {
+                editor->last_flow_result = flow_workspace_handle_input(
+                    &editor->flow_workspace, flow_input);
+                editor_mark_keyboard(&consumed);
+            }
+            consumed.pointer_consumed = true;
+            return consumed;
+        }
+
+        if (input->editor_flow_workspace_pressed) {
+            (void)unified_editor_open_flow_workspace(editor);
+            editor_mark_keyboard(&consumed);
+            consumed.pointer_consumed = true;
             return consumed;
         }
 
@@ -4930,6 +5010,83 @@ void unified_editor_render_text_overlay(
         char line[160];
         int row;
 
+        if (editor->flow_workspace.active) {
+            const FlowWorkspace *workspace = &editor->flow_workspace;
+            size_t i;
+            row = 1;
+            snprintf(line, sizeof(line), "GAME FLOW  dirty:%s",
+                     flow_workspace_is_dirty(workspace) ? "yes" : "no");
+            grid_print(grid, 1, row++, line, fg, bg);
+            if (editor->last_flow_result == FLOW_WORKSPACE_SAVE_FAILED)
+                grid_print(grid, 1, row++,
+                           "Flow save failed: use a valid existing path or Save As",
+                           warn, bg);
+            else if (editor->last_flow_result == FLOW_WORKSPACE_INVALID_DOCUMENT)
+                grid_print(grid, 1, row++,
+                           "Flow load failed: project game.flow is invalid",
+                           warn, bg);
+            else if (editor->last_flow_result == FLOW_WORKSPACE_MUTATION_FAILED)
+                grid_print(grid, 1, row++,
+                           "Flow change rejected: graph must remain valid",
+                           warn, bg);
+            if (workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT) {
+                static const char *choices[] = {"Save", "Discard", "Cancel"};
+                grid_print(grid, 1, row++, "Unsaved flow changes", warn, bg);
+                for (i = 0U; i < FLOW_WORKSPACE_CLOSE_CHOICE_COUNT; i++) {
+                    snprintf(line, sizeof(line), " %s %s",
+                        workspace->close_choice == (FlowWorkspaceCloseChoice)i ? ">" : " ",
+                        choices[i]);
+                    grid_print(grid, 1, row++, line,
+                        workspace->close_choice == (FlowWorkspaceCloseChoice)i ? hi : dim, bg);
+                }
+            } else if (workspace->mode == FLOW_WORKSPACE_TARGETS) {
+                grid_print(grid, 1, row++, "TARGET  Up/Down  Enter=rewire  Esc=back", fg, bg);
+                for (i = 0U; i < workspace->document.node_count; i++) {
+                    const FlowNode *node = &workspace->document.nodes[i];
+                    if (node->type == FLOW_NODE_START) continue;
+                    snprintf(line, sizeof(line), " %s %s:%s",
+                        flow_workspace_selected_target(workspace) == node ? ">" : " ",
+                        node->type == FLOW_NODE_SCENE ? "Scene" : "Menu", node->asset_name);
+                    grid_print(grid, 1, row++, line,
+                        flow_workspace_selected_target(workspace) == node ? hi : dim, bg);
+                }
+            } else {
+                grid_print(grid, 1, row++, workspace->mode == FLOW_WORKSPACE_NODES
+                    ? "NODES  Up/Down  Enter=connections  Esc=close"
+                    : "CONNECTIONS  Up/Down  Enter=target  Esc=back", fg, bg);
+                if (workspace->mode == FLOW_WORKSPACE_NODES) {
+                    for (i = 0U; i < workspace->document.node_count; i++) {
+                        const FlowNode *node = &workspace->document.nodes[i];
+                        snprintf(line, sizeof(line), " %s [%u] %s%s%s",
+                            workspace->node_index == i ? ">" : " ", node->id,
+                            node->type == FLOW_NODE_START ? "Start" :
+                            node->type == FLOW_NODE_SCENE ? "Scene:" : "Menu:",
+                            node->type == FLOW_NODE_START ? "" : " ", node->asset_name);
+                        grid_print(grid, 1, row++, line,
+                            workspace->node_index == i ? hi : dim, bg);
+                    }
+                } else {
+                    size_t outgoing = 0U;
+                    const FlowNode *selected = flow_workspace_selected_node(workspace);
+                    for (i = 0U; i < workspace->document.edge_count; i++) {
+                        const FlowEdge *edge = &workspace->document.edges[i];
+                        const FlowNode *target;
+                        if (!selected || edge->source_id != selected->id) continue;
+                        target = flow_document_find_node(&workspace->document, edge->target_id);
+                        snprintf(line, sizeof(line), " %s %s -> %s:%s",
+                            workspace->edge_index == outgoing ? ">" : " ", edge->source_port,
+                            target && target->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                            target ? target->asset_name : "missing");
+                        grid_print(grid, 1, row++, line,
+                            workspace->edge_index == outgoing++ ? hi : dim, bg);
+                    }
+                }
+            }
+            grid_print(grid, 1, grid->height - 1,
+                       "G/Esc=back  Ctrl+S=save existing flow path", dim, bg);
+            return;
+        }
+
         snprintf(line, sizeof(line), "EDITOR  mode:%s  dirty:%s",
                  editor_mode_label(editor->mode),
                  scene_document_is_dirty(&editor->document) ? "yes" : "no");
@@ -5709,7 +5866,7 @@ void unified_editor_render_text_overlay(
             }
         }
         grid_print(grid, 1, grid->height - 2,
-                   "Tab=walk/edit E=select L=place light P=new sprite canvas B=object",
+                   "Tab=walk/edit E=select G=game flow L=place light P=new sprite canvas B=object",
                    dim, bg);
         grid_print(grid, 1, grid->height - 1,
                    "Ctrl+Z/Y=undo/redo  Ctrl+N=new  Ctrl+S=save  Ctrl+O=open",
@@ -5720,6 +5877,7 @@ void unified_editor_render_text_overlay(
 
 bool unified_editor_crosshair_visible(const UnifiedEditorState *editor) {
     return editor && editor->active && unified_editor_has_document(editor) &&
+           !editor->flow_workspace.active &&
            editor->modal != EDITOR_MODAL_MAP_CHOOSER &&
            editor->modal != EDITOR_MODAL_DIRTY_OPEN_PROMPT &&
            editor->modal != EDITOR_MODAL_MATERIAL_COLLISION &&

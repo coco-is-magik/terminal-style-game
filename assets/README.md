@@ -303,9 +303,9 @@ picker over loaded numeric sprite IDs. Choosing one changes only the selected
 object instance through scene command history; it does not mutate the reusable
 object definition.
 
-## Native scene v10 triggers and objects
+## Native scene v11 triggers and objects
 
-Canonical `.tscene` v10 files may contain repeated trigger blocks after sprite
+Canonical `.tscene` v11 files may contain repeated trigger blocks after sprite
 instances. Identity is the scene-wide stable ID in the block header:
 
 ```ini
@@ -322,11 +322,23 @@ flag_value = 1
 
 Actions have exact payloads: `set_flag` requires `flag_id` (`1..64`) and
 `flag_value` (`0` or `1`); `teleport_to_spawn` has no payload; `toggle_light`
-requires `target_id` resolving to a scene light. Regions are finite positive
+requires `target_id` resolving to a scene light; and `exit_flow` requires a unique
+bounded `flow_port` identifier used by the authored progression graph. A scene may
+declare at most 16 flow exits. Regions are finite positive
 half-open rectangles contained by the map. Unknown/inapplicable fields, unknown
 tokens, duplicate IDs, and dangling targets reject the scene transactionally.
 Object instances use `[object <stable-id>]` with `asset_kind = object`, `asset_id`,
 `sprite_asset_id`, `position`, and `front_direction`. The sprite field is
 per-instance; old v10 records that omit it default to the definition's sprite on
-asset-aware load. Versions 1–9 remain readable and migrate forward; canonical
-Save writes v10.
+asset-aware load. Versions 1–10 remain readable and migrate forward; canonical
+Save writes v11.
+
+## Authored project game flow
+
+`assets/game.flow` is the conventional project progression document opened by `G` in
+the unified editor. It uses the strict versioned `FlowDocument` format and references
+authored Scene/Menu names, not files under `ui_layouts`. The checked-in baseline contains
+only `Start -> Scene:testscene`, because no authored game Menu assets or scene exit ports
+are checked in yet. The I10 workspace can browse nodes/connections and rewire existing
+edge targets with Ctrl+Z/Y and Ctrl+S; graph node/port construction remains a later
+catalog-backed workflow.

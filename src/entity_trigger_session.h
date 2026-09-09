@@ -26,6 +26,9 @@ typedef struct {
     double player_angle;
     bool teleported;
     size_t fired_count;
+    bool flow_exit_requested;
+    SceneInstanceId flow_exit_trigger_id;
+    const char *flow_exit_port;
 } EntityTriggerTickResult;
 
 typedef enum {

@@ -106,6 +106,9 @@ SceneFormatResult scene_format_migrate_v8_to_v9(
 SceneFormatResult scene_format_migrate_v9_to_v10(
     SceneFormatCandidate *candidate, SceneDiagnostic *out_diagnostic
 );
+SceneFormatResult scene_format_migrate_v10_to_v11(
+    SceneFormatCandidate *candidate, SceneDiagnostic *out_diagnostic
+);
 
 SceneFormatResult scene_format_parse(
     const char *source,

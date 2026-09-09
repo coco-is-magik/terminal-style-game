@@ -1,6 +1,7 @@
 #include "entity_trigger_session.h"
 
 #include <math.h>
+#include <ctype.h>
 #include <string.h>
 
 static bool point_inside(const SceneTrigger *trigger, double x, double y) {
@@ -15,6 +16,16 @@ static bool light_exists(const SceneLight *lights, size_t count,
     return false;
 }
 
+static bool valid_flow_port(const char *port) {
+    size_t i;
+    if (!port || port[0] == '\0') return false;
+    for (i = 0U; i < SCENE_TRIGGER_FLOW_PORT_CAPACITY && port[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)port[i];
+        if (!(isalnum(c) || c == '_' || c == '-')) return false;
+    }
+    return i < SCENE_TRIGGER_FLOW_PORT_CAPACITY;
+}
+
 static bool trigger_valid(const SceneTrigger *trigger,
                           const SceneLight *lights, size_t light_count) {
     if (!trigger || trigger->id == SCENE_INSTANCE_ID_INVALID ||
@@ -23,14 +34,23 @@ static bool trigger_valid(const SceneTrigger *trigger,
         trigger->min_x >= trigger->max_x || trigger->min_y >= trigger->max_y ||
         trigger->condition != SCENE_TRIGGER_CONDITION_ENTER_REGION ||
         trigger->action < SCENE_TRIGGER_ACTION_SET_FLAG ||
-        trigger->action > SCENE_TRIGGER_ACTION_TOGGLE_LIGHT) return false;
+        trigger->action > SCENE_TRIGGER_ACTION_EXIT_FLOW) return false;
     if (trigger->action == SCENE_TRIGGER_ACTION_SET_FLAG)
         return trigger->flag_id >= 1U &&
-               trigger->flag_id <= SCENE_TRIGGER_FLAG_CAPACITY;
+               trigger->flag_id <= SCENE_TRIGGER_FLAG_CAPACITY &&
+               trigger->target_id == SCENE_INSTANCE_ID_INVALID &&
+               trigger->flow_port[0] == '\0';
     if (trigger->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT)
         return trigger->target_id != SCENE_INSTANCE_ID_INVALID &&
-               light_exists(lights, light_count, trigger->target_id);
-    return true;
+               light_exists(lights, light_count, trigger->target_id) &&
+               trigger->flow_port[0] == '\0';
+    if (trigger->action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+        return trigger->flag_id == 0U && !trigger->flag_value &&
+               trigger->target_id == SCENE_INSTANCE_ID_INVALID &&
+               valid_flow_port(trigger->flow_port);
+    return trigger->flag_id == 0U && !trigger->flag_value &&
+           trigger->target_id == SCENE_INSTANCE_ID_INVALID &&
+           trigger->flow_port[0] == '\0';
 }
 
 static bool was_inside(const EntityTriggerSession *session, SceneInstanceId id) {
@@ -96,11 +116,26 @@ EntityTriggerResult entity_trigger_session_tick(
         return ENTITY_TRIGGER_INVALID_ARGUMENT;
     for (i = 0U; i < trigger_count; i++) {
         size_t duplicate;
+        size_t exit_count = 0U;
         if (!trigger_valid(&triggers[i], lights, light_count))
             return ENTITY_TRIGGER_INVALID_DATA;
-        for (duplicate = 0U; duplicate < i; duplicate++)
+        for (duplicate = 0U; duplicate < i; duplicate++) {
             if (triggers[duplicate].id == triggers[i].id)
                 return ENTITY_TRIGGER_INVALID_DATA;
+            if (triggers[i].action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+                triggers[duplicate].action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+                strncmp(triggers[duplicate].flow_port, triggers[i].flow_port,
+                        SCENE_TRIGGER_FLOW_PORT_CAPACITY) == 0)
+                return ENTITY_TRIGGER_INVALID_DATA;
+        }
+        if (triggers[i].action == SCENE_TRIGGER_ACTION_EXIT_FLOW) {
+            size_t candidate;
+            for (candidate = 0U; candidate < trigger_count; candidate++)
+                if (triggers[candidate].action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+                    exit_count++;
+            if (exit_count > SCENE_MAX_FLOW_EXITS)
+                return ENTITY_TRIGGER_INVALID_DATA;
+        }
         order[i] = i;
         for (j = i; j > 0U &&
              triggers[order[j - 1U]].id > triggers[order[j]].id; j--) {
@@ -108,7 +143,11 @@ EntityTriggerResult entity_trigger_session_tick(
         }
     }
     next = *session;
-    result = (EntityTriggerTickResult){player_x, player_y, 0.0, false, 0U};
+    result = (EntityTriggerTickResult){
+        .player_x = player_x,
+        .player_y = player_y,
+        .player_angle = 0.0
+    };
     for (i = 0U; i < trigger_count; i++) {
         size_t index = order[i];
         const SceneTrigger *trigger = &triggers[index];
@@ -119,9 +158,13 @@ EntityTriggerResult entity_trigger_session_tick(
                 next.flags[trigger->flag_id - 1U] = trigger->flag_value;
             else if (trigger->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT)
                 toggle_light(&next, trigger->target_id);
-            else {
+            else if (trigger->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN) {
                 result.player_x = spawn_x; result.player_y = spawn_y;
                 result.player_angle = spawn_angle; result.teleported = true;
+            } else if (!result.flow_exit_requested) {
+                result.flow_exit_requested = true;
+                result.flow_exit_trigger_id = trigger->id;
+                result.flow_exit_port = trigger->flow_port;
             }
         }
     }

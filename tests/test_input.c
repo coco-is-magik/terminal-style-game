@@ -284,6 +284,24 @@ static void test_ui_scale_shortcuts_are_global_nonrepeat_edges(void **state) {
     assert_false(input.ui_scale_increase_pressed);
 }
 
+static void test_editor_flow_workspace_is_nonrepeat_edge(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_G, false, false, false, 0, 0, 0, NULL
+    };
+    (void)state;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_flow_workspace_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_flow_workspace_pressed);
+    event.repeat = true;
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_flow_workspace_pressed);
+    event.repeat = false;
+    input_apply_event(&input, &event, true);
+    assert_false(input.editor_flow_workspace_pressed);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_frame_reset_preserves_held_and_quit),
@@ -299,6 +317,7 @@ int main(void) {
         cmocka_unit_test(test_editor_place_trigger_is_nonrepeat_edge),
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
+        cmocka_unit_test(test_editor_flow_workspace_is_nonrepeat_edge),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

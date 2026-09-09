@@ -114,6 +114,8 @@ static void rm_rf_tmpdir(void) {
     remove(path);
     path_in_tmpdir(path, sizeof(path), "r8_i5.tscene");
     remove(path);
+    path_in_tmpdir(path, sizeof(path), "game.flow");
+    remove(path);
     rmdir(g_tmpdir);
     g_tmpdir_ready = 0;
 }
@@ -4623,6 +4625,165 @@ static void test_r9_transparency_submenu_master_custom_undo_and_round_trip(void 
     remove(path);
 }
 
+static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    FlowDocument flow;
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId start_edge;
+    FlowEdgeId edge;
+    char path[512];
+    double camera_x;
+    double camera_y;
+    DocumentStateId scene_state;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_scene.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    flow_document_init(&flow);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_SCENE, "mission", &scene),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_MENU, "missions", &menu),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, 1U, "start", scene, &start_edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, scene, "exit", menu, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, menu, "play", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    path_in_tmpdir(path, sizeof(path), "game.flow");
+    assert_int_equal(flow_document_save_as(&flow, path), FLOW_DOCUMENT_OK);
+    assert_int_equal(unified_editor_load_flow_workspace(&editor, path),
+                     FLOW_WORKSPACE_OK);
+    assert_true(editor.flow_workspace.active);
+    assert_false(unified_editor_crosshair_visible(&editor));
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "GAME FLOW"));
+    assert_true(grid_contains_text(grid, "Start"));
+    assert_true(grid_contains_text(grid, "Scene: mission"));
+    assert_true(grid_contains_text(grid, "Menu: missions"));
+    grid_destroy(grid);
+    camera_x = camera.transform.pos.x;
+    camera_y = camera.transform.pos.y;
+    scene_state = editor.document.current_state;
+    zero_input(&input);
+    input.forward = true;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_true(camera.transform.pos.x == camera_x && camera.transform.pos.y == camera_y);
+    assert_int_equal(editor.document.current_state, scene_state);
+
+    zero_input(&input); input.editor_confirm_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(flow_workspace_selected_target(&editor.flow_workspace)->id, menu);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(flow_workspace_is_dirty(&editor.flow_workspace));
+    assert_int_equal(flow_document_find_edge(&editor.flow_workspace.document,
+                                             start_edge)->target_id, menu);
+    zero_input(&input); input.editor_undo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(flow_document_find_edge(&editor.flow_workspace.document,
+                                             start_edge)->target_id, scene);
+    zero_input(&input); input.editor_redo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(flow_document_find_edge(&editor.flow_workspace.document,
+                                             start_edge)->target_id, menu);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_CLOSE_PROMPT);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Unsaved flow changes"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.close_choice,
+                     FLOW_WORKSPACE_CLOSE_DISCARD);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_workspace.active);
+    assert_int_equal(flow_document_find_edge(&editor.flow_workspace.document,
+                                             start_edge)->target_id, scene);
+    assert_true(unified_editor_crosshair_visible(&editor));
+    assert_int_equal(editor.document.current_state, scene_state);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.flow_workspace.active);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_workspace.active);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "G=game flow"));
+    grid_destroy(grid);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
+static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    FlowDocument flow;
+    FlowNodeId scene;
+    FlowEdgeId edge;
+    FlowWorkspace retained;
+    char root[512];
+    char path[512];
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_conventional.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "flow_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    assert_true(snprintf(path, sizeof(path), "%s/game.flow", root) > 0);
+    flow_document_init(&flow);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_SCENE, "mission", &scene),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, 1U, "start", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_save_as(&flow, path), FLOW_DOCUMENT_OK);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.flow_workspace.active);
+    assert_string_equal(editor.flow_workspace.document.path, path);
+    assert_string_equal(editor.flow_workspace.document.nodes[1].asset_name, "mission");
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_workspace.active);
+    retained = editor.flow_workspace;
+    flow_workspace_init(&editor.flow_workspace);
+    editor.flow_workspace.document = retained.document;
+    editor.flow_workspace.saved_document = retained.saved_document;
+    editor.flow_workspace.document.path[0] = '\0';
+    editor.flow_workspace.saved_document.path[0] = '\0';
+    assert_int_equal(write_text_file(path, "flow_version=99\n"), 0);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.flow_workspace.active);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_INVALID_DOCUMENT);
+    assert_int_equal(editor.flow_workspace.document.node_count,
+                     retained.document.node_count);
+    unified_editor_destroy(&editor);
+    remove(path);
+    rmdir(root);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -4715,6 +4876,8 @@ int main(void) {
         cmocka_unit_test(test_r9_i6_optical_authoring_undo_save_reopen),
         cmocka_unit_test(test_r9_i6_optical_submenu_input_and_overlay),
         cmocka_unit_test(test_r9_transparency_submenu_master_custom_undo_and_round_trip),
+        cmocka_unit_test(test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay),
+        cmocka_unit_test(test_r12_i10_g_loads_conventional_flow_transactionally),
         /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */
         cmocka_unit_test(test_object_sprite_picker_assignment_and_undo),
     };

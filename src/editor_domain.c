@@ -408,7 +408,8 @@ bool editor_domain_format_trigger_field(const SceneTrigger *t, EditorTriggerFiel
     else if (field == EDITOR_TRIGGER_FIELD_CONDITION) n = snprintf(out, size, "enter region");
     else if (field == EDITOR_TRIGGER_FIELD_ACTION) n = snprintf(out, size, "%s",
         t->action == SCENE_TRIGGER_ACTION_SET_FLAG ? "set flag" :
-        t->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN ? "teleport to spawn" : "toggle light");
+        t->action == SCENE_TRIGGER_ACTION_TELEPORT_TO_SPAWN ? "teleport to spawn" :
+        t->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT ? "toggle light" : "exit flow");
     else if (field == EDITOR_TRIGGER_FIELD_PAYLOAD) {
         if (t->action == SCENE_TRIGGER_ACTION_SET_FLAG)
             n = snprintf(out, size, "flag %u = %s", t->flag_id,
@@ -416,6 +417,8 @@ bool editor_domain_format_trigger_field(const SceneTrigger *t, EditorTriggerFiel
         else if (t->action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT)
             n = snprintf(out, size, "light %llu",
                          (unsigned long long)t->target_id);
+        else if (t->action == SCENE_TRIGGER_ACTION_EXIT_FLOW)
+            n = snprintf(out, size, "%s", t->flow_port);
         else n = snprintf(out, size, "none");
     }
     else n = snprintf(out, size, "Enter=remove");
@@ -438,14 +441,40 @@ bool editor_domain_make_trigger_step_request(
     else if (field == EDITOR_TRIGGER_FIELD_MAX_X) value.max_x += step;
     else if (field == EDITOR_TRIGGER_FIELD_MAX_Y) value.max_y += step;
     else if (field == EDITOR_TRIGGER_FIELD_ACTION) {
-        int action = (int)value.action + (direction < 0 ? -1 : 1);
-        if (action < 0) action = SCENE_TRIGGER_ACTION_TOGGLE_LIGHT;
-        if (action > SCENE_TRIGGER_ACTION_TOGGLE_LIGHT) action = 0;
+        int action;
+        do {
+            action = (int)value.action + (direction < 0 ? -1 : 1);
+            if (action < 0) action = SCENE_TRIGGER_ACTION_EXIT_FLOW;
+            if (action > SCENE_TRIGGER_ACTION_EXIT_FLOW) action = 0;
+            value.action = (SceneTriggerActionType)action;
+        } while (value.action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
+                 document->light_count == 0U);
         value.action = (SceneTriggerActionType)action;
         value.flag_id = value.action == SCENE_TRIGGER_ACTION_SET_FLAG ? 1U : 0U;
         value.flag_value = value.action == SCENE_TRIGGER_ACTION_SET_FLAG;
         value.target_id = value.action == SCENE_TRIGGER_ACTION_TOGGLE_LIGHT &&
             document->light_count ? document->lights[0].id : 0U;
+        memset(value.flow_port, 0, sizeof(value.flow_port));
+        if (value.action == SCENE_TRIGGER_ACTION_EXIT_FLOW) {
+            unsigned suffix = 1U;
+            bool unique = false;
+            while (!unique) {
+                size_t i;
+                int written = suffix == 1U
+                    ? snprintf(value.flow_port, sizeof(value.flow_port), "exit")
+                    : snprintf(value.flow_port, sizeof(value.flow_port), "exit-%u", suffix);
+                if (written < 0 || (size_t)written >= sizeof(value.flow_port)) return false;
+                unique = true;
+                for (i = 0U; i < document->trigger_count; i++)
+                    if (document->triggers[i].id != value.id &&
+                        document->triggers[i].action == SCENE_TRIGGER_ACTION_EXIT_FLOW &&
+                        strcmp(document->triggers[i].flow_port, value.flow_port) == 0) {
+                        unique = false;
+                        suffix++;
+                        break;
+                    }
+            }
+        }
     } else if (field == EDITOR_TRIGGER_FIELD_PAYLOAD) {
         if (value.action == SCENE_TRIGGER_ACTION_SET_FLAG) {
             int id = (int)value.flag_id + (direction < 0 ? -1 : 1);
