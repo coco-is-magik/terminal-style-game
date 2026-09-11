@@ -212,7 +212,9 @@ application flow invocation remain later R12 integration work. R12 I8 adds the p
 typed bridge from Menu Button or scene-exit activations to failure-atomic Scene/Menu
 flow target requests. R12 I9 adds a headless authored Menu runtime host that composes
 responsive rendering, keyboard/pointer-style logical interaction, transient state, and
-typed target handoff; it still performs no loading or application-state changes.
+typed target handoff; it still performs no loading or application-state changes. R12 is
+verified as of 2026-09-11; closeout evidence is in
+`docs/reviews/2026-09-11-roadmap-r12-closeout.md`.
 
 To measure the scaled layered-UI path that the renderer-only acceptance target
 does not cover, run:

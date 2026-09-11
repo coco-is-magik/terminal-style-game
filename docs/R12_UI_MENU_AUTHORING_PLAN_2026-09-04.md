@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Implementation complete; Ready for Final Manual Retest.** R11 is verified and closed. R12 I1 implements the separate
+**Implementation complete; Verified 2026-09-11.** R11 is verified and closed. R12 I1 implements the separate
 versioned `FlowDocument` graph; I2 implements typed asset/port validation and pure
 runtime navigation; I3 implements the minimum authored Menu `UiDocument` tree and
 Button-port export; I4 adds versioned responsive anchor/Stretch geometry and local

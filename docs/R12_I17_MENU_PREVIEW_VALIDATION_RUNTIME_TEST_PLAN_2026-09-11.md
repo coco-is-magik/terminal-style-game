@@ -93,5 +93,7 @@ rejections preserve typed causes, and zero-port Scenes explain where to author a
 trigger. Successful direct Actions operations now pop shared nested depth before selecting their
 result, preventing repeated hierarchy work from exhausting the nested cursor.
 
-R12 is **Ready for Final Manual Retest**, not Verified. See
+R12 is **Verified as of 2026-09-11**. The remaining hierarchy and Flow display-backed checks were
+manually verified after the second-retest corrections. Test-mode pointer activation remains
+deferred; keyboard Enter is the accepted R12 Test-mode activation path. See
 `reviews/2026-09-11-roadmap-r12-closeout.md`.

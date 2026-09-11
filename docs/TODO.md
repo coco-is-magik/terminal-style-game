@@ -589,7 +589,7 @@ and remove the deprecated runtime loading path with compatibility evidence.
 
 # Interface, UI, and menu authoring
 
-## Unified-editor game-flow and UI/menu workspace — **R12 Ready for Final Manual Retest**
+## Unified-editor game-flow and UI/menu workspace — **R12 verified**
 
 **Wanted:** Visually author interfaces, layouts, and menus instead of manually
 editing text assets. Keep this as a workspace/submode inside the unified Editor,
@@ -723,9 +723,8 @@ and checked-in flow is Start → `main_menu` → `testscene`. Optimized aggregat
 ASan/LeakSanitizer, UBSan, canonical eight-mode matrix, conflict rejection, smoke, legacy/current
 guards, focused suites, and automated Q4 pass. The shared `ui_nested_inspector` owns common
 wrapped navigation, bounded nested rows, and real parent/child Enter/Escape cursor transitions
-used by Flow and Menu. `cppcheck` and Valgrind were unavailable. R12 is **Ready for Manual
-Retest**, not Verified; repeat and record the affected checklist sections in
-`reviews/2026-09-11-roadmap-r12-closeout.md`.
+used by Flow and Menu. `cppcheck` and Valgrind were unavailable. The final manual verification is
+recorded in `reviews/2026-09-11-roadmap-r12-closeout.md`.
 
 **Deferred authored-Menu pointer activation:** Test-mode keyboard focus and Enter activation are
 the accepted R12 path. Display-backed pointer clicking did not activate Buttons reliably in the
@@ -739,7 +738,8 @@ derived parent-first projection while persisted painter order stays unchanged. C
 `main_menu` adds an unconnected `extra_menu` port, making `main_menu.extra_menu → testmenu` an
 obvious valid atomic Flow operation. Focused suites, optimized aggregate, strict `make check`,
 ASan/LeakSanitizer, UBSan, isolated eight-mode matrix/conflict rejection, production build,
-smoke, and guards pass. Only those two display-backed checks remain.
+smoke, and guards pass. The user manually verified the remaining hierarchy and Flow display-backed
+checks on 2026-09-11, so R12 is Verified and closed.
 
 Likely capabilities:
 

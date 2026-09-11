@@ -2,11 +2,14 @@
 
 ## Decision
 
-**Ready for Final Manual Retest; not Verified.** R12 I1–I17 are implemented. The initial
+**Verified and closed on 2026-09-11.** R12 I1–I17 are implemented. The initial
 2026-09-11 display-backed review found blocking history, Edit-preview, nested-controller, and
-checked-in flow-fixture defects; those defects are corrected and all automated correction gates
-pass. Sections 1–3, 5, 7, 10, 14, and 17 already passed. Repeat only affected sections 4, 6, 8,
-9, 11–16, and the previously skipped isolation check 18.
+checked-in flow-fixture defects; those defects were corrected and all automated correction gates
+passed. The second retest exposed only hierarchy presentation and intuitive Flow-fixture gaps;
+those were corrected and their final display-backed hierarchy/Flow checks were manually verified
+by the user on 2026-09-11. Test-mode pointer/click Button activation remains explicitly deferred
+and is not an R12 verification blocker; keyboard Enter activation is the accepted R12 activation
+path.
 
 Observed evidence:
 
@@ -91,9 +94,9 @@ failed-test report.
 - Pointer/Test routing remains isolated from Scene and Flow workspace histories.
 - Existing application/editor UI remains outside R12 authoring and discovery.
 
-## Pending manual acceptance
+## Original pending manual acceptance checklist
 
-Use the ordered checklist returned with this closeout and record the result here. It must cover
+This was the checklist used before the final manual verification recorded below. It covered
 launch/build smoke; unchanged application/editor UI; `Ctrl+U` open/create/save/discard; hierarchy
 construction/content/removal/rename/reparent/reorder; all visual fields; pointer select/move/
 resize/cancel; preview resolution/scale presets; keyboard and pointer Test activation; non-color
@@ -102,10 +105,10 @@ target loads; multiple window sizes/resolutions; application-owned UI isolation;
 
 ## Exit rule
 
-If every manual item passes, append the date/result to this review and mark R12 Verified in the
-roadmap/handoff. If an item fails, record its section, control sequence, expected/actual result,
-window size, and asset; leave R12 at Ready for Final Manual Retest and fix only that regression
-before repeating affected and final checks.
+The pre-final rule was: if every manual item passes, append the date/result to this review and
+mark R12 Verified in the roadmap/handoff; if an item fails, record its section, control sequence,
+expected/actual result, window size, and asset, then fix only that regression before repeating
+affected and final checks. The final result is recorded in the final manual verification section.
 
 ## Correction direction
 
@@ -117,8 +120,9 @@ before repeating affected and final checks.
 5. Reproduce Reparent through public controller input with two alternate Containers and show a
    reason when no valid destination exists.
 
-After focused and full automated gates pass, R12 returns to **Ready for Manual Retest** and only
-the affected checklist sections need repetition.
+After focused and full automated gates passed, only the affected checklist sections needed
+repetition. The final repeated hierarchy and Flow checks passed per the final manual verification
+section.
 
 ## Correction implementation checkpoint
 
@@ -192,5 +196,20 @@ remain; Test-mode pointer activation is explicitly deferred and is not part of t
 Final post-second-retest gates pass: optimized aggregate and strict `make check` status 0;
 ASan/LeakSanitizer and UBSan status 0 with no reports after bounded compile resumes; isolated
 canonical matrix 8/8 with conflict rejection; strict production build, smoke, legacy/current
-guards, and style target status 0 (`cppcheck` unavailable). R12 is **Ready for Final Manual
-Retest** of hierarchy and Flow only.
+guards, and style target status 0 (`cppcheck` unavailable).
+
+## Final manual verification and closeout — 2026-09-11
+
+The user confirmed that the remaining R12 hierarchy and Flow display-backed checks were manually
+verified after the second-retest corrections. This closes the final acceptance gap recorded above:
+
+- the derived parent-first hierarchy presentation for reparented Menu elements is accepted;
+- the checked-in `main_menu.extra_menu → testmenu` Flow operation is accepted as the valid
+  intuitive add/connect path;
+- keyboard Enter remains the accepted Test-mode activation path;
+- reliable display-backed pointer/click Button activation remains deferred to later work and is
+  tracked separately in `../TODO.md`.
+
+R12 is Verified and released from the closeout checkpoint. No implementation or test evidence was
+changed during this documentation closeout; this section records the user-provided final manual
+verification result and aligns the roadmap, TODO, and handoff status with that result.
