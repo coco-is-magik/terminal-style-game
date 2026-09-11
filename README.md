@@ -85,7 +85,8 @@ representative raycast workload.
 
 Open the existing unified editor from the main menu, then press `G` to open the
 game-flow workspace. The first entry loads `assets/game.flow`; the checked-in graph
-connects Start to the existing `testscene` scene. Project choices are composed from
+connects Start to authored `Menu:main_menu`, whose `start_game` Button port connects to
+`Scene:testscene`. Project choices are composed from
 validated direct-child `assets/scenes/*.tscene` scenes and `assets/menus/*.tui` authored
 game menus; application-owned files under `ui_layouts` are not game-flow assets.
 
@@ -96,6 +97,13 @@ game menus; application-owned files under `ui_layouts` are not game-flow assets.
 - `Escape` or `G`: go back; closing a dirty graph opens Save/Discard/Cancel.
 - `Ctrl+Z` / `Ctrl+Y`: undo/redo staged graph construction and rewiring.
 - `Ctrl+S`: atomically save a graph that already has a path.
+
+Graph mutations preserve reachability and report specific rejection causes such as
+`would leave a node unreachable`. A selected Scene with no outgoing ports explains that an
+`exit_flow` trigger must be authored in the Scene editor; the Flow workspace does not edit Scene
+or Menu contents itself. For an obvious valid construction workflow, select `Menu:main_menu`,
+then its unconnected `extra_menu` port, then `Menu:testmenu`; Enter atomically adds and connects
+that Menu without making existing nodes unreachable.
 
 The workspace remains inside the unified editor and suppresses scene movement/look while
 open. I11 can atomically add an existing catalog Scene/Menu while connecting it, connect
@@ -119,8 +127,8 @@ Start Button preview.
   100%, 125%, 150%, 200% presets.
 - `Left` / `Right`: adjust layout, anchors, visuals, colors, glyphs, and visibility.
 - Pointer: click the preview to select, drag an element to move, or drag its `+` handle to resize.
-- `Tab`: enter runtime-like Test mode; arrows move focus, `Enter` activates, pointer
-  down/up uses runtime press/release, and `Escape` or `Tab` returns to editing.
+- `Tab`: enter runtime-like Test mode; arrows move focus, `Enter` activates, and
+  `Escape` or `Tab` returns to editing. Reliable pointer clicking is deferred.
 - `Backspace`: request confirmed removal of a selected non-root element and descendants.
 - `Ctrl+Z` / `Ctrl+Y`: undo/redo bounded layout-property edits.
 - `Ctrl+S`: atomically save the staged Menu.
@@ -132,11 +140,20 @@ selected Container create Container/Text/Button children with deterministic uniq
 and useful initial geometry. Text/Button content and unique Button flow ports use staged
 text entry with Enter-to-commit and Escape-to-cancel. Creation, field commits, layout
 changes, hierarchy structure edits, and confirmed subtree removal share the same 32-command
-undo/redo history. Adjacent order actions move complete sibling subtrees and retain selection
+undo/redo history. The newest 32 commands are retained; reaching capacity evicts the oldest
+command instead of disabling further editing. Adjacent order actions move complete sibling subtrees and retain selection
 by stable element ID. The scrolling property view exposes all existing v3 fields: responsive
 anchors, Native/Sprite mode and Sprite ID, Text/Button alignment, foreground/background RGBA,
 fill/border toggles and printable glyphs, and default visibility. Rows that do not apply to the
 selected element or visual mode are skipped.
+
+The hierarchy is a derived parent-first tree: children appear indented directly beneath their
+current parent after reparenting, while the underlying persisted array remains painter order.
+Sibling ordering and `[i]` labels continue to reflect that unchanged painter/insertion order.
+
+Edit preview shows authored normal RGBA colors while retaining non-color selection markers.
+Runtime focused/pressed/disabled theme colors apply in Test mode. `Reparent (none)` means the
+selected element currently has no alternate valid Container destination.
 
 Pointer manipulation previews live from one exact before snapshot. Releasing commits at most
 one undoable command; `Escape` or `Ctrl+U` cancels and restores the exact prior document. Pointer
@@ -147,7 +164,7 @@ Preview resolution and scale are session-only and use effective logical dimensio
 existing `UiMenuRuntime` and validates a copied `game.flow`/project catalog after overlaying the
 staged Menu's current Button ports. Missing or stale references are displayed immediately.
 Successful activation exits Test mode and reports the copied target node ID, Scene/Menu type,
-and asset name as **reported only**. It does not load the target, change application state,
+and asset name followed by **reported only; no target loaded**. It does not load the target, change application state,
 rewrite `game.flow`, save files, or consume Scene/Flow/Menu history.
 
 Element duplication and application-menu replacement remain later work. Files under

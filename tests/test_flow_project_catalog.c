@@ -23,6 +23,7 @@ static int write_file(const char *path, const char *text) {
 
 static void test_checked_in_catalog_is_typed_sorted_and_valid(void **state) {
     FlowProjectCatalog catalog;
+    FlowDocument flow;
     AssetRegistry assets;
     const FlowReferenceEntry *menu;
     (void)state;
@@ -36,10 +37,19 @@ static void test_checked_in_catalog_is_typed_sorted_and_valid(void **state) {
     menu = flow_reference_find(flow_project_catalog_reference(&catalog),
                                FLOW_NODE_MENU, "main_menu");
     assert_non_null(menu);
-    assert_int_equal(menu->port_count, 1U);
+    assert_int_equal(menu->port_count, 2U);
     assert_string_equal(menu->ports[0], "start_game");
+    assert_string_equal(menu->ports[1], "extra_menu");
     assert_int_equal(flow_reference_validate_catalog(
         flow_project_catalog_reference(&catalog)), FLOW_REFERENCE_OK);
+    flow_document_init(&flow);
+    assert_int_equal(flow_document_load(&flow, "assets/game.flow"), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_reference_validate_document(
+        &flow, flow_project_catalog_reference(&catalog)), FLOW_REFERENCE_OK);
+    assert_int_equal(flow_document_find_edge(&flow, 1U)->target_id, 3U);
+    assert_int_equal(flow_document_find_edge(&flow, 2U)->target_id, 2U);
+    assert_int_equal(flow_document_find_node(&flow, 3U)->type, FLOW_NODE_MENU);
+    assert_string_equal(flow_document_find_node(&flow, 3U)->asset_name, "main_menu");
     asset_registry_clear(&assets);
 }
 

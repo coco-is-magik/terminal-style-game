@@ -15,6 +15,7 @@ typedef struct {
     bool pressed;
     bool disabled;
     bool visible;
+    bool preserve_authored_colors;
 } UiRenderElementState;
 
 typedef struct {

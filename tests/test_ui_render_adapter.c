@@ -50,7 +50,7 @@ static void test_native_fill_border_text_and_state_precedence(void **state) {
     UiElementId panel, button;
     UiDocument document = build_menu(&panel, &button);
     UiCanvas *canvas = ui_canvas_create(12, 6);
-    UiRenderElementState runtime = {button, true, true, true, true};
+    UiRenderElementState runtime = {button, true, true, true, true, false};
     (void)state;
     assert_true(asset_registry_init(&assets));
     assert_non_null(canvas);
@@ -82,7 +82,7 @@ static void test_sprite_scaling_color_clipping_and_markers(void **state) {
     PatternCell cells[] = {{'A', 1U}, {'B', 1U}};
     SDL_Color red = {200, 10, 20, 255};
     UiDocumentVisual visual = document.elements[2].visual;
-    UiRenderElementState runtime = {button, true, false, false, true};
+    UiRenderElementState runtime = {button, true, false, false, true, false};
     (void)state;
     assert_true(asset_registry_init(&assets));
     asset_registry_set_palette(&assets, 1, red, red, red);
@@ -108,7 +108,7 @@ static void test_missing_dependency_and_invalid_state_preserve_canvas(void **sta
     UiDocument document = build_menu(&panel, &button);
     UiCanvas *canvas = ui_canvas_create(10, 5);
     UiDocumentVisual visual = document.elements[2].visual;
-    UiRenderElementState invalid = {999U, false, false, false, true};
+    UiRenderElementState invalid = {999U, false, false, false, true, false};
     Cell before;
     Cell after;
     (void)state;
@@ -185,7 +185,7 @@ static void test_document_order_and_visibility_override(void **state) {
                      UI_RENDER_OK);
     assert_int_equal(canvas_cell(canvas, 0, 0).glyph, 'B');
     assert_int_equal(canvas_cell(canvas, 0, 0).fg.r, 20);
-    hidden = (UiRenderElementState){second, false, false, false, false};
+    hidden = (UiRenderElementState){second, false, false, false, false, false};
     assert_int_equal(ui_render_document(&document, &assets, &hidden, 1U, &theme, canvas),
                      UI_RENDER_OK);
     assert_int_equal(canvas_cell(canvas, 0, 0).glyph, 'A');

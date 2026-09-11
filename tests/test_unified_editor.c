@@ -4809,20 +4809,98 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     grid = grid_create(160, 40);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid);
-    assert_true(grid_contains_text(grid, "+ Menu:main_menu"));
+    assert_true(grid_contains_text(grid, "+ Menu:testmenu"));
     grid_destroy(grid);
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_MUTATION_FAILED);
-    assert_int_equal(editor.flow_workspace.document.node_count, 2U);
+    assert_int_equal(editor.flow_workspace.last_document_result,
+                     FLOW_DOCUMENT_UNREACHABLE_NODE);
+    assert_int_equal(editor.flow_workspace.document.node_count, 3U);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "would leave a node unreachable"));
+    grid_destroy(grid);
     zero_input(&input); input.editor_cancel_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
     zero_input(&input); input.editor_text_backspace_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
     assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_MUTATION_FAILED);
-    assert_int_equal(editor.flow_workspace.document.edge_count, 1U);
+    assert_int_equal(editor.flow_workspace.document.edge_count, 2U);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    editor.flow_workspace.node_index = 1U;
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "No flow ports: author an exit_flow trigger"));
+    grid_destroy(grid);
+    editor.flow_workspace.node_index = 2U;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_string_equal(flow_workspace_selected_port(
+        &editor.flow_workspace), "extra_menu");
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
+    editor.flow_workspace.target_index =
+        flow_workspace_target_count(&editor.flow_workspace) - 1U;
+    assert_string_equal(flow_workspace_selected_asset(
+        &editor.flow_workspace)->name, "testmenu");
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_OK);
+    assert_int_equal(editor.flow_workspace.document.node_count, 4U);
+    assert_int_equal(editor.flow_workspace.document.edge_count, 3U);
+    assert_int_equal(flow_reference_validate_document(
+        &editor.flow_workspace.document, editor.flow_workspace.catalog),
+        FLOW_REFERENCE_OK);
     assert_int_equal(editor.document.current_state, scene_state);
+    unified_editor_destroy(&editor);
+}
+
+static void test_r12_checked_in_main_menu_test_reports_scene_only(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "checked_in_menu_test.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, "assets"));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_string_equal(editor.ui_menu_workspace.document.name, "main_menu");
+    zero_input(&input); input.editor_toggle_mode_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.ui_menu_test_mode);
+    assert_int_equal(editor.ui_menu_test_reference_result, FLOW_REFERENCE_OK);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.ui_menu_test_mode);
+    assert_true(editor.ui_menu_test_target_valid);
+    assert_int_equal(editor.ui_menu_test_target_type, FLOW_NODE_SCENE);
+    assert_string_equal(editor.ui_menu_test_target_name, "testscene");
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "TARGET: Scene:testscene"));
+    assert_true(grid_contains_text(grid, "reported only"));
+    grid_destroy(grid);
     unified_editor_destroy(&editor);
 }
 
@@ -5105,7 +5183,7 @@ static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
     update_with(&editor, &camera, &input);
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
-    for (i = 0U; i < 3U; i++) {
+    for (i = 0U; i < 2U; i++) {
         zero_input(&input); input.editor_next_pressed = true;
         update_with(&editor, &camera, &input);
     }
@@ -5120,7 +5198,6 @@ static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
     assert_true(grid_contains_text(grid, "Reparent"));
     assert_true(grid_contains_text(grid, "Move Earlier"));
     grid_destroy(grid);
-
     editor.ui_menu_workspace.action_index = UI_MENU_ACTION_RENAME;
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
@@ -5229,6 +5306,15 @@ static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **
     assert_true(grid_contains_text(grid, "Border"));
     assert_true(grid_contains_text(grid, "#"));
     grid_destroy(grid);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Reparent (none)"));
+    grid_destroy(grid);
     zero_input(&input); input.editor_undo_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(ui_document_find_element(
@@ -5241,6 +5327,54 @@ static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **
         UI_DOCUMENT_ALIGN_CENTER);
     assert_int_equal(editor.document.current_state, scene_state);
     assert_int_equal(editor.history.count, scene_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_menu_edit_preview_uses_authored_root_colors(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    UiDocumentVisual visual;
+    Grid *grid;
+    Cell preview;
+    SDL_Color expected_fg = {11U, 22U, 33U, 44U};
+    SDL_Color expected_bg = {55U, 66U, 77U, 88U};
+    char root[512];
+    char menus[512];
+    char path[512];
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_edit_colors.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_edit_colors_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    visual = menu.elements[0].visual;
+    visual.fill_enabled = true;
+    visual.fill_glyph = '.';
+    visual.foreground = (UiDocumentColor){11U, 22U, 33U, 44U};
+    visual.background = (UiDocumentColor){55U, 66U, 77U, 88U};
+    assert_int_equal(ui_document_set_visual(&menu, 1U, visual), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_get(grid, 40, 3, &preview));
+    assert_int_equal(preview.glyph, '.');
+    assert_memory_equal(&preview.fg, &expected_fg, sizeof(preview.fg));
+    assert_memory_equal(&preview.bg, &expected_bg, sizeof(preview.bg));
+    grid_destroy(grid);
     unified_editor_destroy(&editor);
     assert_int_equal(unlink(path), 0);
     assert_int_equal(rmdir(menus), 0);
@@ -5576,10 +5710,12 @@ int main(void) {
         cmocka_unit_test(test_r12_i10_g_loads_conventional_flow_transactionally),
         cmocka_unit_test(test_r12_i11_catalog_targets_and_remove_routing),
         cmocka_unit_test(test_r12_i11_catalog_failure_opens_retained_graph_visibly),
+        cmocka_unit_test(test_r12_checked_in_main_menu_test_reports_scene_only),
         cmocka_unit_test(test_r12_i12_visual_menu_workspace_edit_discard_and_create),
         cmocka_unit_test(test_r12_i13_menu_element_actions_text_remove_and_undo),
         cmocka_unit_test(test_r12_i14_menu_hierarchy_actions_route_and_render),
         cmocka_unit_test(test_r12_i15_menu_visual_properties_route_render_and_isolate),
+        cmocka_unit_test(test_r12_menu_edit_preview_uses_authored_root_colors),
         cmocka_unit_test(test_r12_i16_menu_pointer_move_resize_cancel_and_isolate),
         cmocka_unit_test(test_r12_i17_menu_preview_test_target_and_stale_reference),
         /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */

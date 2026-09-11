@@ -45,10 +45,16 @@ asset browsing belongs to a separately scoped picker only if later evidence requ
 
 ## History, persistence, and boundaries
 
-Every adjustment participates in the same heap-owned 32-command exact-document history and
-preserves selected stable element identity across undo/redo. Save/reload preserves all edited
-v3 fields. Transient focused/pressed/disabled theme colors remain separate from authored normal
-colors and non-color state markers remain unchanged.
+Every adjustment participates in the same heap-owned exact-document history. It retains the
+newest 32 commands and evicts the oldest at capacity instead of disabling further editing.
+Selected stable element identity is preserved across undo/redo. Save/reload preserves all edited
+v3 fields. Edit preview shows authored normal colors while retaining non-color selection markers;
+Test mode continues to use transient focused/pressed/disabled theme colors.
+
+Manual acceptance initially exposed two issues not covered by the I15 suite: 255 one-step color
+adjustments exhausted history at 223, and selected/root authored colors were masked by focus-theme
+colors in Edit preview. The closeout correction fixes both and verifies a full 255-step channel
+edit, newest-32 undo/redo retention, and exact root authored RGBA preview cells.
 
 I15 does not add pointer selection, drag/resize, runtime interaction preview, multi-resolution
 preview controls, target loading, HUD binding, application-menu replacement, new element types,

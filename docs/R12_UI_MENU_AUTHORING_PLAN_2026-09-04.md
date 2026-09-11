@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Implementation complete; Ready for Manual Acceptance.** R11 is verified and closed. R12 I1 implements the separate
+**Implementation complete; Ready for Final Manual Retest.** R11 is verified and closed. R12 I1 implements the separate
 versioned `FlowDocument` graph; I2 implements typed asset/port validation and pure
 runtime navigation; I3 implements the minimum authored Menu `UiDocument` tree and
 Button-port export; I4 adds versioned responsive anchor/Stretch geometry and local
@@ -420,7 +420,8 @@ document/transactional workflow used elsewhere in the project.
 
 ## 13. Next safe action
 
-I1–I17 are implemented. Automated Q1–Q4 and all applicable automated closeout gates pass.
-The next safe step is only the display-backed manual acceptance checklist in
+I1–I17 and both manual-review correction rounds are implemented. All applicable focused and broad
+automated gates pass.
+The next safe step is only the two-item hierarchy/Flow display-backed manual retest in
 `reviews/2026-09-11-roadmap-r12-closeout.md`. Do not begin post-R12 work or mark R12 Verified
-until those checks are completed and recorded.
+until the affected checks are completed and recorded.

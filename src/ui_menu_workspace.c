@@ -272,6 +272,37 @@ const UiDocumentElement *ui_menu_workspace_selected_element(
     return &workspace->document.elements[workspace->element_index];
 }
 
+static bool append_hierarchy_children(
+    const UiDocument *document, UiElementId parent_id,
+    size_t out_document_indices[UI_DOCUMENT_MAX_ELEMENTS], size_t *count
+) {
+    size_t i;
+    for (i = 0U; i < document->element_count; i++) {
+        if (document->elements[i].parent_id != parent_id) continue;
+        if (*count >= UI_DOCUMENT_MAX_ELEMENTS) return false;
+        out_document_indices[(*count)++] = i;
+        if (!append_hierarchy_children(document, document->elements[i].id,
+                                       out_document_indices, count)) return false;
+    }
+    return true;
+}
+
+bool ui_menu_workspace_build_hierarchy(
+    const UiMenuWorkspace *workspace,
+    size_t out_document_indices[UI_DOCUMENT_MAX_ELEMENTS], size_t *out_count
+) {
+    size_t count = 0U;
+    if (out_count) *out_count = 0U;
+    if (!workspace || !out_document_indices || !out_count ||
+        !workspace->active || !workspace->has_document ||
+        ui_document_validate(&workspace->document) != UI_DOCUMENT_OK) return false;
+    if (!append_hierarchy_children(&workspace->document, 0U,
+                                   out_document_indices, &count) ||
+        count != workspace->document.element_count) return false;
+    *out_count = count;
+    return true;
+}
+
 static void step(size_t *index, size_t count, bool previous) {
     if (count == 0U) { *index = 0U; return; }
     (void)ui_nested_inspector_step(index, count, previous);
@@ -294,6 +325,14 @@ static void escape_menu_nested(UiMenuWorkspace *workspace) {
         if (index && *index < workspace->document.element_count)
             workspace->element_index = *index;
     }
+}
+
+static void return_from_actions_to_hierarchy(UiMenuWorkspace *workspace,
+                                             UiElementId selected_id) {
+    escape_menu_nested(workspace);
+    workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
+    select_id(workspace, selected_id);
+    sync_menu_nested_index(workspace, workspace->element_index);
 }
 
 static bool workspace_element_descends_from(const UiDocument *document,
@@ -414,7 +453,17 @@ static UiMenuWorkspaceResult navigate(UiMenuWorkspace *workspace, bool previous)
     if (workspace->mode == UI_MENU_WORKSPACE_CHOOSER)
         step(&workspace->chooser_index, workspace->catalog.count + 1U, previous);
     else if (workspace->mode == UI_MENU_WORKSPACE_HIERARCHY) {
-        step(&workspace->element_index, workspace->document.element_count, previous);
+        size_t hierarchy[UI_DOCUMENT_MAX_ELEMENTS];
+        size_t hierarchy_count = 0U;
+        size_t position;
+        if (!ui_menu_workspace_build_hierarchy(
+                workspace, hierarchy, &hierarchy_count))
+            return UI_MENU_WORKSPACE_MUTATION_FAILED;
+        for (position = 0U; position < hierarchy_count; position++)
+            if (hierarchy[position] == workspace->element_index) break;
+        if (position >= hierarchy_count) return UI_MENU_WORKSPACE_MUTATION_FAILED;
+        step(&position, hierarchy_count, previous);
+        workspace->element_index = hierarchy[position];
         sync_menu_nested_index(workspace, workspace->element_index);
     }
     else if (workspace->mode == UI_MENU_WORKSPACE_PROPERTIES) {
@@ -616,8 +665,7 @@ static UiMenuWorkspaceResult add_child(UiMenuWorkspace *workspace,
         UiMenuWorkspaceResult result = record_change(
             workspace, &before, &candidate, parent->id, id);
         if (result == UI_MENU_WORKSPACE_OK) {
-            select_id(workspace, id);
-            workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
+            return_from_actions_to_hierarchy(workspace, id);
         }
         return result;
     }
@@ -706,7 +754,9 @@ static UiMenuWorkspaceResult move_selected(UiMenuWorkspace *workspace, bool late
         UiElementId selected_id = element->id;
         UiMenuWorkspaceResult workspace_result = record_change(
             workspace, &before, &candidate, selected_id, selected_id);
-        if (workspace_result == UI_MENU_WORKSPACE_OK) select_id(workspace, selected_id);
+        if (workspace_result == UI_MENU_WORKSPACE_OK) {
+            return_from_actions_to_hierarchy(workspace, selected_id);
+        }
         return workspace_result;
     }
 }
@@ -740,7 +790,8 @@ static UiMenuWorkspaceResult commit_reparent(UiMenuWorkspace *workspace) {
     {
         UiMenuWorkspaceResult result = record_change(
             workspace, &before, &candidate, element->id, element->id);
-        if (result == UI_MENU_WORKSPACE_OK) workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
+        if (result == UI_MENU_WORKSPACE_OK)
+            return_from_actions_to_hierarchy(workspace, element->id);
         return result;
     }
 }
@@ -761,8 +812,13 @@ static UiMenuWorkspaceResult remove_selected(UiMenuWorkspace *workspace) {
         return UI_MENU_WORKSPACE_MUTATION_FAILED;
     result = record_change(workspace, &before, &candidate, removed_id, parent_id);
     if (result == UI_MENU_WORKSPACE_OK) {
-        select_id(workspace, parent_id);
-        workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
+        if (workspace->close_return_mode == UI_MENU_WORKSPACE_ACTIONS)
+            return_from_actions_to_hierarchy(workspace, parent_id);
+        else {
+            select_id(workspace, parent_id);
+            workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
+            sync_menu_nested_index(workspace, workspace->element_index);
+        }
     }
     return result;
 }
@@ -949,8 +1005,6 @@ static UiMenuWorkspaceResult record_change(UiMenuWorkspace *workspace,
     UiDocument *before_copy;
     UiDocument *after_copy;
     size_t i;
-    if (workspace->change_cursor >= UI_MENU_WORKSPACE_HISTORY_CAPACITY)
-        return UI_MENU_WORKSPACE_HISTORY_FULL;
     before_copy = malloc(sizeof(*before_copy));
     after_copy = malloc(sizeof(*after_copy));
     if (!before_copy || !after_copy) {
@@ -965,6 +1019,16 @@ static UiMenuWorkspaceResult record_change(UiMenuWorkspace *workspace,
         free(workspace->changes[i].after);
         workspace->changes[i].before = NULL;
         workspace->changes[i].after = NULL;
+    }
+    workspace->change_count = workspace->change_cursor;
+    if (workspace->change_cursor == UI_MENU_WORKSPACE_HISTORY_CAPACITY) {
+        free(workspace->changes[0].before);
+        free(workspace->changes[0].after);
+        memmove(&workspace->changes[0], &workspace->changes[1],
+                (UI_MENU_WORKSPACE_HISTORY_CAPACITY - 1U) *
+                    sizeof(workspace->changes[0]));
+        workspace->change_cursor--;
+        workspace->change_count--;
     }
     workspace->changes[workspace->change_cursor] = (UiMenuWorkspaceChange){
         before_copy, after_copy, before_selected_id, after_selected_id};

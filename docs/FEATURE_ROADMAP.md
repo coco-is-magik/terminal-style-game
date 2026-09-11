@@ -227,7 +227,7 @@ Do not create empty review directories or placeholder review files.
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Verified 2026-09-04 — I1–I6 automated/manual gates and final boundary review passed; single-spawn baseline accepted, game-mode expansion unnecessary |
-| R12 | Authored game-flow and responsive UI/menu authoring | R0 UI evidence; stable editor domain patterns | Player-facing visual UI authoring | Ready for Manual Acceptance — I1–I17 and automated Q1–Q4 complete; display-backed exit gate pending |
+| R12 | Authored game-flow and responsive UI/menu authoring | R0 UI evidence; stable editor domain patterns | Player-facing visual UI authoring | Ready for Final Manual Retest — hierarchy/Flow display checks pending; pointer activation deferred |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
 Q4 review findings.
@@ -856,8 +856,9 @@ undo/redo, and handle missing assets/actions safely; Q1–Q3 pass.
 
 ## R12 — Authored game-flow and responsive UI/menu authoring
 
-**Status:** Ready for Manual Acceptance — I1–I17 and automated Q1–Q4 complete;
-display-backed exit-gate checks remain pending. R12 is not Verified. Closeout:
+**Status:** Ready for Final Manual Retest — I1–I17 and both manual-review correction rounds pass
+all automated gates; hierarchy and Flow display checks remain. Pointer activation is deferred.
+R12 is not Verified. Closeout:
 `reviews/2026-09-11-roadmap-r12-closeout.md`. Detailed phase plan:
 `R12_UI_MENU_AUTHORING_PLAN_2026-09-04.md`. I1 decision/implementation record:
 `R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`. I2 record:
@@ -1093,8 +1094,9 @@ closeout: `reviews/2026-09-04-roadmap-r11-closeout.md`.
 Four non-blocking animation/sprite follow-ups are recorded in
 `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`; each requires separate
 investigation or Q1 planning. Start Game native-scene loading is post-editor cleanup.
-R12 is Ready for Manual Acceptance; I1–I17 and automated Q1–Q4 are complete. The final
-display-backed checklist remains pending, so R12 is not Verified. Closeout evidence and the
-manual exit rule are in `reviews/2026-09-11-roadmap-r12-closeout.md`. Open R9 follow-up:
+R12 is Ready for Final Manual Retest; I1–I17, both manual-review correction rounds, and all
+automated correction gates are complete. The hierarchy/Flow display checks remain, so R12 is not
+Verified. Closeout evidence and the manual exit rule are in
+`reviews/2026-09-11-roadmap-r12-closeout.md`. Open R9 follow-up:
 bring the current-renderer flat inherited path under the 6 ms surface-render
 budget.

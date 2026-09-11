@@ -354,6 +354,7 @@ static void test_catalog_connect_add_remove_and_history(void **state) {
     workspace.edge_index = 1U;
     assert_int_equal(flow_workspace_handle_input(&workspace, FLOW_WORKSPACE_INPUT_REMOVE),
                      FLOW_WORKSPACE_MUTATION_FAILED);
+    assert_int_equal(workspace.last_document_result, FLOW_DOCUMENT_UNREACHABLE_NODE);
     assert_int_equal(workspace.document.edge_count, 2U);
     workspace.mode = FLOW_WORKSPACE_NODES;
     workspace.node_index = 2U;
@@ -375,6 +376,39 @@ static void test_catalog_connect_add_remove_and_history(void **state) {
     assert_int_equal(unlink(path), 0);
 }
 
+static void test_history_capacity_evicts_oldest_without_disabling_edits(void **state) {
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId start_edge;
+    FlowDocument document = document_fixture(&scene, &menu, &start_edge);
+    FlowWorkspace workspace;
+    size_t i;
+    (void)state;
+    flow_workspace_init(&workspace);
+    assert_int_equal(flow_workspace_open_document(&workspace, &document),
+                     FLOW_WORKSPACE_OK);
+    for (i = 0U; i < 39U; i++) {
+        FlowNodeId target = i % 2U == 0U ? menu : scene;
+        workspace.mode = FLOW_WORKSPACE_EDGES;
+        workspace.node_index = 0U;
+        workspace.edge_index = 0U;
+        assert_int_equal(flow_workspace_handle_input(
+            &workspace, FLOW_WORKSPACE_INPUT_CONFIRM), FLOW_WORKSPACE_OK);
+        workspace.target_index = target == scene ? 0U : 1U;
+        assert_int_equal(flow_workspace_handle_input(
+            &workspace, FLOW_WORKSPACE_INPUT_CONFIRM), FLOW_WORKSPACE_OK);
+    }
+    assert_int_equal(workspace.change_count, FLOW_WORKSPACE_HISTORY_CAPACITY);
+    assert_int_equal(workspace.change_cursor, FLOW_WORKSPACE_HISTORY_CAPACITY);
+    assert_int_equal(flow_document_find_edge(
+        &workspace.document, start_edge)->target_id, menu);
+    for (i = 0U; i < FLOW_WORKSPACE_HISTORY_CAPACITY; i++)
+        assert_int_equal(flow_workspace_undo(&workspace), FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_document_find_edge(
+        &workspace.document, start_edge)->target_id, menu);
+    assert_int_equal(flow_workspace_undo(&workspace), FLOW_WORKSPACE_NO_ACTION);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_shared_nested_inspector_navigation_and_rows),
@@ -385,6 +419,7 @@ int main(void) {
         cmocka_unit_test(test_undo_redo_save_identity_and_branch_truncation),
         cmocka_unit_test(test_dirty_close_default_save_commits_and_closes),
         cmocka_unit_test(test_catalog_connect_add_remove_and_history)
+        ,cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

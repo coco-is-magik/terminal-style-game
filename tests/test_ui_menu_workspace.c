@@ -359,6 +359,23 @@ static void test_i14_rename_reparent_and_adjacent_subtree_history(void **state) 
     assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
     assert_int_equal(ui_document_find_element(
         &workspace.document, first_child)->parent_id, second);
+    {
+        size_t hierarchy[UI_DOCUMENT_MAX_ELEMENTS];
+        size_t hierarchy_count = 0U;
+        assert_true(ui_menu_workspace_build_hierarchy(
+            &workspace, hierarchy, &hierarchy_count));
+        assert_int_equal(hierarchy_count, 5U);
+        assert_int_equal(workspace.document.elements[hierarchy[0]].id, 1U);
+        assert_int_equal(workspace.document.elements[hierarchy[1]].id, first);
+        assert_int_equal(workspace.document.elements[hierarchy[2]].id, second);
+        assert_int_equal(workspace.document.elements[hierarchy[3]].id, first_child);
+        assert_int_equal(workspace.document.elements[hierarchy[4]].id, second_child);
+        assert_int_equal(workspace.document.elements[3].id, first_child);
+        workspace.mode = UI_MENU_WORKSPACE_HIERARCHY;
+        workspace.element_index = hierarchy[2];
+        assert_int_equal(ui_menu_workspace_next(&workspace), UI_MENU_WORKSPACE_OK);
+        assert_int_equal(ui_menu_workspace_selected_element(&workspace)->id, first_child);
+    }
     assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
     assert_int_equal(ui_document_find_element(
         &workspace.document, first_child)->parent_id, first);
@@ -619,6 +636,99 @@ static void test_i17_preview_settings_are_session_only(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+static void test_history_capacity_evicts_oldest_without_disabling_edits(void **state) {
+    UiMenuWorkspace workspace;
+    char root[64], menus[96], path[128];
+    size_t i;
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.property = UI_MENU_PROPERTY_FOREGROUND_BLUE;
+    for (i = 0U; i < 255U; i++)
+        assert_int_equal(ui_menu_workspace_adjust(&workspace, -1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(
+        &workspace)->visual.foreground.blue, 0U);
+    assert_int_equal(workspace.change_count, UI_MENU_WORKSPACE_HISTORY_CAPACITY);
+    assert_int_equal(workspace.change_cursor, UI_MENU_WORKSPACE_HISTORY_CAPACITY);
+    for (i = 0U; i < UI_MENU_WORKSPACE_HISTORY_CAPACITY; i++)
+        assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(
+        &workspace)->visual.foreground.blue, UI_MENU_WORKSPACE_HISTORY_CAPACITY);
+    for (i = 0U; i < UI_MENU_WORKSPACE_HISTORY_CAPACITY; i++)
+        assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(
+        &workspace)->visual.foreground.blue, 0U);
+    assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust(&workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.change_count, UI_MENU_WORKSPACE_HISTORY_CAPACITY);
+    assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_NO_ACTION);
+    workspace.mode = UI_MENU_WORKSPACE_HIERARCHY;
+    workspace.element_index = 1U;
+    assert_int_equal(ui_menu_workspace_pointer_press(&workspace, 2, 3, 80, 25),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_pointer_motion(&workspace, 4, 4),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_pointer_release(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(&workspace)->layout.x, 4);
+    assert_int_equal(ui_menu_workspace_selected_element(&workspace)->layout.y, 4);
+    assert_int_equal(workspace.change_count, UI_MENU_WORKSPACE_HISTORY_CAPACITY);
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_created_hierarchy_exposes_valid_reparent_destination(void **state) {
+    UiMenuWorkspace workspace;
+    UiElementId first_container;
+    UiElementId second_container;
+    UiElementId child;
+    char root[64], menus[96];
+    (void)state;
+    make_paths(root, menus);
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "menu"),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_ADD_CONTAINER;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    first_container = ui_menu_workspace_selected_element(&workspace)->id;
+    workspace.element_index = 0U;
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_ADD_CONTAINER;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    second_container = ui_menu_workspace_selected_element(&workspace)->id;
+    workspace.element_index = 1U;
+    assert_int_equal(ui_menu_workspace_selected_element(&workspace)->id, first_container);
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_ADD_TEXT;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    child = ui_menu_workspace_selected_element(&workspace)->id;
+    assert_true(ui_menu_workspace_action_available(
+        &workspace, UI_MENU_ACTION_REPARENT));
+    assert_true(ui_menu_workspace_reparent_target_available(&workspace, 0U));
+    assert_true(ui_menu_workspace_reparent_target_available(&workspace, 2U));
+    assert_int_equal(workspace.mode, UI_MENU_WORKSPACE_HIERARCHY);
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_REPARENT;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.reparent_index = 2U;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_document_find_element(
+        &workspace.document, child)->parent_id, second_container);
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
@@ -631,6 +741,8 @@ int main(void) {
         ,cmocka_unit_test(test_i15_visual_properties_history_and_persistence)
         ,cmocka_unit_test(test_i16_pointer_select_move_resize_cancel_and_history)
         ,cmocka_unit_test(test_i17_preview_settings_are_session_only)
+        ,cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits)
+        ,cmocka_unit_test(test_created_hierarchy_exposes_valid_reparent_destination)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

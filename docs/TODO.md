@@ -589,7 +589,7 @@ and remove the deprecated runtime loading path with compatibility evidence.
 
 # Interface, UI, and menu authoring
 
-## Unified-editor game-flow and UI/menu workspace — **R12 Ready for Manual Acceptance**
+## Unified-editor game-flow and UI/menu workspace — **R12 Ready for Final Manual Retest**
 
 **Wanted:** Visually author interfaces, layouts, and menus instead of manually
 editing text assets. Keep this as a workspace/submode inside the unified Editor,
@@ -715,13 +715,31 @@ target as `reported only`. No target loads, app state changes, `game.flow` rewri
 cross-document history are introduced. See
 `R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`.
 
-**R12 automated closeout complete (2026-09-11):** optimized aggregate, strict `make check`,
+**R12 correction verification complete (2026-09-11):** the first manual review found history
+exhaustion, masked Edit-preview colors, nested Actions-depth leakage, and a non-representative
+checked-in flow. Histories now retain the newest 32 while accepting further edits; Edit shows
+authored colors; direct Actions exits pop shared depth; typed Flow diagnostics explain failures;
+and checked-in flow is Start → `main_menu` → `testscene`. Optimized aggregate, strict `make check`,
 ASan/LeakSanitizer, UBSan, canonical eight-mode matrix, conflict rejection, smoke, legacy/current
 guards, focused suites, and automated Q4 pass. The shared `ui_nested_inspector` owns common
 wrapped navigation, bounded nested rows, and real parent/child Enter/Escape cursor transitions
 used by Flow and Menu. `cppcheck` and Valgrind were unavailable. R12 is **Ready for Manual
-Acceptance**, not Verified; complete and record the checklist in
+Retest**, not Verified; repeat and record the affected checklist sections in
 `reviews/2026-09-11-roadmap-r12-closeout.md`.
+
+**Deferred authored-Menu pointer activation:** Test-mode keyboard focus and Enter activation are
+the accepted R12 path. Display-backed pointer clicking did not activate Buttons reliably in the
+second manual retest and is explicitly deferred by the user. A later scoped increment should
+trace application-edge pointer coordinates through `UiMenuRuntime` down/up semantics, add a
+real-window regression where practical, and make authored Buttons reliably clickable without
+changing report-only target behavior. This is not an R12 verification blocker.
+
+**Second-retest corrections verified (2026-09-11):** hierarchy rendering and Up/Down share a
+derived parent-first projection while persisted painter order stays unchanged. Checked-in
+`main_menu` adds an unconnected `extra_menu` port, making `main_menu.extra_menu → testmenu` an
+obvious valid atomic Flow operation. Focused suites, optimized aggregate, strict `make check`,
+ASan/LeakSanitizer, UBSan, isolated eight-mode matrix/conflict rejection, production build,
+smoke, and guards pass. Only those two display-backed checks remain.
 
 Likely capabilities:
 

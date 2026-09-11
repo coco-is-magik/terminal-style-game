@@ -72,7 +72,7 @@ static void state_colors(const UiDocumentVisual *visual,
                          SDL_Color *fg, SDL_Color *bg) {
     *fg = color(visual->foreground);
     *bg = color(visual->background);
-    if (!state) return;
+    if (!state || state->preserve_authored_colors) return;
     if (state->disabled) {
         *fg = color(theme->disabled_foreground);
         *bg = color(theme->disabled_background);

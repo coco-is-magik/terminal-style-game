@@ -5324,6 +5324,18 @@ static const char *editor_flow_reference_result(FlowReferenceResult result) {
     }
 }
 
+static const char *editor_flow_document_result(FlowDocumentResult result) {
+    switch (result) {
+        case FLOW_DOCUMENT_UNREACHABLE_NODE: return "would leave a node unreachable";
+        case FLOW_DOCUMENT_DUPLICATE_SOURCE_PORT: return "source port is already connected";
+        case FLOW_DOCUMENT_MISSING_NODE: return "node is missing";
+        case FLOW_DOCUMENT_INVALID_PORT: return "port is invalid";
+        case FLOW_DOCUMENT_FULL: return "graph capacity reached";
+        case FLOW_DOCUMENT_ID_EXHAUSTED: return "graph identity/history exhausted";
+        default: return "graph must remain valid";
+    }
+}
+
 static const char *editor_flow_node_type(FlowNodeType type) {
     if (type == FLOW_NODE_SCENE) return "Scene";
     if (type == FLOW_NODE_MENU) return "Menu";
@@ -5532,22 +5544,35 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
                        editor->ui_menu_test_reference_result == FLOW_REFERENCE_OK ? hi : warn, bg);
         }
         if (editor->ui_menu_test_target_valid) {
-            snprintf(line, sizeof(line), "TARGET: %s:%s [%u] (reported only)",
+            snprintf(line, sizeof(line), "TARGET: %s:%s [%u]",
                      editor_flow_node_type(editor->ui_menu_test_target_type),
                      editor->ui_menu_test_target_name, editor->ui_menu_test_target_id);
             grid_print(grid, 1, row++, line, hi, bg);
+            grid_print(grid, 1, row++, "(reported only; no target loaded)", hi, bg);
         }
         grid_print(grid, 1, row++, "HIERARCHY", fg, bg);
-        for (i = 0U; i < workspace->document.element_count && row < grid->height - 8; i++) {
-            const UiDocumentElement *element = &workspace->document.elements[i];
-            size_t depth = editor_ui_element_depth(&workspace->document, element);
-            char label[96];
-            snprintf(label, sizeof(label), "[%u] %s:%s", element->id,
-                     editor_ui_element_type(element->type), element->name);
-            (void)ui_nested_inspector_format_row(line, sizeof(line),
-                workspace->element_index == i, depth, i, label);
-            grid_print(grid, 1, row++, line,
-                       workspace->element_index == i ? hi : dim, bg);
+        {
+            size_t hierarchy[UI_DOCUMENT_MAX_ELEMENTS];
+            size_t hierarchy_count = 0U;
+            size_t hierarchy_row;
+            if (!ui_menu_workspace_build_hierarchy(
+                    workspace, hierarchy, &hierarchy_count)) hierarchy_count = 0U;
+            for (hierarchy_row = 0U;
+                 hierarchy_row < hierarchy_count && row < grid->height - 8;
+                 hierarchy_row++) {
+                size_t document_index = hierarchy[hierarchy_row];
+                const UiDocumentElement *element =
+                    &workspace->document.elements[document_index];
+                size_t depth = editor_ui_element_depth(&workspace->document, element);
+                char label[96];
+                snprintf(label, sizeof(label), "[%u] %s:%s", element->id,
+                         editor_ui_element_type(element->type), element->name);
+                (void)ui_nested_inspector_format_row(line, sizeof(line),
+                    workspace->element_index == document_index, depth,
+                    document_index, label);
+                grid_print(grid, 1, row++, line,
+                           workspace->element_index == document_index ? hi : dim, bg);
+            }
         }
         if (selected) {
             size_t first_property = 0U;
@@ -5589,9 +5614,11 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
             for (i = 0U; i < UI_MENU_ACTION_COUNT; i++) {
                 bool available = ui_menu_workspace_action_available(
                     workspace, (UiMenuAction)i);
+                const char *unavailable = i == UI_MENU_ACTION_REPARENT && !available
+                    ? " (none)" : available ? "" : " (n/a)";
                 snprintf(line, sizeof(line), " %s %s%s",
                     workspace->action_index == i ? ">" : " ", action_names[i],
-                    available ? "" : " (n/a)");
+                    unavailable);
                 grid_print(grid, action_x, action_row++, line,
                     workspace->action_index == i ? hi : dim, bg);
             }
@@ -5604,7 +5631,7 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
             canvas = (UiCanvas){preview_width, preview_height, cells, touched};
             if (selected) {
                 selected_state = (UiRenderElementState){
-                    selected->id, true, false, false, true};
+                    selected->id, true, false, false, true, true};
                 state_count = 1U;
             }
             if (editor->ui_menu_test_mode)
@@ -5705,9 +5732,13 @@ void unified_editor_render_text_overlay(
                            "Flow load failed: project game.flow is invalid",
                            warn, bg);
             else if (editor->last_flow_result == FLOW_WORKSPACE_MUTATION_FAILED)
-                grid_print(grid, 1, row++,
-                           "Flow change rejected: graph must remain valid",
-                           warn, bg);
+            {
+                const char *reason = workspace->last_document_result != FLOW_DOCUMENT_OK
+                    ? editor_flow_document_result(workspace->last_document_result)
+                    : editor_flow_reference_result(workspace->last_reference_result);
+                snprintf(line, sizeof(line), "Flow change rejected: %s", reason);
+                grid_print(grid, 1, row++, line, warn, bg);
+            }
             else if (editor->last_flow_result == FLOW_WORKSPACE_CATALOG_FAILED)
                 grid_print(grid, 1, row++,
                            "Flow catalog failed: fix invalid project Scene/Menu assets",
@@ -5770,6 +5801,17 @@ void unified_editor_render_text_overlay(
                             workspace->node_index == i, 0U, i, label);
                         grid_print(grid, 1, row++, line,
                             workspace->node_index == i ? hi : dim, bg);
+                    }
+                    {
+                        const FlowNode *selected = flow_workspace_selected_node(workspace);
+                        const FlowReferenceEntry *entry = selected && workspace->catalog
+                            ? flow_reference_find(workspace->catalog, selected->type,
+                                                  selected->asset_name) : NULL;
+                        if (selected && selected->type != FLOW_NODE_START && entry &&
+                            entry->port_count == 0U)
+                            grid_print(grid, 1, row++, selected->type == FLOW_NODE_SCENE
+                                ? "No flow ports: author an exit_flow trigger in the Scene"
+                                : "No flow ports: author a Button port in the Menu", warn, bg);
                     }
                 } else {
                     const FlowNode *selected = flow_workspace_selected_node(workspace);

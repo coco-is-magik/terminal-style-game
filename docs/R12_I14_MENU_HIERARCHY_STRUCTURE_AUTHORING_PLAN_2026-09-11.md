@@ -50,6 +50,12 @@ or `ui_elements`.
 
 ## Implementation refinements and failed checks
 
+- The second R12 manual retest found that reparenting changed `parent_id` but hierarchy rows still
+  followed raw painter-array order. The closeout correction adds a derived parent-first depth-first
+  projection shared by hierarchy rendering and Up/Down. Siblings retain painter order, stable IDs
+  and persisted array order are unchanged, and a reparented child now appears directly beneath its
+  current parent.
+
 - The first strict workspace compile rejected use of `ui_document.c`'s private ancestry helper.
   A workspace-local read-only helper now preserves the module boundary.
 - The first workspace regression selected the root because root is a valid alternative parent;

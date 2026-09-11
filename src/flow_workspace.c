@@ -13,6 +13,8 @@ void flow_workspace_init(FlowWorkspace *workspace) {
     memset(workspace, 0, sizeof(*workspace));
     flow_document_init(&workspace->document);
     workspace->saved_document = workspace->document;
+    workspace->last_document_result = FLOW_DOCUMENT_OK;
+    workspace->last_reference_result = FLOW_REFERENCE_OK;
 }
 
 static void clear_history(FlowWorkspace *workspace) {
@@ -212,8 +214,14 @@ static bool escape_nested(FlowWorkspace *workspace, size_t *parent_index) {
 static FlowWorkspaceResult record_change(FlowWorkspace *workspace,
                                          const FlowDocument *before,
                                          const FlowDocument *after) {
-    if (workspace->change_cursor >= FLOW_WORKSPACE_HISTORY_CAPACITY)
-        return FLOW_WORKSPACE_MUTATION_FAILED;
+    workspace->change_count = workspace->change_cursor;
+    if (workspace->change_cursor == FLOW_WORKSPACE_HISTORY_CAPACITY) {
+        memmove(&workspace->changes[0], &workspace->changes[1],
+                (FLOW_WORKSPACE_HISTORY_CAPACITY - 1U) *
+                    sizeof(workspace->changes[0]));
+        workspace->change_cursor--;
+        workspace->change_count--;
+    }
     workspace->changes[workspace->change_cursor].before = *before;
     workspace->changes[workspace->change_cursor].after = *after;
     workspace->change_cursor++;
@@ -225,13 +233,20 @@ static FlowWorkspaceResult record_change(FlowWorkspace *workspace,
 static FlowWorkspaceResult commit_candidate(FlowWorkspace *workspace,
                                             const FlowDocument *before,
                                             FlowDocument *candidate) {
-    if (flow_document_validate(candidate) != FLOW_DOCUMENT_OK ||
-        (workspace->catalog && flow_reference_validate_document(
-            candidate, workspace->catalog) != FLOW_REFERENCE_OK))
+    workspace->last_document_result = flow_document_validate(candidate);
+    workspace->last_reference_result = workspace->catalog
+        ? flow_reference_validate_document(candidate, workspace->catalog)
+        : FLOW_REFERENCE_OK;
+    if (workspace->last_document_result != FLOW_DOCUMENT_OK ||
+        workspace->last_reference_result != FLOW_REFERENCE_OK)
         return FLOW_WORKSPACE_MUTATION_FAILED;
     candidate->state = before->state;
-    if (!asset_document_state_advance(&candidate->state))
+    if (!asset_document_state_advance(&candidate->state)) {
+        workspace->last_document_result = FLOW_DOCUMENT_ID_EXHAUSTED;
         return FLOW_WORKSPACE_MUTATION_FAILED;
+    }
+    workspace->last_document_result = FLOW_DOCUMENT_OK;
+    workspace->last_reference_result = FLOW_REFERENCE_OK;
     return record_change(workspace, before, candidate);
 }
 
@@ -303,7 +318,11 @@ static FlowWorkspaceResult remove_selection(FlowWorkspace *workspace) {
         if (!node || node->type == FLOW_NODE_START) return FLOW_WORKSPACE_NO_ACTION;
         result = flow_document_remove_node(&candidate, node->id);
     } else return FLOW_WORKSPACE_NO_ACTION;
-    if (result != FLOW_DOCUMENT_OK) return FLOW_WORKSPACE_MUTATION_FAILED;
+    if (result != FLOW_DOCUMENT_OK) {
+        workspace->last_document_result = result;
+        workspace->last_reference_result = FLOW_REFERENCE_OK;
+        return FLOW_WORKSPACE_MUTATION_FAILED;
+    }
     if (workspace->node_index >= candidate.node_count)
         workspace->node_index = candidate.node_count - 1U;
     return commit_candidate(workspace, &before, &candidate);
@@ -324,7 +343,11 @@ static FlowWorkspaceResult choose_target(FlowWorkspace *workspace) {
     if (!source || !port || (!target && !asset)) return FLOW_WORKSPACE_NO_ACTION;
     if (asset) {
         result = flow_document_add_node(&candidate, asset->type, asset->name, &target_id);
-        if (result != FLOW_DOCUMENT_OK) return FLOW_WORKSPACE_MUTATION_FAILED;
+        if (result != FLOW_DOCUMENT_OK) {
+            workspace->last_document_result = result;
+            workspace->last_reference_result = FLOW_REFERENCE_OK;
+            return FLOW_WORKSPACE_MUTATION_FAILED;
+        }
     } else target_id = target->id;
     if (edge) {
         if (edge->target_id == target_id) {
@@ -335,7 +358,11 @@ static FlowWorkspaceResult choose_target(FlowWorkspace *workspace) {
     } else {
         result = flow_document_connect(&candidate, source->id, port, target_id, &edge_id);
     }
-    if (result != FLOW_DOCUMENT_OK) return FLOW_WORKSPACE_MUTATION_FAILED;
+    if (result != FLOW_DOCUMENT_OK) {
+        workspace->last_document_result = result;
+        workspace->last_reference_result = FLOW_REFERENCE_OK;
+        return FLOW_WORKSPACE_MUTATION_FAILED;
+    }
     workspace_result = commit_candidate(workspace, &before, &candidate);
     if (workspace_result == FLOW_WORKSPACE_OK) {
         (void)escape_nested(workspace, &workspace->edge_index);

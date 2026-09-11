@@ -1,14 +1,37 @@
-# Active Handoff — R12 Ready for Manual Acceptance — 2026-09-11
+# Active Handoff — R12 Ready for Final Manual Retest — 2026-09-11
 
 ## Current status
 
-**Current continuation point:** R12 I1–I17 are implemented. Automated Q1/Q2, all applicable
-Q3 gates, and final automated Q4 pass. R12 is **Ready for Manual Acceptance**, not Verified.
-Complete only the display-backed checklist in
-`reviews/2026-09-11-roadmap-r12-closeout.md`; do not begin post-R12 work. I17 adds session-only
-resolution/UI-scale preview, `Tab` runtime-like Menu Test mode, current staged-port diagnostics,
-and report-only typed targets. The final Q4 correction adds shared `ui_nested_inspector`
-stepping, rows, and actual retained-depth Enter/Escape transitions used by Flow and Menu.
+**Current continuation point:** R12 manual acceptance failed on 2026-09-11; corrections are
+implemented and all focused/broad automated gates pass. R12 is **Ready for Final Manual Retest**, not
+Verified. The display review confirmed a permanent 32-command Menu
+history stop, focus-theme masking of authored Edit-preview RGBA, and a checked-in flow fixture
+that cannot add a Menu while preserving reachability because no real Scene exports a free port.
+Test-mode `missing asset` and the blocked activation/stale-port checks follow from that fixture.
+Exact evidence and the correction direction are in
+`reviews/2026-09-11-roadmap-r12-closeout.md`. Do not begin post-R12 work.
+
+Implemented correction checkpoint: bounded Menu/Flow histories evict oldest entries; Edit preview
+shows authored colors without losing non-color markers; checked-in flow is Start → main_menu →
+testscene; Flow diagnostics are typed; Reparent unavailability is explained; and successful
+Actions operations now pop shared nested depth before selecting their result. Focused strict
+results are FlowDocument 7/7, catalog 3/3, Flow 9/9, Menu 12/12, render adapter 6/6, and
+unified editor 97/97. Optimized aggregate, strict `make check`, ASan/LeakSanitizer, UBSan,
+eight-mode matrix/conflict rejection, production build, smoke, and guards all pass. Repeat only
+manual sections 4, 6, 8, 9, 11–16, and 18; do not begin post-R12 work.
+
+Second retest passed all corrected behavior except hierarchy presentation and an intuitive valid
+Flow mutation. Reparent currently changes data but raw painter-order rows do not move beneath the
+new parent. The valid checked-in graph has no valid alternate edge target. Implement a derived
+parent-first hierarchy view and an unconnected `main_menu.extra_menu` Button port for atomic
+add/connect to `testmenu`. Test-mode pointer activation is explicitly deferred by the user and
+must be tracked as a TODO rather than included in the remaining R12 gate.
+
+Second-retest corrections are implemented and all automated gates pass. Menu hierarchy rendering and
+Up/Down now use one derived parent-first projection while document/painter order remains unchanged.
+Checked-in `main_menu` adds an `EXTRA`/`extra_menu` Button after `START`; the intuitive valid Flow
+operation is `main_menu.extra_menu → testmenu`. Remaining work is only a two-item manual retest
+for hierarchy and Flow. Pointer activation stays deferred in TODO.
 
 **R9 and R10 are Released and Verified** (automated gates plus manual acceptance
 on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and

@@ -340,8 +340,8 @@ the unified editor. It uses the strict versioned `FlowDocument` format and refer
 authored Scene/Menu names, not files under `ui_layouts`. Project catalog composition scans
 validated direct children under `assets/scenes/*.tscene` and `assets/menus/*.tui`; the
 checked-in `menus/main_menu.tui` is an authored game Menu exporting `start_game` and does
-not replace the application main menu. The baseline flow remains only
-`Start -> Scene:testscene`. The I11 workspace displays validated connected/unconnected
+not replace the application main menu. The acceptance flow is
+`Start -> Menu:main_menu --start_game--> Scene:testscene`. The I11 workspace displays validated connected/unconnected
 ports, connects or rewires targets, atomically adds catalog assets while connecting them,
 and safely removes edges/nodes with Backspace, Ctrl+Z/Y, and Ctrl+S.
 
@@ -363,6 +363,9 @@ Non-root hierarchy actions also support staged validated Rename, cycle-safe Repa
 another Container, and adjacent Move Earlier/Move Later operations. Moves exchange complete
 sibling subtrees in painter order; reparenting preserves the existing document order. Every
 operation participates in the same bounded exact-document undo/redo history.
+The history retains the newest 32 commands and evicts the oldest when full; reaching capacity
+does not disable further property, hierarchy, or pointer edits. `Reparent (none)` means the
+selected element has no alternate valid Container destination.
 
 The property workspace exposes all persisted v3 authored layout/visual fields: anchors,
 Native/Sprite mode and Sprite ID, Text/Button alignment, foreground/background RGBA channels,
@@ -381,7 +384,10 @@ dimensions are `base × 100 / scale`; neither setting is persisted or added to M
 `Tab` from an open authored Menu enters runtime-like Test mode through the same headless
 `UiMenuRuntime` used by authored UI. Before entry, the editor copies `game.flow` and the project
 catalog, overlays the staged Menu's current Button ports into that copy, and validates current
-references. Arrows move focus, Enter activates, pointer down/up uses runtime press/release, and
-Escape or Tab returns to editing. Missing/stale ports are displayed. A successful activation
+references. Arrows move focus, Enter activates, and Escape or Tab returns to editing. Keyboard
+Enter is the accepted R12 activation path; reliable display-backed pointer clicking is deferred
+in `../docs/TODO.md`. Missing/stale ports are displayed. A successful activation
 reports the typed target node ID/type/name and exits Test mode; it does **not** load the target,
 change application state, rewrite `game.flow`, save files, or consume editor history.
+Edit preview preserves authored normal colors while retaining non-color selection markers;
+runtime focus/pressed theme colors apply in Test mode.

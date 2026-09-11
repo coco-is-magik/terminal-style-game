@@ -26,6 +26,7 @@ static void build_render_states(
         states[i].pressed = runtime->pressed_element_id == id;
         states[i].disabled = runtime->element_states[i].disabled;
         states[i].visible = runtime->element_states[i].visible;
+        states[i].preserve_authored_colors = false;
     }
 }
 

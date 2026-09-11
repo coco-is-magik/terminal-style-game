@@ -1,6 +1,6 @@
 flow_version=1
-next_node_id=3
-next_edge_id=2
+next_node_id=4
+next_edge_id=3
 [node]
 id=1
 type=start
@@ -9,8 +9,17 @@ asset=
 id=2
 type=scene
 asset=testscene
+[node]
+id=3
+type=menu
+asset=main_menu
 [edge]
 id=1
 source=1
 port=start
+target=3
+[edge]
+id=2
+source=3
+port=start_game
 target=2

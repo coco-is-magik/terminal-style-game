@@ -143,17 +143,26 @@ static void test_set_edge_target_is_validated_and_transactional(void **state) {
 static void test_checked_in_project_flow_is_valid(void **state) {
     FlowDocument document;
     const FlowNode *scene;
+    const FlowNode *menu;
     (void)state;
     flow_document_init(&document);
     assert_int_equal(flow_document_load(&document, "assets/game.flow"),
                      FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_validate(&document), FLOW_DOCUMENT_OK);
-    assert_int_equal(document.node_count, 2U);
-    assert_int_equal(document.edge_count, 1U);
+    assert_int_equal(document.node_count, 3U);
+    assert_int_equal(document.edge_count, 2U);
     scene = flow_document_find_node(&document, 2U);
     assert_non_null(scene);
     assert_int_equal(scene->type, FLOW_NODE_SCENE);
     assert_string_equal(scene->asset_name, "testscene");
+    menu = flow_document_find_node(&document, 3U);
+    assert_non_null(menu);
+    assert_int_equal(menu->type, FLOW_NODE_MENU);
+    assert_string_equal(menu->asset_name, "main_menu");
+    assert_int_equal(flow_document_find_edge(&document, 1U)->target_id, menu->id);
+    assert_int_equal(flow_document_find_edge(&document, 2U)->source_id, menu->id);
+    assert_string_equal(flow_document_find_edge(&document, 2U)->source_port, "start_game");
+    assert_int_equal(flow_document_find_edge(&document, 2U)->target_id, scene->id);
 }
 
 static void test_disconnect_and_remove_node_are_transactional(void **state) {

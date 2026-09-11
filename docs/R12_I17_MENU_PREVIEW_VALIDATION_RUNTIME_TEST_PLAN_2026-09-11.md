@@ -36,10 +36,11 @@ missing asset, type mismatch, or missing/stale port. Test mode borrows the stage
 and production assets/theme, but owns copied flow/catalog/session/runtime state. It does not
 modify Menu history, flow-workspace history, scene history, or disk files.
 
-In Test mode arrows use I9 directional focus; Enter performs deterministic confirm-down then
-confirm-up; pointer down/up uses I9 hit and press/release semantics. Rendering routes through I9,
-so focused and pressed theme states and non-color markers are the same tested runtime behavior.
-Escape or Tab returns to Edit without losing staged changes.
+In Test mode arrows use I9 directional focus and Enter performs deterministic confirm-down then
+confirm-up. Rendering routes through I9, so focused theme states and non-color markers use tested
+runtime behavior. Escape or Tab returns to Edit without losing staged changes. Display-backed
+pointer activation is explicitly deferred after the second manual retest; keyboard Enter is the
+accepted R12 activation path.
 
 ## Target reporting and reference boundary
 
@@ -62,9 +63,11 @@ not become the only focus/pressed indicator.
 ## Final verification evidence
 
 - strict project catalog: **3/3 passed**;
-- shared nested-inspector/Flow workspace: **8/8 passed**;
-- strict `UiMenuWorkspace`: **10/10 passed**;
-- strict unified editor: **95/95 passed**;
+- `FlowDocument`: **7/7 passed**;
+- shared nested-inspector/Flow workspace: **9/9 passed**;
+- strict `UiMenuWorkspace`: **12/12 passed**;
+- strict render adapter: **6/6 passed**;
+- strict unified editor: **97/97 passed**;
 - strict production compile: **passed** under C11 `-Wall -Wextra -Wpedantic -Werror`.
 - clean optimized aggregate and final `make check`: **passed**. Clean invocations exceeded
   the 120-second command harness during compilation; exact no-clean resumes completed with
@@ -84,5 +87,11 @@ Test mode has no target-loading, app-state, graph-save, or cross-history path; a
 transitions are used by Flow and Menu controllers. No renderer hot path changed, so no new
 benchmark gate applies.
 
-R12 is **Ready for Manual Acceptance**, not Verified. See
+The checked-in acceptance graph is now Start → Menu:`main_menu` → Scene:`testscene`. It validates
+against the checked-in catalog and provides an immediate report-only Test-mode path. Flow
+rejections preserve typed causes, and zero-port Scenes explain where to author an `exit_flow`
+trigger. Successful direct Actions operations now pop shared nested depth before selecting their
+result, preventing repeated hierarchy work from exhausting the nested cursor.
+
+R12 is **Ready for Final Manual Retest**, not Verified. See
 `reviews/2026-09-11-roadmap-r12-closeout.md`.

@@ -188,6 +188,11 @@ UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_undo(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace);
 bool ui_menu_workspace_is_dirty(const UiMenuWorkspace *workspace);
+bool ui_menu_workspace_build_hierarchy(
+    const UiMenuWorkspace *workspace,
+    size_t out_document_indices[UI_DOCUMENT_MAX_ELEMENTS],
+    size_t *out_count
+);
 const UiDocumentElement *ui_menu_workspace_selected_element(
     const UiMenuWorkspace *workspace
 );

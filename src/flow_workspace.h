@@ -62,6 +62,8 @@ typedef struct {
     size_t target_index;
     UiNestedInspectorCursor nested_cursor;
     const FlowReferenceCatalog *catalog;
+    FlowDocumentResult last_document_result;
+    FlowReferenceResult last_reference_result;
     bool active;
 } FlowWorkspace;
 

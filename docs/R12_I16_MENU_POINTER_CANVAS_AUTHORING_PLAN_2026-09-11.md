@@ -46,7 +46,13 @@ clears consumed deltas and button edges before downstream use.
 
 Only an active manipulation owns one additional heap `UiDocument` snapshot. Idle workspace
 storage is unchanged. The existing history still owns exact before/after snapshots only for
-committed commands and remains capped at 32.
+committed commands, retains the newest 32, and evicts the oldest at capacity. A full history no
+longer blocks pointer release; release still commits one command or restores the exact before
+snapshot on a real failure.
+
+Manual acceptance initially reached the old history stop while moving a Button. The closeout
+correction verifies pointer move/release after filling all 32 retained slots, with one committed
+command and no jitter or permanent input rejection.
 
 ## Preserved boundaries
 
