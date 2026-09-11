@@ -33,6 +33,9 @@ void input_begin_frame(InputState *input) {
     input->mouse_dy = 0.0f;
     input->mouse_wheel_x = 0.0f;
     input->mouse_wheel_y = 0.0f;
+    input->mouse_left_pressed = false;
+    input->mouse_left_released = false;
+    input->mouse_grid_valid = false;
 #define RESET_FIELD(field) input->field = false
     RESET_FIELD(up); RESET_FIELD(down); RESET_FIELD(confirm); RESET_FIELD(esc);
     RESET_FIELD(arrow_left); RESET_FIELD(arrow_right); RESET_FIELD(place);
@@ -56,6 +59,7 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_place_trigger_pressed);
     RESET_FIELD(editor_place_object_pressed);
     RESET_FIELD(editor_flow_workspace_pressed);
+    RESET_FIELD(editor_ui_workspace_pressed);
     RESET_FIELD(editor_place_light_pressed);
     RESET_FIELD(editor_jump_pressed);
     RESET_FIELD(ui_scale_increase_pressed);
@@ -94,7 +98,11 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
     if (event->type == INPUT_EVENT_MOUSE_BUTTON_DOWN ||
         event->type == INPUT_EVENT_MOUSE_BUTTON_UP) {
         bool pressed = event->type == INPUT_EVENT_MOUSE_BUTTON_DOWN;
-        if (event->button == 1) input->mouse_left = pressed;
+        if (event->button == 1) {
+            input->mouse_left = pressed;
+            input->mouse_left_pressed = pressed;
+            input->mouse_left_released = !pressed;
+        }
         if (event->button == 3) input->mouse_right = pressed;
         return;
     }
@@ -170,6 +178,9 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_T: input->editor_place_trigger_pressed = true; break;
         case INPUT_KEY_B: input->editor_place_object_pressed = true; break;
         case INPUT_KEY_G: input->editor_flow_workspace_pressed = true; break;
+        case INPUT_KEY_U:
+            if (event->ctrl) input->editor_ui_workspace_pressed = true;
+            break;
         case INPUT_KEY_EQUALS:
         case INPUT_KEY_MINUS:
         case INPUT_KEY_ZERO:
@@ -195,6 +206,7 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_T: return INPUT_KEY_T;
         case SDLK_B: return INPUT_KEY_B;
         case SDLK_G: return INPUT_KEY_G;
+        case SDLK_U: return INPUT_KEY_U;
         case SDLK_EQUALS: return INPUT_KEY_EQUALS; case SDLK_MINUS: return INPUT_KEY_MINUS;
         case SDLK_0: return INPUT_KEY_ZERO;
         default: return INPUT_KEY_NONE;
@@ -257,7 +269,8 @@ void input_process(InputState *input, bool headless_mode) {
         } else if (e.type == SDL_EVENT_TEXT_INPUT) {
             event.type = INPUT_EVENT_TEXT; event.text = e.text.text;
         } else if (e.type == SDL_EVENT_MOUSE_MOTION) {
-            event.type = INPUT_EVENT_MOUSE_MOTION; event.x = e.motion.xrel; event.y = e.motion.yrel;
+            event.type = INPUT_EVENT_MOUSE_MOTION;
+            event.x = e.motion.xrel; event.y = e.motion.yrel;
         } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             event.type = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? INPUT_EVENT_MOUSE_BUTTON_DOWN : INPUT_EVENT_MOUSE_BUTTON_UP;
             event.button = e.button.button;

@@ -261,6 +261,106 @@ static void test_v2_migrates_to_native_visual_defaults(void **state) {
     assert_int_equal(unlink(path), 0);
 }
 
+static void test_content_port_and_subtree_mutations_are_transactional(void **state) {
+    UiDocument document;
+    UiDocument before;
+    UiElementId panel;
+    UiElementId button;
+    UiElementId child;
+    (void)state;
+    build_menu(&document, &panel, &button);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_TEXT,
+        panel, "child", "CHILD", "", &child), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_content(&document, button, "BEGIN"), UI_DOCUMENT_OK);
+    assert_string_equal(ui_document_find_element(&document, button)->content, "BEGIN");
+    assert_int_equal(ui_document_set_flow_port(&document, button, "begin"), UI_DOCUMENT_OK);
+    assert_string_equal(ui_document_find_element(&document, button)->flow_port, "begin");
+    before = document;
+    assert_int_equal(ui_document_set_content(&document, panel, "BAD"),
+                     UI_DOCUMENT_INVALID_CONTENT);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_set_flow_port(&document, child, "begin"),
+                     UI_DOCUMENT_INVALID_PORT);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_remove_subtree(&document, 1U), UI_DOCUMENT_INVALID_ROOT);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_remove_subtree(&document, panel), UI_DOCUMENT_OK);
+    assert_int_equal(document.element_count, 1U);
+    assert_null(ui_document_find_element(&document, panel));
+    assert_null(ui_document_find_element(&document, button));
+    assert_null(ui_document_find_element(&document, child));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_OK);
+}
+
+static void test_hierarchy_mutations_are_transactional_and_preserve_subtrees(void **state) {
+    UiDocument document;
+    UiDocument before;
+    UiElementId first;
+    UiElementId first_child;
+    UiElementId second;
+    UiElementId second_child;
+    UiElementId nested;
+    DocumentStateId state_id;
+    (void)state;
+    assert_int_equal(ui_document_create_menu(&document, "hierarchy"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_CONTAINER,
+        1U, "first", "", "", &first), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_CONTAINER,
+        1U, "second", "", "", &second), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_TEXT,
+        first, "first_child", "A", "", &first_child), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_TEXT,
+        second, "second_child", "B", "", &second_child), UI_DOCUMENT_OK);
+
+    state_id = document.state.current_state;
+    assert_int_equal(ui_document_rename_element(&document, first_child, "renamed"),
+                     UI_DOCUMENT_OK);
+    assert_string_equal(ui_document_find_element(&document, first_child)->name, "renamed");
+    assert_true(document.state.current_state > state_id);
+    before = document;
+    assert_int_equal(ui_document_rename_element(&document, first_child, "second"),
+                     UI_DOCUMENT_DUPLICATE_NAME);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_rename_element(&document, 1U, "new_root"),
+                     UI_DOCUMENT_INVALID_ROOT);
+    assert_memory_equal(&document, &before, sizeof(document));
+
+    assert_int_equal(ui_document_move_subtree_later(&document, first), UI_DOCUMENT_OK);
+    assert_int_equal(document.elements[1].id, second);
+    assert_int_equal(document.elements[2].id, second_child);
+    assert_int_equal(document.elements[3].id, first);
+    assert_int_equal(document.elements[4].id, first_child);
+    assert_int_equal(ui_document_move_subtree_earlier(&document, first), UI_DOCUMENT_OK);
+    assert_int_equal(document.elements[1].id, first);
+    assert_int_equal(document.elements[2].id, first_child);
+    assert_int_equal(document.elements[3].id, second);
+    assert_int_equal(document.elements[4].id, second_child);
+    before = document;
+    assert_int_equal(ui_document_move_subtree_earlier(&document, first),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_memory_equal(&document, &before, sizeof(document));
+
+    assert_int_equal(ui_document_reparent_subtree(&document, first_child, second),
+                     UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_find_element(&document, first_child)->parent_id, second);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_CONTAINER,
+        first, "nested", "", "", &nested), UI_DOCUMENT_OK);
+    before = document;
+    assert_int_equal(ui_document_reparent_subtree(&document, first, nested),
+                     UI_DOCUMENT_PARENT_CYCLE);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_reparent_subtree(&document, second, first_child),
+                     UI_DOCUMENT_PARENT_NOT_CONTAINER);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_reparent_subtree(&document, second, second_child),
+                     UI_DOCUMENT_PARENT_NOT_CONTAINER);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_reparent_subtree(&document, second, second),
+                     UI_DOCUMENT_PARENT_CYCLE);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_OK);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_create_tree_dirty_and_stable_ids),
@@ -273,6 +373,8 @@ int main(void) {
         ,cmocka_unit_test(test_layout_mutations_reject_invalid_document_without_change)
         ,cmocka_unit_test(test_v1_rejects_v2_fields_on_earlier_element)
         ,cmocka_unit_test(test_v2_migrates_to_native_visual_defaults)
+        ,cmocka_unit_test(test_content_port_and_subtree_mutations_are_transactional)
+        ,cmocka_unit_test(test_hierarchy_mutations_are_transactional_and_preserve_subtrees)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

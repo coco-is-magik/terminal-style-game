@@ -196,6 +196,66 @@ FlowDocumentResult flow_document_set_edge_target(FlowDocument *document,
     return FLOW_DOCUMENT_OK;
 }
 
+FlowDocumentResult flow_document_disconnect(FlowDocument *document,
+                                            FlowEdgeId edge_id) {
+    FlowDocument candidate;
+    size_t i;
+    if (!document || edge_id == 0U) return FLOW_DOCUMENT_INVALID_ARGUMENT;
+    candidate = *document;
+    for (i = 0U; i < candidate.edge_count; i++) {
+        if (candidate.edges[i].id != edge_id) continue;
+        memmove(&candidate.edges[i], &candidate.edges[i + 1U],
+                (candidate.edge_count - i - 1U) * sizeof(candidate.edges[0]));
+        candidate.edge_count--;
+        memset(&candidate.edges[candidate.edge_count], 0,
+               sizeof(candidate.edges[0]));
+        if (flow_document_validate(&candidate) != FLOW_DOCUMENT_OK)
+            return FLOW_DOCUMENT_UNREACHABLE_NODE;
+        if (!asset_document_state_advance(&candidate.state))
+            return FLOW_DOCUMENT_ID_EXHAUSTED;
+        *document = candidate;
+        return FLOW_DOCUMENT_OK;
+    }
+    return FLOW_DOCUMENT_MISSING_NODE;
+}
+
+FlowDocumentResult flow_document_remove_node(FlowDocument *document,
+                                             FlowNodeId node_id) {
+    FlowDocument candidate;
+    size_t node_index = FLOW_MAX_NODES;
+    size_t read_index;
+    size_t write_index = 0U;
+    if (!document || node_id == 0U) return FLOW_DOCUMENT_INVALID_ARGUMENT;
+    candidate = *document;
+    for (read_index = 0U; read_index < candidate.node_count; read_index++) {
+        if (candidate.nodes[read_index].id == node_id) {
+            if (candidate.nodes[read_index].type == FLOW_NODE_START)
+                return FLOW_DOCUMENT_INVALID_START;
+            node_index = read_index;
+            break;
+        }
+    }
+    if (node_index == FLOW_MAX_NODES) return FLOW_DOCUMENT_MISSING_NODE;
+    memmove(&candidate.nodes[node_index], &candidate.nodes[node_index + 1U],
+            (candidate.node_count - node_index - 1U) * sizeof(candidate.nodes[0]));
+    candidate.node_count--;
+    memset(&candidate.nodes[candidate.node_count], 0, sizeof(candidate.nodes[0]));
+    for (read_index = 0U; read_index < candidate.edge_count; read_index++) {
+        FlowEdge edge = candidate.edges[read_index];
+        if (edge.source_id != node_id && edge.target_id != node_id)
+            candidate.edges[write_index++] = edge;
+    }
+    while (candidate.edge_count > write_index)
+        memset(&candidate.edges[--candidate.edge_count], 0,
+               sizeof(candidate.edges[0]));
+    if (flow_document_validate(&candidate) != FLOW_DOCUMENT_OK)
+        return FLOW_DOCUMENT_UNREACHABLE_NODE;
+    if (!asset_document_state_advance(&candidate.state))
+        return FLOW_DOCUMENT_ID_EXHAUSTED;
+    *document = candidate;
+    return FLOW_DOCUMENT_OK;
+}
+
 FlowDocumentResult flow_document_validate(const FlowDocument *document) {
     bool reached[FLOW_MAX_NODES] = {false};
     size_t start_index = 0U;

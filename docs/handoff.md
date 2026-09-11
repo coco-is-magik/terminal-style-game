@@ -1,6 +1,14 @@
-# Active Handoff — R12 I6 Headless Interaction Implemented — 2026-09-04
+# Active Handoff — R12 Ready for Manual Acceptance — 2026-09-11
 
 ## Current status
+
+**Current continuation point:** R12 I1–I17 are implemented. Automated Q1/Q2, all applicable
+Q3 gates, and final automated Q4 pass. R12 is **Ready for Manual Acceptance**, not Verified.
+Complete only the display-backed checklist in
+`reviews/2026-09-11-roadmap-r12-closeout.md`; do not begin post-R12 work. I17 adds session-only
+resolution/UI-scale preview, `Tab` runtime-like Menu Test mode, current staged-port diagnostics,
+and report-only typed targets. The final Q4 correction adds shared `ui_nested_inspector`
+stepping, rows, and actual retained-depth Enter/Escape transitions used by Flow and Menu.
 
 **R9 and R10 are Released and Verified** (automated gates plus manual acceptance
 on 2026-08-27). R11 I1 decorative billboard sprite runtime is Implemented and
@@ -195,7 +203,7 @@ display session by the user and passed in full:
 
 R10 I1 and I2 are marked Verified. R10 has no remaining open items.
 
-## Stop boundary
+## Historical stop boundary
 
 R9 and R10 are released. R11 I1, I2, and I3 are Verified: all three
 increments implemented, automated gates passed, Q4 review passed, and bundled
@@ -204,12 +212,12 @@ I4 objects and I5 animation runtime/data are Verified. I6 animation authoring an
 R11 as a whole are Verified after automated gates, manual acceptance, and final
 boundary review. Game-mode spawn expansion is explicitly unnecessary without
 game modes. Solid/occluding sprites and sprite attachment
-remain deferred and require separate Q1 authorization. R12 is Active; I8 still
-requires separate authorization.
+remain deferred and require separate Q1 authorization. The following R12 narrative is
+historical; current R12 status is the manual-only continuation recorded at the top.
 
-## Immediate next work
+## R12 implementation history and current manual-only continuation
 
-R11 is closed. R12 is Active. I1 implements the separate versioned `FlowDocument`
+R11 is closed. R12 began with I1 implementing the separate versioned `FlowDocument`
 graph. I2 adds borrowed typed Scene/Menu asset and port validation plus a pure
 allocation-free current-node navigation session. I3 adds versioned authored Menu
 documents with stable Container/Text/Button trees and Button-port export. I4 upgrades
@@ -221,12 +229,32 @@ typed Button activation. I7 adds native scene v11 named exit-flow triggers,
 deterministic runtime exit requests, and borrowed Scene catalog adaptation. I8 adds
 pure failure-atomic typed activation-to-flow target binding. I9 adds the headless
 authored Menu runtime host with logical input, transient state, I5 rendering, I6
-interaction, and I8 target handoff. I10 adds the unified-editor `G` game-flow workspace,
-staged edge-target rewiring, bounded undo/redo, conventional `game.flow` loading, and
-transactional Save/Discard. Focused
-strict tests pass at FlowDocument 6/6, FlowWorkspace 6/6, input 14/14, and unified
-editor 87/87. Full ASan/LeakSanitizer, full UBSan, clean optimized aggregate tests,
-strict application build, and smoke pass. See
+interaction, and I8 target handoff. I10 adds the unified-editor `G` game-flow workspace.
+I11 adds authoritative project Scene/Menu catalog composition, validated unconnected-port
+choices, atomic catalog asset add+connect, safe edge/node removal, and bounded snapshot
+undo/redo while preserving transactional Save/Discard. Focused strict tests pass at
+FlowDocument 7/7, FlowWorkspace 7/7, FlowProjectCatalog 2/2, input 14/14, and unified
+editor 89/89. I12 adds the `Ctrl+U` visual authored-Menu workspace with project
+open/create, responsive preview, hierarchy selection, layout-property history, and
+transactional Save/Discard. Current focused tests pass at input 15/15,
+UiMenuWorkspace 4/4, and unified editor 90/90. Full ASan/LeakSanitizer, full UBSan,
+clean optimized aggregate tests, strict application build, smoke, and legacy/current-
+renderer guards pass. I13 adds typed element construction, staged content/Button-port
+editing, confirmed subtree removal, and exact bounded snapshot history. Current focused
+tests pass at UiDocument 11/11, UiMenuWorkspace 6/6, unified editor 91/91, and input 15/15.
+Full ASan/LeakSanitizer, full UBSan, clean optimized aggregate tests, strict application
+build, smoke, and legacy/current-renderer guards pass. I14 adds staged validated rename,
+cycle-safe Container reparenting, and adjacent whole-subtree painter-order moves. Focused
+tests pass at UiDocument 12/12, UiMenuWorkspace 7/7, and unified editor 92/92; full optimized,
+ASan/LeakSanitizer, UBSan, production, smoke, and guard gates pass. I15 exposes existing v3
+anchor, visual mode/sprite ID, alignment, color, fill/border glyph, and visibility fields
+through typed scrolling properties and exact history. Focused tests pass at UiDocument 12/12,
+UiMenuWorkspace 8/8, and unified editor 93/93; full optimized, ASan/LeakSanitizer, UBSan,
+production, smoke, and guard gates pass. I16 adds application-edge pointer coordinate conversion,
+topmost visible preview selection, live move/resize, one-command release, exact cancellation,
+and a non-color resize handle. Focused tests pass at input 15/15, UiDocument 12/12,
+UiMenuWorkspace 9/9, and unified editor 94/94; full optimized, ASan/LeakSanitizer, UBSan,
+production, smoke, and guard gates pass. See
 `R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`,
 `R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`, and
 `R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`, plus
@@ -237,13 +265,27 @@ strict application build, and smoke pass. See
 `R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`, plus
 `R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`, plus
 `R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`, plus
+`R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md`, plus
+`R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`, plus
+`R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md`, plus
+`R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md`, plus
+`R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md`, plus
+`R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md`, plus
+`R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`, plus
 `R12_UI_MENU_AUTHORING_PLAN_2026-09-04.md`.
 
-Next: add catalog-backed graph construction for existing authored Scene/Menu assets and
-their validated ports. Do not treat existing
-application-owned UI layouts as game menus. Input routing, target asset loading, and
-application-state transitions remain later adapters. R11 follow-ups
-remain separately planned in
+I17 completes multi-resolution/UI-scale preview, runtime-like Test mode, current staged-reference
+diagnostics, and typed target request reporting without loading targets. Final focused results are
+FlowProjectCatalog 3/3, FlowWorkspace/shared inspector 8/8, UiMenuWorkspace 10/10, and unified
+editor 95/95. Clean optimized aggregate, strict `make check`, full ASan/LeakSanitizer, full
+UBSan, canonical eight-mode matrix, conflict rejection, smoke, and legacy/current guards pass.
+Clean aggregate/sanitizer/check commands exceeded the 120-second harness during compilation and
+completed on exact no-clean resumes with status 0. `cppcheck` and Valgrind were unavailable.
+
+Next: complete and record the display-backed checklist in
+`reviews/2026-09-11-roadmap-r12-closeout.md`. Do not treat existing application-owned UI layouts
+as game menus. Target asset loading and application-state transitions remain intentionally out of
+R12 scope. R11 follow-ups remain separately planned in
 `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`.
 
 `APP_STATE_PLAYING` remains on the deprecated legacy map/`WorldState` loader and

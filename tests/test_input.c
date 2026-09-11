@@ -14,6 +14,10 @@ static void test_frame_reset_preserves_held_and_quit(void **state) {
     input.quit = true;
     input.forward = true;
     input.mouse_left = true;
+    input.mouse_left_pressed = true;
+    input.mouse_left_released = true;
+    input.mouse_x = 12.0f;
+    input.mouse_y = 14.0f;
     input.up = true;
     input.mouse_dx = 9.0f;
     strcpy(input.text_input, "old");
@@ -22,6 +26,10 @@ static void test_frame_reset_preserves_held_and_quit(void **state) {
     assert_true(input.quit);
     assert_true(input.forward);
     assert_true(input.mouse_left);
+    assert_false(input.mouse_left_pressed);
+    assert_false(input.mouse_left_released);
+    assert_float_equal(input.mouse_x, 12.0f, 0.001f);
+    assert_float_equal(input.mouse_y, 14.0f, 0.001f);
     assert_false(input.up);
     assert_float_equal(input.mouse_dx, 0.0f, 0.001f);
     assert_int_equal(input.text_input_len, 0);
@@ -246,9 +254,15 @@ static void test_text_mouse_buttons_and_wheel(void **state) {
     event.type = INPUT_EVENT_MOUSE_BUTTON_DOWN; event.button = 1;
     input_apply_event(&input, &event, false);
     assert_true(input.mouse_left);
+    assert_true(input.mouse_left_pressed);
+    assert_false(input.mouse_left_released);
+    input_begin_frame(&input);
+    assert_true(input.mouse_left);
+    assert_false(input.mouse_left_pressed);
     event.type = INPUT_EVENT_MOUSE_BUTTON_UP;
     input_apply_event(&input, &event, false);
     assert_false(input.mouse_left);
+    assert_true(input.mouse_left_released);
     event.type = INPUT_EVENT_MOUSE_WHEEL; event.x = 1.0f; event.y = -2.0f;
     input_apply_event(&input, &event, false);
     assert_float_equal(input.mouse_wheel_y, -2.0f, 0.001f);
@@ -302,6 +316,29 @@ static void test_editor_flow_workspace_is_nonrepeat_edge(void **state) {
     assert_false(input.editor_flow_workspace_pressed);
 }
 
+static void test_editor_ui_workspace_is_nonrepeat_edge(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_U, false, true, false, 0, 0, 0, NULL
+    };
+    (void)state;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_ui_workspace_pressed);
+    input_begin_frame(&input);
+    assert_false(input.editor_ui_workspace_pressed);
+    event.repeat = true;
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_ui_workspace_pressed);
+    event.repeat = false;
+    event.ctrl = false;
+    input_apply_event(&input, &event, false);
+    assert_false(input.editor_ui_workspace_pressed);
+    event.ctrl = true;
+    event.repeat = false;
+    input_apply_event(&input, &event, true);
+    assert_false(input.editor_ui_workspace_pressed);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_frame_reset_preserves_held_and_quit),
@@ -318,6 +355,7 @@ int main(void) {
         cmocka_unit_test(test_text_mouse_buttons_and_wheel),
         cmocka_unit_test(test_ui_scale_shortcuts_are_global_nonrepeat_edges),
         cmocka_unit_test(test_editor_flow_workspace_is_nonrepeat_edge),
+        cmocka_unit_test(test_editor_ui_workspace_is_nonrepeat_edge),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

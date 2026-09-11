@@ -150,6 +150,24 @@ UiDocumentResult ui_document_set_layout(UiDocument *document,
 UiDocumentResult ui_document_set_visual(UiDocument *document,
                                         UiElementId element_id,
                                         UiDocumentVisual visual);
+UiDocumentResult ui_document_set_content(UiDocument *document,
+                                         UiElementId element_id,
+                                         const char *content);
+UiDocumentResult ui_document_set_flow_port(UiDocument *document,
+                                           UiElementId element_id,
+                                           const char *flow_port);
+UiDocumentResult ui_document_rename_element(UiDocument *document,
+                                            UiElementId element_id,
+                                            const char *name);
+UiDocumentResult ui_document_reparent_subtree(UiDocument *document,
+                                              UiElementId element_id,
+                                              UiElementId new_parent_id);
+UiDocumentResult ui_document_move_subtree_earlier(UiDocument *document,
+                                                  UiElementId element_id);
+UiDocumentResult ui_document_move_subtree_later(UiDocument *document,
+                                                UiElementId element_id);
+UiDocumentResult ui_document_remove_subtree(UiDocument *document,
+                                            UiElementId element_id);
 UiDocumentResult ui_document_validate(const UiDocument *document);
 UiDocumentResult ui_document_build_flow_reference(
     const UiDocument *document,

@@ -350,6 +350,11 @@ static void sync_editor_text_input(Renderer *renderer,
     should_be_active = app_state == APP_STATE_EDITOR && editor && editor->active &&
         ((editor->modal == EDITOR_MENU_SAVE &&
           editor->save_menu_stage == EDITOR_SAVE_MENU_EDIT_NAME) ||
+           (editor->ui_menu_workspace.active &&
+            (editor->ui_menu_workspace.mode == UI_MENU_WORKSPACE_CREATE_NAME ||
+             editor->ui_menu_workspace.mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
+             editor->ui_menu_workspace.mode == UI_MENU_WORKSPACE_EDIT_PORT ||
+             editor->ui_menu_workspace.mode == UI_MENU_WORKSPACE_EDIT_NAME)) ||
            (editor->modal == EDITOR_MODAL_NONE && editor->inspector_open &&
             (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
              editor->inspector_kind == EDITOR_INSPECTOR_DECAL ||
@@ -689,6 +694,17 @@ int app_main(int argc, char* argv[]) {
 
         sync_editor_text_input(ren, app_state, &ued);
         input_process(&input, mode != RUN_MODE_NORMAL);
+        if (mode == RUN_MODE_NORMAL) {
+            float render_x;
+            float render_y;
+            (void)SDL_GetMouseState(&input.mouse_x, &input.mouse_y);
+            input.mouse_grid_valid = SDL_RenderCoordinatesFromWindow(
+                ren->sdl_ren, input.mouse_x, input.mouse_y, &render_x, &render_y);
+            if (input.mouse_grid_valid) {
+                input.mouse_grid_x = (int)(render_x / (float)ren->cell_w);
+                input.mouse_grid_y = (int)(render_y / (float)ren->cell_h);
+            }
+        }
         if (input.quit && app_state == APP_STATE_EDITOR && ued.active) {
             input.quit = false;
             unified_editor_request_window_close(&ued);
@@ -725,6 +741,7 @@ int app_main(int argc, char* argv[]) {
                                      && ued.mode == EDITOR_MODE_WALK
                                       && ued.modal == EDITOR_MODAL_NONE
                                       && !ued.flow_workspace.active
+                                       && !ued.ui_menu_workspace.active
                                       && unified_editor_has_document(&ued)));
             if (want_lock != mouse_locked) {
                 SDL_SetWindowRelativeMouseMode(ren->window, want_lock);
@@ -774,6 +791,7 @@ int app_main(int argc, char* argv[]) {
         if (app_state == APP_STATE_EDITOR && menu_stack_peek(&ms) == MENU_NONE && ued.active) {
             ued_consume = unified_editor_update(&ued, &input, &cam,
                                                 delta_time_ms / 1000.0,
+                                                grid->width,
                                                 grid->height);
             if (ued_consume.keyboard_consumed) {
                 input.up = false;
@@ -802,11 +820,14 @@ int app_main(int argc, char* argv[]) {
                 input.editor_place_trigger_pressed = false;
                 input.editor_place_object_pressed = false;
                 input.editor_flow_workspace_pressed = false;
+                input.editor_ui_workspace_pressed = false;
                 input.editor_jump_pressed = false;
             }
             if (ued_consume.pointer_consumed) {
                 input.mouse_dx = 0.0f;
                 input.mouse_dy = 0.0f;
+                input.mouse_left_pressed = false;
+                input.mouse_left_released = false;
             }
             if (ued.request_exit_to_main_menu) {
                 unified_editor_destroy(&ued);

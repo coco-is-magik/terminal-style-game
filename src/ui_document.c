@@ -403,6 +403,256 @@ UiDocumentResult ui_document_set_visual(UiDocument *document,
     return UI_DOCUMENT_OK;
 }
 
+UiDocumentResult ui_document_set_content(UiDocument *document,
+                                         UiElementId element_id,
+                                         const char *content) {
+    UiDocument candidate;
+    size_t i;
+    if (!document || !content) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_content(content)) return UI_DOCUMENT_INVALID_CONTENT;
+    candidate = *document;
+    for (i = 0U; i < candidate.element_count; i++) {
+        UiDocumentElement *element = &candidate.elements[i];
+        if (element->id != element_id) continue;
+        if (element->type == UI_DOCUMENT_ELEMENT_CONTAINER)
+            return UI_DOCUMENT_INVALID_CONTENT;
+        if (strcmp(element->content, content) == 0) return UI_DOCUMENT_OK;
+        (void)copy_string(element->content, sizeof(element->content), content);
+        if (ui_document_validate(&candidate) != UI_DOCUMENT_OK ||
+            !asset_document_state_advance(&candidate.state))
+            return UI_DOCUMENT_ID_EXHAUSTED;
+        *document = candidate;
+        return UI_DOCUMENT_OK;
+    }
+    return UI_DOCUMENT_INVALID_ARGUMENT;
+}
+
+UiDocumentResult ui_document_set_flow_port(UiDocument *document,
+                                           UiElementId element_id,
+                                           const char *flow_port) {
+    UiDocument candidate;
+    size_t i;
+    if (!document || !flow_port) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_name(flow_port)) return UI_DOCUMENT_INVALID_PORT;
+    candidate = *document;
+    for (i = 0U; i < candidate.element_count; i++) {
+        UiDocumentElement *element = &candidate.elements[i];
+        if (element->id != element_id) continue;
+        if (element->type != UI_DOCUMENT_ELEMENT_BUTTON)
+            return UI_DOCUMENT_INVALID_PORT;
+        if (strcmp(element->flow_port, flow_port) == 0) return UI_DOCUMENT_OK;
+        (void)copy_string(element->flow_port, sizeof(element->flow_port), flow_port);
+        {
+            UiDocumentResult validation = ui_document_validate(&candidate);
+            if (validation != UI_DOCUMENT_OK) return validation;
+        }
+        if (!asset_document_state_advance(&candidate.state))
+            return UI_DOCUMENT_ID_EXHAUSTED;
+        *document = candidate;
+        return UI_DOCUMENT_OK;
+    }
+    return UI_DOCUMENT_INVALID_ARGUMENT;
+}
+
+static bool element_descends_from(const UiDocument *document,
+                                  const UiDocumentElement *element,
+                                  UiElementId ancestor_id) {
+    size_t depth = 0U;
+    while (element && element->parent_id != 0U && depth++ < document->element_count) {
+        if (element->parent_id == ancestor_id) return true;
+        element = ui_document_find_element(document, element->parent_id);
+    }
+    return false;
+}
+
+UiDocumentResult ui_document_rename_element(UiDocument *document,
+                                            UiElementId element_id,
+                                            const char *name) {
+    UiDocument candidate;
+    size_t i;
+    if (!document || !name) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_name(name)) return UI_DOCUMENT_INVALID_NAME;
+    if (element_id == 1U) return UI_DOCUMENT_INVALID_ROOT;
+    candidate = *document;
+    for (i = 0U; i < candidate.element_count; i++) {
+        UiDocumentElement *element = &candidate.elements[i];
+        UiDocumentResult validation;
+        if (element->id != element_id) continue;
+        if (strcmp(element->name, name) == 0) return UI_DOCUMENT_OK;
+        (void)copy_string(element->name, sizeof(element->name), name);
+        validation = ui_document_validate(&candidate);
+        if (validation != UI_DOCUMENT_OK) return validation;
+        if (!asset_document_state_advance(&candidate.state))
+            return UI_DOCUMENT_ID_EXHAUSTED;
+        *document = candidate;
+        return UI_DOCUMENT_OK;
+    }
+    return UI_DOCUMENT_INVALID_ARGUMENT;
+}
+
+static void mark_subtree(const UiDocument *document, UiElementId root_id,
+                         bool marked[UI_DOCUMENT_MAX_ELEMENTS]) {
+    size_t i;
+    for (i = 0U; i < document->element_count; i++) {
+        const UiDocumentElement *element = &document->elements[i];
+        marked[i] = element->id == root_id ||
+                    element_descends_from(document, element, root_id);
+    }
+}
+
+static void swap_marked_groups(UiDocument *document,
+                               const bool first[UI_DOCUMENT_MAX_ELEMENTS],
+                               const bool second[UI_DOCUMENT_MAX_ELEMENTS]) {
+    UiDocumentElement first_elements[UI_DOCUMENT_MAX_ELEMENTS];
+    UiDocumentElement second_elements[UI_DOCUMENT_MAX_ELEMENTS];
+    size_t first_count = 0U;
+    size_t second_count = 0U;
+    size_t first_read = 0U;
+    size_t second_read = 0U;
+    size_t i;
+    for (i = 0U; i < document->element_count; i++) {
+        if (first[i]) first_elements[first_count++] = document->elements[i];
+        if (second[i]) second_elements[second_count++] = document->elements[i];
+    }
+    for (i = 0U; i < document->element_count; i++) {
+        if (first[i] || second[i]) {
+            if (second_read < second_count)
+                document->elements[i] = second_elements[second_read++];
+            else document->elements[i] = first_elements[first_read++];
+        }
+    }
+}
+
+static UiDocumentResult move_subtree_adjacent(UiDocument *document,
+                                              UiElementId element_id,
+                                              bool later) {
+    UiDocument candidate;
+    const UiDocumentElement *element;
+    UiElementId sibling_id = 0U;
+    bool selected[UI_DOCUMENT_MAX_ELEMENTS] = {false};
+    bool sibling[UI_DOCUMENT_MAX_ELEMENTS] = {false};
+    size_t element_index = 0U;
+    size_t i;
+    if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    element = ui_document_find_element(document, element_id);
+    if (!element) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (element_id == 1U) return UI_DOCUMENT_INVALID_ROOT;
+    for (i = 0U; i < document->element_count; i++)
+        if (document->elements[i].id == element_id) element_index = i;
+    if (later) {
+        for (i = element_index + 1U; i < document->element_count; i++)
+            if (document->elements[i].parent_id == element->parent_id) {
+                sibling_id = document->elements[i].id;
+                break;
+            }
+    } else {
+        i = element_index;
+        while (i > 0U) {
+            i--;
+            if (document->elements[i].parent_id == element->parent_id) {
+                sibling_id = document->elements[i].id;
+                break;
+            }
+        }
+    }
+    if (sibling_id == 0U) return UI_DOCUMENT_INVALID_ARGUMENT;
+    candidate = *document;
+    mark_subtree(document, element_id, selected);
+    mark_subtree(document, sibling_id, sibling);
+    if (later) swap_marked_groups(&candidate, selected, sibling);
+    else swap_marked_groups(&candidate, sibling, selected);
+    if (ui_document_validate(&candidate) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!asset_document_state_advance(&candidate.state))
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    *document = candidate;
+    return UI_DOCUMENT_OK;
+}
+
+UiDocumentResult ui_document_move_subtree_earlier(UiDocument *document,
+                                                  UiElementId element_id) {
+    return move_subtree_adjacent(document, element_id, false);
+}
+
+UiDocumentResult ui_document_move_subtree_later(UiDocument *document,
+                                                UiElementId element_id) {
+    return move_subtree_adjacent(document, element_id, true);
+}
+
+UiDocumentResult ui_document_reparent_subtree(UiDocument *document,
+                                              UiElementId element_id,
+                                              UiElementId new_parent_id) {
+    UiDocument candidate;
+    const UiDocumentElement *element;
+    const UiDocumentElement *new_parent;
+    size_t i;
+    if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    element = ui_document_find_element(document, element_id);
+    new_parent = ui_document_find_element(document, new_parent_id);
+    if (!element || !new_parent) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (element_id == 1U) return UI_DOCUMENT_INVALID_ROOT;
+    if (new_parent->type != UI_DOCUMENT_ELEMENT_CONTAINER)
+        return UI_DOCUMENT_PARENT_NOT_CONTAINER;
+    if (new_parent_id == element_id ||
+        element_descends_from(document, new_parent, element_id))
+        return UI_DOCUMENT_PARENT_CYCLE;
+    if (element->parent_id == new_parent_id) return UI_DOCUMENT_OK;
+    candidate = *document;
+    for (i = 0U; i < candidate.element_count; i++)
+        if (candidate.elements[i].id == element_id) {
+            candidate.elements[i].parent_id = new_parent_id;
+            break;
+        }
+    {
+        UiDocumentResult validation = ui_document_validate(&candidate);
+        if (validation != UI_DOCUMENT_OK) return validation;
+    }
+    if (!asset_document_state_advance(&candidate.state))
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    *document = candidate;
+    return UI_DOCUMENT_OK;
+}
+
+UiDocumentResult ui_document_remove_subtree(UiDocument *document,
+                                            UiElementId element_id) {
+    UiDocument candidate;
+    size_t read_index;
+    size_t write_index = 0U;
+    const UiDocumentElement *root;
+    if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    root = ui_document_find_element(document, element_id);
+    if (!root) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (root->id == 1U) return UI_DOCUMENT_INVALID_ROOT;
+    candidate = *document;
+    for (read_index = 0U; read_index < document->element_count; read_index++) {
+        const UiDocumentElement *element = &document->elements[read_index];
+        if (element->id == element_id ||
+            element_descends_from(document, element, element_id)) continue;
+        candidate.elements[write_index++] = *element;
+    }
+    while (candidate.element_count > write_index)
+        memset(&candidate.elements[--candidate.element_count], 0,
+               sizeof(candidate.elements[0]));
+    if (ui_document_validate(&candidate) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!asset_document_state_advance(&candidate.state))
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    *document = candidate;
+    return UI_DOCUMENT_OK;
+}
+
 UiDocumentResult ui_document_validate(const UiDocument *document) {
     size_t i;
     size_t j;

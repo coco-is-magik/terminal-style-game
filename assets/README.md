@@ -337,8 +337,51 @@ Save writes v11.
 
 `assets/game.flow` is the conventional project progression document opened by `G` in
 the unified editor. It uses the strict versioned `FlowDocument` format and references
-authored Scene/Menu names, not files under `ui_layouts`. The checked-in baseline contains
-only `Start -> Scene:testscene`, because no authored game Menu assets or scene exit ports
-are checked in yet. The I10 workspace can browse nodes/connections and rewire existing
-edge targets with Ctrl+Z/Y and Ctrl+S; graph node/port construction remains a later
-catalog-backed workflow.
+authored Scene/Menu names, not files under `ui_layouts`. Project catalog composition scans
+validated direct children under `assets/scenes/*.tscene` and `assets/menus/*.tui`; the
+checked-in `menus/main_menu.tui` is an authored game Menu exporting `start_game` and does
+not replace the application main menu. The baseline flow remains only
+`Start -> Scene:testscene`. The I11 workspace displays validated connected/unconnected
+ports, connects or rewires targets, atomically adds catalog assets while connecting them,
+and safely removes edges/nodes with Backspace, Ctrl+Z/Y, and Ctrl+S.
+
+`Ctrl+U` opens the visual authored-Menu workspace. It lists only direct regular
+`menus/*.tui` files, can create `<name>.tui`, renders the staged document responsively
+through the canonical layout/render adapters, and edits non-root x/y/width/height/scale
+with Ctrl+Z/Y and atomic Ctrl+S. `menus/main_menu.tui` is canonical v3 and provides the
+checked-in centered Start Button preview. Application-owned `ui_layouts` and `ui_elements`
+remain separate and are never edited by this workspace.
+
+Inside an open authored Menu, `E` opens context actions. A selected Container can create
+Container/Text/Button children with deterministic unique names; Text/Button content and
+Button flow ports use staged text entry; Backspace confirms removal of a non-root element
+and all descendants. Button ports remain unique within the Menu. Changing a saved port does
+not silently rewrite `game.flow`; project-catalog/reference validation exposes stale graph
+ports on the next authoritative composition.
+
+Non-root hierarchy actions also support staged validated Rename, cycle-safe Reparent under
+another Container, and adjacent Move Earlier/Move Later operations. Moves exchange complete
+sibling subtrees in painter order; reparenting preserves the existing document order. Every
+operation participates in the same bounded exact-document undo/redo history.
+
+The property workspace exposes all persisted v3 authored layout/visual fields: anchors,
+Native/Sprite mode and Sprite ID, Text/Button alignment, foreground/background RGBA channels,
+fill/border toggles and printable glyphs, and default visibility. Up/Down skips fields that do
+not apply to the selected type/mode; Left/Right records one typed undoable adjustment.
+
+Pointer input in the preview selects the topmost visible non-root element. Dragging the body
+previews x/y movement; dragging the selected element's bottom-right `+` handle previews bounded
+width/height changes. Release records one undoable command, while Escape restores the exact
+before document. Pointer operations edit the same authored fields as keyboard properties.
+
+Preview Settings (`E`, then select **Preview Settings**) are session-only. Base presets are
+40×15, 60×20, and 80×25; scale presets are 100%, 125%, 150%, and 200%. Effective logical
+dimensions are `base × 100 / scale`; neither setting is persisted or added to Menu history.
+
+`Tab` from an open authored Menu enters runtime-like Test mode through the same headless
+`UiMenuRuntime` used by authored UI. Before entry, the editor copies `game.flow` and the project
+catalog, overlays the staged Menu's current Button ports into that copy, and validates current
+references. Arrows move focus, Enter activates, pointer down/up uses runtime press/release, and
+Escape or Tab returns to editing. Missing/stale ports are displayed. A successful activation
+reports the typed target node ID/type/name and exits Test mode; it does **not** load the target,
+change application state, rewrite `game.flow`, save files, or consume editor history.

@@ -25,7 +25,7 @@
 
 /* Editor behavior tests use the production logical viewport height. */
 #define unified_editor_update(editor, input, camera, delta) \
-    unified_editor_update((editor), (input), (camera), (delta), 160)
+    unified_editor_update((editor), (input), (camera), (delta), 260, 160)
 #include "../src/assets.h"
 #include "../src/camera.h"
 #include "../src/config.h"
@@ -4784,6 +4784,702 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
     rmdir(root);
 }
 
+static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    DocumentStateId scene_state;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_i11.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, "assets"));
+    scene_state = editor.document.current_state;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.flow_workspace.active);
+    assert_non_null(flow_reference_find(editor.flow_workspace.catalog,
+                                        FLOW_NODE_MENU, "main_menu"));
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    editor.flow_workspace.target_index =
+        flow_workspace_target_count(&editor.flow_workspace) - 1U;
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "+ Menu:main_menu"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_MUTATION_FAILED);
+    assert_int_equal(editor.flow_workspace.document.node_count, 2U);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    zero_input(&input); input.editor_text_backspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_MUTATION_FAILED);
+    assert_int_equal(editor.flow_workspace.document.edge_count, 1U);
+    assert_int_equal(editor.document.current_state, scene_state);
+    unified_editor_destroy(&editor);
+}
+
+static void test_r12_i11_catalog_failure_opens_retained_graph_visibly(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    char root[512];
+    char menus[512];
+    char path[512];
+    DocumentStateId scene_state;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_i11_bad_catalog.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "flow_bad_catalog");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/bad.tui", menus) > 0);
+    assert_int_equal(write_text_file(path, "ui_version=99\n"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.flow_workspace.active);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_CATALOG_FAILED);
+    assert_int_equal(editor.flow_workspace.document.node_count, 1U);
+    assert_null(editor.flow_workspace.catalog);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Flow catalog failed"));
+    grid_destroy(grid);
+    assert_int_equal(editor.document.current_state, scene_state);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i12_visual_menu_workspace_edit_discard_and_create(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    UiElementId button;
+    Grid *grid;
+    char root[512];
+    char menus[512];
+    char path[512];
+    char created[512];
+    DocumentStateId scene_state;
+    EditorInputConsumption consumption;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i12.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&menu, button,
+        (UiDocumentLayout){2, 3, 8, 1, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_true(editor.ui_menu_workspace.active);
+    assert_false(unified_editor_crosshair_visible(&editor));
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.ui_menu_workspace.has_document);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "AUTHORED MENU WORKSPACE"));
+    assert_true(grid_contains_text(grid, "Button:play"));
+    assert_true(grid_contains_text(grid, ">LAY"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_PROPERTIES);
+    zero_input(&input);
+    input.editor_increase_pressed = true;
+    input.forward = true;
+    input.mouse_dx = 12.0f;
+    consumption = update_with(&editor, &camera, &input);
+    assert_true(consumption.keyboard_consumed);
+    assert_true(consumption.pointer_consumed);
+    assert_false(input.forward);
+    assert_int_equal(editor.ui_menu_workspace.document.elements[1].layout.x, 3);
+    assert_int_equal(editor.document.current_state, scene_state);
+    zero_input(&input); input.editor_undo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.document.elements[1].layout.x, 2);
+    zero_input(&input); input.editor_increase_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_CLOSE_PROMPT);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_CHOOSER);
+    assert_false(editor.ui_menu_workspace.has_document);
+    editor.ui_menu_workspace.chooser_index = editor.ui_menu_workspace.catalog.count;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_CREATE_NAME);
+    zero_input(&input);
+    memcpy(input.text_input, "new_ui", sizeof("new_ui"));
+    input.text_input_len = strlen(input.text_input);
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_save_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(ui_menu_workspace_is_dirty(&editor.ui_menu_workspace));
+    assert_true(snprintf(created, sizeof(created), "%s/new_ui.tui", menus) > 0);
+    assert_int_equal(access(created, F_OK), 0);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(created), 0);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i13_menu_element_actions_text_remove_and_undo(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    Grid *grid;
+    UiElementId added_id;
+    char root[512];
+    char menus[512];
+    char path[512];
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    size_t i;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i13.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_i13_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_ACTIONS);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Add Container"));
+    assert_true(grid_contains_text(grid, "Add Text"));
+    grid_destroy(grid);
+    editor.ui_menu_workspace.action_index = UI_MENU_ACTION_ADD_TEXT;
+    assert_int_equal(editor.ui_menu_workspace.action_index, UI_MENU_ACTION_ADD_TEXT);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    added_id = ui_menu_workspace_selected_element(&editor.ui_menu_workspace)->id;
+    assert_string_equal(ui_menu_workspace_selected_element(
+        &editor.ui_menu_workspace)->name, "text_1");
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.action_index,
+                     UI_MENU_ACTION_EDIT_CONTENT);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_EDIT_CONTENT);
+    for (i = 0U; i < 4U; i++) {
+        zero_input(&input); input.editor_text_backspace_pressed = true;
+        update_with(&editor, &camera, &input);
+    }
+    zero_input(&input);
+    memcpy(input.text_input, "HELLO", sizeof("HELLO"));
+    input.text_input_len = 5U;
+    input.editor_place_light_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_string_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, added_id)->content, "HELLO");
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_previous_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "HELLO"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_text_backspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_REMOVE_PROMPT);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Remove text_1?"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_null(ui_document_find_element(&editor.ui_menu_workspace.document, added_id));
+    zero_input(&input); input.editor_undo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_non_null(ui_document_find_element(&editor.ui_menu_workspace.document, added_id));
+    assert_string_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, added_id)->content, "HELLO");
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    UiElementId first;
+    UiElementId second;
+    UiElementId text;
+    Grid *grid;
+    char root[512];
+    char menus[512];
+    char path[512];
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    size_t i;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i14.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_i14_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_CONTAINER,
+        1U, "first", "", "", &first), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_CONTAINER,
+        1U, "second", "", "", &second), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_TEXT,
+        first, "label", "TEXT", "", &text), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    for (i = 0U; i < 3U; i++) {
+        zero_input(&input); input.editor_next_pressed = true;
+        update_with(&editor, &camera, &input);
+    }
+    assert_int_equal(ui_menu_workspace_selected_element(
+        &editor.ui_menu_workspace)->id, text);
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "Rename"));
+    assert_true(grid_contains_text(grid, "Reparent"));
+    assert_true(grid_contains_text(grid, "Move Earlier"));
+    grid_destroy(grid);
+
+    editor.ui_menu_workspace.action_index = UI_MENU_ACTION_RENAME;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "RENAME ELEMENT"));
+    grid_destroy(grid);
+    for (i = 0U; i < 5U; i++) {
+        zero_input(&input); input.editor_text_backspace_pressed = true;
+        update_with(&editor, &camera, &input);
+    }
+    zero_input(&input);
+    memcpy(input.text_input, "heading", sizeof("heading"));
+    input.text_input_len = 7U;
+    input.editor_place_light_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_string_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, text)->name, "heading");
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    editor.ui_menu_workspace.action_index = UI_MENU_ACTION_REPARENT;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_REPARENT);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.document.elements[
+        editor.ui_menu_workspace.reparent_index].id, second);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, text)->parent_id, second);
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    UiElementId button;
+    Grid *grid;
+    char root[512];
+    char menus[512];
+    char path[512];
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i15.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_i15_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&menu, button,
+        (UiDocumentLayout){2, 3, 8, 3, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_PROPERTIES);
+    editor.ui_menu_workspace.property = UI_MENU_PROPERTY_BORDER_ENABLED;
+    zero_input(&input); input.editor_increase_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->visual.border_enabled);
+    editor.ui_menu_workspace.property = UI_MENU_PROPERTY_ALIGNMENT;
+    zero_input(&input); input.editor_increase_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->visual.align,
+        UI_DOCUMENT_ALIGN_CENTER);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "H Anchor"));
+    assert_true(grid_contains_text(grid, "Alignment"));
+    assert_true(grid_contains_text(grid, "Center"));
+    assert_true(grid_contains_text(grid, "Border"));
+    assert_true(grid_contains_text(grid, "#"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_undo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->visual.align,
+        UI_DOCUMENT_ALIGN_LEFT);
+    zero_input(&input); input.editor_redo_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->visual.align,
+        UI_DOCUMENT_ALIGN_CENTER);
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i16_menu_pointer_move_resize_cancel_and_isolate(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument menu;
+    UiElementId button;
+    Grid *grid;
+    Cell handle;
+    char root[512];
+    char menus[512];
+    char path[512];
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    size_t menu_history_count;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i16.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_i16_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&menu, button,
+        (UiDocumentLayout){2, 3, 8, 3, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+
+    menu_history_count = editor.ui_menu_workspace.change_count;
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 43;
+    input.mouse_grid_y = 7;
+    input.mouse_left = true;
+    input.mouse_left_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_int_equal(ui_menu_workspace_selected_element(
+        &editor.ui_menu_workspace)->id, button);
+    assert_int_equal(editor.ui_menu_workspace.pointer_mode, UI_MENU_POINTER_MOVE);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 46;
+    input.mouse_grid_y = 9;
+    input.mouse_left = true;
+    input.mouse_dx = 1.0f;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->layout.x, 5);
+    assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 46;
+    input.mouse_grid_y = 9;
+    input.mouse_left_released = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count + 1U);
+    assert_null(editor.ui_menu_workspace.pointer_before);
+
+    grid = grid_create(260, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_get(grid, 52, 10, &handle));
+    assert_int_equal(handle.glyph, '+');
+    grid_destroy(grid);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 52;
+    input.mouse_grid_y = 10;
+    input.mouse_left = true;
+    input.mouse_left_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.pointer_mode, UI_MENU_POINTER_RESIZE);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 54;
+    input.mouse_grid_y = 12;
+    input.mouse_left = true;
+    input.mouse_dx = 1.0f;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->layout.width, 10);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(ui_document_find_element(
+        &editor.ui_menu_workspace.document, button)->layout.width, 8);
+    assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count + 1U);
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    UiDocument demo;
+    UiDocument other;
+    FlowDocument flow;
+    FlowDocument flow_after;
+    UiElementId button;
+    FlowNodeId demo_node;
+    FlowNodeId other_node;
+    FlowEdgeId edge;
+    Grid *grid;
+    char root[512];
+    char menus[512];
+    char demo_path[512];
+    char other_path[512];
+    char flow_path[512];
+    DocumentStateId scene_state;
+    size_t scene_history_count;
+    size_t menu_history_count;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "ui_menu_workspace_i17.txt"), 0);
+    path_in_tmpdir(root, sizeof(root), "ui_menu_i17_project");
+    assert_int_equal(mkdir(root, 0700), 0);
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_true(snprintf(demo_path, sizeof(demo_path), "%s/demo.tui", menus) > 0);
+    assert_true(snprintf(other_path, sizeof(other_path), "%s/other.tui", menus) > 0);
+    assert_true(snprintf(flow_path, sizeof(flow_path), "%s/game.flow", root) > 0);
+    assert_int_equal(ui_document_create_menu(&demo, "demo"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&demo, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&demo, button,
+        (UiDocumentLayout){2, 3, 8, 3, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&demo, demo_path), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_create_menu(&other, "other"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&other, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "back", "BACK", "back", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&other, other_path), UI_DOCUMENT_OK);
+    flow_document_init(&flow);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_MENU, "demo", &demo_node),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_MENU, "other", &other_node),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, 1U, "start", demo_node, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, demo_node, "play", other_node, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, other_node, "back", demo_node, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_save_as(&flow, flow_path), FLOW_DOCUMENT_OK);
+    assert_true(unified_editor_set_asset_root(&editor, root));
+    scene_state = editor.document.current_state;
+    scene_history_count = editor.history.count;
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_ui_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    menu_history_count = editor.ui_menu_workspace.change_count;
+
+    zero_input(&input); input.editor_select_pressed = true;
+    update_with(&editor, &camera, &input);
+    editor.ui_menu_workspace.action_index = UI_MENU_ACTION_PREVIEW_SETTINGS;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_decrease_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.ui_menu_workspace.preview_resolution,
+                     UI_MENU_PREVIEW_RESOLUTION_60X20);
+    assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+
+    zero_input(&input); input.editor_toggle_mode_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.ui_menu_test_mode);
+    assert_int_equal(editor.ui_menu_test_reference_result, FLOW_REFERENCE_OK);
+    assert_int_equal(editor.ui_menu_test_runtime.viewport_width, 60);
+    assert_int_equal(editor.ui_menu_test_runtime.viewport_height, 20);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "60x20@100% TEST"));
+    assert_true(grid_contains_text(grid, "FLOW: OK"));
+    assert_true(grid_contains_text(grid, ">LAY"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.ui_menu_test_mode);
+    assert_true(editor.ui_menu_test_target_valid);
+    assert_int_equal(editor.ui_menu_test_target_type, FLOW_NODE_MENU);
+    assert_string_equal(editor.ui_menu_test_target_name, "other");
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "TARGET: Menu:other"));
+    assert_true(grid_contains_text(grid, "reported only"));
+    grid_destroy(grid);
+
+    assert_int_equal(ui_document_set_flow_port(
+        &editor.ui_menu_workspace.document, 2U, "renamed"), UI_DOCUMENT_OK);
+    zero_input(&input); input.editor_toggle_mode_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.ui_menu_test_mode);
+    assert_int_equal(editor.ui_menu_test_reference_result, FLOW_REFERENCE_MISSING_PORT);
+    assert_false(editor.ui_menu_test_target_valid);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid);
+    assert_true(grid_contains_text(grid, "FLOW: missing/stale port"));
+    grid_destroy(grid);
+    assert_int_equal(flow_document_load(&flow_after, flow_path), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_after.edge_count, flow.edge_count);
+    assert_string_equal(flow_after.edges[1].source_port, "play");
+    assert_int_equal(editor.document.current_state, scene_state);
+    assert_int_equal(editor.history.count, scene_history_count);
+    assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count);
+    unified_editor_destroy(&editor);
+    assert_int_equal(unlink(flow_path), 0);
+    assert_int_equal(unlink(other_path), 0);
+    assert_int_equal(unlink(demo_path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
@@ -4878,6 +5574,14 @@ int main(void) {
         cmocka_unit_test(test_r9_transparency_submenu_master_custom_undo_and_round_trip),
         cmocka_unit_test(test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay),
         cmocka_unit_test(test_r12_i10_g_loads_conventional_flow_transactionally),
+        cmocka_unit_test(test_r12_i11_catalog_targets_and_remove_routing),
+        cmocka_unit_test(test_r12_i11_catalog_failure_opens_retained_graph_visibly),
+        cmocka_unit_test(test_r12_i12_visual_menu_workspace_edit_discard_and_create),
+        cmocka_unit_test(test_r12_i13_menu_element_actions_text_remove_and_undo),
+        cmocka_unit_test(test_r12_i14_menu_hierarchy_actions_route_and_render),
+        cmocka_unit_test(test_r12_i15_menu_visual_properties_route_render_and_isolate),
+        cmocka_unit_test(test_r12_i16_menu_pointer_move_resize_cancel_and_isolate),
+        cmocka_unit_test(test_r12_i17_menu_preview_test_target_and_stale_reference),
         /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */
         cmocka_unit_test(test_object_sprite_picker_assignment_and_undo),
     };

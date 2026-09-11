@@ -589,7 +589,7 @@ and remove the deprecated runtime loading path with compatibility evidence.
 
 # Interface, UI, and menu authoring
 
-## Unified-editor game-flow and UI/menu workspace — **R12 Active**
+## Unified-editor game-flow and UI/menu workspace — **R12 Ready for Manual Acceptance**
 
 **Wanted:** Visually author interfaces, layouts, and menus instead of manually
 editing text assets. Keep this as a workspace/submode inside the unified Editor,
@@ -668,6 +668,61 @@ separate. Focused controller/editor tests, full sanitizers, optimized aggregate 
 strict application build, and smoke pass. See
 `R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`.
 
+**R12 I11 implemented (2026-09-10):** `FlowProjectCatalog` transactionally composes
+validated direct-child `scenes/*.tscene` and authored-game `menus/*.tui` documents and
+their exported ports without scanning application UI assets. The `G` workspace displays
+unconnected ports and absent catalog assets, supports atomic add+connect, connect/rewire,
+and safe edge/node removal, and records each operation in bounded whole-document history.
+See `R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md`.
+
+**R12 I12 implemented (2026-09-10):** non-repeating `Ctrl+U` opens the first visual
+authored-game Menu workspace. It discovers `menus/*.tui`, transactionally opens or creates
+Menu documents, renders a responsive I4/I5 preview beside a stable-ID hierarchy, edits
+non-root x/y/width/height/scale with bounded undo/redo, and supports atomic Ctrl+S plus
+dirty-close Save/Discard/Cancel. See `R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`.
+
+**R12 I13 implemented (2026-09-11):** `E` opens typed element actions in the visual Menu
+workspace. Containers create deterministic Container/Text/Button children with useful
+default geometry; Text/Button content and unique Button flow ports edit through staged
+text; Backspace confirms non-root subtree removal. Generalized bounded snapshot history
+restores exact documents and hierarchy selection. See
+`R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md`.
+
+**R12 I14 implemented (2026-09-11):** non-root elements use staged validated rename,
+cycle-safe Container reparenting, and adjacent Move Earlier/Move Later actions. Adjacent
+moves exchange complete sibling subtrees in painter order; exact bounded history preserves
+stable selection, and save/reload preserves names, parents, and order. See
+`R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md`.
+
+**R12 I15 implemented (2026-09-11):** typed scrolling Menu properties expose existing v3
+anchors, Native/Sprite mode and Sprite ID, Text/Button alignment, authored foreground/background
+channels, fill/border enablement and printable glyphs, and default visibility. Root visual-only
+editing, typed row availability, exact history, preview updates, and persistence are covered.
+See `R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md`.
+
+**R12 I16 implemented (2026-09-11):** the responsive preview accepts topmost visible pointer
+selection, live drag move, and bounded resize from a visible bottom-right `+` handle. SDL
+letterbox conversion occurs at the application edge; the headless workspace owns preview-local
+cells, one temporary exact snapshot, one-command release, and exact Escape cancellation. See
+`R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md`.
+
+**R12 I17 implemented (2026-09-11):** Preview Settings provides session-only 40×15,
+60×20, and 80×25 base resolutions and 100%, 125%, 150%, and 200% UI scales. `Tab` enters
+runtime-like testing through the existing `UiMenuRuntime`; arrows and pointer input use runtime
+focus/press/activation semantics. A copied project catalog overlays the staged Menu ports before
+validation, stale references are diagnosed, and successful activation displays a copied typed
+target as `reported only`. No target loads, app state changes, `game.flow` rewrites, or
+cross-document history are introduced. See
+`R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`.
+
+**R12 automated closeout complete (2026-09-11):** optimized aggregate, strict `make check`,
+ASan/LeakSanitizer, UBSan, canonical eight-mode matrix, conflict rejection, smoke, legacy/current
+guards, focused suites, and automated Q4 pass. The shared `ui_nested_inspector` owns common
+wrapped navigation, bounded nested rows, and real parent/child Enter/Escape cursor transitions
+used by Flow and Menu. `cppcheck` and Valgrind were unavailable. R12 is **Ready for Manual
+Acceptance**, not Verified; complete and record the checklist in
+`reviews/2026-09-11-roadmap-r12-closeout.md`.
+
 Likely capabilities:
 
 - `UiDocument` with dirty state, undo/redo, atomic Save/Save As/Discard;
@@ -679,10 +734,11 @@ Likely capabilities:
 - preview across logical resolutions and UI scales;
 - keyboard and pointer authoring with visible focus.
 
-Next add authoritative project catalog composition and graph construction workflows for
-existing Scene/Menu assets and their ports. Interactive preview and the
-compatibility boundary with current application-owned UI assets remain later work.
-R12 does not replace or self-edit the existing editor shell or application menus.
+Implemented R12 capabilities include supported logical-resolution/UI-scale preview choices,
+runtime-like Menu test mode, current action/reference diagnostics, and typed target request
+reporting. Target loading remains intentionally out of scope. The compatibility boundary is
+implemented: R12 does not discover, replace, or self-edit the application-owned editor shell,
+`ui_layouts`, `ui_elements`, or application menus.
 
 ---
 

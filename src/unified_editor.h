@@ -25,6 +25,10 @@
 #include "vertical_physics.h"
 #include "entity_trigger_session.h"
 #include "flow_workspace.h"
+#include "flow_project_catalog.h"
+#include "ui_menu_workspace.h"
+#include "ui_menu_runtime.h"
+#include "ui_render_adapter.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -179,7 +183,21 @@ typedef struct {
     VerticalPhysicsState vertical_physics;
     EntityTriggerSession trigger_session;
     FlowWorkspace flow_workspace;
+    FlowProjectCatalog flow_project_catalog;
     FlowWorkspaceResult last_flow_result;
+    UiMenuWorkspace ui_menu_workspace;
+    UiMenuWorkspaceResult last_ui_menu_result;
+    UiMenuRuntime ui_menu_test_runtime;
+    FlowDocument ui_menu_test_flow;
+    FlowProjectCatalog ui_menu_test_catalog;
+    FlowRuntimeSession ui_menu_test_session;
+    FlowReferenceResult ui_menu_test_reference_result;
+    UiMenuRuntimeResult last_ui_menu_test_result;
+    FlowNodeId ui_menu_test_target_id;
+    FlowNodeType ui_menu_test_target_type;
+    char ui_menu_test_target_name[FLOW_NAME_CAPACITY];
+    bool ui_menu_test_mode;
+    bool ui_menu_test_target_valid;
 
     bool inspector_open;
     EditorInspectorKind inspector_kind;
@@ -309,12 +327,16 @@ FlowWorkspaceResult unified_editor_load_flow_workspace(UnifiedEditorState *edito
                                                        const char *path);
 FlowWorkspaceResult unified_editor_save_flow_workspace_as(UnifiedEditorState *editor,
                                                           const char *path);
+UiMenuWorkspaceResult unified_editor_open_ui_menu_workspace(
+    UnifiedEditorState *editor
+);
 
 EditorInputConsumption unified_editor_update(
     UnifiedEditorState *editor,
     InputState *input,
     Camera *camera,
     double delta_seconds,
+    int viewport_columns,
     int viewport_rows
 );
 

@@ -227,7 +227,7 @@ Do not create empty review directories or placeholder review files.
 | R9 | Layered optical rendering | R4 geometry separation; R8 geometry if applicable | Translucency, mirrors, explicit invisible surfaces | Verified 2026-08-27 (manual optical acceptance passed); current-renderer flat-path timing follow-up open |
 | R10 | Colored and expanded lighting | R6; R8–R9 interaction rules | Colored, spot, and researched advanced lighting | Verified 2026-08-27 (I1–I2 manual acceptance passed; I3 research closed, all DEFER/one REJECT) |
 | R11 | Sprites, animation, objects, and triggers | R2–R3; R8 geometry if applicable | Broader gameplay authoring | Verified 2026-09-04 — I1–I6 automated/manual gates and final boundary review passed; single-spawn baseline accepted, game-mode expansion unnecessary |
-| R12 | Authored game-flow and responsive UI/menu authoring | R0 UI evidence; stable editor domain patterns | Player-facing visual UI authoring | Active — I1–I6 graph through headless rendering/interaction implemented; automated gates passed |
+| R12 | Authored game-flow and responsive UI/menu authoring | R0 UI evidence; stable editor domain patterns | Player-facing visual UI authoring | Ready for Manual Acceptance — I1–I17 and automated Q1–Q4 complete; display-backed exit gate pending |
 
 Dependencies express minimum foundations, not permission to skip Q1 planning or
 Q4 review findings.
@@ -856,7 +856,9 @@ undo/redo, and handle missing assets/actions safely; Q1–Q3 pass.
 
 ## R12 — Authored game-flow and responsive UI/menu authoring
 
-**Status:** Active. Detailed phase plan:
+**Status:** Ready for Manual Acceptance — I1–I17 and automated Q1–Q4 complete;
+display-backed exit-gate checks remain pending. R12 is not Verified. Closeout:
+`reviews/2026-09-11-roadmap-r12-closeout.md`. Detailed phase plan:
 `R12_UI_MENU_AUTHORING_PLAN_2026-09-04.md`. I1 decision/implementation record:
 `R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`. I2 record:
 `R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`. I3 record:
@@ -867,7 +869,14 @@ undo/redo, and handle missing assets/actions safely; Q1–Q3 pass.
 `R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`. I8 record:
 `R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`. I9 record:
 `R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`. I10 record:
-`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`.
+`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`. I11 record:
+`R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md`. I12 record:
+`R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`. I13 record:
+`R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md`. I14 record:
+`R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md`. I15 record:
+`R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md`. I16 record:
+`R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md`. I17 record:
+`R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`.
 
 **Purpose:** Author the player-facing UI and game progression of a game built in the
 unified editor. This does not replace the editor shell or application menus.
@@ -892,6 +901,19 @@ dependencies are stable.
    **I8 implemented:** typed Button and scene-exit activations require matching
    Menu/Scene source nodes, advance a copied runtime session by named port, and return
    failure-atomic typed Scene/Menu target requests without loading or I/O.
+   **I10–I11 implemented:** the unified editor owns a staged game-flow workspace and an
+   authoritative project Scene/Menu catalog. Validated ports support connect/rewire,
+   catalog assets support atomic add+connect, and safe edge/node removal participates in
+   bounded undo/redo and transactional Save/Discard.
+   **I12 implemented:** `Ctrl+U` opens an authored-game Menu chooser/editor with
+   transactional open/create/save/discard, stable hierarchy selection, responsive I4/I5
+   preview, and bounded x/y/width/height/scale property history.
+   **I13 implemented:** typed context actions construct Container/Text/Button children,
+   stage bounded content and unique Button-port edits, and remove complete non-root
+   subtrees through confirmed, bounded, failure-atomic history commands.
+   **I14 implemented:** staged validated rename, cycle-safe Container reparenting, and
+   adjacent earlier/later sibling subtree moves preserve stable IDs and participate in the
+   same exact bounded history.
 3. Define the authored-UI format and compatibility relationship with existing
    application-owned UI element/layout assets. Existing editor/app UI is not an
    R12 authoring target.
@@ -922,10 +944,26 @@ dependencies are stable.
    undo/redo, and atomic Save/Discard uses the conventional project `game.flow`.
    Focused controller/editor tests, full ASan/LeakSanitizer, full UBSan, optimized
    aggregate tests, strict application build, and smoke pass.
+   **I12–I14 visual-workspace foundation implemented:** responsive hierarchy/preview,
+   layout properties, typed construction/removal, content/port editing, rename, keyboard
+   reparenting, and adjacent painter-order moves are transactional and undoable.
+   **I15 implemented:** typed scrolling properties expose existing v3 anchors, native/sprite
+   visuals, alignment, colors, fill/border glyph policy, and default visibility through the
+   same bounded history.
+   **I16 implemented:** logical-grid pointer selection uses resolved clipping and paint order;
+   live move/resize stages from one exact snapshot, release records one command, and Escape
+   restores the exact before document. Keyboard properties remain the accessible equivalent.
 7. Add multi-resolution preview and action/reference validation.
+   **I17 implemented:** session-only 40×15, 60×20, and 80×25 base presets plus
+   100%, 125%, 150%, and 200% UI scale drive the existing resolver. `Tab` uses the
+   existing `UiMenuRuntime` with current staged-port validation and copies a typed
+   report-only target; it never loads targets, changes app state, or rewrites the graph.
 8. Add a reusable nested-inspector submenu element/controller so parent-row
    highlight, child indentation, focus markers, insertion order, and Escape
    navigation are defined once instead of hand-coded per editor domain.
+   **Implemented at closeout:** `ui_nested_inspector` provides wrapped stepping,
+   bounded indented row formatting, and retained-depth Enter/Escape cursor transitions.
+   Flow and Menu controllers use those transitions and presentation helpers.
 
 **Data-first opportunities:** Layout structure, style tokens, focus order,
 actions, bindings, constraints, templates, and responsive rules are validated
@@ -945,7 +983,7 @@ checks; progression and UI references validate; authoring Save/Discard is
 transactional; Q1–Q3 pass.
 
 **Review checkpoint:** Q4 before format commitment and after visual authoring is
-integrated.
+integrated. **Final automated Q4 passed 2026-09-11; manual display acceptance pending.**
 
 ---
 
@@ -1055,19 +1093,8 @@ closeout: `reviews/2026-09-04-roadmap-r11-closeout.md`.
 Four non-blocking animation/sprite follow-ups are recorded in
 `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`; each requires separate
 investigation or Q1 planning. Start Game native-scene loading is post-editor cleanup.
-R12 is Active; I1 `FlowDocument` and I2 typed reference validation/pure runtime
-navigation plus I3 Menu `UiDocument` are implemented and their automated gates pass.
-I4 responsive geometry/per-item scale and v1→v2 migration are also implemented with
-automated gates passing. I5 native/sprite visuals, v1/v2→v3 migration, transient
-state/theme input, and headless rendering are implemented with automated gates passing.
-I6 pure hit testing, focus/navigation, and activation is implemented with automated
-gates passing. I7 scene v11 exit-flow authoring, runtime exit requests, and borrowed
-Scene catalog adaptation are implemented with automated gates passing. I8 pure typed
-activation-to-flow binding and I9 headless authored Menu runtime hosting are implemented
-with automated gates passing. I10's minimum unified-editor game-flow workspace,
-edge-target history, conventional project flow loading, and Save/Discard are implemented
-with automated gates passing. Next: catalog-backed graph construction workflows. I8
-quality presets stay deferred and require a fresh
-end-to-end assessment plus separate authorization. Open R9 follow-up:
+R12 is Ready for Manual Acceptance; I1–I17 and automated Q1–Q4 are complete. The final
+display-backed checklist remains pending, so R12 is not Verified. Closeout evidence and the
+manual exit rule are in `reviews/2026-09-11-roadmap-r12-closeout.md`. Open R9 follow-up:
 bring the current-renderer flat inherited path under the 6 ms surface-render
 budget.

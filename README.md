@@ -85,19 +85,74 @@ representative raycast workload.
 
 Open the existing unified editor from the main menu, then press `G` to open the
 game-flow workspace. The first entry loads `assets/game.flow`; the checked-in graph
-connects Start to the existing `testscene` scene.
+connects Start to the existing `testscene` scene. Project choices are composed from
+validated direct-child `assets/scenes/*.tscene` scenes and `assets/menus/*.tui` authored
+game menus; application-owned files under `ui_layouts` are not game-flow assets.
 
-- `Up` / `Down`: select a node, outgoing named connection, target, or close choice.
-- `Enter`: descend into connections/targets or commit the selected rewire.
+- `Up` / `Down`: select a node, validated connected/unconnected port, target, or close choice.
+- `Enter`: descend or connect/rewire the selected port to an existing/catalog target.
+- `Backspace`: remove the selected existing connection or non-Start node when the
+  remaining graph stays valid and reachable.
 - `Escape` or `G`: go back; closing a dirty graph opens Save/Discard/Cancel.
-- `Ctrl+Z` / `Ctrl+Y`: undo/redo staged edge-target rewires.
+- `Ctrl+Z` / `Ctrl+Y`: undo/redo staged graph construction and rewiring.
 - `Ctrl+S`: atomically save a graph that already has a path.
 
 The workspace remains inside the unified editor and suppresses scene movement/look while
-open. I10 browses Start/Scene/Menu nodes and rewires existing authored connections. It
-does not yet create/remove nodes or ports; those workflows require the next
-catalog-backed graph-construction increment. Existing application menus are not treated
-as authored game Menu assets.
+open. I11 can atomically add an existing catalog Scene/Menu while connecting it, connect
+unconnected validated ports, and safely remove edges/nodes. It does not create, rename,
+or edit Scene/Menu assets or their ports, and it does not yet provide a visual Menu
+canvas, hierarchy/property editor, target loading, or application-menu replacement.
+
+### Visual authored-Menu workspace
+
+Press `Ctrl+U` in the unified editor to open the authored-game Menu workspace. It lists
+validated direct-child `assets/menus/*.tui` documents and can create a new Menu at
+`assets/menus/<name>.tui`. The checked-in `main_menu.tui` provides a centered responsive
+Start Button preview.
+
+- `Up` / `Down`: choose a Menu, hierarchy element, property, or dirty-close choice.
+- `Enter`: open/create a Menu or enter typed properties for the selected element.
+- `E`: open context actions for the selected hierarchy element.
+- Context actions: staged Rename, cycle-safe Reparent, and adjacent Move Earlier/Later.
+- **Preview Settings**: from context actions, use `Up` / `Down` to choose Resolution or
+  UI Scale and `Left` / `Right` to wrap through 40×15, 60×20, 80×25 and
+  100%, 125%, 150%, 200% presets.
+- `Left` / `Right`: adjust layout, anchors, visuals, colors, glyphs, and visibility.
+- Pointer: click the preview to select, drag an element to move, or drag its `+` handle to resize.
+- `Tab`: enter runtime-like Test mode; arrows move focus, `Enter` activates, pointer
+  down/up uses runtime press/release, and `Escape` or `Tab` returns to editing.
+- `Backspace`: request confirmed removal of a selected non-root element and descendants.
+- `Ctrl+Z` / `Ctrl+Y`: undo/redo bounded layout-property edits.
+- `Ctrl+S`: atomically save the staged Menu.
+- `Escape` / `Ctrl+U`: go back; leaving a dirty Menu opens Save/Discard/Cancel.
+
+The hierarchy shows stable IDs beside a live responsive preview rendered by the same
+layout and visual adapters used by authored UI runtime code. I13 context actions let a
+selected Container create Container/Text/Button children with deterministic unique names
+and useful initial geometry. Text/Button content and unique Button flow ports use staged
+text entry with Enter-to-commit and Escape-to-cancel. Creation, field commits, layout
+changes, hierarchy structure edits, and confirmed subtree removal share the same 32-command
+undo/redo history. Adjacent order actions move complete sibling subtrees and retain selection
+by stable element ID. The scrolling property view exposes all existing v3 fields: responsive
+anchors, Native/Sprite mode and Sprite ID, Text/Button alignment, foreground/background RGBA,
+fill/border toggles and printable glyphs, and default visibility. Rows that do not apply to the
+selected element or visual mode are skipped.
+
+Pointer manipulation previews live from one exact before snapshot. Releasing commits at most
+one undoable command; `Escape` or `Ctrl+U` cancels and restores the exact prior document. Pointer
+movement changes the same authored x/y/width/height fields as the keyboard property workflow.
+
+Preview resolution and scale are session-only and use effective logical dimensions
+`base × 100 / scale`; they neither dirty the Menu nor consume undo history. Test mode uses the
+existing `UiMenuRuntime` and validates a copied `game.flow`/project catalog after overlaying the
+staged Menu's current Button ports. Missing or stale references are displayed immediately.
+Successful activation exits Test mode and reports the copied target node ID, Scene/Menu type,
+and asset name as **reported only**. It does not load the target, change application state,
+rewrite `game.flow`, save files, or consume Scene/Flow/Menu history.
+
+Element duplication and application-menu replacement remain later work. Files under
+`ui_layouts` and `ui_elements` remain application-owned: authored Menu discovery does not scan,
+replace, or edit them.
 
 ## Test
 

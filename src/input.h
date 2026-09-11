@@ -30,7 +30,7 @@ typedef enum {
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
     INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
     INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO, INPUT_KEY_L, INPUT_KEY_P,
-    INPUT_KEY_T, INPUT_KEY_B, INPUT_KEY_G
+    INPUT_KEY_T, INPUT_KEY_B, INPUT_KEY_G, INPUT_KEY_U
 } InputKey;
 
 typedef struct {
@@ -61,8 +61,15 @@ typedef struct {
     bool right;             /* D key held */
     float mouse_dx;         /* Accumulated relative mouse X movement (pixels) */
     float mouse_dy;         /* Accumulated relative mouse Y movement (pixels) */
+    float mouse_x;          /* Last absolute pointer X in window pixels */
+    float mouse_y;          /* Last absolute pointer Y in window pixels */
     bool mouse_left;
     bool mouse_right;
+    bool mouse_left_pressed;
+    bool mouse_left_released;
+    int mouse_grid_x;       /* Application-converted logical grid column */
+    int mouse_grid_y;       /* Application-converted logical grid row */
+    bool mouse_grid_valid;
     float mouse_wheel_x;
     float mouse_wheel_y;
     bool up;                /* Up arrow key — edge-triggered: true for one frame on press */
@@ -113,6 +120,7 @@ typedef struct {
     bool editor_place_trigger_pressed; /* T — place an enter-region trigger */
     bool editor_place_object_pressed; /* B — place the first loaded object */
     bool editor_flow_workspace_pressed; /* G — open/close game-flow workspace */
+    bool editor_ui_workspace_pressed;   /* Ctrl+U — open/close authored Menu workspace */
     bool editor_jump_pressed;        /* Space — jump in editor walk mode */
 
   /* Held state — physically depressed this frame.

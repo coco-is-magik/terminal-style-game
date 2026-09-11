@@ -156,6 +156,42 @@ static void test_checked_in_project_flow_is_valid(void **state) {
     assert_string_equal(scene->asset_name, "testscene");
 }
 
+static void test_disconnect_and_remove_node_are_transactional(void **state) {
+    FlowDocument document;
+    FlowDocument before;
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId start_edge;
+    FlowEdgeId scene_edge;
+    FlowEdgeId menu_edge;
+    (void)state;
+    flow_document_init(&document);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_SCENE, "scene", &scene),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_MENU, "menu", &menu),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, 1U, "start", scene, &start_edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, scene, "exit", menu, &scene_edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, menu, "back", scene, &menu_edge),
+                     FLOW_DOCUMENT_OK);
+    before = document;
+    assert_int_equal(flow_document_disconnect(&document, scene_edge),
+                     FLOW_DOCUMENT_UNREACHABLE_NODE);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(flow_document_remove_node(&document, 1U),
+                     FLOW_DOCUMENT_INVALID_START);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(flow_document_remove_node(&document, menu), FLOW_DOCUMENT_OK);
+    assert_int_equal(document.node_count, 2U);
+    assert_int_equal(document.edge_count, 1U);
+    assert_non_null(flow_document_find_edge(&document, start_edge));
+    assert_null(flow_document_find_edge(&document, scene_edge));
+    assert_null(flow_document_find_edge(&document, menu_edge));
+    assert_int_equal(flow_document_validate(&document), FLOW_DOCUMENT_OK);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_init_add_connect_and_cycle),
@@ -163,7 +199,8 @@ int main(void) {
         cmocka_unit_test(test_save_load_round_trip_and_transactional_failure),
         cmocka_unit_test(test_validation_rejects_duplicate_ids_and_missing_nodes),
         cmocka_unit_test(test_set_edge_target_is_validated_and_transactional),
-        cmocka_unit_test(test_checked_in_project_flow_is_valid)
+        cmocka_unit_test(test_checked_in_project_flow_is_valid),
+        cmocka_unit_test(test_disconnect_and_remove_node_are_transactional)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

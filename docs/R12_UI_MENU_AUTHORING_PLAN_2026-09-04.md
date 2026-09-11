@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active phase plan.** R11 is verified and closed. R12 I1 implements the separate
+**Implementation complete; Ready for Manual Acceptance.** R11 is verified and closed. R12 I1 implements the separate
 versioned `FlowDocument` graph; I2 implements typed asset/port validation and pure
 runtime navigation; I3 implements the minimum authored Menu `UiDocument` tree and
 Button-port export; I4 adds versioned responsive anchor/Stretch geometry and local
@@ -12,7 +12,21 @@ and activation semantics; I7 adds scene v11 named exit triggers and borrowed sce
 catalog adaptation; I8 adds pure typed Button/scene-exit activation-to-flow binding.
 I9 composes rendering, interaction, and flow binding into a headless authored Menu
 runtime host. I10 adds the first unified-editor game-flow workspace for staged graph browsing,
-rewiring, history, Save, and Discard. All ten increments pass their automated gates.
+rewiring, history, Save, and Discard. I11 composes authoritative project Scene/Menu
+catalogs and adds catalog-backed connect/add/remove graph workflows. I12 adds the first
+visual authored-Menu workspace with project
+open/create, responsive I4/I5 preview, stable hierarchy selection, bounded layout-property
+history, and transactional Save/Discard. I13 adds typed Container/Text/Button construction,
+staged content/Button-port editing, confirmed subtree removal, and generalized bounded
+history. I14 adds staged validated rename, cycle-safe Container reparenting, and adjacent
+sibling subtree moves in painter order. I15 exposes the existing v3 anchors, visual
+mode/sprite ID, alignment, colors, fill/border
+policy and glyphs, and default visibility through typed scrolling properties. I16 adds pointer
+preview selection, live drag move,
+bounded bottom-right handle resize, one-command release, and exact cancellation. I17 adds
+session-only multi-resolution/UI-scale preview and runtime-like Menu testing with current
+staged-reference diagnostics and report-only typed targets. All seventeen increments pass
+their automated gates; final display-backed acceptance remains pending.
 This document
 records the broader responsive authored-UI and UI/menu-authoring direction.
 
@@ -376,8 +390,15 @@ Still open:
 10. **Implemented:** minimum unified-editor game-flow workspace with conventional
     project loading, deterministic nested navigation, edge rewiring, undo/redo, and
     transactional Save/Discard.
-11. Add authoritative asset catalogs and graph construction, then finalize compatibility
-    rules and implement visual authoring/preview.
+11. **Implemented:** authoritative asset catalogs and graph construction.
+12. **Implemented:** visual Menu open/create, responsive preview, hierarchy selection,
+    layout properties, and transactional Save/Discard.
+13. **Implemented:** typed element construction/removal and staged content/Button-port edits.
+14. **Implemented:** validated rename, cycle-safe reparenting, and adjacent subtree order.
+15. **Implemented:** expose existing v3 visual/layout properties through typed scrolling rows.
+16. **Implemented:** pointer canvas selection, live move/resize, one-command release, and cancel.
+17. **Implemented:** integrated multi-resolution runtime-like preview/reference validation
+    with typed report-only target handoff.
 
 ## 11. Risks and constraints
 
@@ -399,11 +420,7 @@ document/transactional workflow used elsewhere in the project.
 
 ## 13. Next safe action
 
-I1–I10 are implemented. The next safe step is authoritative project catalog composition
-and graph construction workflows. Remaining decisions include:
-
-1. catalog-backed add/remove Scene/Menu node and connection workflows;
-2. visual Menu hierarchy/property/canvas command semantics;
-3. game-state/HUD binding;
-4. preview and application loading integration; and
-5. compatibility policy for existing application-owned UI assets.
+I1–I17 are implemented. Automated Q1–Q4 and all applicable automated closeout gates pass.
+The next safe step is only the display-backed manual acceptance checklist in
+`reviews/2026-09-11-roadmap-r12-closeout.md`. Do not begin post-R12 work or mark R12 Verified
+until those checks are completed and recorded.

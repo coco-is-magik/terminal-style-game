@@ -82,6 +82,10 @@ FlowDocumentResult flow_document_connect(FlowDocument *document,
 FlowDocumentResult flow_document_set_edge_target(FlowDocument *document,
                                                  FlowEdgeId edge_id,
                                                  FlowNodeId target_id);
+FlowDocumentResult flow_document_disconnect(FlowDocument *document,
+                                            FlowEdgeId edge_id);
+FlowDocumentResult flow_document_remove_node(FlowDocument *document,
+                                             FlowNodeId node_id);
 FlowDocumentResult flow_document_validate(const FlowDocument *document);
 FlowDocumentResult flow_document_load(FlowDocument *document, const char *path);
 FlowDocumentResult flow_document_save_as(FlowDocument *document,
