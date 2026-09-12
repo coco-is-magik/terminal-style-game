@@ -56,6 +56,9 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-12-regression-coverage-audit.md`](reviews/2026-09-12-regression-coverage-audit.md)
   maps all current runners and gates, records completed high-risk increments, and
   ranks remaining environment/design gaps.
+- [`reviews/2026-09-12-windows-10-platform-survey-plan.md`](reviews/2026-09-12-windows-10-platform-survey-plan.md)
+  is the accepted, not-yet-implemented plan for a persistent native Windows 10 x64
+  VM survey; execution remains blocked until KVM is available on the Gentoo host.
 
 R0–R12 are verified roadmap foundations. They should not be read as a claim that
 the editor or game-making experience is feature-complete.
