@@ -7,12 +7,13 @@ questions, and deferred engineering work. It is an **idea inventory**, not an
 authoritative roadmap, implementation plan, commitment, or priority order.
 
 Dependency order, engineering gates, review checkpoints, and the current next
-phase are maintained separately in `docs/FEATURE_ROADMAP.md`.
+phase are maintained separately in `FEATURE_ROADMAP.md`. For a concise current
+status summary, see `CURRENT_STATUS.md`.
 
 An unchecked item means “wanted or worth investigating,” not “ready to build.”
 Before implementation, each substantial item needs its own requirements
 discussion and scoped plan. Accepted current behavior remains defined by
-`docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` until deliberately revised.
+`EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` until deliberately revised.
 
 Planning labels used below:
 
@@ -243,7 +244,7 @@ need an explicit render fallback; the block schema itself is deliberately parked
 
 ### Height-aware 2.5D world questions — **Resolved 2026-08-19**
 
-These questions were answered in `R8_DECISION_RECORD_2026-08-19.md`:
+These questions were answered in [`archive/r8/R8_DECISION_RECORD_2026-08-19.md`](archive/r8/R8_DECISION_RECORD_2026-08-19.md):
 
 - Stacked rooms are **not** required; one traversable interval per X/Y remains
   authoritative (R1 contract).
@@ -262,7 +263,7 @@ Mirrors, glass, invisible collision, and pass-through surfaces require separate
 properties for occupancy, player collision, ray/light interaction, visual
 material, opacity, and reflectivity. These must not remain encoded by the
 special meaning of material ID `0`. Resolved by the R9 optical model (see
-`R9_DECISION_RECORD_2026-08-24.md` and the R9 closeout): authored occupancy,
+[`archive/r9/R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md`](archive/r9/R9_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-24.md) and the R9 closeout): authored occupancy,
 per-channel transmission, opacity, sight-ray blocking, and reflectivity are
 distinct scene fields; mirrors are bounded to one-bounce, authored-positive
 reflectivity. Open follow-ups: per-face wall materials (deferred), reflected
@@ -289,7 +290,7 @@ hovered wall-face outline, a solid persistent selected-wall-face outline, and an
 adaptive center crosshair. Escape dismissal clears the persistent selection. The
 overlay is allocation-free, respects nearest-wall occlusion, and does not mutate
 authored materials. See `EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` and
-`EDITOR_HIGHLIGHT_IMPLEMENTATION_RECORD_2026-07-29.md`.
+[`archive/editor-unification/EDITOR_HIGHLIGHT_IMPLEMENTATION_RECORD_2026-07-29.md`](archive/editor-unification/EDITOR_HIGHLIGHT_IMPLEMENTATION_RECORD_2026-07-29.md).
 
 **Preserved future idea:** Generalize the same interaction vocabulary to floors,
 ceilings, lights, decals, objects, bulk selections, and hidden targets after those
@@ -343,7 +344,7 @@ map, lights, decals, spawn, and ambient data.
 100%, 125%, 150%, and 200% UI scaling with a 150% default, immutable/runtime
 preference precedence, atomic live persistence, global shortcuts, and Main/Pause
 Settings access. The fixed crosshair and editor highlights remain unscaled. See
-`R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`.
+[`archive/r0/R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md`](archive/r0/R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md).
 
 **Wanted:** Comfortably resize editor text and controls.
 
@@ -356,7 +357,7 @@ Possible scopes:
    containers.
 
 **Decision 2026-07-30:** R0 implements scope 1 only through the approved
-`R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md`. The accepted model uses immutable
+[`archive/r0/R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md`](archive/r0/R0_UI_ZOOM_ACCESSIBILITY_PLAN_2026-07-30.md). The accepted model uses immutable
 `default_user.ini`, runtime-written `user.ini`, immediate persistent live
 adjustment, 100/125/150/200% presets with a 150% shipped default, global keyboard
 shortcuts, and a bounded Settings menu. UI is composited separately so world
@@ -566,7 +567,7 @@ FPS/loop editing, staged Save/Discard, and atomic folder replacement. Automated
 gates, manual acceptance, and the final R11 boundary review passed on 2026-09-04.
 
 Planned improvements are tracked separately in
-`R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`:
+[`archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`](archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md):
 
 1. investigate subtle frame-change flicker/jitter without assuming its cause;
 2. add a convenience option to insert a copied frame;
@@ -693,9 +694,9 @@ Two different features are possible:
 **Decision 2026-07-30:** R0 uses option 1 with an exact
 `[-viewport_rows, +viewport_rows]` bound derived from the active logical grid.
 This remains a 2.5D horizon offset. True angular pitch was referred to R8 and,
-per `R8_DECISION_RECORD_2026-08-19.md`, remains deferred beyond R8 (not an R8
+per [`archive/r8/R8_DECISION_RECORD_2026-08-19.md`](archive/r8/R8_DECISION_RECORD_2026-08-19.md), remains deferred beyond R8 (not an R8
 requirement).
-See `R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`.
+See [`archive/r0/R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md`](archive/r0/R0_GRID_RELATIVE_HORIZON_OFFSET_PLAN_2026-07-30.md).
 
 Define expected behavior near straight up/down, extreme-pitch safety, decal
 coherence, sensitivity/inversion, and avoid calling a wider horizon offset
@@ -716,7 +717,7 @@ asset views or collision/selection models.
 
 **Wanted:** Raised/lowered areas and traversable ramps/slopes.
 
-The verticality decisions are resolved in `R8_DECISION_RECORD_2026-08-19.md`:
+The verticality decisions are resolved in [`archive/r8/R8_DECISION_RECORD_2026-08-19.md`](archive/r8/R8_DECISION_RECORD_2026-08-19.md):
 
 - continuous per-cell floor/ceiling heights (heightfield); ramps are cell-aligned
   only;
@@ -728,7 +729,7 @@ The verticality decisions are resolved in `R8_DECISION_RECORD_2026-08-19.md`:
 - v4 → v5 heightfield migration reuses the proven v1 → v2 → v3 → v4 machinery.
 
 R8 is **Verified (2026-08-21)**. The requirements/implementation plan
-(`R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-19.md`) now specifies the schema
+([`archive/r8/R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-19.md`](archive/r8/R8_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-08-19.md)) now specifies the schema
 fields, limits, parameter validation ranges, editor workflows, and renderer
 performance budget; the heightfield itself remains separate from the per-surface
 floor/ceiling materials already authored in v3.
@@ -746,7 +747,7 @@ reflected entities/lights/decals, reflectivity separate from occupancy, and a
 performance strategy (bounded resolution/update rate or stylization). Decide
 surface types, bounce count, mirror-facing-mirror behavior, visual quality, and
 interaction with translucency/invisible geometry. Scoped as RQ4/P4 in
-`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md` (single bounded bounce first;
+[`archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md) (single bounded bounce first;
 mirror-facing-mirror stays out of the prototype).
 
 **Manual observation — deferred fix (2026-09-03):** At certain viewing angles,
@@ -783,7 +784,7 @@ Do not use one ambiguous “invisible” flag. Distinguish invisible solid
 collision, invisible passable markers, editor-hidden geometry, ray-transparent
 barriers, and light-blocking/passing geometry. The editor needs a reveal toggle
 and highlight so hidden geometry remains editable. Scoped as RQ1/P1 in
-`R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`, which requires ray, light, and player
+[`archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md), which requires ray, light, and player
 interaction to be independent typed fields rather than one flag.
 
 ---
@@ -800,7 +801,7 @@ runtime firing. R11 I4 verifies static `simple` object assets/instances, basic
 player collision, and per-instance sprite selection. R11 I5 verifies strict
 folder-backed sprite-animation data and time-based runtime playback; R11 I6 verifies
 folder-only static/animated authoring in the integrated sprite painter. Planned
-follow-ups are in `R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`. Broader object
+follow-ups are in [`archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`](archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md). Broader object
 attributes and trigger graphs/conditions/actions remain future work. Game-mode spawn expansion is
 explicitly unnecessary/deferred because no game modes or mature testing workflow
 exist; the single authored spawn remains the verified baseline.
@@ -881,26 +882,26 @@ not a return to disconnected application states.
 graph owns Start/Scene/Menu nodes and named progression edges. Stable IDs, cycles,
 reachability, strict parsing, transactional load, and atomic save are covered by the
 focused runner. Editor canvas and application/runtime integration remain later
-increments. See `R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`.
+increments. See [`archive/r12/R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md`](archive/r12/R12_I1_FLOW_DOCUMENT_DECISION_AND_PLAN_2026-09-04.md).
 
 **R12 I2 implemented (2026-09-04):** a borrowed typed catalog validates Scene/Menu
 asset names and declared outgoing ports, while a pure allocation-free runtime session
 navigates the current node through explicit named edges. It owns no I/O, rendering,
 input, time, trigger state, or editor behavior. See
-`R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`.
+[`archive/r12/R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md`](archive/r12/R12_I2_REFERENCE_VALIDATION_AND_RUNTIME_PLAN_2026-09-04.md).
 
 **R12 I3 implemented (2026-09-04):** versioned Menu `UiDocument` data owns one
 validated stable-ID Container/Text/Button tree, transactional load, atomic save,
 dirty identity, and derived unique Button flow ports compatible with I2. Layout,
 scale, sprite/style, rendering, and editor integration remain absent by design. See
-`R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`.
+[`archive/r12/R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md`](archive/r12/R12_I3_UI_DOCUMENT_MENU_SCHEMA_PLAN_2026-09-04.md).
 
 **R12 I4 implemented (2026-09-04):** `UiDocument` v2 adds design dimensions,
 parent-relative integer rectangles, independent Start/Center/End/Stretch anchors, and
 bounded local per-item scale. The pure allocation-free resolver returns deterministic
 parent/viewport-clipped geometry in document paint order. Version 1 migrates to
 explicit safe defaults. No renderer/editor/global-scale coupling was added. See
-`R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md`.
+[`archive/r12/R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md`](archive/r12/R12_I4_RESPONSIVE_LAYOUT_DECISION_AND_PLAN_2026-09-04.md).
 
 **R12 I5 implemented (2026-09-04):** `UiDocument` v3 adds native colors,
 fill/border glyph policy, text alignment, default visibility, and numeric sprite visual
@@ -908,21 +909,21 @@ references. Transient focused/pressed/disabled/visible state stays outside persi
 state colors use one caller theme and Buttons retain non-color-only markers. The pure
 headless adapter renders into `UiCanvas`, clips all work, and preserves the destination
 on invalid state or missing assets/materials. See
-`R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md`.
+[`archive/r12/R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md`](archive/r12/R12_I5_VISUALS_AND_HEADLESS_RENDER_PLAN_2026-09-04.md).
 
 **R12 I6 implemented (2026-09-04):** a pure allocation-free interaction module owns
 only focused stable element identity and provides painter-order clipped hit testing,
 wrapped next/previous focus, deterministic four-way directional navigation, transient
 hidden/disabled eligibility, pointer focus, and typed Button activation results. It
 does not route input or invoke flow transitions. See
-`R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md`.
+[`archive/r12/R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md`](archive/r12/R12_I6_INTERACTION_SEMANTICS_PLAN_2026-09-04.md).
 
 **R12 I7 implemented (2026-09-09):** native scene v11 adds unique bounded named
 `exit_flow` trigger ports. Trigger ticks expose one deterministic borrowed exit request,
 and `scene_flow_adapter` derives borrowed Scene entries for complete I2 catalog/graph
 validation. The existing trigger inspector can designate an exit with a conventional
 unique name. It does not invoke flow navigation or load targets. See
-`R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`.
+[`archive/r12/R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md`](archive/r12/R12_I7_SCENE_EXIT_AND_CATALOG_ADAPTER_PLAN_2026-09-09.md).
 
 **R12 I8 implemented (2026-09-09):** `flow_binding` accepts either an I6 Button
 activation from a Menu node or an I7 scene-exit request from a Scene node, advances a
@@ -930,7 +931,7 @@ local copy of `FlowRuntimeSession`, and returns a typed borrowed Scene/Menu targ
 request. Wrong source types, invalid activations, missing ports, invalid graphs/sessions,
 and Start targets preserve session/output. It performs no loading, rendering, input,
 I/O, or app/editor mutation. See
-`R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`.
+[`archive/r12/R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md`](archive/r12/R12_I8_FLOW_BINDING_ADAPTER_PLAN_2026-09-09.md).
 
 **R12 I9 implemented (2026-09-09):** `UiMenuRuntime` borrows authored Menu/render/flow
 dependencies and owns only transient focus, pressed, visibility/disabled, viewport, and
@@ -938,7 +939,7 @@ active state. Explicit logical keyboard/pointer commands route through I6, rende
 routes through I5, and successful release hands a typed target through I8 before the
 host deactivates. Menu reset/switch is transactional; the host performs no SDL event
 processing, loading, persistence, or app/editor mutation. See
-`R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`.
+[`archive/r12/R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md`](archive/r12/R12_I9_AUTHORED_MENU_RUNTIME_HOST_PLAN_2026-09-09.md).
 
 **R12 I10 implemented (2026-09-09):** non-repeating `G` opens a game-flow workspace
 inside the unified editor. A headless staged controller presents Start/Scene/Menu nodes,
@@ -948,45 +949,45 @@ First entry loads `<asset-root>/game.flow` transactionally; malformed input pres
 recoverable retained graph. Scene editor state, app menus, and target loading remain
 separate. Focused controller/editor tests, full sanitizers, optimized aggregate tests,
 strict application build, and smoke pass. See
-`R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`.
+[`archive/r12/R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md`](archive/r12/R12_I10_GAME_FLOW_WORKSPACE_PLAN_2026-09-09.md).
 
 **R12 I11 implemented (2026-09-10):** `FlowProjectCatalog` transactionally composes
 validated direct-child `scenes/*.tscene` and authored-game `menus/*.tui` documents and
 their exported ports without scanning application UI assets. The `G` workspace displays
 unconnected ports and absent catalog assets, supports atomic add+connect, connect/rewire,
 and safe edge/node removal, and records each operation in bounded whole-document history.
-See `R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md`.
+See [`archive/r12/R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md`](archive/r12/R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10.md).
 
 **R12 I12 implemented (2026-09-10):** non-repeating `Ctrl+U` opens the first visual
 authored-game Menu workspace. It discovers `menus/*.tui`, transactionally opens or creates
 Menu documents, renders a responsive I4/I5 preview beside a stable-ID hierarchy, edits
 non-root x/y/width/height/scale with bounded undo/redo, and supports atomic Ctrl+S plus
-dirty-close Save/Discard/Cancel. See `R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`.
+dirty-close Save/Discard/Cancel. See [`archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`](archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md).
 
 **R12 I13 implemented (2026-09-11):** `E` opens typed element actions in the visual Menu
 workspace. Containers create deterministic Container/Text/Button children with useful
 default geometry; Text/Button content and unique Button flow ports edit through staged
 text; Backspace confirms non-root subtree removal. Generalized bounded snapshot history
 restores exact documents and hierarchy selection. See
-`R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md`.
+[`archive/r12/R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md`](archive/r12/R12_I13_MENU_ELEMENT_AUTHORING_PLAN_2026-09-11.md).
 
 **R12 I14 implemented (2026-09-11):** non-root elements use staged validated rename,
 cycle-safe Container reparenting, and adjacent Move Earlier/Move Later actions. Adjacent
 moves exchange complete sibling subtrees in painter order; exact bounded history preserves
 stable selection, and save/reload preserves names, parents, and order. See
-`R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md`.
+[`archive/r12/R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md`](archive/r12/R12_I14_MENU_HIERARCHY_STRUCTURE_AUTHORING_PLAN_2026-09-11.md).
 
 **R12 I15 implemented (2026-09-11):** typed scrolling Menu properties expose existing v3
 anchors, Native/Sprite mode and Sprite ID, Text/Button alignment, authored foreground/background
 channels, fill/border enablement and printable glyphs, and default visibility. Root visual-only
 editing, typed row availability, exact history, preview updates, and persistence are covered.
-See `R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md`.
+See [`archive/r12/R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md`](archive/r12/R12_I15_MENU_VISUAL_PROPERTY_AUTHORING_PLAN_2026-09-11.md).
 
 **R12 I16 implemented (2026-09-11):** the responsive preview accepts topmost visible pointer
 selection, live drag move, and bounded resize from a visible bottom-right `+` handle. SDL
 letterbox conversion occurs at the application edge; the headless workspace owns preview-local
 cells, one temporary exact snapshot, one-command release, and exact Escape cancellation. See
-`R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md`.
+[`archive/r12/R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md`](archive/r12/R12_I16_MENU_POINTER_CANVAS_AUTHORING_PLAN_2026-09-11.md).
 
 **R12 I17 implemented (2026-09-11):** Preview Settings provides session-only 40×15,
 60×20, and 80×25 base resolutions and 100%, 125%, 150%, and 200% UI scales. `Tab` enters
@@ -995,7 +996,7 @@ focus/press/activation semantics. A copied project catalog overlays the staged M
 validation, stale references are diagnosed, and successful activation displays a copied typed
 target as `reported only`. No target loads, app state changes, `game.flow` rewrites, or
 cross-document history are introduced. See
-`R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`.
+[`archive/r12/R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md`](archive/r12/R12_I17_MENU_PREVIEW_VALIDATION_RUNTIME_TEST_PLAN_2026-09-11.md).
 
 **R12 correction verification complete (2026-09-11):** the first manual review found history
 exhaustion, masked Edit-preview colors, nested Actions-depth leakage, and a non-representative

@@ -203,8 +203,8 @@ folder with `animation.txt`. Literal `static` selects exactly one frame; animate
 metadata orders at least two frames and supplies `fps`/optional `loop`. Elapsed
 seconds drive per-instance playback. Scene/object references remain numeric. R11 I6
 passed automated and manual acceptance on 2026-09-04. Final review:
-`docs/reviews/2026-09-04-roadmap-r11-closeout.md`. Planned improvements:
-`docs/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`.
+`docs/reviews/2026-09-04-roadmap-r11-closeout.md`. Historical planned
+improvements are archived under `docs/archive/r11/`.
 R12 I7 advances canonical scenes to v11 with bounded named `exit_flow` trigger
 ports. Entering one reports a deterministic progression request; a borrowed adapter
 exports scene exits for validation with authored menu Button ports. Target loading and
@@ -283,18 +283,15 @@ See `assets/README.md` for the file format details.
 
 Maintainer references:
 
-- `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor
-  behavior, forbidden regressions, and test ownership.
-- `docs/R0_MAP_OPEN_SWITCH_PLAN_2026-07-29.md` — bounded current-map chooser
-  contract, failure matrix, implementation record, and verification evidence.
-- `docs/R0_MAP_OPEN_SWITCH_RCA_2026-07-29.md` — failed approaches, root causes,
-  detection gaps, corrections, and preventive lessons from R0 outcome 3.
-- `docs/R0_UI_ZOOM_ACCESSIBILITY_IMPLEMENTATION_RECORD_2026-07-30.md` — verified
-  bounded UI scale behavior, architecture, tests, and retained constraints.
-- `docs/FEATURE_ROADMAP.md` — authoritative dependency order, engineering
-  principles, quality gates, and review checkpoints for future feature work.
+- `docs/README.md` — documentation index and authority map.
+- `docs/CURRENT_STATUS.md` — concise current state, verified foundation, next
+  safe action, and known deferred source-level TODOs.
+- `docs/FEATURE_ROADMAP.md` — concise roadmap authority, verified phase summary,
+  current cleanup status, and future sequencing guidance.
 - `docs/TODO.md` — unordered future-feature ideas, unresolved questions, and
   deferred work; it is intentionally not a roadmap.
+- `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor
+  behavior, forbidden regressions, and test ownership.
 
 ## Editors
 
