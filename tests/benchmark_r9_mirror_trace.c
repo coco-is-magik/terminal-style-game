@@ -89,8 +89,8 @@ static double measure(const HeightfieldTraceColumn *incoming,
 
 int main(void) {
     Map map;
+    MapCell map_cells[MAP_WIDTH * MAP_HEIGHT] = {0};
     LightLevel light_map[MAP_WIDTH * MAP_HEIGHT] = {0};
-    double light_map[MAP_WIDTH * MAP_HEIGHT] = {0.0};
     SceneAuthoredCell cells[MAP_WIDTH * MAP_HEIGHT] = {0};
     SceneHeightView heights = {
         cells, MAP_WIDTH * MAP_HEIGHT, MAP_WIDTH, MAP_HEIGHT,

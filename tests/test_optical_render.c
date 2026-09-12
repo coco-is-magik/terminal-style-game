@@ -480,6 +480,86 @@ static void test_full_mirror_renders_reflected_wall_and_keeps_frontier(void **st
     fixture_destroy(&f);
 }
 
+static void test_parallel_wall_reflection_has_straight_horizontal_edges(void **state) {
+    Fixture f;
+    OpticalExtension materials[21] = {0};
+    OpticalRuntimeView view;
+    int reflected_columns = 0;
+    (void)state;
+    fixture_init(&f);
+    for (int y = 0; y < HEIGHT; y++) {
+        size_t mirror_index = index_at(3, y);
+        size_t wall_index = index_at(0, y);
+        f.cells[mirror_index].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+        f.cells[mirror_index].wall_material = 10U;
+        map_set(f.map, 3, y, 10U);
+        f.cells[wall_index].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+        f.cells[wall_index].wall_material = 20U;
+        map_set(f.map, 0, y, 20U);
+    }
+    materials[10] = mirror(255U);
+    assert_true(optical_runtime_view_init(
+        &view, WIDTH * HEIGHT, materials, 21U, NULL, 0U, GENERATION));
+    raycast_render_height_optical(f.grid, f.map, &f.camera, &f.assets, &f.world,
+                                  &f.surfaces, &f.heights, &view, GENERATION);
+    for (int x = 0; x < GRID_WIDTH / 2; x++) {
+        int right_x = GRID_WIDTH - 1 - x;
+        int left_first = -1;
+        int left_last = -1;
+        int right_first = -1;
+        int right_last = -1;
+        for (int y = 0; y < GRID_HEIGHT; y++) {
+            Cell left;
+            Cell right;
+            assert_true(grid_get(f.grid, x, y, &left));
+            assert_true(grid_get(f.grid, right_x, y, &right));
+            if (left.glyph == 'W') {
+                if (left_first < 0) left_first = y;
+                left_last = y;
+            }
+            if (right.glyph == 'W') {
+                if (right_first < 0) right_first = y;
+                right_last = y;
+            }
+        }
+        assert_int_equal(left_first, right_first);
+        assert_int_equal(left_last, right_last);
+        if (left_first >= 0) reflected_columns++;
+    }
+    assert_true(reflected_columns > 1);
+    fixture_destroy(&f);
+}
+
+static void test_reflected_camera_preserves_vertical_viewpoint(void **state) {
+    Fixture f;
+    OpticalExtension materials[21] = {0};
+    OpticalRuntimeView view;
+    HeightfieldTraceColumn incoming;
+    MirrorTraceColumnCache cache;
+    MirrorTraceResult result;
+    HeightfieldHit mirror_hit;
+    int row = GRID_HEIGHT / 2 + 2;
+    (void)state;
+    fixture_init(&f);
+    fixture_wall(&f, 3, 10U);
+    fixture_wall(&f, 0, 20U);
+    materials[10] = mirror(255U);
+    assert_true(optical_runtime_view_init(
+        &view, WIDTH * HEIGHT, materials, 21U, NULL, 0U, GENERATION));
+    assert_true(heightfield_trace_prepare_column(
+        &incoming, &f.camera, f.map, &f.heights, GRID_WIDTH, GRID_HEIGHT,
+        GRID_WIDTH / 2, config_get()->raycast_max_distance));
+    mirror_hit = heightfield_trace_prepared_sample(&incoming, row);
+    assert_true(mirror_hit.hit && mirror_hit.kind == HEIGHTFIELD_HIT_WALL);
+    assert_true(fabs(mirror_hit.world_z - f.camera.z) > 0.01);
+    mirror_trace_column_cache_init(&cache);
+    assert_true(mirror_trace_sample_once(
+        &cache, &incoming, &mirror_hit, &view, GENERATION, row,
+        config_get()->raycast_max_distance, &result));
+    assert_float_equal(cache.reflected_camera.z, f.camera.z, 0.0000001);
+    fixture_destroy(&f);
+}
+
 static void test_partial_mirror_and_reflected_opening_darkness(void **state) {
     Fixture f;
     OpticalExtension materials[21] = {0};
@@ -631,6 +711,8 @@ int main(void) {
         cmocka_unit_test(test_light_billboard_remains_after_optical_geometry),
         cmocka_unit_test(test_reflection_mix_exact_math_and_glyph_threshold),
         cmocka_unit_test(test_full_mirror_renders_reflected_wall_and_keeps_frontier),
+        cmocka_unit_test(test_parallel_wall_reflection_has_straight_horizontal_edges),
+        cmocka_unit_test(test_reflected_camera_preserves_vertical_viewpoint),
         cmocka_unit_test(test_partial_mirror_and_reflected_opening_darkness),
         cmocka_unit_test(test_mirror_cache_reuses_column_and_reflected_mirror_is_terminal),
         cmocka_unit_test(test_second_mirror_plane_in_column_is_bounded_darkness)

@@ -40,6 +40,28 @@ static void test_handled_menu_action_consumes_confirm(void **state) {
     menu_controller_consume_confirm(NULL, NULL, true);
 }
 
+static void test_application_state_transitions(void **state) {
+    AppState next = APP_STATE_EDITOR;
+    (void)state;
+
+    assert_true(menu_controller_state_transition(
+        MENU_ACTION_START_GAME, APP_STATE_MAIN_MENU, &next));
+    assert_int_equal(next, APP_STATE_PLAYING);
+    assert_true(menu_controller_state_transition(
+        MENU_ACTION_MAIN_MENU, APP_STATE_PLAYING, &next));
+    assert_int_equal(next, APP_STATE_MAIN_MENU);
+    assert_true(menu_controller_state_transition(
+        MENU_ACTION_DISCARD_CHANGES, APP_STATE_EDITOR, &next));
+    assert_int_equal(next, APP_STATE_MAIN_MENU);
+
+    next = APP_STATE_EDITOR;
+    assert_false(menu_controller_state_transition(
+        MENU_ACTION_OPEN_EDITOR, APP_STATE_MAIN_MENU, &next));
+    assert_int_equal(next, APP_STATE_EDITOR);
+    assert_false(menu_controller_state_transition(
+        MENU_ACTION_START_GAME, APP_STATE_MAIN_MENU, NULL));
+}
+
 static void test_scenario_dispatch(void **state) {
     (void)state;
     Grid *grid = grid_create(2, 2);
@@ -61,6 +83,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_menu_actions),
         cmocka_unit_test(test_handled_menu_action_consumes_confirm),
+        cmocka_unit_test(test_application_state_transitions),
         cmocka_unit_test(test_scenario_dispatch),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

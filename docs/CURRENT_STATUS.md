@@ -16,15 +16,36 @@ activation path.
 
 ## Next safe action
 
-Manually review the 2026-09-11 code-standards corrective action, especially
-malformed asset/UI rejection and normal editor startup. The implementation and
-verification record is
-[`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md).
-After approval, no further broad standards refactor should begin until one
-deferred structural or data-authority item is selected and narrowly planned.
+The 2026-09-11 non-SMC code-standards audit and corrective-action pass are
+manually approved and closed. No post-closeout implementation bucket is selected.
+Before further work, choose one deferred structural, data-authority, or roadmap
+item and write a focused requirements and regression plan.
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
 phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
+
+The 2026-09-12 verification-policy increment removed the temporary partial aggregate
+suite, made `make test` the only complete functional aggregate, added strict
+project-wide standards gates, and established typed tool-failure handling. The
+implementation and current Gentoo Valgrind `FAIL-TOOL` evidence are recorded in
+[`reviews/2026-09-12-verification-policy-and-tool-failure.md`](reviews/2026-09-12-verification-policy-and-tool-failure.md).
+At that pre-expansion checkpoint, the complete 60-runner suite and repository-owned
+standards guards passed. Real
+cppcheck evidence remains blocked by a missing tool, and Valgrind remains a diagnosed
+tool/environment failure pending discussion rather than a product defect.
+
+The follow-on regression increment expands the canonical suite to 62 runners with
+direct config and asset-loader coverage, fixes and guards reflected-image curvature,
+adds pure application-state transition coverage, enforces complete test registration,
+defines the current UI and platform verification contracts, and adds current headless
+benchmark/stability aggregates. The coverage map and residual risk ranking are in
+[`reviews/2026-09-12-regression-coverage-audit.md`](reviews/2026-09-12-regression-coverage-audit.md).
+The strict application build, complete 62-runner suite, UI standards aggregate,
+standards-core, headless benchmarks, and focused extended stability workloads pass on
+the current Gentoo host. Full ASan/LeakSanitizer, UBSan, the eight-mode matrix, and
+gcov coverage generation also pass. External-tool, native-platform, and
+display-backed residual gates remain explicitly deferred or unverified as recorded
+in that audit.
 
 ## Current authority
 
@@ -36,6 +57,8 @@ phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
 - [`TODO.md`](TODO.md) — unordered future/deferred work inventory.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current architecture notes and data-flow
   ownership context.
+- [`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md) — canonical complete-suite,
+  standards, and tool-failure policy.
 - [`EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`](EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md)
   — accepted unified-editor regression contract.
 
@@ -60,16 +83,23 @@ and the prior long handoff was preserved at
 
 ## Code standards corrective-action status
 
-The 2026-09-11 non-SMC audit corrective pass is implemented and automatically
-verified. Strict shared RGBA and numeric parsers now reject malformed recognized
+The 2026-09-11 non-SMC audit corrective pass is implemented, automatically
+verified, manually approved, and closed. Its individual finding dispositions and
+evidence are recorded in
+[`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md).
+Strict shared RGBA and numeric parsers now reject malformed recognized
 asset/UI/decal fields; audited unsafe conversion/copy calls were removed from
 handwritten `src/`; malformed-input regressions were added; and the unified-editor
 test hook declaration moved out of the production-facing header.
 
-All 58 non-SMC runners passed in bounded batches, and focused ASan/UBSan runs
-passed for the changed parser/loader modules. The dedicated `make test-non-smc
-USE_NO_STATE_TRACKER=1` target also passed after its prerequisites were current.
-`cppcheck` was unavailable, and Valgrind terminated at dynamic-loader startup
-with `SIGILL`; no Valgrind claim is made. Large editor/scene module splits and app
-UI code-to-data migrations remain deferred pending separately scoped requirements.
-SMC was not changed and remains outside this audit and corrective action.
+All 58 runners in that audit's historical non-SMC scope passed in bounded batches,
+and focused ASan/UBSan runs passed for the changed parser/loader modules. The
+temporary partial-suite Make target has since been removed; `make test` is the only
+complete aggregate and includes SMC runners. `cppcheck` was missing, while installed
+Valgrind terminated at dynamic-loader startup with `SIGILL`. Under
+[`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md), those outcomes are respectively
+`FAIL-MISSING-TOOL` and `FAIL-TOOL`, not successful verification or product defects.
+No Valgrind leak claim is made. Large editor/scene module splits and app UI
+code-to-data migrations remain deferred pending separately scoped requirements.
+SMC was not changed by the historical audit and remained outside its corrective
+action; it is not excluded from current project-wide testing.

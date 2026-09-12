@@ -1,6 +1,9 @@
 CC := gcc
 CFLAGS := -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
+VALGRIND ?= valgrind
+CPPCHECK ?= cppcheck
+GCOV ?= gcov
 
 # SMC integration toggle.  Set USE_SMC=1 to build with generated dispatch code.
 USE_SMC ?= 0
@@ -129,6 +132,8 @@ TEST_SMC_STATE_RUNNER        := $(BUILD_DIR)/test-smc-state-tracker
 TEST_SMC_INDEXED_RUNNER      := $(BUILD_DIR)/test-smc-indexed-state-tracker
 TEST_BENCHMARK_RUNNER        := $(BUILD_DIR)/test-benchmark-session
 TEST_APP_MODULES_RUNNER      := $(BUILD_DIR)/test-app-modules
+TEST_CONFIG_RUNNER           := $(BUILD_DIR)/test-config
+TEST_ASSET_LOADER_RUNNER     := $(BUILD_DIR)/test-asset-loader
 TEST_DECAL_PROJECTION_RUNNER := $(BUILD_DIR)/test-decal-projection
 TEST_MAP_CATALOG_RUNNER      := $(BUILD_DIR)/test-map-catalog
 TEST_UI_PREFERENCES_RUNNER   := $(BUILD_DIR)/test-ui-preferences
@@ -175,7 +180,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-non-smc check clean dirs benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style matrix matrix-one smoke
+.PHONY: all run test test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -710,6 +715,14 @@ $(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/f
 		src/frame_dispatch.c src/grid.c src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c \
 		-o $(TEST_APP_MODULES_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_CONFIG_RUNNER): tests/test_config.c $(SRC_CONFIG) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_config.c $(SRC_CONFIG) \
+		-o $(TEST_CONFIG_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_ASSET_LOADER_RUNNER): tests/test_asset_loader.c $(TEST_DECAL_IO_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_asset_loader.c $(TEST_DECAL_IO_SRC) \
+		-o $(TEST_ASSET_LOADER_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_DECAL_PROJECTION_RUNNER): tests/test_decal_projection.c src/decal_projection.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decal_projection.c src/decal_projection.c \
 		-o $(TEST_DECAL_PROJECTION_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -962,6 +975,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) \
 	$(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) \
 	$(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) \
+	$(TEST_CONFIG_RUNNER) $(TEST_ASSET_LOADER_RUNNER) \
 	$(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) \
 	$(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_SPRITE_DOCUMENT_RUNNER) \
@@ -977,9 +991,6 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_R9_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) \
 	$(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_MIRROR_TRACE_RUNNER) \
 	$(TEST_OPTICAL_RENDER_RUNNER) $(TEST_SPRITE_RENDER_RUNNER)
-
-NON_SMC_TEST_RUNNERS := $(filter-out $(TEST_SMC_STATE_RUNNER) \
-	$(TEST_SMC_INDEXED_RUNNER),$(TEST_RUNNERS))
 
 test: $(TEST_RUNNERS)
 	./$(TEST_DEPS_RUNNER)
@@ -1012,6 +1023,8 @@ test: $(TEST_RUNNERS)
 	./$(TEST_SMC_INDEXED_RUNNER)
 	./$(TEST_BENCHMARK_RUNNER)
 	./$(TEST_APP_MODULES_RUNNER)
+	./$(TEST_CONFIG_RUNNER)
+	./$(TEST_ASSET_LOADER_RUNNER)
 	./$(TEST_DECAL_PROJECTION_RUNNER)
 	./$(TEST_UI_PREFERENCES_RUNNER)
 	./$(TEST_UI_COMPOSITOR_RUNNER)
@@ -1044,13 +1057,26 @@ test: $(TEST_RUNNERS)
 	./$(TEST_SPRITE_RENDER_RUNNER)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
-# Standards-correction gate: mirrors test while intentionally excluding the two
-# SMC-specific runners. SMC is reviewed and remediated under a separate scope.
-test-non-smc: $(NON_SMC_TEST_RUNNERS)
-	@set -e; for runner in $(NON_SMC_TEST_RUNNERS); do ./$$runner; done
-	@echo "Non-SMC test suite passed."
+test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
+	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_UI_DOCUMENT_RUNNER) \
+	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
+	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
+	$(TEST_UI_MENU_WORKSPACE_RUNNER)
+	./$(TEST_UI_ELE_RUNNER)
+	./$(TEST_UI_PREFERENCES_RUNNER)
+	./$(TEST_UI_COMPOSITOR_RUNNER)
+	./$(TEST_UI_DOCUMENT_RUNNER)
+	./$(TEST_UI_LAYOUT_RESOLVER_RUNNER)
+	./$(TEST_UI_RENDER_ADAPTER_RUNNER)
+	./$(TEST_UI_INTERACTION_RUNNER)
+	./$(TEST_UI_MENU_RUNTIME_RUNNER)
+	./$(TEST_UI_MENU_WORKSPACE_RUNNER)
+check: all test standards
 
-check: all test check-current-renderer
+standards: style standards-core
+
+standards-core: check-unsafe-calls check-project-structure check-test-inventory \
+	check-legacy-unused check-current-renderer
 
 asan:
 	$(MAKE) clean
@@ -1063,27 +1089,92 @@ ubsan:
 sanitize: asan ubsan
 
 leak:
-	@if command -v valgrind >/dev/null 2>&1; then \
-		$(MAKE) $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER) && \
-		valgrind --quiet --error-exitcode=1 --leak-check=full ./$(TEST_DECAL_IO_RUNNER) && \
-		valgrind --quiet --error-exitcode=1 --leak-check=full ./$(TEST_CORE_RUNNER); \
-	else echo "SKIP: valgrind is not available"; fi
+	@if ! command -v $(VALGRIND) >/dev/null 2>&1; then \
+		echo "FAIL-MISSING-TOOL: $(VALGRIND) was not found; Valgrind evidence was not produced"; \
+		exit 2; \
+	fi
+	@$(MAKE) $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER)
+	@set -e; for runner in $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER); do \
+		if ! ./$$runner; then \
+			echo "FAIL-PRODUCT: $$runner failed without Valgrind"; \
+			exit 1; \
+		fi; \
+		log="$(BUILD_DIR)/valgrind-$$(basename $$runner).log"; \
+		status=0; \
+		$(VALGRIND) --error-exitcode=100 --leak-check=full ./$$runner >"$$log" 2>&1 || status=$$?; \
+		cat "$$log"; \
+		if test $$status -eq 100; then \
+			echo "FAIL-PRODUCT: Valgrind reported memory errors in $$runner"; \
+			exit 1; \
+		elif test $$status -ne 0; then \
+			echo "FAIL-TOOL: Valgrind could not produce trustworthy evidence for $$runner (status $$status; log $$log)"; \
+			exit 3; \
+		fi; \
+	done
+	@echo "PASS: Valgrind leak gate passed"
 
 coverage:
-	@if command -v gcov >/dev/null 2>&1; then \
-		$(MAKE) clean && $(MAKE) CFLAGS="$(CFLAGS) -O0 -g --coverage" test && \
-		mkdir -p $(BUILD_DIR)/coverage && \
-		gcov -o $(BUILD_DIR) $(BUILD_DIR)/*.gcno; \
-		status=$$?; \
-		for report in ./*.gcov; do \
-			if test -f "$$report"; then mv "$$report" $(BUILD_DIR)/coverage/; fi; \
-		done; \
-		exit $$status; \
-	else echo "SKIP: gcov is not available"; fi
+	@if ! command -v $(GCOV) >/dev/null 2>&1; then \
+		echo "FAIL-MISSING-TOOL: $(GCOV) was not found; coverage evidence was not produced"; \
+		exit 2; \
+	fi
+	@$(MAKE) clean
+	@if ! $(MAKE) CFLAGS="$(CFLAGS) -O0 -g --coverage" test; then \
+		echo "FAIL-PRODUCT: coverage build or test execution failed"; \
+		exit 1; \
+	fi
+	@mkdir -p $(BUILD_DIR)/coverage
+	@status=0; $(GCOV) -o $(BUILD_DIR) $(BUILD_DIR)/*.gcno || status=$$?; \
+	for report in ./*.gcov; do \
+		if test -f "$$report"; then mv "$$report" $(BUILD_DIR)/coverage/; fi; \
+	done; \
+	if test $$status -ne 0; then \
+		echo "FAIL-TOOL: $(GCOV) could not produce coverage reports (status $$status)"; \
+		exit 3; \
+	fi
+	@echo "PASS: coverage gate passed"
 
 style:
-	@if command -v cppcheck >/dev/null 2>&1; then cppcheck --quiet --error-exitcode=1 --std=c11 src; \
-	else echo "SKIP: cppcheck is not available"; fi
+	@if ! command -v $(CPPCHECK) >/dev/null 2>&1; then \
+		echo "FAIL-MISSING-TOOL: $(CPPCHECK) was not found; static-analysis evidence was not produced"; \
+		exit 2; \
+	fi
+	@status=0; $(CPPCHECK) --quiet --error-exitcode=100 --std=c11 src || status=$$?; \
+	if test $$status -eq 100; then \
+		echo "FAIL-PRODUCT: cppcheck reported source defects"; \
+		exit 1; \
+	elif test $$status -ne 0; then \
+		echo "FAIL-TOOL: cppcheck could not complete analysis (status $$status)"; \
+		exit 3; \
+	fi
+	@echo "PASS: cppcheck static analysis passed"
+
+check-unsafe-calls:
+	@echo "Checking handwritten production C for banned unsafe conversion and string calls..."
+	@! grep -RsnE "\\b(sscanf|strcpy|strcat|sprintf|gets|scanf|atoi|atof)[[:space:]]*[(]" src/*.c src/*.h >/dev/null
+	@echo "PASS: banned unsafe calls are absent from handwritten production C"
+
+check-project-structure:
+	@echo "Checking project C/build structure..."
+	@! find src tests -maxdepth 1 -type f \( -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' \) | grep . >/dev/null
+	@! find . -path './vendor' -prune -o -path './build' -prune -o -type f \
+		\( -name CMakeLists.txt -o -name meson.build -o -name build.ninja \) -print | grep . >/dev/null
+	@! grep -RsnE '^#[[:space:]]*include[[:space:]]+".*_test[.]h"' src/*.h >/dev/null
+	@! grep -RsnE '^#[[:space:]]*include[[:space:]]+".*_test[.]h"' src/*.c | \
+		grep -v '^src/unified_editor[.]c:.*"unified_editor_test[.]h"' >/dev/null
+	@grep -F -- '-Wall -Wextra -Wpedantic -Werror' Makefile >/dev/null
+	@echo "PASS: project uses C sources, Make, production-safe headers, and warnings-as-errors"
+
+check-test-inventory:
+	@echo "Checking that every focused test source is in the canonical aggregate..."
+	@set -e; runners=" $(notdir $(TEST_RUNNERS)) "; \
+	for source in tests/test_*.c; do \
+		runner=$$(basename "$$source" .c | tr '_' '-'); \
+		case "$$runners" in *" $$runner "*) ;; \
+			*) echo "FAIL-PRODUCT: $$source is missing from TEST_RUNNERS as $$runner"; exit 1;; \
+		esac; \
+	done
+	@echo "PASS: every focused test source is included in make test"
 
 check-legacy-unused:
 	@echo "Checking that deprecated legacy load/save symbols are not called from new production code..."
@@ -1128,8 +1219,27 @@ smoke: all
 benchmark: $(APP)
 	./$(APP) --benchmark-raycast 5
 
+verification-environment:
+	@printf 'verification_environment:\n'
+	@printf '  system: '; uname -srm
+	@printf '  compiler: '; $(CC) --version | head -n 1
+	@printf '  cflags: %s\n' '$(CFLAGS)'
+	@printf '  processors: '; getconf _NPROCESSORS_ONLN 2>/dev/null || echo unknown
+	@printf '  sdl_artifact: '; file "$(VENDOR_DIR)/lib64/libSDL3.so"
+	@printf '  cmocka_artifact: '; file "$(VENDOR_DIR)/lib64/libcmocka.so"
+
+benchmark-headless: verification-environment benchmark-editor-highlight benchmark-surface-render \
+	benchmark-colored-lighting benchmark-sprite-render \
+	benchmark-optical-runtime-view benchmark-heightfield-selective \
+	benchmark-optical-render benchmark-r9-mirror-trace
+
 stability: $(APP)
 	./$(APP) --stability-test 30
+
+stability-fast: test smoke
+
+stability-headless: stability-fast stability-editor-highlight \
+	stability-surface-render stability-optical-render
 
 benchmark-editor-highlight: $(BENCH_EDITOR_HIGHLIGHT_RUNNER)
 	./$(BENCH_EDITOR_HIGHLIGHT_RUNNER)
@@ -1145,6 +1255,9 @@ benchmark-colored-lighting: $(BENCH_COLORED_LIGHTING_RUNNER)
 
 stability-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
 	./$(BENCH_SURFACE_RENDER_RUNNER) --stability
+
+stability-optical-render: $(BENCH_OPTICAL_RENDER_RUNNER)
+	./$(BENCH_OPTICAL_RENDER_RUNNER) --stability
 
 clean:
 	rm -rf $(BUILD_DIR)

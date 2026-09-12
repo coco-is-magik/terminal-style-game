@@ -1,15 +1,64 @@
 # CODE STANDARDS AUDIT / CORRECTIVE-ACTION PLANNING STUB — 2026-09-11
 
-This document is the dedicated search target and planning authority for the
-2026-09-11 non-SMC code standards audit. It records findings for a future
-corrective-action pass only; it does not authorize broad code changes by itself.
+This document is the dedicated closed record for the 2026-09-11 non-SMC code
+standards audit and corrective-action pass. It preserves the original findings,
+individual dispositions, implementation evidence, and separately scoped
+follow-ups; it does not authorize additional broad code changes by itself.
 
 **Corrective-action status, 2026-09-11:** concrete parser, buffer, stale-comment,
 test-seam, and verification findings were remediated and tested. Large module
 splits and code-to-data migrations remain deliberately deferred because they
 require separately scoped behavior/authority decisions. SMC remains excluded.
 
+**Final approval, 2026-09-11:** manually approved by the project owner. This
+audit and its corrective-action pass are closed.
+
 # Code Standards Audit — 2026-09-11
+
+## Final closeout by finding — approved 2026-09-11
+
+Status meanings in this table:
+
+- **Implemented** — corrective code or documentation was completed and verified.
+- **Partially implemented / deferred** — a safe narrow correction was completed;
+  the remaining structural work requires its own focused plan.
+- **Reviewed / preserved** — inspection established that changing the behavior
+  in this pass would be speculative or would remove intentional compatibility.
+- **Verified** — the finding was a positive invariant and was rechecked.
+
+| Finding | Final status | Individual disposition |
+|---|---|---|
+| **A1 — `unified_editor` over-responsibility** | Partially implemented / deferred | Removed the test-only declaration from the main editor API and preserved all 97 editor tests. A wholesale split was intentionally not attempted. Any remaining extraction must select one stable editor responsibility, define its ownership boundary, and receive a separate focused plan and regression suite. |
+| **A2 — exposed `UnifiedEditorState` internals** | Partially implemented / deferred | Narrowed the public surface by moving runtime-build fault-injection into `unified_editor_test.h`. The concrete editor state remains public because making it opaque would be a broad API/test migration. Further encapsulation requires separately planned sub-state extraction and accessor design. |
+| **A3 — `scene_document` / `scene_format` size** | Reviewed / preserved | Confirmed these modules remain authoritative ownership, format, migration, and validation boundaries. No line-count-only split was made. A future change must first identify one ownership-safe seam and preserve native-scene format and migration behavior. |
+| **A4 — `app.c` breadth** | Reviewed / preserved | Confirmed high fan-out is expected at the application composition boundary. UI resource policy was not extracted without a demonstrated independent owner. This avoids adding an artificial module solely to reduce file size. |
+| **B1 — stale historical-plan source comment** | Implemented | Removed the `plan §9` reference from `unified_editor.h`. The current behavioral contract now states directly that Resume and Cancel dismiss the exit prompt without exiting. The related `plan §10` citation in `editor_selection.c` was also removed while retaining the face-mapping invariant. |
+| **B2 — tutorial-style `asset_loader` comments** | Implemented within corrective scope | Removed narrating include comments and replaced parser behavior with narrow contracts in affected public headers and architecture documentation. The source was not mass-rewritten; untouched comments remain subject to the standing style rule when their owning code is next changed. |
+| **B3 — missing contract comments in large modules** | Implemented within corrective scope | Added explicit failure/transactionality contracts to `asset_loader.h`, `ui_ele.h`, `ui_document.h`, `decal_io.h`, `rgba_parse.h`, `number_parse.h`, and `unified_editor_test.h`. Speculative comments were not added to unrelated large state machines. |
+| **C1 — app UI dimensions/styling in code** | Reviewed / preserved | Classified these values as current application resource/presentation policy. No existing data authority owns all of them, so moving them would create speculative configuration. Reconsider only under a focused app-UI configurability requirement. |
+| **C2 — menu ID to layout-name mapping in code** | Reviewed / preserved | Retained as the explicit boundary between application state enums and application-owned UI layouts. It is not authored-game menu data. Reconsider only if application menu topology becomes configurable. |
+| **C3 — hardcoded asset roots** | Reviewed / preserved | Retained the documented conventional project roots. No project/workspace-root configuration requirement currently exists. A future configurable-root feature must define validation, ownership, and compatibility first. |
+| **C4 — hardcoded editor preview theme** | Reviewed / preserved | Retained as session-only editor presentation policy. It is not authored menu state and no theme-authoring requirement exists. Reconsider only with a separately approved theme/preferences feature. |
+| **D1 — duplicated/inconsistent color parsing** | Implemented | Added shared strict `rgba_parse`; migrated `asset_loader`, `ui_ele`, and `ui_document`; added helper and integration regressions for bounds, malformed input, trailing data, transactional rejection, and malformed-palette isolation. |
+| **D2 — `sscanf` in source parsers** | Implemented | Removed audited `sscanf` calls. The corrective pass also removed remaining `atoi`/`atof` calls from handwritten `src/` by adding `number_parse` and migrating app-UI/decal numeric fields to complete, range-checked, finite parsing. |
+| **D3 — guarded `strcpy` path joins** | Implemented | Replaced both material path joins with one bounded `snprintf`-based `join_path` helper. Existing too-long-path skip behavior remains intact. |
+| **D4 — silent parser fallback** | Implemented | Malformed recognized app-UI numeric/color fields and decal numeric/row fields now reject their file; malformed authored-UI colors reject transactionally; malformed palettes skip only that asset while tolerant registry loading continues. Absent optional app-UI colors still use documented defaults. |
+| **E1 — no header include cycles** | Verified | Re-ran the header include-cycle check after adding parser and test headers; no cycles were found. Future extraction must preserve this invariant. |
+| **E2 — include fan-out/fan-in hotspots** | Partially implemented / deferred | Added two dependency-free parser modules and moved the editor test declaration out of the broad production header without introducing cycles. The major `app.c`, `unified_editor.h`, and scene-header coupling remains a separately scoped structural concern; reducing it safely requires the focused plans identified under A1–A4. |
+| **F1 — deprecated scene/map APIs** | Reviewed / preserved | Preserved the compatibility APIs and `check-legacy-unused` guardrails. Removal was not authorized and requires a dedicated migration/removal plan. |
+| **F2 — legacy map path** | Reviewed / preserved | Preserved the documented import/deprecated runtime compatibility path. Native-scene Start Game migration remains separate future work and was not conflated with standards cleanup. |
+| **F3 — potentially redundant feature paths** | Reviewed / preserved | The audit found no proven dead ordinary-code feature. Nothing was removed based on age or suspicion alone. Any future removal requires call-graph evidence, compatibility analysis, and focused tests. SMC alternatives remain excluded. |
+| **G1 — production-facing editor test hook** | Implemented | Moved the fault-injection declaration from `unified_editor.h` to dedicated `unified_editor_test.h`; production callers no longer see it through the ordinary editor API. Existing rollback/failure tests still pass. |
+
+### Closeout decision
+
+All 21 findings have an explicit disposition. Concrete correctness, buffer,
+comment, and test-seam issues were implemented and verified. Preserved items are
+intentional current policy or managed compatibility, not unexamined omissions.
+Deferred structural items are not authorized as continuation of this audit; each
+requires a new focused requirements and regression plan before implementation.
+
+SMC remains wholly outside this audit, corrective action, and closeout.
 
 ## Corrective-action record — 2026-09-11
 
@@ -37,6 +86,10 @@ Implemented:
 - Added `test-rgba-parse`, `test-number-parse`, and `test-non-smc` Make targets.
   `test-non-smc` mirrors the project runner inventory while excluding exactly
   the two SMC-specific runners.
+
+Historical note (2026-09-12): `test-non-smc` was removed after this scoped audit
+closed. Current project-wide regression evidence must use the complete `make test`
+inventory, including SMC runners. See [`../VERIFICATION_POLICY.md`](../VERIFICATION_POLICY.md).
 
 Disposition of structural and data-boundary findings:
 

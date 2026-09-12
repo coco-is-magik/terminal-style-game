@@ -26,3 +26,22 @@ void menu_controller_consume_confirm(bool *confirm_pressed,
     if (confirm_pressed) *confirm_pressed = false;
     if (editor_confirm_pressed) *editor_confirm_pressed = false;
 }
+
+bool menu_controller_state_transition(MenuAction action, AppState current,
+                                      AppState *out_next) {
+    AppState next = current;
+    if (!out_next) return false;
+    switch (action) {
+        case MENU_ACTION_START_GAME:
+            next = APP_STATE_PLAYING;
+            break;
+        case MENU_ACTION_MAIN_MENU:
+        case MENU_ACTION_DISCARD_CHANGES:
+            next = APP_STATE_MAIN_MENU;
+            break;
+        default:
+            return false;
+    }
+    *out_next = next;
+    return true;
+}

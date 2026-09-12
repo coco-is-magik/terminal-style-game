@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "config.h"
+
 typedef enum {
     MENU_ACTION_UNKNOWN = 0,
     MENU_ACTION_START_GAME,
@@ -24,5 +26,9 @@ MenuAction menu_controller_parse_action(const char *action);
 void menu_controller_consume_confirm(bool *confirm_pressed,
                                      bool *editor_confirm_pressed,
                                      bool action_handled);
+
+/** Resolve menu actions whose application-state transition is unconditional. */
+bool menu_controller_state_transition(MenuAction action, AppState current,
+                                      AppState *out_next);
 
 #endif

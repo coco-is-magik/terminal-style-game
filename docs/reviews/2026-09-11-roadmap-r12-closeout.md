@@ -58,6 +58,13 @@ Final evidence after the shared nested-inspector correction:
 | `make style` | status 0; `cppcheck` unavailable and explicitly skipped |
 | `make leak` | Valgrind unavailable; ASan/LeakSanitizer gate completed instead |
 
+Historical clarification (2026-09-12): these rows preserve the policy and wording
+used at closeout. Under the current [`../VERIFICATION_POLICY.md`](../VERIFICATION_POLICY.md),
+the missing cppcheck result is `FAIL-MISSING-TOOL`; the installed Valgrind process
+terminated with `SIGILL` during dynamic-loader startup and is `FAIL-TOOL`. Neither
+outcome is a pass or product-defect result, and sanitizer evidence is complementary
+rather than a silent substitute.
+
 The clean aggregate, ASan, UBSan, and final clean `make check` commands exceeded the 120-second
 command harness while compiling. They did not fail in tests. Each was resumed without cleaning
 under the exact intended flags/target, completed with status 0, and produced no sanitizer or

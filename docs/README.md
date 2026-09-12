@@ -16,6 +16,12 @@ only a small set of documents should be treated as current authority.
   questions. This is not a roadmap or priority order.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current module boundaries, ownership
   rules, data flows, persistent-data boundaries, and verification ownership.
+- [`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md) — canonical verification gates,
+  typed failure outcomes, and the required tool-failure investigation procedure.
+- [`UI_DESIGN_AND_TEST_STANDARDS.md`](UI_DESIGN_AND_TEST_STANDARDS.md) — current
+  measurable UI rules, focused test ownership, and explicitly undecided design work.
+- [`PLATFORM_VERIFICATION_PROFILES.md`](PLATFORM_VERIFICATION_PROFILES.md) — required
+  evidence for Gentoo, Ubuntu, Fedora, Steam Deck, Windows, and macOS.
 
 ## Current authority
 
@@ -27,11 +33,19 @@ only a small set of documents should be treated as current authority.
 - [`EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`](EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md)
   is the accepted unified-editor behavior and regression contract until a planned
   and tested change deliberately revises it.
+- [`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md) defines complete-suite usage,
+  strict tool requirements, failure classification, and reporting requirements.
 - [`reviews/2026-09-11-roadmap-r12-closeout.md`](reviews/2026-09-11-roadmap-r12-closeout.md)
   records the latest verified roadmap closeout evidence.
 - [`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md)
   records the non-SMC code audit, corrective-action dispositions, and verification
   evidence. SMC is explicitly excluded from that audit and its actions.
+- [`reviews/2026-09-12-verification-policy-and-tool-failure.md`](reviews/2026-09-12-verification-policy-and-tool-failure.md)
+  records removal of the partial aggregate, strict-gate implementation evidence,
+  and the current Valgrind environment investigation.
+- [`reviews/2026-09-12-regression-coverage-audit.md`](reviews/2026-09-12-regression-coverage-audit.md)
+  maps all current runners and gates, records completed high-risk increments, and
+  ranks remaining environment/design gaps.
 
 R0–R12 are verified roadmap foundations. They should not be read as a claim that
 the editor or game-making experience is feature-complete.

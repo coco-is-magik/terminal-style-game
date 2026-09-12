@@ -32,6 +32,37 @@ This approach features:
 
 make
 
+## Verification
+
+Use the complete functional aggregate; it includes SMC tests:
+
+```sh
+make test
+```
+
+Focused and broader gates:
+
+```sh
+make test-ui-standards
+make standards-core
+make standards
+make benchmark-headless
+make stability-fast
+make stability-headless
+make asan
+make ubsan
+make coverage
+make matrix
+make smoke
+make leak
+```
+
+`standards` requires cppcheck, and `leak` requires a working Valgrind. Missing or
+broken required tools fail with a typed outcome rather than passing through a skip.
+See `docs/VERIFICATION_POLICY.md`, `docs/UI_DESIGN_AND_TEST_STANDARDS.md`, and
+`docs/PLATFORM_VERIFICATION_PROFILES.md` for gate, UI-rule, and platform evidence
+requirements.
+
 ### Build Flags
 
 The following build flags control renderer and engine behavior:

@@ -15,9 +15,11 @@
 #define MAP_HEIGHT 12
 #define VIEW_WIDTH 260
 #define VIEW_HEIGHT 160
-#define FRAMES 200U
+#define BENCHMARK_FRAMES 200U
+#define STABILITY_FRAMES 1000U
 #define WARMUP 10U
 #define GENERATION UINT32_C(53)
+#define OPTICAL_RENDER_PASS_MS 6.0
 
 static volatile uint64_t benchmark_sink;
 
@@ -57,9 +59,9 @@ static double measure(Grid *grid, Map *map, Camera *camera,
                       const SceneSurfaceView *surfaces,
                       const SceneHeightView *heights,
                       const OpticalRuntimeView *view,
-                      uint64_t expected, bool *deterministic) {
+                      size_t frames, uint64_t expected, bool *deterministic) {
     double start = now_ms();
-    for (size_t frame = 0U; frame < FRAMES; frame++) {
+    for (size_t frame = 0U; frame < frames; frame++) {
         raycast_render_height_optical(
             grid, map, camera, assets, world, surfaces, heights,
             view, view ? GENERATION : 0U);
@@ -72,11 +74,13 @@ static double measure(Grid *grid, Map *map, Camera *camera,
     {
         double end = now_ms();
         return start < 0.0 || end < start ? -1.0 :
-            (end - start) / (double)FRAMES;
+            (end - start) / (double)frames;
     }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    bool stability = argc == 2 && strcmp(argv[1], "--stability") == 0;
+    size_t frames = stability ? STABILITY_FRAMES : BENCHMARK_FRAMES;
     Grid *grid = NULL;
     Grid *opaque_grid = NULL;
     Map *map = NULL;
@@ -87,21 +91,29 @@ int main(void) {
         cells, MAP_WIDTH * MAP_HEIGHT, MAP_WIDTH, MAP_HEIGHT,
         {9.8, SCENE_GRAVITY_DOWN, 0.25, 3.2, 1.0, 0.5, 0.75}
     };
-    OpticalExtension materials[5] = {0};
+    OpticalExtension transparent_materials[5] = {0};
+    OpticalExtension mirror_materials[5] = {0};
     OpticalRuntimeView opaque_view;
     OpticalRuntimeView transparent_view;
+    OpticalRuntimeView mirror_view;
     AssetRegistry assets;
     WorldState world;
     Camera camera;
     uint64_t compatibility_checksum;
     uint64_t opaque_checksum;
     uint64_t transparent_checksum;
+    uint64_t mirror_checksum;
     size_t changed_cells = 0U;
     double compatibility_ms;
     double opaque_ms;
     double transparent_ms;
+    double mirror_ms;
     bool deterministic = true;
     int result = 1;
+    if (argc > 2 || (argc == 2 && !stability)) {
+        fprintf(stderr, "usage: %s [--stability]\n", argv[0]);
+        return 2;
+    }
     config_init_defaults();
     if (!asset_registry_init(&assets)) return 1;
     world_init(&world);
@@ -125,7 +137,7 @@ int main(void) {
             cells[i].ceiling_height_step = SCENE_DEFAULT_CEILING_HEIGHT_STEP;
             cells[i].floor_material = 1U;
             cells[i].ceiling_material = 2U;
-            f->map.light_map[i] = (LightLevel){1.0, 1.0, 1.0};
+            map->light_map[i] = (LightLevel){1.0, 1.0, 1.0};
             if (edge) {
                 cells[i].occupancy = SCENE_CELL_OCCUPANCY_WALL;
                 cells[i].wall_material = 1U;
@@ -141,13 +153,13 @@ int main(void) {
     if (!optical_runtime_view_init(
             &opaque_view, heights.cell_count, NULL, 0U,
             NULL, 0U, GENERATION)) goto cleanup;
-    materials[4].override_mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
-                                 OPTICAL_OVERRIDE_OPACITY |
-                                 OPTICAL_OVERRIDE_TRANSMISSION;
-    materials[4].opacity = 64U;
-    materials[4].transmission = 192U;
+    transparent_materials[4].override_mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
+        OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION;
+    transparent_materials[4].ray_blocks = 0U;
+    transparent_materials[4].opacity = 64U;
+    transparent_materials[4].transmission = 192U;
     if (!optical_runtime_view_init(
-            &transparent_view, heights.cell_count, materials, 5U,
+            &transparent_view, heights.cell_count, transparent_materials, 5U,
             NULL, 0U, GENERATION)) goto cleanup;
     raycast_render_height_optical(
         grid, map, &camera, &assets, &world, &surfaces, &heights, NULL, 0U);
@@ -165,6 +177,16 @@ int main(void) {
         if (memcmp(&grid->cells[i], &opaque_grid->cells[i],
                    sizeof(grid->cells[i])) != 0) changed_cells++;
     if (changed_cells == 0U || transparent_checksum == opaque_checksum) goto cleanup;
+    mirror_materials[4].override_mask = OPTICAL_OVERRIDE_REFLECTIVITY;
+    mirror_materials[4].reflectivity = 255U;
+    if (!optical_runtime_view_init(
+            &mirror_view, heights.cell_count, mirror_materials, 5U,
+            NULL, 0U, GENERATION)) goto cleanup;
+    raycast_render_height_optical(
+        grid, map, &camera, &assets, &world, &surfaces, &heights,
+        &mirror_view, GENERATION);
+    mirror_checksum = checksum(grid);
+    if (mirror_checksum == opaque_checksum) goto cleanup;
     for (size_t frame = 0U; frame < WARMUP; frame++) {
         raycast_render_height_optical(
             grid, map, &camera, &assets, &world,
@@ -175,21 +197,28 @@ int main(void) {
         raycast_render_height_optical(
             grid, map, &camera, &assets, &world, &surfaces, &heights,
             &transparent_view, GENERATION);
+        raycast_render_height_optical(
+            grid, map, &camera, &assets, &world, &surfaces, &heights,
+            &mirror_view, GENERATION);
     }
     compatibility_ms = measure(
         grid, map, &camera, &assets, &world, &surfaces, &heights,
-        NULL, compatibility_checksum, &deterministic);
+        NULL, frames, compatibility_checksum, &deterministic);
     opaque_ms = measure(
         grid, map, &camera, &assets, &world, &surfaces, &heights,
-        &opaque_view, opaque_checksum, &deterministic);
+        &opaque_view, frames, opaque_checksum, &deterministic);
     transparent_ms = measure(
         grid, map, &camera, &assets, &world, &surfaces, &heights,
-        &transparent_view, transparent_checksum, &deterministic);
+        &transparent_view, frames, transparent_checksum, &deterministic);
+    mirror_ms = measure(
+        grid, map, &camera, &assets, &world, &surfaces, &heights,
+        &mirror_view, frames, mirror_checksum, &deterministic);
     if (!deterministic || compatibility_ms < 0.0 || opaque_ms < 0.0 ||
-        transparent_ms < 0.0) goto cleanup;
+        transparent_ms < 0.0 || mirror_ms < 0.0) goto cleanup;
     printf("{\n");
     printf("  \"scenario\": \"i3_selective_optical_render\",\n");
-    printf("  \"frames\": %u,\n", FRAMES);
+    printf("  \"mode\": \"%s\",\n", stability ? "stability" : "benchmark");
+    printf("  \"frames\": %zu,\n", frames);
     printf("  \"samples_per_frame\": %u,\n", VIEW_WIDTH * VIEW_HEIGHT);
     printf("  \"compatibility_ms\": %.6f,\n", compatibility_ms);
     printf("  \"optical_opaque_ms\": %.6f,\n", opaque_ms);
@@ -197,6 +226,9 @@ int main(void) {
     printf("  \"transparent_ms\": %.6f,\n", transparent_ms);
     printf("  \"transparent_delta_ms\": %.6f,\n",
            transparent_ms - compatibility_ms);
+    printf("  \"mirror_ms\": %.6f,\n", mirror_ms);
+    printf("  \"mirror_delta_ms\": %.6f,\n", mirror_ms - compatibility_ms);
+    printf("  \"pass_budget_ms\": %.3f,\n", OPTICAL_RENDER_PASS_MS);
     printf("  \"changed_cells\": %zu,\n", changed_cells);
     printf("  \"changed_coverage_percent\": %.3f,\n",
            100.0 * changed_cells / (VIEW_WIDTH * VIEW_HEIGHT));
@@ -206,11 +238,21 @@ int main(void) {
            (unsigned long long)opaque_checksum);
     printf("  \"transparent_checksum\": %llu,\n",
            (unsigned long long)transparent_checksum);
+    printf("  \"mirror_checksum\": %llu,\n",
+           (unsigned long long)mirror_checksum);
     printf("  \"opaque_parity\": true,\n");
     printf("  \"render_loop_allocations\": 0,\n");
-    printf("  \"deterministic\": true\n");
+    printf("  \"deterministic\": true,\n");
+    printf("  \"result\": \"%s\"\n",
+           compatibility_ms <= OPTICAL_RENDER_PASS_MS &&
+               opaque_ms <= OPTICAL_RENDER_PASS_MS &&
+               transparent_ms <= OPTICAL_RENDER_PASS_MS &&
+               mirror_ms <= OPTICAL_RENDER_PASS_MS ? "pass" : "fail");
     printf("}\n");
-    result = 0;
+    result = compatibility_ms <= OPTICAL_RENDER_PASS_MS &&
+        opaque_ms <= OPTICAL_RENDER_PASS_MS &&
+        transparent_ms <= OPTICAL_RENDER_PASS_MS &&
+        mirror_ms <= OPTICAL_RENDER_PASS_MS ? 0 : 1;
 
 cleanup:
     grid_destroy(opaque_grid);

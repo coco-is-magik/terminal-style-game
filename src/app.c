@@ -383,8 +383,8 @@ static bool dispatch_menu_action(const char *action,
     switch (menu_controller_parse_action(action)) {
     case MENU_ACTION_START_GAME:
         menu_stack_clear(ms);
-        *app_state = APP_STATE_PLAYING;
-        return true;
+        return menu_controller_state_transition(
+            MENU_ACTION_START_GAME, *app_state, app_state);
     case MENU_ACTION_OPEN_EDITOR:
         return enter_unified_editor(ued, app_state, ms, assets, cam);
     case MENU_ACTION_QUIT:
@@ -395,7 +395,8 @@ static bool dispatch_menu_action(const char *action,
         return true;
     case MENU_ACTION_MAIN_MENU:
         menu_stack_clear(ms);
-        *app_state = APP_STATE_MAIN_MENU;
+        if (!menu_controller_state_transition(
+                MENU_ACTION_MAIN_MENU, *app_state, app_state)) return false;
         menu_stack_push(ms, MENU_MAIN);
         return true;
     case MENU_ACTION_CONFIRM_QUIT:
@@ -409,7 +410,8 @@ static bool dispatch_menu_action(const char *action,
             unified_editor_destroy(ued);
         }
         menu_stack_clear(ms);
-        *app_state = APP_STATE_MAIN_MENU;
+        if (!menu_controller_state_transition(
+                MENU_ACTION_DISCARD_CHANGES, *app_state, app_state)) return false;
         menu_stack_push(ms, MENU_MAIN);
         return true;
     case MENU_ACTION_OPEN_SETTINGS:

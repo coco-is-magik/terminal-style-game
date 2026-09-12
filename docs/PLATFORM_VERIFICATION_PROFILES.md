@@ -1,0 +1,62 @@
+# Platform Verification Profiles
+
+This document defines what constitutes platform evidence. A profile is not marked
+verified until its commands run on the named native environment or an explicitly
+appropriate container.
+
+## Common required evidence
+
+Every supported profile must record:
+
+- OS/distribution and release, kernel where applicable, architecture, compiler,
+  linker, C library/runtime, SDL, SDL_mixer, enet, and cmocka versions;
+- strict C11 application build with `-Wall -Wextra -Wpedantic -Werror`;
+- complete `make test`, including SMC runners;
+- `make standards`, or a typed tool failure under `VERIFICATION_POLICY.md`;
+- `make smoke`;
+- ASan/LeakSanitizer and UBSan where the compiler/runtime support them;
+- `make benchmark-headless` and `make stability-headless`, with results treated as
+  platform-specific rather than compared blindly across unlike hardware;
+- native display startup, presentation, resize, keyboard input, and pointer checks
+  where a graphical session is available.
+
+## Target profiles
+
+| Profile | Appropriate execution | Additional evidence | Current state |
+|---|---|---|---|
+| Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; Valgrind is `FAIL-TOOL` |
+| Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | Deferred: portable dependency bootstrap not established |
+| Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Deferred: portable dependency bootstrap not established |
+| Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Deferred: no target environment is available |
+| Windows | Native Windows runner | Windows loader/filesystem/path behavior and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
+| macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
+
+## Container boundary
+
+Linux containers are valid evidence for headless distro/toolchain behavior. They are
+not evidence for native Windows, macOS, Steam Deck Gamescope/controller behavior, or
+host display/input behavior.
+
+The current checked-in `vendor/dist` contains host-built ELF libraries. The current
+dependency bootstrap also requires external source retrieval and a separate
+dependency build system. Therefore a container definition that merely copies the
+working tree would either reuse incompatible host binaries or perform an unpinned
+network build. Neither is deterministic platform evidence. Container and native CI
+automation is deferred until a separately approved, pinned, portable dependency
+bootstrap exists. This is an environment/build-boundary deferral, not a product pass.
+
+## Display-backed boundary
+
+Headless cell, layout, interaction, smoke, benchmark, and stability checks do not
+prove native window presentation or application-edge pointer coordinate conversion.
+Display-backed checks must identify the video backend, logical/window dimensions,
+scale factor, input device, and whether the session is physical, virtual, or remote.
+Reliable authored Button pointer activation remains explicitly deferred; keyboard
+activation remains required.
+
+## Failure reporting
+
+Use the outcome taxonomy and investigation procedure in
+[`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md). Missing native runners,
+containers, display servers, controllers, or supported analysis tools are incomplete
+platform evidence. They cannot be recorded as pass and do not imply product failure.

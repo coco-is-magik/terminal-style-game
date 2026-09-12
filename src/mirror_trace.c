@@ -45,7 +45,6 @@ static bool prepare_reflected_column(
     cache->reflected_camera.transform.pos.y =
         mirror_hit->world_y + reflected_y * MIRROR_TRACE_ORIGIN_EPSILON;
     cache->reflected_camera.transform.angle = atan2(reflected_y, reflected_x);
-    cache->reflected_camera.z = mirror_hit->world_z;
     if (!heightfield_trace_prepare_column(
             &cache->reflected_column, &cache->reflected_camera,
             incoming->map, incoming->heights, 1, incoming->viewport_height,
@@ -109,7 +108,6 @@ bool mirror_trace_sample_once(
     if (!cache->prepared && !prepare_reflected_column(
             cache, incoming_column, mirror_hit, reflected_x, reflected_y,
             max_distance)) return false;
-    cache->reflected_camera.z = mirror_hit->world_z;
     if (!heightfield_trace_selective(
             &cache->reflected_column, optical_view, source_generation,
             screen_y, &result.optical)) return false;

@@ -89,6 +89,12 @@ Keep these pillars in `TODO.md` until each has enough decisions to promote into
 
 ## Build and performance maintenance
 
+The current deterministic maintenance gates are `make benchmark-headless`,
+`make stability-fast`, and `make stability-headless`. The shipping optical benchmark
+now records compatibility, opaque, translucent, and one-bounce mirror paths with
+checksums and a 6 ms budget. Native display and platform profiles remain tracked in
+[`PLATFORM_VERIFICATION_PROFILES.md`](PLATFORM_VERIFICATION_PROFILES.md).
+
 - [ ] **Research track — explicit `-O3` build profile:** the strict default is
   now `-O2` (set during the 2026-08-21 heightfield performance work; the earlier
   "strict unoptimized default" guidance is superseded). All optimization-only
@@ -750,13 +756,13 @@ interaction with translucency/invisible geometry. Scoped as RQ4/P4 in
 [`archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md) (single bounded bounce first;
 mirror-facing-mirror stays out of the prototype).
 
-**Manual observation — deferred fix (2026-09-03):** At certain viewing angles,
-the image projected on a reflective surface appears to curve or warp. The cause is
-unverified; it may be a minor mismatch in reflected projection/interpolation rather
-than the mirror trace itself. Preserve this as a later renderer investigation:
-capture a deterministic scene/camera fixture, compare direct and reflected
-projection geometry, add a regression test, and correct it without broadening the
-current one-bounce mirror scope.
+**Reflected curved-edge correction verified (2026-09-12):** A deterministic planar
+mirror/planar wall fixture reproduced asymmetric reflected boundaries. The reflected
+column incorrectly moved virtual camera Z to each sampled mirror point; vertical-wall
+reflection now preserves incoming camera Z. Bilateral geometry and viewpoint
+regressions pass without broadening the current one-bounce mirror scope. Native
+display confirmation remains part of the platform/display profile rather than the
+headless correctness claim.
 
 ### Complete mirror contents — **Deferred renderer/scene integration**
 
@@ -1006,7 +1012,8 @@ and checked-in flow is Start → `main_menu` → `testscene`. Optimized aggregat
 ASan/LeakSanitizer, UBSan, canonical eight-mode matrix, conflict rejection, smoke, legacy/current
 guards, focused suites, and automated Q4 pass. The shared `ui_nested_inspector` owns common
 wrapped navigation, bounded nested rows, and real parent/child Enter/Escape cursor transitions
-used by Flow and Menu. `cppcheck` and Valgrind were unavailable. The final manual verification is
+used by Flow and Menu. At that checkpoint cppcheck was missing and installed Valgrind could not
+produce evidence because it terminated with `SIGILL` during dynamic-loader startup. The final manual verification is
 recorded in `reviews/2026-09-11-roadmap-r12-closeout.md`.
 
 **Deferred authored-Menu pointer activation:** Test-mode keyboard focus and Enter activation are

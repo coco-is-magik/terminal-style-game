@@ -244,9 +244,13 @@ Format details live in `../assets/README.md` and phase-specific historical specs
 ## Verification ownership
 
 Focused runners cover parsers/ownership, editor documents/commands, input mapping,
-UI, caches, lighting, tracker adapters, application options/policy/modules, and
-decal projection. `make test` aggregates deterministic runners; `check`, `asan`,
-`ubsan`, `leak`, `coverage`, `style`, `matrix`, and `smoke` provide broader gates.
+UI, caches, lighting, tracker adapters, application options/policy/modules, direct
+config/asset loading, optical rendering, and decal projection. `make test` aggregates
+all deterministic runners. `test-ui-standards`, `standards-core`, `standards`,
+`benchmark-headless`, `stability-fast`, and `stability-headless` provide focused
+project-wide gates; `check`, `asan`, `ubsan`, `leak`, `coverage`, `matrix`, and
+display-backed `smoke`/`stability` provide broader evidence. Outcome classification
+is defined in [`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md).
 
 Documentation-only architecture edits should at minimum run a touched-document
 link/path check. Behavior-changing code must run the narrowest relevant tests
