@@ -15,6 +15,10 @@ It applies to local development, audits, closeouts, and automated environments.
 - `make check` builds the application and runs the complete functional and standards
   gates.
 - `make asan`, `make ubsan`, and `make leak` provide separate runtime-safety evidence.
+  `make leak` is the canonical, pinned Ubuntu 24.04 container gate. It compiles and
+  directly executes `test-decal-io` and `test-core` before running Memcheck. The
+  optional `make leak-native` is diagnostic evidence and does not replace the
+  canonical gate.
 - `make coverage` runs the complete suite with coverage instrumentation and produces
   gcov reports.
 - `make benchmark-headless` runs current deterministic performance workloads.
@@ -28,6 +32,19 @@ baseline.
 
 Required gates fail when their required tool is absent or cannot run. They must not
 report a missing or broken tool as a successful skip.
+
+The canonical leak container mounts the source at `/source` read-only, copies the
+required project tree to writable tmpfs `/work`, and writes logs to the host
+`build/valgrind-container/` directory. Verification execution has no network,
+runs as the invoking UID/GID with the source directory's supplementary group,
+drops capabilities, and uses `no-new-privileges`. Compiler, Make, Valgrind, glibc,
+SDL, SDL_mixer, cmocka, and ENet are image-owned; host `build/`, `vendor/dist`, and
+host-built SDL are excluded from the copy. Image construction is a separate,
+networked trust step and verifies pinned source archive hashes.
+Docker host/kernel prerequisites, exact operational commands, security implications,
+and troubleshooting are maintained in
+[`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md); this policy does not duplicate
+that changing platform detail.
 
 ## Outcome taxonomy
 

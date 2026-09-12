@@ -57,11 +57,18 @@ make smoke
 make leak
 ```
 
-`standards` requires cppcheck, and `leak` requires a working Valgrind. Missing or
-broken required tools fail with a typed outcome rather than passing through a skip.
+`standards` requires cppcheck. `leak` is the canonical Docker-based Valgrind gate;
+it builds and tests in the pinned image without consuming host `build/` or
+`vendor/dist`. Use `make leak-native` only for optional host diagnostics. Build and
+validate the local image with `make leak-image` and `make leak-image-self-test`.
+Missing or broken required tools fail with a typed outcome rather than passing
+through a skip. Container logs and the resolved image manifest are written under
+`build/valgrind-container/`.
 See `docs/VERIFICATION_POLICY.md`, `docs/UI_DESIGN_AND_TEST_STANDARDS.md`, and
 `docs/PLATFORM_VERIFICATION_PROFILES.md` for gate, UI-rule, and platform evidence
-requirements.
+requirements. See `docs/DOCKER_VALGRIND_GATE.md` for the complete Gentoo Docker
+kernel configuration, cgroup-v2/BPF requirements, boot-parameter guidance, image
+trust boundary, commands, artifacts, and troubleshooting record.
 
 ### Build Flags
 

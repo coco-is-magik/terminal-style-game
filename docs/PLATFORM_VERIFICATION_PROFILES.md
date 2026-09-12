@@ -24,8 +24,8 @@ Every supported profile must record:
 
 | Profile | Appropriate execution | Additional evidence | Current state |
 |---|---|---|---|
-| Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; Valgrind is `FAIL-TOOL` |
-| Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | Deferred: portable dependency bootstrap not established |
+| Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; native Valgrind remains diagnostic |
+| Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | Canonical focused Valgrind gate verified on pinned Ubuntu 24.04 amd64 image; broader/display evidence remains deferred |
 | Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Deferred: portable dependency bootstrap not established |
 | Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Deferred: no target environment is available |
 | Windows | Native Windows runner | Windows loader/filesystem/path behavior and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
@@ -37,13 +37,18 @@ Linux containers are valid evidence for headless distro/toolchain behavior. They
 not evidence for native Windows, macOS, Steam Deck Gamescope/controller behavior, or
 host display/input behavior.
 
-The current checked-in `vendor/dist` contains host-built ELF libraries. The current
-dependency bootstrap also requires external source retrieval and a separate
-dependency build system. Therefore a container definition that merely copies the
-working tree would either reuse incompatible host binaries or perform an unpinned
-network build. Neither is deterministic platform evidence. Container and native CI
-automation is deferred until a separately approved, pinned, portable dependency
-bootstrap exists. This is an environment/build-boundary deferral, not a product pass.
+The canonical focused Valgrind image is defined under
+`tools/valgrind-container/`. It pins Ubuntu by digest, Ubuntu package versions,
+and exact SDL/SDL_mixer commits and archive hashes. Image construction owns the
+dependency build and is separate from verification execution. `make leak` mounts
+the project read-only, excludes host build/dependency artifacts, builds in tmpfs,
+disables networking, and persists only logs/manifest output. This is valid focused
+Ubuntu amd64 headless memory-safety evidence, not native display/input evidence or
+a complete Ubuntu platform profile. Multi-architecture publication remains deferred
+because Docker Buildx is not available on the current host.
+See [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md) for the complete verified
+Gentoo host profile, kernel/cgroup requirements, image identity, trust boundary,
+commands, and troubleshooting record.
 
 ## Display-backed boundary
 

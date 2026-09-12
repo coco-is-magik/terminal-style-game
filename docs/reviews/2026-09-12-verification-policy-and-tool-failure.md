@@ -104,3 +104,36 @@ diagnostic is therefore also recorded above.
 - Continue the regression-coverage audit with the known reflected-image curved-edge
   fixture, performance/stability modernization, UI standards, and platform matrix as
   separately testable increments.
+
+## 2026-09-12 canonical container follow-up
+
+The approved corrective action retains native Valgrind as an optional diagnostic and
+makes `make leak` a reproducible Ubuntu 24.04 amd64 container gate. The image is based
+on:
+
+```text
+ubuntu@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+```
+
+It pins Ubuntu package versions, SDL commit
+`f48525aa703e0e11134347b38571661d6ca829fd` with archive SHA-256
+`bb03c0eff839ddccc992d3d0a0f87fbf292ae19b4a7094cac91fd6b7cc9c6e19`, and
+SDL_mixer commit `3075d3eda55ce295c6919d330edb2554ff4edb5b` with archive SHA-256
+`63c12823e61183e1c5e6f65b0dab365aae5835c50254164f5dcabc8e4a5485ef`.
+The first verified local image uses Ubuntu glibc 2.39, GCC 13.3.0, and Valgrind
+3.22.0. `make leak-image-self-test` compiled a strict minimal dynamic C program and
+reported zero Memcheck errors and no leaks.
+
+The source mount is read-only at `/source`; a selected copy excluding `.git`,
+`.cache`, host `build/`, `vendor/dist`, and host SDL is built in `/work` tmpfs.
+Verification has no network, runs under the invoking non-root identity, drops all
+capabilities, and enables `no-new-privileges`. Logs and the image manifest are the
+only outputs, under `build/valgrind-container/`.
+
+The canonical gate directly ran both focused runners before Memcheck. Both direct
+runs passed. Memcheck reported zero bytes in use and zero errors for both; the core
+runner performed 1,341 allocations and frees totaling 199,965,530 bytes. Stable
+classification tests cover direct failures, Memcheck findings, unsupported client
+instructions, Valgrind crashes, timeouts, missing tools, contained typed statuses,
+and Docker statuses 125/126/127. Multi-architecture publication is deferred because
+Buildx is unavailable; the verified image is amd64 only.

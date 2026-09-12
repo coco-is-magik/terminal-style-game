@@ -4,6 +4,8 @@ BUILD_DIR := build
 VALGRIND ?= valgrind
 CPPCHECK ?= cppcheck
 GCOV ?= gcov
+DOCKER ?= docker
+VALGRIND_IMAGE ?= terminal-style-game-valgrind:ubuntu24.04-amd64
 
 # SMC integration toggle.  Set USE_SMC=1 to build with generated dispatch code.
 USE_SMC ?= 0
@@ -180,7 +182,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run test test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -1089,29 +1091,29 @@ ubsan:
 sanitize: asan ubsan
 
 leak:
-	@if ! command -v $(VALGRIND) >/dev/null 2>&1; then \
-		echo "FAIL-MISSING-TOOL: $(VALGRIND) was not found; Valgrind evidence was not produced"; \
-		exit 2; \
+	@VALGRIND_IMAGE="$(VALGRIND_IMAGE)" tools/valgrind-container/docker-gate.sh
+
+leak-native:
+	@VALGRIND="$(VALGRIND)" tools/valgrind-container/native-gate.sh
+
+leak-image:
+	@if ! command -v $(DOCKER) >/dev/null 2>&1; then \
+		echo "FAIL-MISSING-TOOL: reason=docker-not-found"; exit 2; \
 	fi
-	@$(MAKE) $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER)
-	@set -e; for runner in $(TEST_DECAL_IO_RUNNER) $(TEST_CORE_RUNNER); do \
-		if ! ./$$runner; then \
-			echo "FAIL-PRODUCT: $$runner failed without Valgrind"; \
-			exit 1; \
-		fi; \
-		log="$(BUILD_DIR)/valgrind-$$(basename $$runner).log"; \
-		status=0; \
-		$(VALGRIND) --error-exitcode=100 --leak-check=full ./$$runner >"$$log" 2>&1 || status=$$?; \
-		cat "$$log"; \
-		if test $$status -eq 100; then \
-			echo "FAIL-PRODUCT: Valgrind reported memory errors in $$runner"; \
-			exit 1; \
-		elif test $$status -ne 0; then \
-			echo "FAIL-TOOL: Valgrind could not produce trustworthy evidence for $$runner (status $$status; log $$log)"; \
-			exit 3; \
-		fi; \
-	done
-	@echo "PASS: Valgrind leak gate passed"
+	@$(DOCKER) build --pull=false -t "$(VALGRIND_IMAGE)" tools/valgrind-container
+
+leak-image-self-test:
+	@if ! command -v $(DOCKER) >/dev/null 2>&1; then \
+		echo "FAIL-MISSING-TOOL: reason=docker-not-found"; exit 2; \
+	fi
+	@status=0; $(DOCKER) run --rm --network none --cap-drop ALL \
+		--security-opt no-new-privileges --read-only \
+		--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777 \
+		"$(VALGRIND_IMAGE)" --self-test || status=$$?; \
+	tools/valgrind-container/classify.sh docker $$status /dev/null
+
+test-leak-classifier:
+	@tools/valgrind-container/test-classify.sh
 
 coverage:
 	@if ! command -v $(GCOV) >/dev/null 2>&1; then \

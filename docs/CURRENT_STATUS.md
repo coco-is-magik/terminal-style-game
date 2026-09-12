@@ -30,9 +30,13 @@ project-wide standards gates, and established typed tool-failure handling. The
 implementation and current Gentoo Valgrind `FAIL-TOOL` evidence are recorded in
 [`reviews/2026-09-12-verification-policy-and-tool-failure.md`](reviews/2026-09-12-verification-policy-and-tool-failure.md).
 At that pre-expansion checkpoint, the complete 60-runner suite and repository-owned
-standards guards passed. Real
-cppcheck evidence remains blocked by a missing tool, and Valgrind remains a diagnosed
-tool/environment failure pending discussion rather than a product defect.
+standards guards passed. cppcheck is now installed and working; its current findings
+in `src/scene_format.c` are `FAIL-PRODUCT`, not a tool failure, and are outside this
+Valgrind increment. Native Valgrind remains incompatible with the host loader, while
+the canonical pinned Ubuntu 24.04 amd64 container gate now provides focused Memcheck
+evidence for `test-decal-io` and `test-core`.
+The complete Docker host/kernel requirements and operational handoff are in
+[`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md).
 
 The follow-on regression increment expands the canonical suite to 62 runners with
 direct config and asset-loader coverage, fixes and guards reflected-image curvature,
