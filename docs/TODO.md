@@ -24,6 +24,40 @@ Planning labels used below:
 
 These labels describe readiness, not priority.
 
+## Post-R12 future pillars — foundation complete, product depth still open
+
+R0–R12 are verified roadmap foundations, not a claim that the editor or game-making
+experience is feature-complete. Future planning should treat the following as large,
+related design pillars that may graduate into standalone requirements documents or
+future roadmap phases after discussion:
+
+1. **Game-flow editor polish and graph UX.** R12 proves the data model, validation,
+   staged workspace, and report-only runtime handoff. The current authoring UI is still
+   barebones and rough; smoothing graph manipulation, validation feedback, visual
+   readability, mouse/node interactions, and eventual target loading remains open.
+2. **UI design system, feel, and interaction standards.** The current UI is a solid
+   readable foundation, but reusable standards, motion, tactile feedback, audio-cue
+   readiness, theme tokens, menu-depth discipline, and reduced verbosity need a
+   dedicated design pass. The target inspiration is terminal-esque retro-future UI
+   with System Shock / Alien / Blade Runner influence: alive, smooth, responsive, and
+   characterful without overwhelming the user.
+3. **Entity, sprite, animation, and attribute behavior model.** R11 verifies baseline
+   sprites, objects, triggers, and animation authoring. It does not settle feature
+   completeness, attribute tagging, entity behavior, variable sprite dimensions, scale,
+   multi-view sprites, or whether standalone sprite placement should remain a general
+   workflow.
+4. **Spatial expressiveness and material control.** Heightfields, surface authoring,
+   and optical rendering exist, but richer per-section material changes, bridges,
+   ductwork, portal/visual tricks, complete reflections, and global-vs-individual
+   material editing still need design.
+5. **Player-facing game creation.** Start Game still uses the legacy path, projects are
+   not exportable as completed games, and large systems such as procedural generation,
+   scene templates, multiple controllable actors, inventory, conversations, overworlds,
+   and personality/knowledge/stat models remain long-horizon ideas.
+
+Keep these pillars in `TODO.md` until each has enough decisions to promote into
+`docs/FEATURE_ROADMAP.md` or a focused planning document.
+
 ## Current constraints affecting future work
 
 1. The world is a fixed-size 2D grid (`SCENE_MAX_WIDTH`/`SCENE_MAX_HEIGHT`),
@@ -62,6 +96,95 @@ These labels describe readiness, not priority.
   framebuffer checksums, aggregate tests, sanitizers, tracker modes, and renderer
   benchmarks independently. Do not use optimization to conceal algorithmic
   regressions.
+
+## Data-first configuration and external editability — **Needs architecture/design**
+
+**Wanted:** Recommit to “from data” behavior where practical. User-set variables,
+project-authored rules, startup settings, UI defaults, visual tokens, gameplay tuning,
+and export/runtime metadata should generally live in typed, validated, text-based
+configuration or asset files rather than scattered hard-coded constants.
+
+This does **not** mean accepting arbitrary scripts or generic dictionaries. It means
+choosing explicit schemas, defaults, migrations, and error behavior for data that users
+or projects reasonably need to inspect or edit outside the program. Future planning
+should audit at least:
+
+- app/editor UI element definitions, style tokens, theme colors, motion parameters, and
+  sound-cue mappings;
+- project-level flow, export, scene-template, procedural-generation, and runtime-start
+  manifests;
+- entity attribute/tag schemas, behavior parameters, inventory/conversation data, and
+  player/avatar defaults;
+- asset-authoring defaults such as sprite dimensions, material-edit scope, and palette
+  or material presets.
+
+Each file family must define ownership, validation, missing-reference handling,
+transactional save/discard rules, and whether it is per-user, per-project, per-scene, or
+per-asset.
+
+## UI design system, standards, motion, and tactile feel — **Major design track**
+
+**Wanted:** Turn the current readable UI foundation into a rock-solid, reusable design
+system and implementation standard. New buttons, menus, property rows, graph widgets,
+and editor workspaces should not need multiple attempts before alignment, spacing,
+focus, state feedback, and navigation feel correct.
+
+Target aesthetic and feel:
+
+- terminal-esque and retro-future, with System Shock / Alien / Blade Runner as loose
+  references rather than literal copies;
+- characterful and alive without visual noise;
+- incredibly responsive, smooth, and tactile;
+- simple, direct, and precise, like a luxury manual car built for someone who likes
+  tools that work without over-assisting;
+- less verbose where concise labels, progressive disclosure, or better layout can make
+  intent clear;
+- resistant to burying common actions in deep menu layers.
+
+Design work should define centralized tokens and reusable modules for colors, spacing,
+focus/hover/active/disabled/error/success states, motion timings, transition policies,
+keyboard/pointer equivalence, layout density, row labels, button affordances, graph-node
+styling, modal prompts, and editor-vs-authored-game UI boundaries. It should preserve
+contrast, focus visibility, deterministic input, and a reduced-motion path.
+
+The first high-pressure consumer is the game-flow editor polish track, but the standards
+should apply broadly to editor inspectors, authored Menu editing, asset pickers, and
+future gameplay/project tools.
+
+### Theme and interface color customization — **Small feature after token contract**
+
+Changing the main interface color is desirable, but should be implemented through the
+shared token/theme contract rather than one-off color branches. A minimal version can be
+a validated accent/theme preset in user preferences with safe fallback and preserved
+contrast.
+
+## Audio seam and future sound-cue integration — **API first; implementation deferred**
+
+Audio is not ready for full implementation, but UI and runtime systems should be designed
+so sound cues can be added later without invasive rewrites. A future first step may be an
+empty/stub audio module with a narrow API/ABI for typed events such as confirm, cancel,
+focus move, invalid action, save success/failure, graph connection, and runtime target
+handoff.
+
+Initial scope should avoid committing to a backend, mixer, asset format, or dependency.
+Tests can prove callers can emit typed audio events and that the no-audio implementation
+is deterministic and safe. Real playback, volume controls, spatial audio, music, and
+asset pipelines require separate planning.
+
+## Mouse and pointer interaction model — **Cross-cutting design needed soon**
+
+Mouse use is not yet required for every workflow, but upcoming graph editing, object
+rotation, authored Button activation, canvas editing, and richer scene manipulation need a
+coherent pointer model. Future planning should define:
+
+- coordinate conversion across window pixels, logical grid cells, UI scale, authored Menu
+  preview scale, and scene/editor views;
+- click, drag, hover, press/release, cancel, and capture semantics;
+- keyboard-equivalent accessibility for every pointer-only-looking action;
+- node graph creation/connection/manipulation gestures;
+- non-permanent object/entity rotation previews;
+- reliable display-backed Button activation in R12 Test mode;
+- tests for real-window or display-backed behavior where practical.
 
 ## Cross-cutting decisions for later discussion
 
@@ -334,6 +457,27 @@ lookup/serialization, placement defaults, hidden/internal face rules, and
 migration of the current material to appropriate faces. Coordinate this with
 floor/ceiling data rather than creating another temporary encoding.
 
+## Spatial expressiveness, verticality, portals, and surface detail — **Needs design**
+
+**Wanted:** Make spaces feel more vertically and materially expressive without assuming a
+full engine rewrite. The current perspective and physics model is acceptable as a
+foundation, but authors need better ways to create things like ductwork, bridges,
+height-varied areas, and visually distinct sections of large surfaces.
+
+Future design should evaluate minimal extensions before replacing the engine model:
+
+- per-section or overlay material changes on walls/floors/ceilings;
+- direct decal/surface-paint workflows for visual subdivision;
+- object/sprite/portal-like visual tricks for bridges, grates, catwalks, ducts, and
+  false openings;
+- whether limited portals or linked views can provide enough vertical complexity while
+  preserving the accepted heightfield, collision, and renderer constraints;
+- how lighting, mirrors, collision, selection, save/load, and editor previews behave
+  around these tricks.
+
+The goal is more authored verticality and spatial richness, not a premature commitment
+to sectors, voxels, stacked rooms, or unrestricted 3D geometry.
+
 ---
 
 # Material and reusable asset authoring
@@ -356,6 +500,24 @@ Likely implications:
 Decide whether palettes stay shared, what “base color” means relative to three
 color stops, whether shared-palette changes propagate live, deletion policy,
 and whether asset history is independent from scene history.
+
+## Material edit scope: shared/global versus individual/forked edits — **Needs product decision**
+
+**Wanted:** Support both editing a material globally so every surface/object using that
+material changes, and editing only the selected use without unexpectedly mutating every
+other reference.
+
+A possible model is an explicit mode toggle plus “individual edit creates/forks a new
+material” behavior, but this needs design before implementation. Decide:
+
+- how the UI communicates “editing shared material used by N things” versus “forking for
+  this selection only”;
+- naming/ID policy for implied new materials;
+- undo/redo and Save/Discard boundaries when an edit touches both asset and scene data;
+- dependency display and find-all-usages behavior;
+- merge/deduplicate workflows for accidentally forked materials;
+- how palette sharing, missing references, export validation, and external text edits
+  interact with material forking.
 
 ## Paint/save/discard reusable decal assets — **Resolved (R5/R6)**
 
@@ -389,7 +551,7 @@ Save/Open. Missing-asset support geometry uses visible repair mode.
 Remaining: grouped spray-stroke undo, overlap/layering UI, spacing/randomization,
 edge wrapping, and capacity/performance policy beyond existing limits.
 
-## Sprite and animation authoring — **R11 I6 verified; improvements planned**
+## Sprite and animation authoring — **R11 foundation verified; feature-completeness open**
 
 **Implemented (2026-08-28/09-02):** `SpriteAsset` patterns render as decorative
 camera-facing billboards (R11 I1: depth-tested against world geometry and
@@ -415,14 +577,61 @@ Still open: oriented versus billboard behavior, live world preview of staged spr
 edits, a saved-versus-current-edits preview toggle, solid/occluding sprites, mirror
 visibility, and sprite-to-object attachment (recorded in the R11 stop boundary).
 
-## Reusable nested inspector submenu — **Wanted (R12)**
+The verified R11 baseline should not be treated as feature-complete entity/sprite
+authoring. Future planning should address:
 
-The unified editor currently hand-codes nested inspector rows and navigation in
-`unified_editor.c`; `ui_ele` supplies generic data-driven elements and
-`menu_state` supplies the application menu stack, but neither defines the
-in-world nested-inspector pattern. Add one reusable component/controller for
-parent highlighting, indented child insertion, focus arrows, bounded visible
-rows, and consistent Escape behavior before adding more nested domain menus.
+- whether free-standing placed sprites should remain a general authoring workflow or be
+  replaced/limited by an entity/object-first model where sprites are visuals attached to
+  typed entities;
+- a project-wide invariant that **one glyph maps to one glyph** wherever glyph art is
+  authored or rendered. The current 8×8 sprite start is useful, but sprite cells should
+  not secretly represent larger multi-glyph sections when the editor presents them as
+  glyph cells;
+- variable sprite canvas dimensions so sprites can expand or contract beyond 8×8 while
+  retaining bounded memory, validation, persistence, preview, and editor usability;
+- per-sprite or per-entity scale, with clear separation among visual size, occupied cell,
+  collision size, lighting/occlusion bounds, and editor handles;
+- directional and multi-view sprites: front/back/side/top/bottom or angle buckets,
+  deterministic camera/world-relative selection, fallback/mirroring, and interaction with
+  animation phase;
+- rotation-driven authoring previews: while rotating an entity/object non-permanently,
+  the sprite editor could select the view corresponding to the current visual angle (for
+  example editing the top sprite when previewing from above);
+- rough editor UX spots around sprite/entity creation, search, assignment, and staged
+  asset versus scene transaction boundaries.
+
+## Attribute tagging and entity behavior model — **Major roadmap candidate**
+
+**Wanted:** A dedicated data model for tags/attributes that can eventually define entity
+behavior generally. The current object/entity baseline does not settle this vision.
+
+This needs a focused discussion before implementation. Open questions include:
+
+- Are tags plain labels, typed components, capabilities, traits, rules, or some
+  combination?
+- Can tags carry typed values, constraints, defaults, or editor metadata?
+- Are user-defined tags allowed, and if so where is the project-level tag schema stored?
+- Which systems consume tags: triggers, AI, inventory, procedural generation,
+  conversations, UI filtering, collision, rendering, export validation, or runtime
+  behavior?
+- How do tags interact with broader object attributes, stats, abilities, skills,
+  morality, knowledge, faction, personality, and ownership?
+- What is the validation and missing-tag policy for saved scenes, exported projects, and
+  runtime-loaded content?
+- How do we avoid accidentally introducing an unrestricted scripting system before its
+  requirements are understood?
+
+This likely deserves its own future roadmap phase or decision record because it will
+shape entities, triggers, AI, conversations, inventory, procedural generation, and game
+runtime behavior.
+
+## Reusable nested inspector submenu — **Resolved by R12**
+
+R12 closeout implemented `ui_nested_inspector` for shared wrapped stepping, bounded
+indented row formatting, and retained-depth Enter/Escape cursor transitions. Flow and
+Menu controllers use the shared presentation helpers. This section remains only as a
+historical note; new nested-editor UX work belongs under the UI design-system and
+game-flow polish sections above.
 
 ---
 
@@ -492,6 +701,17 @@ Define expected behavior near straight up/down, extreme-pitch safety, decal
 coherence, sensitivity/inversion, and avoid calling a wider horizon offset
 “unlimited pitch.”
 
+## Alternate camera and presentation modes — **Future view-system track**
+
+**Wanted eventually:** camera/view modes beyond first person, such as isometric,
+third-person, directly overhead, tactics-style, or editor-only overview modes.
+
+This is not immediate, but it affects sprite direction authoring, object rotation,
+multiple controllable actors, mouse selection, procedural/overworld views, and export
+runtime expectations. Future planning must decide which views are editor-only versus
+player-facing, how they share scene/render data, and whether they require separate
+asset views or collision/selection models.
+
 ## Verticality and inclined-surface climbing — **Decisions locked 2026-08-19**
 
 **Wanted:** Raised/lowered areas and traversable ramps/slopes.
@@ -536,6 +756,16 @@ than the mirror trace itself. Preserve this as a later renderer investigation:
 capture a deterministic scene/camera fixture, compare direct and reflected
 projection geometry, add a regression test, and correct it without broadening the
 current one-bounce mirror scope.
+
+### Complete mirror contents — **Deferred renderer/scene integration**
+
+Current mirrors are intentionally limited and do not show everything in the world. A
+future complete-reflection pass should investigate showing sprites, decals, lights,
+objects/entities, and other non-wall/floor/ceiling content while preserving depth,
+occlusion, one-bounce or otherwise bounded recursion, deterministic fallback, and the
+surface-render budget. This should be planned with sprite/entity mirror visibility,
+decal overlay ordering, lighting cost, and quality-preset decisions rather than patched
+one content type at a time.
 
 ## Translucent materials — **Needs design and renderer research**
 
@@ -584,6 +814,58 @@ sources while editor architecture is changing rapidly. After the editor feature
 roadmap stabilizes, migrate Start Game transactionally to native-scene ownership,
 define scene selection/failure fallback, reuse the pure entity/trigger session,
 and remove the deprecated runtime loading path with compatibility evidence.
+
+## Player/avatar parameters and spawn authoring — **Focused future feature**
+
+**Wanted:** Edit the player spawn point, spawn facing direction, and player/avatar size
+now that collision and vertical movement are meaningful authored concerns.
+
+Future design should define whether these are per-scene, per-project, per-game-mode, or
+per-controllable-actor fields. It must handle collision clearance, eye height, movement
+parameter interaction, save/load migration, editor visualization, undo/redo, and runtime
+fallback if a spawn becomes invalid after map or object edits.
+
+## Long-horizon gameplay systems — **Large future pillars**
+
+These ideas are intentionally not immediate implementation tasks. They should be kept in
+the inventory because they influence data modeling, attribute tagging, export, UI, and
+runtime architecture decisions.
+
+### Multiple controllable actors and command models
+
+Future games may need more than one controllable character for tactics games, RPG mind
+control, clones, party control, or ordering NPCs. This needs decisions about active actor
+selection, camera ownership, input routing, turn/real-time models, AI handoff,
+possession, command queues, and save data.
+
+### Behavior, personality, knowledge, morality, abilities, skills, and stats
+
+Wanted eventually: rich data attached to entities describing personality, knowledge,
+morality, abilities, skills, stats, relationships, and behavior. This likely depends on
+the attribute tagging/entity behavior model and must remain typed, inspectable, and
+validated rather than an uncontrolled script layer.
+
+### Inventory system families
+
+Various inventory models should be discussed later: slot/grid inventories, equipment,
+containers, shared party inventory, weight/volume, key-items, crafting inputs, and
+diegetic world storage. This depends on entity attributes, UI standards, input model,
+export, and save data.
+
+### Conversation system and classification/compression-inspired design
+
+Wanted eventually: a flexible conversation system using an approach inspired by how
+classification can be done with gzip-like similarity/compression ideas. This needs
+research before design: identify intended authoring workflow, runtime determinism,
+content format, testability, and how classification interacts with personality,
+knowledge, morality, tags, quests, and localization.
+
+### Overworld map system
+
+An overworld or macro-map would be useful for games spanning multiple areas. Future
+planning should decide whether it is a separate scene type, graph layer, tile/map asset,
+procedural layer, or game-flow view, and how it connects to travel, encounters, exports,
+and player-facing UI.
 
 ---
 
@@ -757,6 +1039,66 @@ runtime-like Menu test mode, current action/reference diagnostics, and typed tar
 reporting. Target loading remains intentionally out of scope. The compatibility boundary is
 implemented: R12 does not discover, replace, or self-edit the application-owned editor shell,
 `ui_layouts`, `ui_elements`, or application menus.
+
+## Game-flow editor polish and graph UX — **Needs focused product/UI planning**
+
+R12 provides a solid foundation for authored flow data, validation, staging, catalog
+composition, and safe graph mutations, but the current game-flow editor is still
+barebones and rough. Treat polish as its own future item rather than assuming the verified
+foundation is a finished authoring experience.
+
+Future planning should address:
+
+- graph readability, node/edge/port visual hierarchy, and compact status display;
+- smoother create/connect/rewire/remove workflows;
+- mouse-driven node graph operations with keyboard equivalents;
+- clearer validation feedback for unreachable nodes, stale ports, missing assets, and
+  impossible mutations;
+- reducing menu depth and excessive wording while keeping errors actionable;
+- visual distinction among Start, Scene, Menu, generated/catalog choices, and staged
+  unsaved state;
+- integration with the broader UI design-system, motion, sound-cue, and pointer-model
+  tracks;
+- eventual typed target loading/application flow invocation once runtime ownership and
+  failure fallback are defined.
+
+## Project export and playable game packaging — **Future major feature**
+
+The editor exists to let users create their own games, but completed-project export has
+not been designed. Future planning should define what it means to export a project and
+what validation must pass first.
+
+Open questions:
+
+- export as a folder, archive, data pack, player-only runtime, or standalone build;
+- what project manifest records scenes, flow graph, menus, assets, settings, required
+  engine version, and startup behavior;
+- whether generated content is baked, generated at runtime, or both;
+- missing-reference, unused-asset, compatibility, and migration policies;
+- whether exported games include editor-only data, debug metadata, or only runtime data;
+- platform assumptions, deterministic loading, and failure fallback.
+
+## Scene templates and procedural generation — **Future major feature / research track**
+
+**Wanted:** Avoid forcing authors to start every scene from scratch. Support reusable
+scene templates and procedural generation with visible, adjustable constraints.
+
+Possible scopes:
+
+1. **Scene templates:** mission-type, biome-type, gameplay-mode, or visual-style presets
+   that preselect dimensions, movement parameters, materials, lighting, spawn defaults,
+   flow/menu hooks, and starter assets.
+2. **Static one-time generation:** generate a scene in the editor, then let the user
+   fine-tune it manually as ordinary authored data.
+3. **Dynamic/runtime generation:** generate on load or during play, with rules for how
+   generated scenes participate in or bypass the authored flow graph.
+4. **Parameter constraints:** expose user-editable bounds so generation stays within
+   expected mission/biome/layout/material constraints.
+5. **Example-based generation research:** investigate whether an authored example scene
+   can seed or infer parameters for generating similar scenes.
+
+This is a large future track. It depends on export, data-first project manifests,
+attribute tagging, material/template libraries, validation, and performance safeguards.
 
 ---
 
