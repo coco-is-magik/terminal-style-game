@@ -55,6 +55,7 @@ make coverage
 make matrix
 make smoke
 make leak
+make platform-survey
 ```
 
 `standards` requires cppcheck. `leak` is the canonical Docker-based Valgrind gate;
@@ -69,6 +70,12 @@ See `docs/VERIFICATION_POLICY.md`, `docs/UI_DESIGN_AND_TEST_STANDARDS.md`, and
 requirements. See `docs/DOCKER_VALGRIND_GATE.md` for the complete Gentoo Docker
 kernel configuration, cgroup-v2/BPF requirements, boot-parameter guidance, image
 trust boundary, commands, artifacts, and troubleshooting record.
+See `docs/PLATFORM_TESTING.md` for the reproducible Ubuntu GCC/Clang, Fedora GCC,
+and Alpine musl GCC survey. `platform-survey` records all outcomes and continues
+after incompatibilities; `platform-check` requires every required profile to pass.
+The current unchanged source passes Ubuntu GCC, Fedora GCC, and informational
+Alpine musl GCC, while strict Ubuntu Clang is `FAIL-PRODUCT` because numerous
+first-party and pinned SMC files lack final newlines.
 
 ### Build Flags
 

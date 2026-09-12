@@ -182,7 +182,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -994,6 +994,9 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_HEIGHTFIELD_SELECTIVE_RUNNER) $(TEST_MIRROR_TRACE_RUNNER) \
 	$(TEST_OPTICAL_RENDER_RUNNER) $(TEST_SPRITE_RENDER_RUNNER)
 
+test-build: $(TEST_RUNNERS)
+	@echo "PASS: complete test runner inventory built"
+
 test: $(TEST_RUNNERS)
 	./$(TEST_DEPS_RUNNER)
 	./$(TEST_CORE_RUNNER)
@@ -1114,6 +1117,44 @@ leak-image-self-test:
 
 test-leak-classifier:
 	@tools/valgrind-container/test-classify.sh
+
+test-platform-harness:
+	@tools/platform-profiles/test-classify.sh
+	@tools/platform-profiles/test-check.sh
+	@tools/platform-profiles/test-survey.sh
+
+platform-image-ubuntu-gcc:
+	@tools/platform-profiles/build-image.sh tools/platform-profiles/profiles/ubuntu-24.04-gcc.env
+
+platform-image-ubuntu-clang:
+	@tools/platform-profiles/build-image.sh tools/platform-profiles/profiles/ubuntu-24.04-clang.env
+
+platform-image-fedora-gcc:
+	@tools/platform-profiles/build-image.sh tools/platform-profiles/profiles/fedora-gcc.env
+
+platform-image-alpine-gcc:
+	@tools/platform-profiles/build-image.sh tools/platform-profiles/profiles/alpine-musl-gcc.env
+
+platform-images: platform-image-ubuntu-gcc platform-image-ubuntu-clang \
+	platform-image-fedora-gcc platform-image-alpine-gcc
+
+platform-test-ubuntu-gcc:
+	@tools/platform-profiles/run-one.sh tools/platform-profiles/profiles/ubuntu-24.04-gcc.env
+
+platform-test-ubuntu-clang:
+	@tools/platform-profiles/run-one.sh tools/platform-profiles/profiles/ubuntu-24.04-clang.env
+
+platform-test-fedora-gcc:
+	@tools/platform-profiles/run-one.sh tools/platform-profiles/profiles/fedora-gcc.env
+
+platform-test-alpine-gcc:
+	@tools/platform-profiles/run-one.sh tools/platform-profiles/profiles/alpine-musl-gcc.env
+
+platform-survey:
+	@tools/platform-profiles/survey.sh
+
+platform-check:
+	@tools/platform-profiles/check.sh
 
 coverage:
 	@if ! command -v $(GCOV) >/dev/null 2>&1; then \

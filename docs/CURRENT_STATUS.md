@@ -38,6 +38,15 @@ evidence for `test-decal-io` and `test-core`.
 The complete Docker host/kernel requirements and operational handoff are in
 [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md).
 
+The 2026-09-12 Linux platform survey now builds unchanged pinned-dependency profiles
+for Ubuntu GCC, Ubuntu Clang, Fedora GCC, and informational Alpine musl GCC. Ubuntu
+GCC, Fedora GCC, and Alpine pass strict application/test builds, all 62 runners, and
+`standards-core`. Ubuntu Clang is `FAIL-PRODUCT` at strict application compilation
+because many first-party and pinned SMC files lack final newlines. No source
+remediation was performed. Current mechanics and evidence are in
+[`PLATFORM_TESTING.md`](PLATFORM_TESTING.md) and
+[`reviews/2026-09-12-linux-platform-survey.md`](reviews/2026-09-12-linux-platform-survey.md).
+
 The follow-on regression increment expands the canonical suite to 62 runners with
 direct config and asset-loader coverage, fixes and guards reflected-image curvature,
 adds pure application-state transition coverage, enforces complete test registration,

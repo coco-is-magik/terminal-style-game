@@ -20,13 +20,17 @@ Every supported profile must record:
 - native display startup, presentation, resize, keyboard input, and pointer checks
   where a graphical session is available.
 
+Reproducible Linux survey mechanics and current compiler/libc results are defined in
+[`PLATFORM_TESTING.md`](PLATFORM_TESTING.md). Survey completion means all configured
+profiles were attempted and classified; it is not itself a support claim.
+
 ## Target profiles
 
 | Profile | Appropriate execution | Additional evidence | Current state |
 |---|---|---|---|
 | Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; native Valgrind remains diagnostic |
-| Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | Canonical focused Valgrind gate verified on pinned Ubuntu 24.04 amd64 image; broader/display evidence remains deferred |
-| Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Deferred: portable dependency bootstrap not established |
+| Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | GCC complete headless profile passes; Clang strict app build is `FAIL-PRODUCT`; focused canonical Valgrind passes; display evidence deferred |
+| Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Fedora 43 GCC complete headless profile passes; display evidence deferred |
 | Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Deferred: no target environment is available |
 | Windows | Native Windows runner | Windows loader/filesystem/path behavior and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
 | macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
@@ -49,6 +53,8 @@ because Docker Buildx is not available on the current host.
 See [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md) for the complete verified
 Gentoo host profile, kernel/cgroup requirements, image identity, trust boundary,
 commands, and troubleshooting record.
+The broader Linux compiler/libc survey uses the same security boundary and is
+documented in [`PLATFORM_TESTING.md`](PLATFORM_TESTING.md).
 
 ## Display-backed boundary
 

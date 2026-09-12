@@ -25,6 +25,9 @@ only a small set of documents should be treated as current authority.
 - [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md) — Docker/Gentoo kernel
   prerequisites, canonical Valgrind image operation, security boundary,
   troubleshooting, and collected implementation lessons.
+- [`PLATFORM_TESTING.md`](PLATFORM_TESTING.md) — reproducible Linux compiler/libc
+  surveys, profile phases, outcome semantics, commands, artifacts, and current
+  compatibility results.
 
 ## Current authority
 
@@ -40,6 +43,8 @@ only a small set of documents should be treated as current authority.
   strict tool requirements, failure classification, and reporting requirements.
 - [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md) is the operational authority
   for Docker host requirements and the canonical containerized Valgrind gate.
+- [`PLATFORM_TESTING.md`](PLATFORM_TESTING.md) is the operational authority for
+  platform survey profiles and their interpretation.
 - [`reviews/2026-09-11-roadmap-r12-closeout.md`](reviews/2026-09-11-roadmap-r12-closeout.md)
   records the latest verified roadmap closeout evidence.
 - [`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md)

@@ -24,6 +24,10 @@ It applies to local development, audits, closeouts, and automated environments.
 - `make benchmark-headless` runs current deterministic performance workloads.
   `make stability-fast` and `make stability-headless` run increasing deterministic
   stability tiers; display-backed `make stability` remains separate.
+- `make platform-survey` attempts every configured Linux profile and records all
+  typed outcomes without treating expected incompatibility as pass. `make
+  platform-check` fails when any required profile is not compatible. Neither target
+  is part of `make check` until platform-gating policy is separately approved.
 
 Benchmark records must include `make verification-environment` output or equivalent
 platform, compiler, flags, processor-count, and dependency-artifact context. Timing
