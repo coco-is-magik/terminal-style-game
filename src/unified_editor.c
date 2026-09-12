@@ -6,6 +6,7 @@
  */
 
 #include "unified_editor.h"
+#include "unified_editor_test.h"
 #include "ui_nested_inspector.h"
 #include "asset_refresh.h"
 #include "editor_domain.h"

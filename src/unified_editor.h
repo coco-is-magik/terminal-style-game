@@ -80,7 +80,7 @@ typedef enum {
     EDITOR_PENDING_WINDOW_CLOSE
 } EditorPendingAction;
 
-/* Exit-prompt choices (plan §9). Resume and Cancel both dismiss without exit. */
+/* Resume and Cancel both dismiss the exit prompt without exiting. */
 typedef enum {
     EDITOR_EXIT_RESUME = 0,
     EDITOR_EXIT_SAVE_AND_EXIT,
@@ -278,9 +278,6 @@ typedef struct {
     /* Valid while modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT. */
     EditorDirtyOpenChoice dirty_open_choice;
 } UnifiedEditorState;
-
-void unified_editor_set_runtime_build_failure_for_test(bool fail);
-
 
 bool unified_editor_init(
     UnifiedEditorState *editor,

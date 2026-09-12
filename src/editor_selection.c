@@ -4,7 +4,7 @@
  * Coordinate convention (confirmed against camera/raycast):
  *   angle 0 = +X/east, PI/2 = +Y/south (Y increases south).
  *
- * Face from DDA side + ray direction (plan §10):
+ * Face from DDA side + ray direction:
  *   side == 0 && ray_dir_x > 0 -> WEST
  *   side == 0 && ray_dir_x < 0 -> EAST
  *   side == 1 && ray_dir_y > 0 -> NORTH

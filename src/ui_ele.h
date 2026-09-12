@@ -105,7 +105,11 @@ typedef struct {
  *
  * @param path   Path to the element file
  * @param cache  Cache to register the loaded element into (may be NULL)
- * @return       New UiElement, or NULL on parse failure
+ * Recognized numeric and color fields require complete in-range decimal values.
+ * Malformed recognized fields reject the element; absent optional colors retain
+ * defaults.
+ *
+ * @return       New UiElement, or NULL on parse or I/O failure
  */
 UiElement *ui_ele_load(const char *path, UiCache *cache);
 

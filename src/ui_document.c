@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "ui_document.h"
+#include "rgba_parse.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -176,13 +177,10 @@ static bool parse_align(const char *text, UiDocumentAlign *out_align) {
 }
 
 static bool parse_color(const char *text, UiDocumentColor *out_color) {
-    unsigned red, green, blue, alpha;
-    char tail;
-    if (!text || !out_color ||
-        sscanf(text, "%u,%u,%u,%u%c", &red, &green, &blue, &alpha, &tail) != 4 ||
-        red > 255U || green > 255U || blue > 255U || alpha > 255U) return false;
-    *out_color = (UiDocumentColor){(uint8_t)red, (uint8_t)green,
-                                   (uint8_t)blue, (uint8_t)alpha};
+    uint8_t channels[4];
+    if (!out_color || !rgba_parse(text, channels)) return false;
+    *out_color = (UiDocumentColor){channels[0], channels[1],
+                                   channels[2], channels[3]};
     return true;
 }
 

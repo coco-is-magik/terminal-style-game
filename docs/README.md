@@ -29,6 +29,9 @@ only a small set of documents should be treated as current authority.
   and tested change deliberately revises it.
 - [`reviews/2026-09-11-roadmap-r12-closeout.md`](reviews/2026-09-11-roadmap-r12-closeout.md)
   records the latest verified roadmap closeout evidence.
+- [`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md)
+  records the non-SMC code audit, corrective-action dispositions, and verification
+  evidence. SMC is explicitly excluded from that audit and its actions.
 
 R0–R12 are verified roadmap foundations. They should not be read as a claim that
 the editor or game-making experience is feature-complete.

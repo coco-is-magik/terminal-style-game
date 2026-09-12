@@ -3,10 +3,13 @@
  */
 
 #include "ui_ele.h"
+#include "number_parse.h"
+#include "rgba_parse.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 static char *ui_strdup(const char *text) {
     size_t len;
@@ -94,17 +97,11 @@ static UiAlign parse_align(const char *text) {
     return UI_ALIGN_LEFT;
 }
 
-static SDL_Color parse_color(const char *text, SDL_Color fallback) {
-    int r;
-    int g;
-    int b;
-    int a;
-
-    if (text && sscanf(text, "%d,%d,%d,%d", &r, &g, &b, &a) == 4) {
-        SDL_Color color = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
-        return color;
-    }
-    return fallback;
+static bool parse_color(const char *text, SDL_Color *out_color) {
+    uint8_t channels[4];
+    if (!out_color || !rgba_parse(text, channels)) return false;
+    *out_color = (SDL_Color){channels[0], channels[1], channels[2], channels[3]};
+    return true;
 }
 
 static void resolve_links(UiElement *element, UiCache *cache) {
@@ -162,6 +159,9 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
     FILE *f;
     UiElement *element;
     char line[4096];
+    bool valid = true;
+    bool read_failed;
+    bool close_failed;
 
     if (!path) return NULL;
     f = fopen(path, "r");
@@ -200,15 +200,15 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
         } else if (strcmp(key, "type") == 0) {
             element->type = parse_type(val);
         } else if (strcmp(key, "x") == 0) {
-            element->layout.x = atoi(val);
+            valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.x);
         } else if (strcmp(key, "y") == 0) {
-            element->layout.y = atoi(val);
+            valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.y);
         } else if (strcmp(key, "coords") == 0) {
             element->layout.coords_mode = parse_coords(val);
         } else if (strcmp(key, "width") == 0) {
-            element->layout.width = atoi(val);
+            valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.width);
         } else if (strcmp(key, "height") == 0) {
-            element->layout.height = atoi(val);
+            valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.height);
         } else if (strcmp(key, "parent") == 0) {
             strncpy(element->parent_name, val, sizeof(element->parent_name) - 1);
         } else if (strcmp(key, "children") == 0) {
@@ -216,23 +216,29 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
         } else if (strcmp(key, "content") == 0) {
             ui_ele_set_content(element, val);
         } else if (strcmp(key, "visible") == 0) {
-            element->visible = atoi(val) != 0;
+            valid = number_parse_int(val, 0, 1, &element->visible);
         } else if (strcmp(key, "z_index") == 0) {
-            element->z_index = atoi(val);
+            valid = number_parse_int(val, INT_MIN, INT_MAX, &element->z_index);
         } else if (strcmp(key, "align") == 0) {
             element->align = parse_align(val);
         } else if (strcmp(key, "fg") == 0) {
-            element->fg = parse_color(val, element->fg);
-            element->has_fg = true;
+            element->has_fg = parse_color(val, &element->fg);
+            valid = element->has_fg;
         } else if (strcmp(key, "bg") == 0) {
-            element->bg = parse_color(val, element->bg);
-            element->has_bg = true;
+            element->has_bg = parse_color(val, &element->bg);
+            valid = element->has_bg;
         } else if (strcmp(key, "action") == 0) {
             strncpy(element->action, val, sizeof(element->action) - 1);
         }
+        if (!valid) break;
     }
 
-    fclose(f);
+    read_failed = ferror(f) != 0;
+    close_failed = fclose(f) != 0;
+    if (read_failed || close_failed || !valid) {
+        ui_ele_destroy(element);
+        return NULL;
+    }
     resolve_links(element, cache);
     return element;
 }

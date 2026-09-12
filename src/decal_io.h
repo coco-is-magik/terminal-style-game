@@ -54,6 +54,9 @@
  * format (same as asset_loader.c's internal load_decal).
  *
  * @param path  File path to read (e.g. "assets/decals/1.txt")
+ * Recognized numeric fields require complete in-range values; doubles must be
+ * finite and row suffixes must be valid decimal indexes.
+ *
  * @return      Heap-allocated Decal on success, NULL on failure.
  *              Caller must free with decal_free().
  */

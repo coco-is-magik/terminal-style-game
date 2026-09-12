@@ -92,8 +92,13 @@ static int teardown(void **state) {
         }
         (void)rmdir(directory);
     }
-    make_path(path, sizeof(path), palettes, "1.txt");
-    (void)unlink(path);
+    {
+        const char *palette_files[] = {"1.txt", "2.txt"};
+        for (size_t i = 0U; i < sizeof(palette_files) / sizeof(palette_files[0]); i++) {
+            make_path(path, sizeof(path), palettes, palette_files[i]);
+            (void)unlink(path);
+        }
+    }
     (void)rmdir(palettes);
     (void)rmdir(materials);
     (void)rmdir(decals);
@@ -373,6 +378,22 @@ static void test_sprite_folders_load_static_and_animation_strictly(
     asset_registry_clear(&registry);
 }
 
+static void test_malformed_palette_color_skips_only_that_asset(void **state) {
+    AssetRegistry registry;
+    char path[1024];
+    (void)state;
+
+    make_path(path, sizeof(path), palettes, "2.txt");
+    write_file(path,
+        "near=256,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n");
+    assert_true(asset_registry_init(&registry));
+    assert_true(asset_loader_load_registry(&registry, root));
+    assert_int_equal(registry.palettes[1].near_color.r, 10U);
+    assert_int_equal(registry.palettes[1].near_color.a, 255U);
+    assert_int_equal(registry.palettes[2].near_color.a, 0U);
+    asset_registry_clear(&registry);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(
@@ -392,6 +413,9 @@ int main(void) {
             setup, teardown),
         cmocka_unit_test_setup_teardown(
             test_sprite_folders_load_static_and_animation_strictly,
+            setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_malformed_palette_color_skips_only_that_asset,
             setup, teardown)
     };
     config_init_defaults();

@@ -173,6 +173,7 @@ UiDocumentResult ui_document_build_flow_reference(
     const UiDocument *document,
     UiFlowReferenceView *out_view
 );
+/* Load is transactional; malformed numeric/color fields preserve document. */
 UiDocumentResult ui_document_load(UiDocument *document, const char *path);
 UiDocumentResult ui_document_save_as(UiDocument *document, const char *path);
 UiDocumentResult ui_document_save(UiDocument *document);

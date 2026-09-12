@@ -26,6 +26,8 @@
  *
  * @param reg       AssetRegistry to populate
  * @param base_path Root asset directory (e.g. "assets")
+ * Malformed individual assets are skipped; other valid assets continue loading.
+ *
  * @return false for invalid/uninitialized inputs or an unreadable root;
  *         true after the tolerant eager load completes.
  */

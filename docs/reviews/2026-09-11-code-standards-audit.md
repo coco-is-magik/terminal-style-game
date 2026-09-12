@@ -4,7 +4,86 @@ This document is the dedicated search target and planning authority for the
 2026-09-11 non-SMC code standards audit. It records findings for a future
 corrective-action pass only; it does not authorize broad code changes by itself.
 
+**Corrective-action status, 2026-09-11:** concrete parser, buffer, stale-comment,
+test-seam, and verification findings were remediated and tested. Large module
+splits and code-to-data migrations remain deliberately deferred because they
+require separately scoped behavior/authority decisions. SMC remains excluded.
+
 # Code Standards Audit — 2026-09-11
+
+## Corrective-action record — 2026-09-11
+
+Implemented:
+
+- Added dependency-free `rgba_parse` and `number_parse` modules. They require
+  complete bounded decimal input, reject non-finite doubles, and leave outputs
+  unchanged on failure.
+- Migrated color parsing in `asset_loader`, `ui_ele`, and `ui_document` away
+  from `sscanf`; migrated ordinary numeric parsing in `ui_ele` and `decal_io`
+  away from `atoi`/`atof`.
+- Malformed authored UI colors now reject the load transactionally. Malformed
+  app-UI numeric or color fields reject the element; absent optional colors still
+  use defaults. Invalid palette colors skip only the
+  malformed palette while tolerant registry loading continues. Invalid decal
+  numbers and malformed row keys reject the decal file.
+- Replaced the two audited `strcpy` path joins in `asset_loader` with one bounded
+  `snprintf`-based helper.
+- Removed current-source references to historical “plan §” sections from
+  `unified_editor.h` and `editor_selection.c` while preserving their behavioral
+  invariants.
+- Moved the unified-editor runtime-build fault-injection declaration from the
+  production-facing `unified_editor.h` to `unified_editor_test.h`. The existing
+  rollback tests remain intact.
+- Added `test-rgba-parse`, `test-number-parse`, and `test-non-smc` Make targets.
+  `test-non-smc` mirrors the project runner inventory while excluding exactly
+  the two SMC-specific runners.
+
+Disposition of structural and data-boundary findings:
+
+- `unified_editor`, `scene_document`, and `scene_format` remain large. They were
+  not split wholesale because this audit explicitly requires incremental,
+  behavior-preserving extraction. The test-only declaration move is the safe
+  public-header reduction completed in this pass.
+- `app.c` remains the application composition boundary. Its menu ID mapping,
+  conventional asset roots, UI resource dimensions, and preview styling remain
+  code-owned until a separate requirement establishes configurability or a new
+  data authority. Moving them during standards cleanup would be speculative.
+- Legacy map and deprecated scene compatibility paths remain managed debt. Their
+  existing guardrails were preserved.
+- No proven dead ordinary-code feature was removed. Removal requires call-graph
+  evidence and a dedicated compatibility decision.
+- SMC source, headers, generated artifacts, build modes, benchmark paths, and
+  corrective actions were not changed.
+
+Verification evidence:
+
+- Normal C11 `-Wall -Wextra -Wpedantic -Werror` application build passed with
+  `USE_NO_STATE_TRACKER=1`.
+- All 58 non-SMC test runners passed in three bounded batches. This includes the
+  latest 97-test unified-editor runner, 61-test core runner, 17-test app-UI
+  runner, 16-test decal-I/O runner, 13-test authored-UI runner, and 7-test asset
+  refresh runner.
+- After the normal runner binaries were current, the new
+  `make test-non-smc USE_NO_STATE_TRACKER=1` target also completed and printed
+  `Non-SMC test suite passed.`
+- Focused AddressSanitizer builds and runs passed for `rgba_parse`,
+  `number_parse`, `ui_ele`, `ui_document`, `decal_io`, and `asset_refresh`.
+- Focused UndefinedBehaviorSanitizer builds and runs passed for the same six
+  runner groups.
+- The first single-command `test-non-smc` attempt timed out after 120 seconds
+  during compilation. This was not a test failure; verification was resumed by
+  building and running all 58 runners in bounded batches.
+- A later forced rebuild of eight affected runners also timed out after seven
+  successful builds while linking the final asset-refresh runner. That runner
+  was rebuilt alone, then all eight affected runners passed together.
+- `cppcheck` was unavailable, so static-analysis verification remains unrun.
+- Valgrind is installed but could not start either standalone parser runner: its
+  dynamic-loader startup terminated with `SIGILL` at `_dl_start`. No Valgrind
+  leak claim is made. AddressSanitizer/LeakSanitizer runs completed without a
+  reported error.
+- A scoped handwritten-source scan found no remaining calls to `sscanf`,
+  `strcpy`, `strcat`, `sprintf`, `gets`, `scanf`, `atoi`, or `atof` under `src/`.
+- Header include-cycle check still reports no cycles.
 
 ## Purpose
 

@@ -261,6 +261,35 @@ static void test_v2_migrates_to_native_visual_defaults(void **state) {
     assert_int_equal(unlink(path), 0);
 }
 
+static void test_v3_rejects_invalid_color_transactionally(void **state) {
+    UiDocument document;
+    UiDocument before;
+    char path[] = "/tmp/tsg_ui_document_color_XXXXXX";
+    int fd = mkstemp(path);
+    FILE *file;
+    (void)state;
+
+    assert_true(fd >= 0);
+    file = fdopen(fd, "w");
+    assert_non_null(file);
+    assert_true(fputs(
+        "ui_version=3\nkind=menu\nname=bad_color\n"
+        "design_width=80\ndesign_height=25\nnext_element_id=2\n"
+        "[element]\nid=1\nparent=0\ntype=container\nname=root\ncontent=\nport=\n"
+        "x=0\ny=0\nwidth=80\nheight=25\nh_anchor=stretch\nv_anchor=stretch\n"
+        "scale=100\nvisual=native\nfg=256,0,0,255\nbg=0,0,0,255\n"
+        "fill_enabled=1\nfill_glyph=32\nborder_enabled=0\nborder_glyph=35\n"
+        "sprite_id=0\nalign=left\nvisible=1\n",
+        file) >= 0);
+    assert_int_equal(fclose(file), 0);
+
+    assert_int_equal(ui_document_create_menu(&document, "preserved"), UI_DOCUMENT_OK);
+    before = document;
+    assert_int_equal(ui_document_load(&document, path), UI_DOCUMENT_PARSE_ERROR);
+    assert_memory_equal(&document, &before, sizeof(document));
+    assert_int_equal(unlink(path), 0);
+}
+
 static void test_content_port_and_subtree_mutations_are_transactional(void **state) {
     UiDocument document;
     UiDocument before;
@@ -373,6 +402,7 @@ int main(void) {
         ,cmocka_unit_test(test_layout_mutations_reject_invalid_document_without_change)
         ,cmocka_unit_test(test_v1_rejects_v2_fields_on_earlier_element)
         ,cmocka_unit_test(test_v2_migrates_to_native_visual_defaults)
+        ,cmocka_unit_test(test_v3_rejects_invalid_color_transactionally)
         ,cmocka_unit_test(test_content_port_and_subtree_mutations_are_transactional)
         ,cmocka_unit_test(test_hierarchy_mutations_are_transactional_and_preserve_subtrees)
     };

@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
+#include "../src/unified_editor_test.h"
 #include "../src/asset_refresh.h"
 
 /* Editor behavior tests use the production logical viewport height. */

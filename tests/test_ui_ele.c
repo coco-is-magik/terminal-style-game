@@ -1,9 +1,13 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <cmocka.h>
 
 #include "../src/ui_ele.h"
@@ -394,6 +398,40 @@ static void test_ui_ele_color_override(void **state) {
     release_stack_element(&e);
 }
 
+static void test_ui_ele_rejects_invalid_color(void **state) {
+    char path[] = "/tmp/tsg_ui_ele_color_XXXXXX";
+    int fd;
+    FILE *file;
+    (void)state;
+
+    fd = mkstemp(path);
+    assert_true(fd >= 0);
+    file = fdopen(fd, "w");
+    assert_non_null(file);
+    assert_true(fputs("name=color\ntype=text\nfg=-1,2,3,4\nbg=1,2,3,4tail\n",
+                      file) >= 0);
+    assert_int_equal(fclose(file), 0);
+
+    assert_null(ui_ele_load(path, NULL));
+    assert_int_equal(unlink(path), 0);
+}
+
+static void test_ui_ele_rejects_malformed_numeric_field(void **state) {
+    char path[] = "/tmp/tsg_ui_ele_number_XXXXXX";
+    int fd;
+    FILE *file;
+    (void)state;
+
+    fd = mkstemp(path);
+    assert_true(fd >= 0);
+    file = fdopen(fd, "w");
+    assert_non_null(file);
+    assert_true(fputs("name=bad\ntype=text\nx=12tail\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    assert_null(ui_ele_load(path, NULL));
+    assert_int_equal(unlink(path), 0);
+}
+
 static void test_ui_ele_button_action(void **state) {
     (void)state;
 
@@ -448,6 +486,8 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_hidden_not_rendered),
         cmocka_unit_test(test_ui_ele_center_align),
         cmocka_unit_test(test_ui_ele_color_override),
+        cmocka_unit_test(test_ui_ele_rejects_invalid_color),
+        cmocka_unit_test(test_ui_ele_rejects_malformed_numeric_field),
         cmocka_unit_test(test_ui_ele_button_action),
         cmocka_unit_test(test_ui_ele_z_index_child_order),
         cmocka_unit_test(test_ui_ele_reserved_content_updates_in_place),

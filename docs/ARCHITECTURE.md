@@ -189,8 +189,12 @@ in `TODO.md`.
 - `frame_dispatch`: deterministic benchmark scenario mutation.
 - `map_catalog`: sorted filtered file snapshots for editor open/import/catalog workflows.
 - `menu_controller` / `menu_state`: pure application menu action decoding and stack state.
+- `number_parse`: dependency-free strict integer and finite-double parsing for
+  project text formats; outputs remain unchanged on rejection.
 - `raycast`: world intersection and raster orchestration.
 - `renderer`: SDL/software presentation resources.
+- `rgba_parse`: dependency-free strict four-channel decimal RGBA parsing shared
+  by asset and UI formats; outputs remain unchanged on rejection.
 - `scene_document` / `command_system`: authored scene document ownership,
   validation, mutation, undo, and redo.
 - `ui_ele`: application-owned UI element/layout/cache data and mutation/query APIs.
@@ -233,6 +237,9 @@ Format details live in `../assets/README.md` and phase-specific historical specs
   distinguishes `INPUT`, `ENV`, and `BUG` from non-error `STATUS`, and logs at the
   boundary that owns the response. See `C_STYLE_AND_OWNERSHIP.md` and
   `ERROR_CATALOG.md`.
+- Recognized numeric fields in app UI, authored UI, palette, and decal files use
+  checked full-consumption parsing. Malformed values cannot wrap through narrow
+  integer casts or silently alias zero-valued fields.
 
 ## Verification ownership
 

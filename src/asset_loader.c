@@ -45,19 +45,18 @@
  *     A named sprite reference, front direction, and closed `simple` attribute.
  */
 
-#include "asset_loader.h"    /* Public API: asset_loader_load_registry(),
-                                asset_loader_load_map_data(),
-                                asset_loader_load_materials() */
-#include "map_loader.h"      /* map_load_from_string() — parses the digit-grid map format */
-#include "config.h"          /* config_get() values are used indirectly by map loading */
+#include "asset_loader.h"
+#include "map_loader.h"
+#include "config.h"
 #include "checked_size.h"
+#include "rgba_parse.h"
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include "decal_io.h"
-#include <stdio.h>           /* FILE, fopen(), fgets(), fclose(), fprintf(), snprintf() */
-#include <stdlib.h>          /* strtol(), strtod(), malloc(), free(), calloc() */
-#include <string.h>          /* strcmp(), strncmp(), strtok(), strncpy(), memset() */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define MAP_FILE_MAX_BYTES (1024U * 1024U)
 #include <dirent.h>          /* opendir(), readdir(), closedir(), struct dirent */
@@ -66,22 +65,11 @@
  *  Utility helpers (static — not visible outside this file)
  * =================================================================== */
 
-/**
- * parse_color() — Parse an "r,g,b,a" string into an SDL_Color
- *
- * @param val    Comma-separated colour string, e.g. "128,64,32,255"
- * @param color  Output SDL_Color struct that will be filled in
- */
-static void parse_color(const char *val, SDL_Color *color) {
-    int r, g, b, a;
-    if (sscanf(val, "%d,%d,%d,%d", &r, &g, &b, &a) == 4) {
-        color->r = (uint8_t)r;
-        color->g = (uint8_t)g;
-        color->b = (uint8_t)b;
-        color->a = (uint8_t)a;
-    }
-    /* If sscanf returns <4, the colour is left at its default (caller
-     * should have zeroed or pre-set it). */
+static bool parse_color(const char *text, SDL_Color *color) {
+    uint8_t channels[4];
+    if (!color || !rgba_parse(text, channels)) return false;
+    *color = (SDL_Color){channels[0], channels[1], channels[2], channels[3]};
+    return true;
 }
 
 /**
@@ -100,6 +88,14 @@ static void trim_string(char *str) {
         *end = '\0';
         end--;
     }
+}
+
+static bool join_path(char *out, size_t capacity, const char *directory,
+                      const char *name) {
+    int written;
+    if (!out || capacity == 0U || !directory || !name) return false;
+    written = snprintf(out, capacity, "%s/%s", directory, name);
+    return written >= 0 && (size_t)written < capacity;
 }
 
 static bool parse_bounded_int(const char *text, int minimum, int maximum, int *out) {
@@ -170,6 +166,7 @@ static bool parse_material_row(const char *text, int count, int *materials) {
  * @return          true on success, false if the file could not be opened
  */
 static bool load_palette(AssetRegistry *reg, int id, const char *filepath) {
+    bool valid = true;
     FILE *f = fopen(filepath, "r");
     if (!f) return false;
 
@@ -182,14 +179,15 @@ static bool load_palette(AssetRegistry *reg, int id, const char *filepath) {
         char *val = strtok(NULL, "=");
         if (key && val) {
             trim_string(val);  /* Remove trailing \n or whitespace */
-            if (strcmp(key, "near") == 0) parse_color(val, &near_col);
-            else if (strcmp(key, "mid") == 0) parse_color(val, &mid_col);
-            else if (strcmp(key, "far") == 0) parse_color(val, &far_col);
+            if (strcmp(key, "near") == 0 && !parse_color(val, &near_col)) valid = false;
+            else if (strcmp(key, "mid") == 0 && !parse_color(val, &mid_col)) valid = false;
+            else if (strcmp(key, "far") == 0 && !parse_color(val, &far_col)) valid = false;
         }
     }
-    fclose(f);
+    if (ferror(f)) valid = false;
+    if (fclose(f) != 0) valid = false;
+    if (!valid) return false;
 
-    /* Store the three colours in the registry under this palette ID */
     asset_registry_set_palette(reg, id, near_col, mid_col, far_col);
     return true;
 }
@@ -507,7 +505,8 @@ static bool load_light(WorldState *world, const char *filepath) {
                 !parse_finite_double(val, -INFINITY, true, &x)) valid = false;
             else if (strcmp(key, "y") == 0 &&
                      !parse_finite_double(val, -INFINITY, true, &y)) valid = false;
-            else if (strcmp(key, "color") == 0) parse_color(val, &color);
+            else if (strcmp(key, "color") == 0 && !parse_color(val, &color))
+                valid = false;
             else if (strcmp(key, "intensity") == 0 &&
                      !parse_finite_double(val, -INFINITY, true, &intensity)) valid = false;
             else if (strcmp(key, "radius") == 0 &&
@@ -866,10 +865,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
 
         int id;
         if (parse_bounded_int(base, 1, ASSET_ID_MAX, &id) &&
-            strlen(materials_dir) + 1 + strlen(numeric[i]) < sizeof(filepath)) {
-            memcpy(filepath, materials_dir, strlen(materials_dir));
-            filepath[strlen(materials_dir)] = '/';
-            strcpy(filepath + strlen(materials_dir) + 1, numeric[i]);
+            join_path(filepath, sizeof(filepath), materials_dir, numeric[i])) {
             load_material(reg, id, filepath);
         }
     }
@@ -882,10 +878,7 @@ void asset_loader_load_materials(AssetRegistry *reg, const char *materials_dir) 
         memcpy(base, named[i], baselen);
         base[baselen] = '\0';
 
-        if (strlen(materials_dir) + 1 + strlen(named[i]) < sizeof(filepath)) {
-            memcpy(filepath, materials_dir, strlen(materials_dir));
-            filepath[strlen(materials_dir)] = '/';
-            strcpy(filepath + strlen(materials_dir) + 1, named[i]);
+        if (join_path(filepath, sizeof(filepath), materials_dir, named[i])) {
             load_named_material(reg, filepath, base);
         }
     }

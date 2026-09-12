@@ -16,9 +16,12 @@ activation path.
 
 ## Next safe action
 
-No post-R12 implementation bucket is currently selected. Future implementation
-should not begin until one deferred/future-work bucket is chosen, requirements are
-narrowed, and a focused plan is written.
+Manually review the 2026-09-11 code-standards corrective action, especially
+malformed asset/UI rejection and normal editor startup. The implementation and
+verification record is
+[`reviews/2026-09-11-code-standards-audit.md`](reviews/2026-09-11-code-standards-audit.md).
+After approval, no further broad standards refactor should begin until one
+deferred structural or data-authority item is selected and narrowly planned.
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
 phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
@@ -54,3 +57,19 @@ roadmap was preserved at
 [`archive/roadmap/FEATURE_ROADMAP_LONG_R0_R12_2026-09-11.md`](archive/roadmap/FEATURE_ROADMAP_LONG_R0_R12_2026-09-11.md),
 and the prior long handoff was preserved at
 [`archive/handoffs/handoff_R12_docs_cleanup_2026-09-11.md`](archive/handoffs/handoff_R12_docs_cleanup_2026-09-11.md).
+
+## Code standards corrective-action status
+
+The 2026-09-11 non-SMC audit corrective pass is implemented and automatically
+verified. Strict shared RGBA and numeric parsers now reject malformed recognized
+asset/UI/decal fields; audited unsafe conversion/copy calls were removed from
+handwritten `src/`; malformed-input regressions were added; and the unified-editor
+test hook declaration moved out of the production-facing header.
+
+All 58 non-SMC runners passed in bounded batches, and focused ASan/UBSan runs
+passed for the changed parser/loader modules. The dedicated `make test-non-smc
+USE_NO_STATE_TRACKER=1` target also passed after its prerequisites were current.
+`cppcheck` was unavailable, and Valgrind terminated at dynamic-loader startup
+with `SIGILL`; no Valgrind claim is made. Large editor/scene module splits and app
+UI code-to-data migrations remain deferred pending separately scoped requirements.
+SMC was not changed and remains outside this audit and corrective action.

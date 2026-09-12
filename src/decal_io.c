@@ -15,11 +15,12 @@
 
 #include "decal_io.h"
 #include "checked_size.h"
+#include "number_parse.h"
 
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>   /* FILE, fopen, fclose, fgets, fprintf, fputc, remove */
-#include <stdlib.h>  /* calloc, free, atoi, atof */
+#include <stdlib.h>
 #include <string.h>  /* strcmp, strncmp, strncpy, strlen, memset */
 
 /* ===================================================================
@@ -66,16 +67,7 @@ static void parse_kv(char *line, char **key, char **val) {
 }
 
 static bool parse_bounded_dimension(const char *text, int maximum, int *out) {
-    char *end = NULL;
-    long value;
-    if (!text || !out) return false;
-    errno = 0;
-    value = strtol(text, &end, 10);
-    if (errno == ERANGE || end == text) return false;
-    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') end++;
-    if (*end != '\0' || value <= 0 || value > maximum || value > INT_MAX) return false;
-    *out = (int)value;
-    return true;
+    return number_parse_int(text, 1, maximum, out);
 }
 
 /* ===================================================================
@@ -127,21 +119,26 @@ Decal *decal_load_from_file(const char *path) {
         if (!key || !val) continue;
 
         /* Spatial properties */
-        if      (strcmp(key, "surface")     == 0) d->surface      = (DecalSurface)atoi(val);
-        else if (strcmp(key, "x")           == 0) d->x            = atof(val);
-        else if (strcmp(key, "y")           == 0) d->y            = atof(val);
-        else if (strcmp(key, "z")           == 0) d->z            = atof(val);
-        else if (strcmp(key, "map_x")       == 0) d->map_x        = atoi(val);
-        else if (strcmp(key, "map_y")       == 0) d->map_y        = atoi(val);
-        else if (strcmp(key, "side")        == 0) d->side         = atoi(val);
-        else if (strcmp(key, "u")           == 0) d->u            = atof(val);
-        else if (strcmp(key, "v")           == 0) d->v            = atof(val);
-        else if (strcmp(key, "width")       == 0) d->width        = atof(val);
-        else if (strcmp(key, "height")      == 0) d->height       = atof(val);
-        else if (strcmp(key, "glyph_step_u")== 0) d->glyph_step_u = atof(val);
-        else if (strcmp(key, "glyph_step_v")== 0) d->glyph_step_v = atof(val);
-        else if (strcmp(key, "depth")       == 0) d->depth        = atof(val);
-        else if (strcmp(key, "rotation")    == 0) d->rotation     = atof(val);
+        if (strcmp(key, "surface") == 0) {
+            int surface;
+            if (!number_parse_int(val, DECAL_SURFACE_WALL, DECAL_SURFACE_CEILING,
+                                  &surface)) goto fail;
+            d->surface = (DecalSurface)surface;
+        }
+        else if (strcmp(key, "x") == 0 && !number_parse_finite_double(val, &d->x)) goto fail;
+        else if (strcmp(key, "y") == 0 && !number_parse_finite_double(val, &d->y)) goto fail;
+        else if (strcmp(key, "z") == 0 && !number_parse_finite_double(val, &d->z)) goto fail;
+        else if (strcmp(key, "map_x") == 0 && !number_parse_int(val, INT_MIN, INT_MAX, &d->map_x)) goto fail;
+        else if (strcmp(key, "map_y") == 0 && !number_parse_int(val, INT_MIN, INT_MAX, &d->map_y)) goto fail;
+        else if (strcmp(key, "side") == 0 && !number_parse_int(val, 0, 1, &d->side)) goto fail;
+        else if (strcmp(key, "u") == 0 && !number_parse_finite_double(val, &d->u)) goto fail;
+        else if (strcmp(key, "v") == 0 && !number_parse_finite_double(val, &d->v)) goto fail;
+        else if (strcmp(key, "width") == 0 && !number_parse_finite_double(val, &d->width)) goto fail;
+        else if (strcmp(key, "height") == 0 && !number_parse_finite_double(val, &d->height)) goto fail;
+        else if (strcmp(key, "glyph_step_u") == 0 && !number_parse_finite_double(val, &d->glyph_step_u)) goto fail;
+        else if (strcmp(key, "glyph_step_v") == 0 && !number_parse_finite_double(val, &d->glyph_step_v)) goto fail;
+        else if (strcmp(key, "depth") == 0 && !number_parse_finite_double(val, &d->depth)) goto fail;
+        else if (strcmp(key, "rotation") == 0 && !number_parse_finite_double(val, &d->rotation)) goto fail;
 
         /* Pattern layout */
         else if (strcmp(key, "pattern_cols") == 0) {
@@ -151,28 +148,23 @@ Decal *decal_load_from_file(const char *path) {
             if (!parse_bounded_dimension(val, DECAL_PATTERN_MAX_ROWS, &d->pattern_rows)) goto fail;
         }
         else if (strcmp(key, "default_material")== 0) {
-            char *end = NULL;
-            long parsed = strtol(val, &end, 10);
-            if (end == val || *end != '\0' || parsed < 0 || parsed > ASSET_ID_MAX) goto fail;
-            default_material = (int)parsed;
+            if (!number_parse_int(val, 0, ASSET_ID_MAX, &default_material)) goto fail;
         }
 
         /* Per-row pattern data: keys are "pattern_0", "pattern_1", ... */
         else if (strncmp(key, "pattern_", 8) == 0) {
-            int r = atoi(key + 8);
-            if (r >= 0 && r < DECAL_PATTERN_MAX_ROWS) {
-                strncpy(p_buf[r], val, 255);
-                p_buf[r][255] = '\0';
-            }
+            int r;
+            if (!number_parse_int(key + 8, 0, DECAL_PATTERN_MAX_ROWS - 1, &r)) goto fail;
+            strncpy(p_buf[r], val, DECAL_PATTERN_MAX_COLS);
+            p_buf[r][DECAL_PATTERN_MAX_COLS] = '\0';
         }
 
         /* Per-row material data: keys are "material_0", "material_1", ... */
         else if (strncmp(key, "material_", 9) == 0) {
-            int r = atoi(key + 9);
-            if (r >= 0 && r < DECAL_PATTERN_MAX_ROWS) {
-                strncpy(m_buf[r], val, DECAL_MATERIAL_ROW_MAX_BYTES);
-                m_buf[r][DECAL_MATERIAL_ROW_MAX_BYTES] = '\0';
-            }
+            int r;
+            if (!number_parse_int(key + 9, 0, DECAL_PATTERN_MAX_ROWS - 1, &r)) goto fail;
+            strncpy(m_buf[r], val, DECAL_MATERIAL_ROW_MAX_BYTES);
+            m_buf[r][DECAL_MATERIAL_ROW_MAX_BYTES] = '\0';
         }
     }
 
@@ -228,8 +220,11 @@ Decal *decal_load_from_file(const char *path) {
                 int c = 0;
                 while (*p && c < d->pattern_cols) {
                     char *end = NULL;
-                    long parsed = strtol(p, &end, 10);
-                    if (end == p || parsed < 0 || parsed > ASSET_ID_MAX) goto fail;
+                    long parsed;
+                    errno = 0;
+                    parsed = strtol(p, &end, 10);
+                    if (errno == ERANGE || end == p || parsed < 0 ||
+                        parsed > ASSET_ID_MAX) goto fail;
                     mats[c++] = (int)parsed;
                     p = end;
                     while (*p == ' ' || *p == '\t') p++;

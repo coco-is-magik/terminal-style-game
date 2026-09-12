@@ -361,6 +361,25 @@ static void test_load_dimension_boundaries(void **state) {
     assert_dimension_file_rejected("1", "0", "art=\nX\n");
 }
 
+static void test_load_rejects_malformed_spatial_numbers_and_row_keys(void **state) {
+    static const char *const invalid[] = {
+        "x=1.5tail\npattern_cols=1\npattern_rows=1\npattern_0=X\n",
+        "rotation=nan\npattern_cols=1\npattern_rows=1\npattern_0=X\n",
+        "side=2\npattern_cols=1\npattern_rows=1\npattern_0=X\n",
+        "pattern_cols=1\npattern_rows=1\npattern_bad=X\n"
+    };
+    (void)state;
+
+    for (size_t i = 0U; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        FILE *file = fopen(TMP_PATH, "w");
+        assert_non_null(file);
+        assert_true(fputs(invalid[i], file) >= 0);
+        assert_int_equal(fclose(file), 0);
+        assert_null(decal_load_from_file(TMP_PATH));
+        assert_int_equal(remove(TMP_PATH), 0);
+    }
+}
+
 static void test_all_checked_in_decals_load(void **state) {
     (void)state;
     DIR *directory = opendir("assets/decals");
@@ -556,6 +575,7 @@ int main(void) {
         cmocka_unit_test(test_load_missing_file),
         cmocka_unit_test(test_load_rejects_invalid_dimensions),
         cmocka_unit_test(test_load_dimension_boundaries),
+        cmocka_unit_test(test_load_rejects_malformed_spatial_numbers_and_row_keys),
         cmocka_unit_test(test_all_checked_in_decals_load),
         cmocka_unit_test(test_free_null),
         cmocka_unit_test(test_multirow_materials),
