@@ -1,0 +1,7 @@
+Design a terminal-inspired game editor that feels rendered by a distinctive fictional display system, rather than decorated with retro effects. Build its graphic language from small square light cells, visible black gaps, clear rectangular forms, and saturated primary and secondary colors. Favor crisp, separated light over diffuse neon glow.
+
+The signature behavior is fluid motion expressed through discrete cells. Shapes can travel, patterns can flow, and colored traces can separate and recombine, but the larger forms should remain coherent. Animate coordinated patterns rather than independent flicker. The effect should feel native to how the machine draws, not like a glitch filter placed over the interface.
+
+Use a white-dominant, selectively colored treatment for the everyday workbench, and give richer chromatic activity substantial roles in live tools and visualizations. Preserve clear typography, precise controls, immediate responses, and faithful previews of the user’s work. The atmosphere should be industrial, technical, and retrofuturist, with enough ongoing activity to make the system feel alive.
+
+Keep the controls dependable. Let the display feel alive.

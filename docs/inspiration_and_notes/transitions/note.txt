@@ -1,0 +1,11 @@
+Use glyph-based reassembly transitions: state changes in which the visible marks of one configuration redistribute and resolve into the next.
+
+Treat the interface’s graphics as arrangements of a shared visual material, rather than finished images that are simply exchanged. For changes of form, let marks establish new groupings and boundaries. For changes of position, let the formation relocate through coordinated movement of its parts rather than only through rigid translation.
+
+Favor a movement from precision, through controlled disorder, back to precision. Allow edges to loosen, clusters to separate, and individual marks to take varied paths within a coherent overall transformation. The middle can become briefly abstract, but departure and arrival should remain visibly related.
+
+Give transitions a sense of release, redistribution, and resolution. These phases may overlap, with parts of the destination assembling while parts of the source are still moving. End in a clean, stable arrangement. Do not substitute unrelated particle bursts, random flicker, or decorative trails for the actual transformation.
+
+Express this behavior through the ASCII grid. Keep glyphs crisp and simple, and use coordinated changes in cell occupancy, grouping, and timing to carry the motion. Scale the amount of reassembly to the significance of the interaction, preserving the correspondence of meaningful objects and the stability of active controls.
+
+The state changes, but the visual material feels continuous.

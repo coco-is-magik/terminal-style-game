@@ -1,0 +1,11 @@
+Use behavior-first ASCII textures: a small vocabulary of fixed glyphs whose coordinated changes suggest material properties, surface activity, and physical response.
+
+Prioritize the behavior of a substance over a literal illustration of it. Represent flowing through traveling patterns, viscosity through dragging and connected deformation, dripping through accumulation and release, and wetness through changing highlight structures. Let the viewer encounter the material through what it does.
+
+Build richness from relationships between simple marks. Use spacing, density, direction, continuity, and negative space to organize the texture. Animate coherent regions and disturbances rather than independent character flicker. Keep the glyphs crisp and constrained to the grid while allowing the larger patterns they describe to evolve fluidly.
+
+Give each material a distinct response. Goop should gather and stretch; ripples should travel and settle; churn should fold and recirculate. Do not apply one generic animated-noise treatment to every substance. Favor a few legible behaviors over an accumulation of decorative detail.
+
+Apply this language to game-world materials, effects, and editor visualizations without requiring the surrounding controls to behave like those materials. The goal is not elaborate ASCII illustration or a conventional image passed through an ASCII filter. It is an expressive visual system designed around the capabilities of characters from the outset.
+
+The marks should be simple; the behavior should carry the richness.
