@@ -9,7 +9,7 @@ if test ! -r "$summary"; then
 fi
 status=0
 tab=$(printf '\t')
-while IFS="$tab" read -r profile role image_build phase outcome reason code; do
+while IFS="$tab" read -r profile role provider_prepare phase outcome reason code; do
     test "$profile" = profile && continue
     if test "$role" = required && test "$outcome" != PASS; then
         echo "FAIL-PRODUCT: profile=$profile phase=$phase reason=$reason status=$code"

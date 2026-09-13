@@ -182,7 +182,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-prepare-windows platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -1121,6 +1121,12 @@ test-leak-classifier:
 test-platform-harness:
 	@tools/platform-profiles/test-classify.sh
 	@tools/platform-profiles/test-check.sh
+	@tools/platform-profiles/test-provider.sh
+	@tools/platform-profiles/test-libvirt-lifecycle.sh
+	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-qga.py
+	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-guest.py
+	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-dependencies.py
+	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-product.py
 	@tools/platform-profiles/test-survey.sh
 
 platform-image-ubuntu-gcc:
@@ -1149,6 +1155,16 @@ platform-test-fedora-gcc:
 
 platform-test-alpine-gcc:
 	@tools/platform-profiles/run-one.sh tools/platform-profiles/profiles/alpine-musl-gcc.env
+
+platform-prepare-windows:
+	@tools/platform-profiles/prepare-profile.sh tools/platform-profiles/profiles/windows-10-x64-gcc.env
+
+platform-test-windows:
+	@tools/platform-profiles/run-provider.sh tools/platform-profiles/profiles/windows-10-x64-gcc.env
+
+platform-bootstrap-windows-dependencies:
+	@test -n "$(WINDOWS_PROFILE)" || { echo "FAIL-MISSING-TOOL: reason=windows-profile-not-configured"; exit 2; }
+	@WINDOWS_DEPENDENCY_STEP="$(WINDOWS_DEPENDENCY_STEP)" tools/platform-profiles/bootstrap-windows-dependencies.sh "$(WINDOWS_PROFILE)"
 
 platform-survey:
 	@tools/platform-profiles/survey.sh

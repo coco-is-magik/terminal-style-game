@@ -57,8 +57,11 @@ only a small set of documents should be treated as current authority.
   maps all current runners and gates, records completed high-risk increments, and
   ranks remaining environment/design gaps.
 - [`reviews/2026-09-12-windows-10-platform-survey-plan.md`](reviews/2026-09-12-windows-10-platform-survey-plan.md)
-  is the accepted, not-yet-implemented plan for a persistent native Windows 10 x64
-  VM survey; execution remains blocked until KVM is available on the Gentoo host.
+  records the implementation plan for the persistent native Windows 10 x64 VM
+  survey; Increments 1–5 and informational profile integration are complete.
+- [`reviews/2026-09-13-windows-10-first-result.md`](reviews/2026-09-13-windows-10-first-result.md)
+  records the first unchanged UCRT64 build result, validated prerequisites, strict
+  compile incompatibility, preserved evidence hashes, and successful VM restoration.
 
 R0–R12 are verified roadmap foundations. They should not be read as a claim that
 the editor or game-making experience is feature-complete.

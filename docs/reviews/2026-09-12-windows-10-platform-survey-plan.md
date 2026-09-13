@@ -2,14 +2,14 @@
 
 ## Status
 
-**Planned, not implemented.** This document is the accepted plan for the first
-native Windows compatibility survey. No Windows survey infrastructure, VM
-provisioning, dependency bootstrap, or product portability remediation has been
-implemented as part of this planning increment.
+**Implementation in progress.** Increments 1 through 4—provider-neutral
+orchestration, the libvirt lifecycle runner, the Windows guest runner, and explicit
+Windows dependency bootstrap—are implemented and covered by deterministic harness
+tests. Product build/test execution remains unimplemented.
 
-Execution is currently blocked because the running Gentoo kernel does not provide
-KVM. Do not proceed beyond planning until a kernel with the required KVM support is
-booted and `/dev/kvm` is usable.
+The KVM readiness blocker is resolved. The Gentoo host exposes usable KVM through
+the per-user libvirt session, and the prepared Windows 10 VM passed a bounded QEMU
+Guest Agent access and graceful lifecycle probe.
 
 ## Objective
 
@@ -220,16 +220,16 @@ The host-side runner will verify:
 - required local archive and hashing tools are available;
 - output remains under the ignored project build directory.
 
-The current host has an AMD CPU with virtualization capability and installed QEMU
-and libvirt userspace, but the running Gentoo kernel reports:
+The original planning probe found an AMD CPU with virtualization capability and
+installed QEMU and libvirt userspace, but the then-running Gentoo kernel reported:
 
 ```text
 CONFIG_VIRTUALIZATION=y
 # CONFIG_KVM is not set
 ```
 
-and does not expose `/dev/kvm`. Practical Windows execution is blocked until a
-kernel providing at least the following is booted:
+and did not expose `/dev/kvm`. That blocker has been resolved by booting a kernel
+providing the required KVM support:
 
 ```text
 CONFIG_VIRTUALIZATION=y
@@ -237,9 +237,10 @@ CONFIG_KVM=y
 CONFIG_KVM_AMD=y
 ```
 
-The project harness will detect and classify this condition only. It must not
+The project harness detects and classifies KVM availability only. It does not
 install, rebuild, reconfigure, or select a kernel. The offline QGA-based survey does
-not inherently require TUN or `NET_ADMIN`.
+not inherently require TUN or `NET_ADMIN`. A real lifecycle smoke test passed
+against the prepared Windows 10 VM and restored its initial `shut off` state.
 
 ## Profile configuration
 
@@ -564,8 +565,13 @@ build/
 vendor/
 ```
 
-Include first-party source, all tests, the unchanged Makefile, required assets, the
-guest survey runner, source manifest, expected dependency-set identity, and run ID.
+The implemented payload uses a build-relevant allowlist: first-party `src/`, all
+`tests/`, required `assets/`, `scripts/`, `tools/`, the unchanged Makefile, runtime
+configuration, top-level project/license reports, and `vendor.sh`. It excludes
+non-build `docs/`, `example-code/`, and `reference-material/` trees, which contain
+large inspiration media but cannot affect the unchanged build. Python bytecode is
+also excluded. The source manifest and run ID are transferred separately from the
+deterministic ZIP.
 
 Use a bounded workspace such as:
 
@@ -826,55 +832,121 @@ or replaced.
 ### Increment 0: planning record
 
 This document is Increment 0. It records the accepted plan before implementation.
-No infrastructure or product behavior is changed. Stop here while KVM is
-unavailable.
+That planning increment changed no infrastructure or product behavior and stopped
+while KVM was unavailable. The blocker was subsequently resolved.
 
 ### Increment 1: provider-neutral orchestration
 
-1. Add `PROFILE_PROVIDER` dispatch.
-2. Preserve current Docker preparation and execution.
-3. Generalize the survey summary carefully.
-4. Update deterministic survey and check tests.
+**Completed.** The implementation:
+
+1. Adds `PROFILE_PROVIDER` dispatch with a backward-compatible Docker default.
+2. Preserves current Docker preparation and execution.
+3. Generalizes the survey summary to `provider_prepare`.
+4. Preserves provider-specific preparation phases and Docker image artifacts.
+5. Adds deterministic provider, survey, and check regression coverage.
+
+The `libvirt-windows` provider now dispatches to the concrete Increment 2 preflight
+and lifecycle boundary.
 
 ### Increment 2: libvirt lifecycle runner
 
-1. Add host prerequisite checks.
-2. Locate and validate the configured domain.
-3. Implement state detection and race-safe startup ownership.
-4. Implement readiness polling.
-5. Implement graceful ownership-aware cleanup.
-6. Preserve primary and cleanup outcomes independently.
-7. Add fake-libvirt lifecycle tests.
+**Completed.** The implementation:
+
+1. Adds bounded host, KVM, libvirt, domain, and QGA-channel preflight.
+2. Locates the machine-local configured domain without tracking its private name.
+3. Implements supported-state detection and race-safe startup ownership.
+4. Implements bounded QGA readiness polling without external restart.
+5. Implements QGA shutdown with bounded ACPI fallback and no forced power-off.
+6. Preserves primary and cleanup outcomes independently.
+7. Handles `SIGHUP`, `SIGINT`, and `SIGTERM` cleanup for harness-owned starts.
+8. Adds deterministic fake-libvirt lifecycle and forbidden-operation tests.
+9. Passes a real lifecycle smoke test from `shut off` back to `shut off`.
 
 ### Increment 3: Windows guest runner
 
-1. Add unique run IDs.
-2. Collect guest identity.
-3. Validate UCRT64 tools.
-4. Transfer deterministic source payloads.
-5. Manage bounded guest workspaces.
-6. Verify source manifests.
-7. Export typed guest results.
-8. Add fake-QGA tests.
+**Completed.** The implementation:
+
+1. Adds timestamped random run IDs and separate guest run markers.
+2. Collects and validates QGA and PowerShell Windows 10 x64 identity.
+3. Validates UCRT64 GCC target/version, linker, GNU Make, CMake, and pkgconf.
+4. Creates a deterministic build-relevant ZIP with a 256 MiB default ceiling.
+5. Transfers payloads and evidence through bounded, chunked QGA operations.
+6. Creates and removes only the exact bounded guest-local run workspace.
+7. Compares parsed host and guest SHA-256 manifests and rejects stale run IDs.
+8. Exports typed primary results and diagnostic artifacts.
+9. Adds deterministic transport and guest-runner tests.
+10. Passes a real guest smoke test through `source-integrity` and restores the VM
+    from `shut off` back to `shut off`.
 
 ### Increment 4: Windows dependency bootstrap
 
-1. Reuse accepted dependency revisions and hashes.
-2. Build dependencies inside Windows with UCRT64.
-3. Produce a persistent VM-owned dependency set.
-4. Record artifacts, hashes, and build identity.
-5. Preserve dependency build failures.
-6. Keep bootstrap separate from routine surveys.
+**Completed.** The implementation:
+
+1. Reuses the accepted dependency revisions, URLs, and SHA-256 values.
+2. Acquires bounded archives on the host and verifies them before cache publication
+   and every guest transfer.
+3. Runs explicit, resumable lifecycle-owned transfer/extract/build/publish steps.
+4. Builds SDL, SDL_mixer, ENet, and cmocka with UCRT64; preserves SDL and SMC source
+   trees for the unchanged project layout.
+5. Publishes an immutable VM-owned dependency set atomically.
+6. Records schema, source identity, explicit build options, observed tool versions,
+   required artifacts, and 2,464 complete artifact hashes.
+7. Distinguishes missing dependency sets from existing corrupt/mismatched sets.
+8. Validates the set during routine guest execution without rebuilding it.
+9. Preserves build/interruption failures and bounded staging cleanup independently.
+
+The verified schema-2 set is `win10-ucrt64-01cf4fc84d14ca0c`. An earlier valid
+schema-1 generation remains inert and operator-owned; current validation does not
+select it, and automation does not delete prior dependency generations.
+
+Attempt:
+The initial monolithic bootstrap extracted every SDL_mixer archive entry.
+
+Result:
+Extraction failed on four macOS framework symlinks under `Xcode/`.
+
+Failure mode:
+The Windows guest could not create irrelevant macOS framework links.
+
+Reason rejected:
+This was a bootstrap extraction defect, not a Windows dependency incompatibility.
+The corrected extractor excludes only `*/Xcode/*`; archive inspection confirmed no
+other accepted archive symlinks.
+
+Attempt:
+The first SDL UCRT64 build enabled SDL's optional OpenGL ES backend.
+
+Result:
+Compilation stopped because external `EGL/egl.h` was not provisioned.
+
+Failure mode:
+An optional backend introduced an undeclared guest-package requirement.
+
+Reason rejected:
+Installing packages would violate bootstrap ownership, and OpenGL ES is not needed
+for this profile. The corrected build disables only `SDL_OPENGLES`; desktop OpenGL,
+D3D, D3D11, D3D12, Vulkan, and normal Windows backends remain enabled.
 
 ### Increment 5: product survey execution
 
-1. Attempt the unchanged strict application build.
-2. If successful, build all 62 runners.
-3. If successful, run the complete test aggregate.
-4. Run `standards-core`.
-5. Inspect native binaries.
-6. Preserve the earliest product incompatibility.
-7. Restore VM power state according to ownership.
+**Completed.** The implementation:
+
+1. Adapts the validated dependency set only into guest-local `vendor/` paths.
+2. Confirms the unchanged Makefile expands exactly 62 test runners.
+3. Runs `all`, `test-build`, `test`, and `standards-core` in order with only
+   `CC=gcc` overridden and stops on the first failure.
+4. Retrieves a guest-local log after each reachable Make phase.
+5. Requires exactly 63 PE x86-64 executables and rejects MSYS/Cygwin runtime imports
+   when native-binary inspection is reachable.
+6. Adds deterministic coverage for success, all phase failures, timeout, compiler
+   crash, missing logs, runner count, PE format, import rejection, and phase order.
+7. Preserved the first real result as `FAIL-PRODUCT`, `strict-app-build`,
+   `application-compile-failure`, status 1.
+8. Restored the harness-started VM from `shut off` back to `shut off` through QGA.
+
+The first build failed on POSIX APIs and types unavailable at the UCRT64 boundary,
+before linking. No source or Makefile remediation was applied. The exact evidence is
+recorded in `2026-09-13-windows-10-first-result.md`.
 
 ### Increment 6: integration and documentation
 
@@ -929,13 +1001,13 @@ This increment does not include:
 
 ## Risks and limitations
 
-1. **KVM is unavailable in the running kernel.** Actual implementation and Windows
-   execution remain blocked until this is corrected externally.
+1. **KVM availability is host-specific.** It was available for the first real run;
+   preflight must continue to classify its absence on other hosts.
 2. **Persistent VM drift is intentional.** Every run must record observed identity.
-3. **QGA command and transfer behavior is unverified with the eventual VM.** Keep
-   the provider boundary replaceable.
-4. **The existing Makefile is likely Linux-specific.** An early Windows build or
-   link failure is expected evidence, not a reason to patch during this increment.
+3. **QGA command execution, source/result transfer, dependency validation, and
+   lifecycle behavior are verified.** Keep the provider boundary replaceable.
+4. **The unchanged source is not UCRT64-compatible.** The first strict build failed
+   at compilation on POSIX APIs and types. Remediation remains deferred.
 5. **Shutdown cannot be guaranteed after untrappable host/process failure.** Stale
    metadata must never grant shutdown ownership.
 6. **An initially running VM may be in operator use.** Never change its power state.
@@ -948,20 +1020,15 @@ This increment does not include:
 
 ## Readiness and next safe action
 
-Planning is complete and requirements are aligned. Implementation is **not ready to
-start on the current host** because KVM is absent.
+Planning and Increments 1–5 are complete. The informational tracked Windows profile,
+focused preflight and execution targets, and broader non-gating survey membership
+are implemented. The first native Windows result is preserved without remediation.
 
-The next safe action is external to the repository:
-
-1. Boot a Gentoo kernel with `CONFIG_KVM=y` and `CONFIG_KVM_AMD=y`.
-2. Confirm `/dev/kvm` exists and is usable by the intended QEMU/libvirt session.
-3. Create or identify the externally maintained Windows 10 x64 VM.
-4. Confirm the VM is visible through the selected libvirt URI.
-5. Confirm QEMU Guest Agent is installed and responsive.
-6. Return to this plan before implementing Increment 1.
-
-Do not begin provider, guest-runner, dependency, Makefile, source, or test changes
-until those prerequisites are ready and implementation is separately authorized.
+The next safe action is a separate portability-planning increment. It must decide
+how to replace or isolate the observed POSIX file, directory, and locale APIs without
+weakening warning policy or rewriting platform semantics opportunistically. Native
+binary inspection remains implemented and deterministically tested, but was not
+reachable in the first real run because strict application compilation failed.
 
 ## Acceptance criteria
 
