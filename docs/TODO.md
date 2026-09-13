@@ -165,6 +165,20 @@ shared token/theme contract rather than one-off color branches. A minimal versio
 a validated accent/theme preset in user preferences with safe fallback and preserved
 contrast.
 
+### Full-range color picking and transparent backgrounds — **Needs shared color/alpha design**
+
+**Wanted:** Replace limited color-selection workflows with a robust picker that exposes
+the full supported color range wherever authors choose colors. UI elements and authored
+glyph cells should also be able to use a fully transparent background rather than being
+forced to paint an opaque color behind their content.
+
+Define one consistent color/alpha model across UI authoring, materials, sprites, decals,
+and previews. The design must distinguish a transparent background from an absent/blank
+cell, preserve transparency through save/load and copy/paste, show it clearly in editors,
+and specify compositing, selection, contrast, and fallback behavior. Decide whether alpha
+is background-only or independently available for foreground glyph color before changing
+asset formats or renderer semantics.
+
 ## Audio seam and future sound-cue integration — **API first; implementation deferred**
 
 Audio is not ready for full implementation, but UI and runtime systems should be designed
@@ -412,6 +426,34 @@ selection, atomic batch commands, mixed-value inspector states, bounded memory,
 and clear handling of invalid targets. Decide initial target types, mixed-type
 selection, and persistence through structural edits.
 
+## Broad Unicode glyph and font support — **Needs architecture/design and research**
+
+**Wanted:** Support a much wider set of glyphs, especially characters used by Asian
+languages, both for ordinary text and as first-class visual elements in the ASCII/glyph
+art that defines a project. Ideally, every character that can be represented as one
+display glyph cell can be authored, persisted, and rendered consistently.
+
+Also support selecting among different fonts and loading project/user-supplied custom
+fonts. Requirements must define UTF-8 storage, glyph-cell width, font fallback, missing
+glyph behavior, combining sequences, East Asian width, shaping, and which emoji or other
+multi-code-point sequences count as one editable cell. Font metrics must preserve the
+project's cell-grid layout and one-authored-glyph-to-one-rendered-glyph invariant across
+editor, runtime, export, and supported platforms.
+
+## Clipboard paste into editor canvases — **Needs focused interaction design**
+
+**Wanted:** Paste clipboard text directly into applicable editor canvases, including
+multi-line ASCII art and valid glyphs that are difficult or impossible to type with the
+current input method. Pasting should preserve line structure and supported Unicode glyphs
+without requiring an import-file detour.
+
+When pasted content extends beyond the current canvas, grow the canvas transactionally to
+fit it rather than silently clipping ordinary valid input. Define anchor/cursor behavior,
+line-ending and tab handling, rectangular versus ragged rows, maximum dimensions,
+unsupported/invalid text feedback, and whether any destructive overlap requires preview
+or confirmation. Paste plus any automatic resize should be one undoable action, and an
+allocation or validation failure must leave the canvas unchanged.
+
 ---
 
 # Surface and map authoring
@@ -584,6 +626,14 @@ Still open: oriented versus billboard behavior, live world preview of staged spr
 edits, a saved-versus-current-edits preview toggle, solid/occluding sprites, mirror
 visibility, and sprite-to-object attachment (recorded in the R11 stop boundary).
 
+Sprite-painter tool depth also remains open. Add selectable brush sizes, reusable default
+shape stamps, crop-to-content, and an explicit way to create a new animation frame by
+copying the currently selected frame. The copied-frame operation is already preserved in
+the linked R11 follow-up and should not replace the option to add an empty frame without a
+separate product decision. Define shape/stamp placement, crop behavior for blank content,
+frame-size interactions, preview, undo/redo, capacity limits, and non-mutating failure
+behavior before implementation.
+
 The verified R11 baseline should not be treated as feature-complete entity/sprite
 authoring. Future planning should address:
 
@@ -681,6 +731,22 @@ implementation order is committed.
 Separate global default from per-scene override; add an undoable validated
 property; recompute lighting narrowly; define interaction with anti-lights,
 colored lighting, and outdoor/no-ceiling areas.
+
+## Particle effects, editor, and attachments — **Needs product and architecture design**
+
+**Wanted:** Add a particle system and a dedicated particle editor with enough options to
+design reusable effects rather than hard-coding each effect in gameplay code. Candidate
+controls include emission shape/rate, lifetime, motion, spread, gravity or acceleration,
+glyphs, colors and transparency, size/scale, animation over lifetime, looping/bursts,
+preview, and deterministic randomization where repeatability matters.
+
+Particles should be attachable to appropriate authored/runtime things, but the valid
+attachment targets need a design discussion first. Evaluate at least entities/objects,
+world positions, surfaces, lights, projectiles, and other particle emitters without
+assuming that every target is sensible. Define local-versus-world transforms, emitter
+lifetime when its owner is removed, save/load ownership, editor selection and preview,
+collision/lighting interaction, visibility in mirrors, bounded particle counts, quality
+fallbacks, and runtime performance budgets.
 
 ---
 
@@ -811,6 +877,32 @@ follow-ups are in [`archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md
 attributes and trigger graphs/conditions/actions remain future work. Game-mode spawn expansion is
 explicitly unnecessary/deferred because no game modes or mature testing workflow
 exist; the single authored spawn remains the verified baseline.
+
+## Dimensioned entities and material-driven shapes — **Needs entity/renderer design**
+
+**Wanted:** Give entities explicit dimensions and allow an entity's visual representation
+to be either a sprite or a material applied to simple geometry. Material-driven geometry
+is intended for entities that should read like walls, floors, and ceilings rather than as
+billboarded sprites—for example projectiles and some environment decorations.
+
+Keep the primitive set deliberately small: rectangular prisms (including cubes through
+equal dimensions), pyramids, spheres, and cylinders. Authors should be able to manipulate
+these through dimensions, support limited deformation and rounded edges where practical,
+and combine multiple primitives into one entity visual. Before implementation, define:
+
+- whether dimensions separately control visual bounds, collision, selection, lighting,
+  occlusion, and attachment points;
+- primitive transforms, anchors, local coordinate conventions, and composition limits;
+- how one or more materials map onto faces or curved/rounded surfaces using the existing
+  glyph-material rendering style;
+- whether composed primitives are one reusable shape asset, typed entity components, or
+  another explicit bounded model;
+- editor creation/manipulation, preview, undo/redo, persistence, migration, and validation;
+- rendering and collision budgets, overlap/self-intersection rules, mirrors, transparency,
+  and deterministic fallback for unsupported detail.
+
+Do not turn this into unrestricted mesh modeling or a general-purpose 3D editor without a
+separate product decision.
 
 ## Start Game native-scene migration — **Post-editor cleanup**
 
