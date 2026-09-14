@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W2-C5 complete; W2-D1, pinned-SMC, performance,
+**Active: B0/C1 evidence captured; W1 through W2-D2 complete; W2-C6, pinned-SMC, performance,
 and final platform acceptance remain open.**
 
 This is the focused execution plan for
@@ -421,6 +421,21 @@ tests pass 14/14, workspace tests pass 13/13, sanitizer checks pass, and native 
 compilation reports zero `ui_document.c` diagnostics. See
 [`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md).
 
+**W2-D1 result (2026-09-14):** `platform_fs_ensure_directory` now provides one-level,
+no-follow UTF-8 directory creation and is used by UI menu and unified-editor sprite-directory
+owners. Existing directories succeed; files, links/reparse points, missing parents, and
+injected failures are typed without caller-state mutation. Local strict/sanitizer platform,
+workspace, and editor tests pass. Native platform preflight passes 10/10 and both owner
+`mkdir` diagnostics are gone. See
+[`reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md`](reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md).
+
+**W2-D2 result (2026-09-14):** Sprite folder save now uses platform file sync, no-follow
+inspection, no-overwrite directory moves, restoration, and validated flat cleanup. Committed
+warnings update path/clean state and editor registry/runtime; incomplete cleanup/restoration has
+a distinct result. Strict/sanitizer platform, sprite, and editor tests pass. Native preflight
+passes 11/11 and `sprite_document.c` has zero diagnostics. See
+[`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -504,9 +519,9 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to W2-D1 and migrate only safe one-level directory creation in `ui_menu_workspace`
-and `unified_editor`, preserving non-recursive ownership, existing-directory behavior,
-file/reparse rejection, and caller state. In
+Proceed to W2-C6 and migrate only `decal_document` single-file persistence, preserving exact
+bytes, ID allocation, registry/snapshot ownership, path/dirty identity, and truthful committed
+warning outcomes. In
 parallel, obtain a strict-compatible
 pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
 Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end

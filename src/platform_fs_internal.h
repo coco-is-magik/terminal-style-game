@@ -10,7 +10,10 @@ typedef enum {
     PLATFORM_FS_FAULT_INSPECT,
     PLATFORM_FS_FAULT_APPLY_METADATA,
     PLATFORM_FS_FAULT_REPLACE,
-    PLATFORM_FS_FAULT_DURABILITY
+    PLATFORM_FS_FAULT_DURABILITY,
+    PLATFORM_FS_FAULT_ENSURE_DIRECTORY,
+    PLATFORM_FS_FAULT_MOVE,
+    PLATFORM_FS_FAULT_REMOVE_FLAT_DIRECTORY
 } PlatformFsFault;
 
 PlatformFsResult platform_fs_internal_inspect_nofollow(
@@ -23,6 +26,16 @@ PlatformFsResult platform_fs_internal_apply_metadata(
 );
 PlatformFsResult platform_fs_internal_sync_file(
     FILE *file, PlatformNativeError *error, PlatformFsFault fault
+);
+PlatformFsResult platform_fs_internal_ensure_directory(
+    const char *path, uint32_t mode, PlatformNativeError *error,
+    PlatformFsFault fault
+);
+PlatformMoveResult platform_fs_internal_move(
+    const char *source_path, const char *destination_path, PlatformFsFault fault
+);
+PlatformFsResult platform_fs_internal_remove_flat_directory(
+    const char *path, PlatformNativeError *error, PlatformFsFault fault
 );
 PlatformReplaceResult platform_fs_internal_replace(
     const char *temporary_path, const char *destination_path,

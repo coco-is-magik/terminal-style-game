@@ -6,6 +6,7 @@
  */
 
 #include "unified_editor.h"
+#include "unified_editor_internal.h"
 #include "unified_editor_test.h"
 #include "ui_nested_inspector.h"
 #include "asset_refresh.h"
@@ -2311,12 +2312,14 @@ static bool editor_sprite_directory(const UnifiedEditorState *editor,
     return written >= 0 && (size_t)written < out_size;
 }
 
-static bool editor_ensure_sprite_directory(const UnifiedEditorState *editor,
-                                           char *out, size_t out_size) {
-    struct stat info;
+bool unified_editor_internal_ensure_sprite_directory(
+    const UnifiedEditorState *editor, char *out, size_t out_size,
+    PlatformFsFault fault
+) {
+    PlatformNativeError platform_error;
     if (!editor_sprite_directory(editor, out, out_size)) return false;
-    if (stat(out, &info) == 0) return S_ISDIR(info.st_mode);
-    return errno == ENOENT && mkdir(out, 0755) == 0;
+    return platform_fs_internal_ensure_directory(
+               out, 0755U, &platform_error, fault) == PLATFORM_FS_OK;
 }
 
 static bool editor_open_sprite_document(UnifiedEditorState *editor,
@@ -2346,16 +2349,21 @@ static bool editor_open_sprite_document(UnifiedEditorState *editor,
     return true;
 }
 
-static bool editor_save_sprite_document(UnifiedEditorState *editor) {
+bool unified_editor_internal_save_sprite_document(
+    UnifiedEditorState *editor, SpriteDocumentSaveFault fault
+) {
     char directory[1024];
     SpriteDocumentResult result;
-    if (!editor_ensure_sprite_directory(editor, directory, sizeof(directory))) {
+    bool durability_warning;
+    if (!unified_editor_internal_ensure_sprite_directory(
+            editor, directory, sizeof(directory), PLATFORM_FS_FAULT_NONE)) {
         editor->status = EDITOR_STATUS_SAVE_FAILED;
         return false;
     }
-    result = sprite_document_save(
-        &editor->sprite_document, editor->assets, directory);
-    if (result == SPRITE_DOCUMENT_OK)
+    result = sprite_document_internal_save(
+        &editor->sprite_document, editor->assets, directory, fault);
+    durability_warning = result == SPRITE_DOCUMENT_OK_DURABILITY_WARNING;
+    if (sprite_document_result_is_committed(result))
         result = sprite_document_commit_to_registry(
             &editor->sprite_document, editor->assets);
     if (result != SPRITE_DOCUMENT_OK || !editor_refresh_runtime(editor)) {
@@ -2364,8 +2372,14 @@ static bool editor_save_sprite_document(UnifiedEditorState *editor) {
         return false;
     }
     editor_rebuild_sprite_shortlist(editor);
-    editor->status = EDITOR_STATUS_SPRITE_PATTERN_SAVED;
+    editor->status = durability_warning ? EDITOR_STATUS_DURABILITY_WARNING
+                                        : EDITOR_STATUS_SPRITE_PATTERN_SAVED;
     return true;
+}
+
+static bool editor_save_sprite_document(UnifiedEditorState *editor) {
+    return unified_editor_internal_save_sprite_document(
+        editor, SPRITE_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 static bool editor_set_selected_sprite_asset(UnifiedEditorState *editor,
@@ -2401,14 +2415,15 @@ static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
     int map_y;
     uint16_t asset_id;
     SpriteDocumentResult result;
+    bool durability_warning;
     if (!editor || !editor_compute_light_placement_cell(editor, &map_x, &map_y)) {
         if (editor) editor->status = EDITOR_STATUS_INVALID_SELECTION;
         return false;
     }
     (void)map_x;
     (void)map_y;
-    if (!editor_ensure_sprite_directory(
-            editor, directory, sizeof(directory))) {
+    if (!unified_editor_internal_ensure_sprite_directory(
+            editor, directory, sizeof(directory), PLATFORM_FS_FAULT_NONE)) {
         editor->status = EDITOR_STATUS_SAVE_FAILED;
         return false;
     }
@@ -2417,7 +2432,8 @@ static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
     if (result == SPRITE_DOCUMENT_OK)
         result = sprite_document_save(
             &editor->sprite_document, editor->assets, directory);
-    if (result == SPRITE_DOCUMENT_OK)
+    durability_warning = result == SPRITE_DOCUMENT_OK_DURABILITY_WARNING;
+    if (sprite_document_result_is_committed(result))
         result = sprite_document_commit_to_registry(
             &editor->sprite_document, editor->assets);
     if (result != SPRITE_DOCUMENT_OK) {
@@ -2444,7 +2460,8 @@ static bool editor_create_and_place_sprite_canvas(UnifiedEditorState *editor) {
     editor->sprite_menu_open = true;
     editor->sprite_menu_stage = EDITOR_SPRITE_MENU_ACTIONS;
     editor->sprite_menu_index = 2U;
-    editor->status = EDITOR_STATUS_NONE;
+    editor->status = durability_warning ? EDITOR_STATUS_DURABILITY_WARNING
+                                        : EDITOR_STATUS_NONE;
     return true;
 }
 

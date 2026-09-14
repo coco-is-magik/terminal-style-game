@@ -1,15 +1,16 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "sprite_document.h"
+#include "sprite_document_internal.h"
 
 #include "checked_size.h"
+#include "platform_fs.h"
+#include "platform_fs_internal.h"
 
-#include <dirent.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 static bool valid_dimensions(size_t cols, size_t rows, size_t *out_count) {
@@ -50,6 +51,11 @@ void sprite_document_destroy(SpriteDocument *document) {
     free(document->frames);
     free(document->path);
     sprite_document_init(document);
+}
+
+bool sprite_document_result_is_committed(SpriteDocumentResult result) {
+    return result == SPRITE_DOCUMENT_OK ||
+           result == SPRITE_DOCUMENT_OK_DURABILITY_WARNING;
 }
 
 SpriteDocumentResult sprite_document_create(SpriteDocument *document,
@@ -265,10 +271,12 @@ const SpriteDocumentFrame *sprite_document_next_frame(const SpriteDocument *docu
     return &document->frames[(document->selected_frame + 1U) % document->frame_count];
 }
 
-static SpriteDocumentResult write_pattern_file(const SpriteDocumentFrame *frame,
-                                                const char *path) {
+static SpriteDocumentResult write_pattern_file(
+    const SpriteDocumentFrame *frame, const char *path,
+    SpriteDocumentSaveFault fault
+) {
     FILE *file = fopen(path, "wb");
-    int fd;
+    PlatformNativeError platform_error;
     if (!file) return SPRITE_DOCUMENT_IO_ERROR;
     if (fprintf(file, "cols=%zu\nrows=%zu\ndefault_material=1\n",
                 frame->cols, frame->rows) < 0) goto fail;
@@ -287,35 +295,22 @@ static SpriteDocumentResult write_pattern_file(const SpriteDocumentFrame *frame,
         if (fputc('\n', file) == EOF) goto fail;
     }
     if (fflush(file) != 0) goto fail;
-    fd = fileno(file);
-    if (fd < 0 || fsync(fd) != 0 || fclose(file) != 0) return SPRITE_DOCUMENT_IO_ERROR;
+    if (fault == SPRITE_DOCUMENT_SAVE_FAULT_SYNC ||
+        platform_fs_sync_file(file, &platform_error) != PLATFORM_FS_OK) goto fail;
+    if (fclose(file) != 0) return SPRITE_DOCUMENT_IO_ERROR;
     return SPRITE_DOCUMENT_OK;
 fail:
     (void)fclose(file);
     return SPRITE_DOCUMENT_IO_ERROR;
 }
 
-static bool remove_folder(const char *path) {
-    DIR *directory = opendir(path);
-    struct dirent *entry;
-    bool ok = true;
-    if (!directory) return false;
-    while ((entry = readdir(directory)) != NULL) {
-        char child[1200];
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-        if (snprintf(child, sizeof(child), "%s/%s", path, entry->d_name) < 0 ||
-            strlen(child) >= sizeof(child) || unlink(child) != 0) ok = false;
-    }
-    if (closedir(directory) != 0) ok = false;
-    return rmdir(path) == 0 && ok;
-}
-
-static SpriteDocumentResult write_candidate_folder(const SpriteDocument *document,
-                                                    const char *directory) {
+static SpriteDocumentResult write_candidate_folder(
+    const SpriteDocument *document, const char *directory,
+    SpriteDocumentSaveFault fault
+) {
     char path[1200];
     FILE *manifest;
-    int fd;
+    PlatformNativeError platform_error;
     if (snprintf(path, sizeof(path), "%s/animation.txt", directory) < 0 ||
         strlen(path) >= sizeof(path)) return SPRITE_DOCUMENT_IO_ERROR;
     manifest = fopen(path, "wb");
@@ -330,12 +325,14 @@ static SpriteDocumentResult write_candidate_folder(const SpriteDocument *documen
             if (fprintf(manifest, "frame=frame_%03zu.txt\n", i) < 0)
                 goto manifest_fail;
     }
-    if (fflush(manifest) != 0 || (fd = fileno(manifest)) < 0 ||
-        fsync(fd) != 0 || fclose(manifest) != 0) return SPRITE_DOCUMENT_IO_ERROR;
+    if (fault == SPRITE_DOCUMENT_SAVE_FAULT_SYNC ||
+        platform_fs_sync_file(manifest, &platform_error) != PLATFORM_FS_OK)
+        goto manifest_fail;
+    if (fclose(manifest) != 0) return SPRITE_DOCUMENT_IO_ERROR;
     for (size_t i = 0U; i < document->frame_count; i++) {
         if (snprintf(path, sizeof(path), "%s/frame_%03zu.txt", directory, i) < 0 ||
-            strlen(path) >= sizeof(path) ||
-            write_pattern_file(&document->frames[i], path) != SPRITE_DOCUMENT_OK)
+            strlen(path) >= sizeof(path) || write_pattern_file(
+                &document->frames[i], path, fault) != SPRITE_DOCUMENT_OK)
             return SPRITE_DOCUMENT_IO_ERROR;
     }
     return SPRITE_DOCUMENT_OK;
@@ -344,15 +341,36 @@ manifest_fail:
     return SPRITE_DOCUMENT_IO_ERROR;
 }
 
-SpriteDocumentResult sprite_document_save(SpriteDocument *document,
-                                           const AssetRegistry *assets,
-                                           const char *sprite_directory) {
+static bool clean_folder(const char *path, bool fail) {
+    PlatformNativeError platform_error;
+    PlatformFsFault fault = fail ? PLATFORM_FS_FAULT_REMOVE_FLAT_DIRECTORY
+                                 : PLATFORM_FS_FAULT_NONE;
+    return platform_fs_internal_remove_flat_directory(
+               path, &platform_error, fault) == PLATFORM_FS_OK;
+}
+
+static PlatformMoveResult move_folder(const char *source, const char *destination,
+                                      bool fail, bool durability) {
+    PlatformFsFault fault = fail ? PLATFORM_FS_FAULT_MOVE :
+                            durability ? PLATFORM_FS_FAULT_DURABILITY :
+                            PLATFORM_FS_FAULT_NONE;
+    return platform_fs_internal_move(source, destination, fault);
+}
+
+SpriteDocumentResult sprite_document_internal_save(
+    SpriteDocument *document, const AssetRegistry *assets,
+    const char *sprite_directory, SpriteDocumentSaveFault fault
+) {
     char target[1024];
     char temporary[1060];
     char backup[1060];
     char *owned_path = NULL;
-    struct stat info;
+    PlatformFileMetadata metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformMoveResult move_result;
     bool had_target;
+    bool durability_warning = false;
     int written;
     if (!document || !assets || !document->frames || document->frame_count == 0U ||
         document->frame_count > SPRITE_ANIMATION_MAX_FRAMES || !sprite_directory ||
@@ -374,49 +392,110 @@ SpriteDocumentResult sprite_document_save(SpriteDocument *document,
     written = snprintf(target, sizeof(target), "%s/%u", sprite_directory,
                        (unsigned)document->id);
     if (written < 0 || (size_t)written >= sizeof(target)) return SPRITE_DOCUMENT_IO_ERROR;
-    written = snprintf(temporary, sizeof(temporary), "%s.tmpXXXXXX", target);
-    if (written < 0 || (size_t)written >= sizeof(temporary) || !mkdtemp(temporary))
-        return SPRITE_DOCUMENT_IO_ERROR;
-    if (write_candidate_folder(document, temporary) != SPRITE_DOCUMENT_OK) {
-        (void)remove_folder(temporary);
-        return SPRITE_DOCUMENT_IO_ERROR;
-    }
-    written = snprintf(backup, sizeof(backup), "%s.backup", target);
-    if (written < 0 || (size_t)written >= sizeof(backup)) {
-        (void)remove_folder(temporary);
-        return SPRITE_DOCUMENT_IO_ERROR;
-    }
-    had_target = stat(target, &info) == 0;
-    if (had_target && (!S_ISDIR(info.st_mode) || stat(backup, &info) == 0 ||
-                       rename(target, backup) != 0)) {
-        (void)remove_folder(temporary);
-        return SPRITE_DOCUMENT_IO_ERROR;
-    }
-    if (rename(temporary, target) != 0) {
-        if (had_target) (void)rename(backup, target);
-        (void)remove_folder(temporary);
-        return SPRITE_DOCUMENT_IO_ERROR;
-    }
     if (!document->path) {
         owned_path = duplicate_string(target);
-        if (!owned_path) {
-            (void)remove_folder(target);
-            if (had_target) (void)rename(backup, target);
-            return SPRITE_DOCUMENT_OUT_OF_MEMORY;
-        }
+        if (!owned_path) return SPRITE_DOCUMENT_OUT_OF_MEMORY;
     }
-    if (had_target && !remove_folder(backup)) {
+    written = snprintf(temporary, sizeof(temporary), "%s.tmpXXXXXX", target);
+    if (written < 0 || (size_t)written >= sizeof(temporary) || !mkdtemp(temporary)) {
         free(owned_path);
         return SPRITE_DOCUMENT_IO_ERROR;
     }
+    if (write_candidate_folder(document, temporary, fault) != SPRITE_DOCUMENT_OK ||
+        fault == SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP) {
+        bool cleaned = clean_folder(
+            temporary, fault == SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP);
+        free(owned_path);
+        return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                       : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    written = snprintf(backup, sizeof(backup), "%s.backup", target);
+    if (written < 0 || (size_t)written >= sizeof(backup)) {
+        bool cleaned = clean_folder(
+            temporary, fault == SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP);
+        free(owned_path);
+        return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                       : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    inspect_result = platform_fs_inspect_nofollow(target, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
+        bool cleaned = clean_folder(temporary, false);
+        free(owned_path);
+        return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                       : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    had_target = inspect_result == PLATFORM_FS_OK;
+    if (had_target && (!metadata.is_directory || metadata.is_link_or_reparse)) {
+        bool cleaned = clean_folder(temporary, false);
+        free(owned_path);
+        return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                       : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    inspect_result = platform_fs_inspect_nofollow(backup, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_NOT_FOUND) {
+        bool cleaned = clean_folder(temporary, false);
+        free(owned_path);
+        return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                       : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    if (had_target) {
+        move_result = move_folder(
+            target, backup,
+            fault == SPRITE_DOCUMENT_SAVE_FAULT_BACKUP_MOVE,
+            fault == SPRITE_DOCUMENT_SAVE_FAULT_DURABILITY);
+        if (move_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+            bool cleaned = clean_folder(temporary, false);
+            free(owned_path);
+            return cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                           : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+        }
+        if (move_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING)
+            durability_warning = true;
+    }
+    move_result = move_folder(
+        temporary, target,
+        fault == SPRITE_DOCUMENT_SAVE_FAULT_PUBLISH_MOVE ||
+            fault == SPRITE_DOCUMENT_SAVE_FAULT_RESTORE_MOVE,
+        fault == SPRITE_DOCUMENT_SAVE_FAULT_DURABILITY);
+    if (move_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        bool restored = true;
+        bool cleaned;
+        if (had_target) {
+            PlatformMoveResult restore = move_folder(
+                backup, target,
+                fault == SPRITE_DOCUMENT_SAVE_FAULT_RESTORE_MOVE, false);
+            restored = restore.commit_state != PLATFORM_COMMIT_NOT_COMMITTED &&
+                       restore.commit_state !=
+                           PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING;
+        }
+        cleaned = clean_folder(
+            temporary, fault == SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP);
+        free(owned_path);
+        return restored && cleaned ? SPRITE_DOCUMENT_IO_ERROR
+                                   : SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE;
+    }
+    if (move_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING)
+        durability_warning = true;
+    if (had_target && !clean_folder(
+            backup, fault == SPRITE_DOCUMENT_SAVE_FAULT_BACKUP_CLEANUP))
+        durability_warning = true;
     if (owned_path) document->path = owned_path;
     document->dirty = false;
-    return SPRITE_DOCUMENT_OK;
+    return durability_warning ? SPRITE_DOCUMENT_OK_DURABILITY_WARNING
+                              : SPRITE_DOCUMENT_OK;
+}
+
+SpriteDocumentResult sprite_document_save(SpriteDocument *document,
+                                           const AssetRegistry *assets,
+                                           const char *sprite_directory) {
+    return sprite_document_internal_save(
+        document, assets, sprite_directory, SPRITE_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 SpriteDocumentResult sprite_document_delete_saved(const SpriteDocument *document) {
     if (!document || !document->path) return SPRITE_DOCUMENT_INVALID_ARGUMENT;
-    return remove_folder(document->path) ? SPRITE_DOCUMENT_OK : SPRITE_DOCUMENT_IO_ERROR;
+    return clean_folder(document->path, false)
+        ? SPRITE_DOCUMENT_OK : SPRITE_DOCUMENT_IO_ERROR;
 }
 
 SpriteDocumentResult sprite_document_commit_to_registry(

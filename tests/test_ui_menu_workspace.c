@@ -147,6 +147,52 @@ static void test_invalid_load_and_boundaries_are_transactional(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+static void test_managed_menu_directory_failure_preserves_workspace(void **state) {
+    UiMenuWorkspace workspace;
+    UiMenuWorkspace before;
+    char root[] = "/tmp/tsg_ui_directory_XXXXXX";
+    char menus[96];
+    FILE *file;
+    (void)state;
+    assert_non_null(mkdtemp(root));
+    assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    workspace.mode = UI_MENU_WORKSPACE_CREATE_NAME;
+    memcpy(workspace.create_name, "menu", sizeof("menu"));
+    workspace.create_name_length = strlen(workspace.create_name);
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_internal_create_document(
+                         &workspace, PLATFORM_FS_FAULT_ENSURE_DIRECTORY),
+                     UI_MENU_WORKSPACE_SAVE_FAILED);
+    assert_memory_equal(&workspace, &before, sizeof(workspace));
+    assert_int_equal(access(menus, F_OK), -1);
+    assert_int_equal(ui_menu_workspace_internal_create_document(
+                         &workspace, PLATFORM_FS_FAULT_NONE),
+                     UI_MENU_WORKSPACE_OK);
+    assert_true(workspace.has_document);
+    assert_string_equal(workspace.document.name, "menu");
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(rmdir(menus), 0);
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    workspace.mode = UI_MENU_WORKSPACE_CREATE_NAME;
+    memcpy(workspace.create_name, "menu", sizeof("menu"));
+    workspace.create_name_length = strlen(workspace.create_name);
+    before = workspace;
+    file = fopen(menus, "wb");
+    assert_non_null(file);
+    assert_true(fputs("not a directory\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    assert_int_equal(ui_menu_workspace_internal_create_document(
+                         &workspace, PLATFORM_FS_FAULT_NONE),
+                     UI_MENU_WORKSPACE_SAVE_FAILED);
+    assert_memory_equal(&workspace, &before, sizeof(workspace));
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 static void test_catalog_open_failure_preserves_workspace(void **state) {
     UiMenuWorkspace workspace;
     UiMenuWorkspace before;
@@ -791,6 +837,7 @@ int main(void) {
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
         cmocka_unit_test(test_create_name_save_and_catalog_refresh),
         cmocka_unit_test(test_invalid_load_and_boundaries_are_transactional)
+        ,cmocka_unit_test(test_managed_menu_directory_failure_preserves_workspace)
         ,cmocka_unit_test(test_catalog_open_failure_preserves_workspace)
         ,cmocka_unit_test(test_i13_construct_edit_remove_and_history)
         ,cmocka_unit_test(test_i13_container_subtree_remove_is_one_restorable_command)

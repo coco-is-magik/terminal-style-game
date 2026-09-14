@@ -117,7 +117,8 @@ static int teardown(void **state) {
     const char *names[] = {
         "file", "link", "temp", "destination", "sync",
         "sharing-temp", "sharing-destination", "readonly-temp",
-        "readonly-destination", "cross-volume-destination"
+        "readonly-destination", "cross-volume-destination", "ensure-file",
+        "ensure-link", "move-source-file", "move-destination-file"
     };
     char path[512];
     (void)state;
@@ -126,6 +127,28 @@ static int teardown(void **state) {
         (void)remove(path);
     }
     path_for(path, sizeof(path), "directory");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "ensure-\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88");
+#ifdef _WIN32
+    {
+        wchar_t *native = native_text(path);
+        (void)RemoveDirectoryW(native);
+        free(native);
+    }
+#else
+    (void)test_rmdir(path);
+#endif
+    path_for(path, sizeof(path), "ensure-target");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "move-source");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "move-destination");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "flat-remove");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "flat-malformed/nested");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "flat-malformed");
     (void)test_rmdir(path);
     return test_rmdir(root);
 }
@@ -249,6 +272,75 @@ static void test_metadata_and_sync_faults_are_typed(void **state) {
     assert_int_not_equal(metadata_error.domain, PLATFORM_NATIVE_ERROR_NONE);
 }
 
+static void test_ensure_directory_contract(void **state) {
+    char created[512];
+    char file[512];
+    char link[512];
+    char target[512];
+    char missing_child[512];
+    char fault_path[512];
+    PlatformNativeError error;
+    (void)state;
+    path_for(created, sizeof(created),
+             "ensure-\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88");
+    path_for(file, sizeof(file), "ensure-file");
+    path_for(link, sizeof(link), "ensure-link");
+    path_for(target, sizeof(target), "ensure-target");
+    path_for(missing_child, sizeof(missing_child), "missing-parent/child");
+    path_for(fault_path, sizeof(fault_path), "ensure-fault");
+    assert_int_equal(platform_fs_ensure_directory(created, 0710U, &error),
+                     PLATFORM_FS_OK);
+    assert_int_equal(platform_fs_ensure_directory(created, 0777U, &error),
+                     PLATFORM_FS_OK);
+#ifndef _WIN32
+    {
+        struct stat metadata;
+        assert_int_equal(stat(created, &metadata), 0);
+        assert_int_equal(metadata.st_mode & 0777, 0710);
+    }
+#endif
+    write_text(file, "not a directory\n");
+    assert_int_equal(platform_fs_ensure_directory(file, 0700U, &error),
+                     PLATFORM_FS_WRONG_TYPE);
+#ifdef _WIN32
+    assert_int_equal(_mkdir(target), 0);
+    {
+        wchar_t *native_target = native_text(target);
+        wchar_t *native_link = native_text(link);
+        if (CreateSymbolicLinkW(native_link, native_target,
+                SYMBOLIC_LINK_FLAG_DIRECTORY |
+                SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)) {
+            assert_int_equal(platform_fs_ensure_directory(link, 0700U, &error),
+                             PLATFORM_FS_WRONG_TYPE);
+            assert_true(RemoveDirectoryW(native_link));
+        } else {
+            printf("W2D_DIRECTORY_REPARSE=UNAVAILABLE native_error=%lu\n",
+                   (unsigned long)GetLastError());
+        }
+        free(native_link);
+        free(native_target);
+    }
+#else
+    assert_int_equal(mkdir(target, 0700), 0);
+    assert_int_equal(symlink("ensure-target", link), 0);
+    assert_int_equal(platform_fs_ensure_directory(link, 0700U, &error),
+                     PLATFORM_FS_WRONG_TYPE);
+#endif
+    assert_int_equal(platform_fs_ensure_directory(missing_child, 0700U, &error),
+                     PLATFORM_FS_NOT_FOUND);
+    assert_int_equal(platform_fs_internal_ensure_directory(
+                         fault_path, 0700U, &error,
+                         PLATFORM_FS_FAULT_ENSURE_DIRECTORY),
+                     PLATFORM_FS_ACCESS_DENIED);
+    assert_int_not_equal(error.domain, PLATFORM_NATIVE_ERROR_NONE);
+    assert_int_equal(test_access(fault_path, 0), -1);
+    assert_int_equal(platform_fs_ensure_directory(NULL, 0700U, &error),
+                     PLATFORM_FS_INVALID_ARGUMENT);
+#ifdef _WIN32
+    printf("W2D_ENSURE_DIRECTORY=PROVEN\n");
+#endif
+}
+
 static void test_replace_commit_boundaries(void **state) {
     char temporary[512];
     char destination[512];
@@ -298,6 +390,92 @@ static void test_replace_commit_boundaries(void **state) {
     printf("W2B_ABSENT_REPLACE=PROVEN commit=%s\n",
            result.commit_state == PLATFORM_COMMIT_COMMITTED
                ? "committed" : "durability-warning");
+#endif
+}
+
+static void test_move_and_flat_directory_contracts(void **state) {
+    char source[512];
+    char destination[512];
+    char child[512];
+    char malformed[512];
+    char nested[512];
+    PlatformMoveResult moved;
+    PlatformNativeError error;
+#ifdef _WIN32
+    PlatformFsResult remove_fault_result = PLATFORM_FS_ACCESS_DENIED;
+#else
+    PlatformFsResult remove_fault_result = PLATFORM_FS_IO_ERROR;
+#endif
+    (void)state;
+    path_for(source, sizeof(source), "move-source");
+    path_for(destination, sizeof(destination), "move-destination");
+    assert_int_equal(platform_fs_ensure_directory(source, 0700U, &error),
+                     PLATFORM_FS_OK);
+    moved = platform_fs_internal_move(
+        source, destination, PLATFORM_FS_FAULT_MOVE);
+    assert_int_equal(moved.commit_state, PLATFORM_COMMIT_NOT_COMMITTED);
+    assert_int_equal(test_access(source, 0), 0);
+    assert_int_equal(test_access(destination, 0), -1);
+    moved = platform_fs_internal_move(
+        source, destination, PLATFORM_FS_FAULT_DURABILITY);
+    assert_int_equal(moved.result, PLATFORM_FS_OK);
+    assert_int_equal(moved.commit_state,
+                     PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING);
+    assert_int_equal(test_access(source, 0), -1);
+    assert_int_equal(test_access(destination, 0), 0);
+    assert_int_equal(platform_fs_ensure_directory(source, 0700U, &error),
+                     PLATFORM_FS_OK);
+    moved = platform_fs_move(source, destination);
+    assert_int_equal(moved.result, PLATFORM_FS_ALREADY_EXISTS);
+    assert_int_equal(moved.commit_state, PLATFORM_COMMIT_NOT_COMMITTED);
+    assert_int_equal(platform_fs_remove_flat_directory(destination, &error),
+                     PLATFORM_FS_OK);
+    moved = platform_fs_move(source, destination);
+    assert_int_equal(moved.result, PLATFORM_FS_OK);
+    assert_true(moved.commit_state == PLATFORM_COMMIT_COMMITTED ||
+                moved.commit_state ==
+                    PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING);
+    assert_int_equal(moved.error.domain, PLATFORM_NATIVE_ERROR_NONE);
+    assert_int_equal(platform_fs_remove_flat_directory(destination, &error),
+                     PLATFORM_FS_OK);
+
+    path_for(source, sizeof(source), "flat-remove");
+    assert_int_equal(platform_fs_ensure_directory(source, 0700U, &error),
+                     PLATFORM_FS_OK);
+    assert_true(snprintf(child, sizeof(child), "%s/child.txt", source) > 0);
+#ifdef _WIN32
+    write_text_native(child, "child\n");
+#else
+    write_text(child, "child\n");
+#endif
+    assert_int_equal(platform_fs_internal_remove_flat_directory(
+                         source, &error,
+                         PLATFORM_FS_FAULT_REMOVE_FLAT_DIRECTORY),
+                     remove_fault_result);
+    assert_int_equal(test_access(child, 0), 0);
+    assert_int_equal(platform_fs_remove_flat_directory(source, &error),
+                     PLATFORM_FS_OK);
+    assert_int_equal(test_access(source, 0), -1);
+
+    path_for(malformed, sizeof(malformed), "flat-malformed");
+    assert_int_equal(platform_fs_ensure_directory(malformed, 0700U, &error),
+                     PLATFORM_FS_OK);
+    assert_true(snprintf(child, sizeof(child), "%s/kept.txt", malformed) > 0);
+    write_text(child, "kept\n");
+    assert_true(snprintf(nested, sizeof(nested), "%s/nested", malformed) > 0);
+#ifdef _WIN32
+    assert_int_equal(_mkdir(nested), 0);
+#else
+    assert_int_equal(mkdir(nested, 0700), 0);
+#endif
+    assert_int_equal(platform_fs_remove_flat_directory(malformed, &error),
+                     PLATFORM_FS_WRONG_TYPE);
+    assert_int_equal(test_access(child, 0), 0);
+    assert_int_equal(test_rmdir(nested), 0);
+    assert_int_equal(remove(child), 0);
+    assert_int_equal(test_rmdir(malformed), 0);
+#ifdef _WIN32
+    printf("W2D_SPRITE_DIRECTORY_PRIMITIVES=PROVEN\n");
 #endif
 }
 
@@ -504,7 +682,11 @@ int main(void) {
         cmocka_unit_test_setup_teardown(test_nofollow_metadata, setup, teardown),
         cmocka_unit_test_setup_teardown(test_metadata_and_sync_faults_are_typed,
                                         setup, teardown),
+        cmocka_unit_test_setup_teardown(test_ensure_directory_contract,
+                                        setup, teardown),
         cmocka_unit_test_setup_teardown(test_replace_commit_boundaries, setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_move_and_flat_directory_contracts, setup, teardown),
         cmocka_unit_test(test_invalid_arguments_preserve_outputs),
 #ifdef _WIN32
         cmocka_unit_test_setup_teardown(

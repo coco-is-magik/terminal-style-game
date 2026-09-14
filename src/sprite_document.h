@@ -16,7 +16,9 @@ typedef enum {
     SPRITE_DOCUMENT_INVALID_MATERIAL,
     SPRITE_DOCUMENT_OUT_OF_BOUNDS,
     SPRITE_DOCUMENT_OUT_OF_MEMORY,
-    SPRITE_DOCUMENT_IO_ERROR
+    SPRITE_DOCUMENT_IO_ERROR,
+    SPRITE_DOCUMENT_OK_DURABILITY_WARNING,
+    SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE
 } SpriteDocumentResult;
 
 typedef struct {
@@ -42,6 +44,7 @@ typedef struct {
 
 void sprite_document_init(SpriteDocument *document);
 void sprite_document_destroy(SpriteDocument *document);
+bool sprite_document_result_is_committed(SpriteDocumentResult result);
 SpriteDocumentResult sprite_document_create(SpriteDocument *document,
                                             const AssetRegistry *assets,
                                             size_t cols, size_t rows);

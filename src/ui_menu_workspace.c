@@ -4,6 +4,7 @@
 #include "ui_menu_workspace_internal.h"
 #include "ui_layout_resolver.h"
 #include "ui_nested_inspector.h"
+#include "platform_fs.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -577,16 +578,21 @@ static bool valid_created_name(const char *name) {
     return i < UI_DOCUMENT_NAME_CAPACITY;
 }
 
-static UiMenuWorkspaceResult create_document(UiMenuWorkspace *workspace) {
+UiMenuWorkspaceResult ui_menu_workspace_internal_create_document(
+    UiMenuWorkspace *workspace, PlatformFsFault fault
+) {
     char directory[UI_DOCUMENT_PATH_CAPACITY];
     char path[UI_DOCUMENT_PATH_CAPACITY];
+    PlatformNativeError platform_error;
     int written;
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!valid_created_name(workspace->create_name))
         return UI_MENU_WORKSPACE_INVALID_NAME;
     written = snprintf(directory, sizeof(directory), "%s/menus", workspace->asset_root);
     if (written < 0 || (size_t)written >= sizeof(directory))
         return UI_MENU_WORKSPACE_INVALID_NAME;
-    if (mkdir(directory, 0775) != 0 && errno != EEXIST)
+    if (platform_fs_internal_ensure_directory(
+            directory, 0775U, &platform_error, fault) != PLATFORM_FS_OK)
         return UI_MENU_WORKSPACE_SAVE_FAILED;
     written = snprintf(path, sizeof(path), "%s/%s.tui", directory,
                        workspace->create_name);
@@ -877,7 +883,8 @@ UiMenuWorkspaceResult ui_menu_workspace_internal_confirm(
         return load_selected(workspace);
     }
     if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME)
-        return create_document(workspace);
+        return ui_menu_workspace_internal_create_document(
+            workspace, PLATFORM_FS_FAULT_NONE);
     if (workspace->mode == UI_MENU_WORKSPACE_HIERARCHY) {
         element = ui_menu_workspace_selected_element(workspace);
         if (!element) return UI_MENU_WORKSPACE_NO_ACTION;

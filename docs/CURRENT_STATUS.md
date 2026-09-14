@@ -106,7 +106,21 @@ warning commits update clean-state identity, remain warning results through Save
 and receive truthful editor feedback. Strict GCC/Clang UI-document tests pass 14/14,
 UI-menu-workspace tests pass 13/13, sanitizer checks pass, all 63 runners pass, and native
 strict compilation has zero `ui_document.c` diagnostics. W2-D1 managed one-level directory
-creation for `ui_menu_workspace` and `unified_editor` is next. See
+creation now uses `platform_fs_ensure_directory` in both owners. It creates exactly one
+requested directory, accepts only ordinary existing directories, rejects files and
+links/reparse points,
+and does not repair missing parents. Platform tests pass 7/7 locally and 10/10 natively;
+UI-menu-workspace tests pass 14/14 and unified-editor tests pass 98/98 under strict compilers
+and sanitizers. Native strict compilation has zero owner `mkdir` diagnostics and now remains
+blocked only in `decal_document`, `map_catalog`, `scene_format`, and `sprite_document`.
+W2-D2 now routes sprite file sync, no-follow inspection, directory moves, restoration, and
+flat cleanup through platform capabilities. Clean pre-commit/rollback failures remain ordinary
+I/O errors; incomplete cleanup/restoration is explicit; committed durability/cleanup warnings
+publish path and clean state. Editor callers commit warning saves to the registry/runtime and
+display durability warning. Platform tests pass 8/8 locally and 11/11 natively, sprite tests
+pass 7/7, unified editor passes 99/99 under strict compilers and sanitizers, and all 63 runners
+pass. Native `sprite_document.c` diagnostics are zero; blockers remain only in
+`decal_document`, `map_catalog`, and `scene_format`. W2-C6 `decal_document` is next. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
@@ -122,13 +136,17 @@ See also
 [`reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md`](reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md).
 See also
 [`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md`](reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md).
+See also
+[`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is now W2-C4 `flow_document` persistence migration. See
+portability increment is W2-C6 `decal_document` persistence migration. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

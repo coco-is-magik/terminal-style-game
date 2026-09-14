@@ -466,6 +466,20 @@ Native strict compilation reports zero authored UI-document diagnostics. See
 - Prototype and implement Windows sprite candidate/backup/publication/restoration using
   file/directory primitives without pretending it is a single-file transaction.
 
+**W2-D1 managed directory result (2026-09-14): complete.**
+`platform_fs_ensure_directory` implements D8 through strict UTF-8/native paths, one-level
+creation, ordinary-directory acceptance, file/reparse rejection, POSIX-only mode application,
+and typed failures. Both owners are migrated; native preflight passes 10/10 and their prior
+`mkdir` diagnostics are absent. See
+[`reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md`](reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md).
+
+**W2-D2 sprite-folder result (2026-09-14): complete.** Platform no-overwrite move and
+validated flat-cleanup primitives now support the D7 candidate/backup/publication/restoration
+transaction. Sprite save reports clean failure, incomplete recovery, and committed durability
+warning distinctly; editor warning commits update registry/runtime. Native preflight passes
+11/11 and sprite-owner diagnostics are absent. See
+[`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md).
+
 **Rollback:** Directory creation and sprite publication are separate commits.
 
 ### W3 — Direct-child catalog adapter

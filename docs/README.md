@@ -48,6 +48,12 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md)
   — authored UI-document and workspace committed-warning contracts, byte/identity boundaries,
   strict/sanitizer/native evidence, limitations, and W2-D1 handoff.
+- [`reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md`](reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md)
+  — one-level UTF-8 directory capability, owner state preservation, strict/sanitizer/native
+  evidence, remaining Windows blockers, and W2-D2 handoff.
+- [`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md)
+  — sprite candidate/backup/publication/restoration transaction, committed and incomplete
+  outcomes, strict/sanitizer/native evidence, and decal-owner handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

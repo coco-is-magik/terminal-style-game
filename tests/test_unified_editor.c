@@ -22,6 +22,7 @@
 
 #include "../src/unified_editor.h"
 #include "../src/unified_editor_test.h"
+#include "../src/unified_editor_internal.h"
 #include "../src/asset_refresh.h"
 
 /* Editor behavior tests use the production logical viewport height. */
@@ -1511,6 +1512,81 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     free(g_assets.sprite_animations[4].frames);
     memset(&g_assets.sprite_animations[4], 0,
            sizeof(g_assets.sprite_animations[4]));
+}
+
+static void test_managed_sprite_directory_is_typed_and_state_preserving(void **state) {
+    UnifiedEditorState editor;
+    UnifiedEditorState before;
+    char directory[512];
+    char output[512];
+    struct stat metadata;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "managed_sprite_directory.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, g_tmpdir));
+    path_in_tmpdir(directory, sizeof(directory), "sprites");
+    (void)rmdir(directory);
+    (void)remove(directory);
+    before = editor;
+    memset(output, 0x5a, sizeof(output));
+    assert_false(unified_editor_internal_ensure_sprite_directory(
+        &editor, output, sizeof(output), PLATFORM_FS_FAULT_ENSURE_DIRECTORY));
+    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_int_equal(access(directory, F_OK), -1);
+    assert_true(unified_editor_internal_ensure_sprite_directory(
+        &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
+    assert_string_equal(output, directory);
+    assert_int_equal(stat(directory, &metadata), 0);
+    assert_true(S_ISDIR(metadata.st_mode));
+    assert_true(unified_editor_internal_ensure_sprite_directory(
+        &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
+    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_int_equal(rmdir(directory), 0);
+    assert_int_equal(write_text_file(directory, "not a directory\n"), 0);
+    assert_false(unified_editor_internal_ensure_sprite_directory(
+        &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
+    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_int_equal(remove(directory), 0);
+    unified_editor_destroy(&editor);
+}
+
+static void test_sprite_warning_commit_updates_registry_and_editor_status(void **state) {
+    UnifiedEditorState editor;
+    PatternCell original = {(uint8_t)'A', UINT16_C(1)};
+    char directory[512];
+    char target[600];
+    char path[700];
+    uint16_t id;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "sprite_warning_commit.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, g_tmpdir));
+    path_in_tmpdir(directory, sizeof(directory), "sprites");
+    (void)platform_fs_ensure_directory(directory, 0700U, NULL);
+    assert_true(asset_registry_set_sprite(&g_assets, 10U, 1, 1, &original));
+    assert_int_equal(sprite_document_open_loaded(
+                         &editor.sprite_document, &g_assets, 10U, directory),
+                     SPRITE_DOCUMENT_OK);
+    assert_int_equal(sprite_document_paint_cell(
+                         &editor.sprite_document, &g_assets, 0U, 0U,
+                         (PatternCell){(uint8_t)'B', UINT16_C(1)}),
+                     SPRITE_DOCUMENT_OK);
+    id = editor.sprite_document.id;
+    assert_true(unified_editor_internal_save_sprite_document(
+        &editor, SPRITE_DOCUMENT_SAVE_FAULT_DURABILITY));
+    assert_false(editor.sprite_document.dirty);
+    assert_int_equal(editor.status, EDITOR_STATUS_DURABILITY_WARNING);
+    assert_int_equal(asset_registry_get_sprite(
+                         &g_assets, id)->pattern[0].glyph, 'B');
+    assert_true(snprintf(target, sizeof(target), "%s/%u", directory,
+                         (unsigned)id) > 0);
+    unified_editor_destroy(&editor);
+    assert_true(snprintf(path, sizeof(path), "%s/animation.txt", target) > 0);
+    assert_int_equal(unlink(path), 0);
+    assert_true(snprintf(path, sizeof(path), "%s/frame_000.txt", target) > 0);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(target), 0);
+    assert_int_equal(rmdir(directory), 0);
+    free(g_assets.sprites[id].pattern);
+    memset(&g_assets.sprites[id], 0, sizeof(g_assets.sprites[id]));
 }
 
 static void test_sprite_animation_painter_focus_frames_save_and_discard(void **state) {
@@ -5719,6 +5795,8 @@ int main(void) {
         cmocka_unit_test(test_r12_menu_edit_preview_uses_authored_root_colors),
         cmocka_unit_test(test_r12_i16_menu_pointer_move_resize_cancel_and_isolate),
         cmocka_unit_test(test_r12_i17_menu_preview_test_target_and_stale_reference),
+        cmocka_unit_test(test_managed_sprite_directory_is_typed_and_state_preserving),
+        cmocka_unit_test(test_sprite_warning_commit_updates_registry_and_editor_status),
         /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */
         cmocka_unit_test(test_object_sprite_picker_assignment_and_undo),
     };

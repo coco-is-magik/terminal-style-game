@@ -49,6 +49,12 @@ typedef struct {
     PlatformNativeError error;
 } PlatformReplaceResult;
 
+typedef struct {
+    PlatformFsResult result;
+    PlatformCommitState commit_state;
+    PlatformNativeError error;
+} PlatformMoveResult;
+
 PlatformFsResult platform_fs_inspect_nofollow(const char *path,
                                               PlatformFileMetadata *out,
                                               PlatformNativeError *error);
@@ -56,6 +62,12 @@ PlatformFsResult platform_fs_apply_metadata(FILE *file,
                                             const PlatformFileMetadata *metadata,
                                             PlatformNativeError *error);
 PlatformFsResult platform_fs_sync_file(FILE *file, PlatformNativeError *error);
+PlatformFsResult platform_fs_ensure_directory(const char *path, uint32_t mode,
+                                              PlatformNativeError *error);
+PlatformMoveResult platform_fs_move(const char *source_path,
+                                    const char *destination_path);
+PlatformFsResult platform_fs_remove_flat_directory(
+    const char *path, PlatformNativeError *error);
 PlatformReplaceResult platform_fs_replace(const char *temporary_path,
                                           const char *destination_path,
                                           bool destination_exists);

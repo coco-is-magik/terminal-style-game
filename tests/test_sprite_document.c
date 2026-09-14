@@ -13,6 +13,9 @@
 #include <unistd.h>
 
 #include "../src/sprite_document.h"
+#include "../src/sprite_document_internal.h"
+
+#include <dirent.h>
 
 static void mark_material_loaded(AssetRegistry *assets, int id) {
     assets->materials[id].id = id;
@@ -47,6 +50,46 @@ static void remove_sprite_folder(const char *root, unsigned id, size_t frames) {
         (void)unlink(path);
     }
     (void)rmdir(directory);
+}
+
+static bool find_entry_with_prefix(const char *root, const char *prefix,
+                                   char *out, size_t capacity) {
+    DIR *directory = opendir(root);
+    struct dirent *entry;
+    bool found = false;
+    assert_non_null(directory);
+    while ((entry = readdir(directory)) != NULL) {
+        if (strncmp(entry->d_name, prefix, strlen(prefix)) != 0) continue;
+        assert_true(snprintf(out, capacity, "%s/%s", root, entry->d_name) > 0);
+        found = true;
+        break;
+    }
+    assert_int_equal(closedir(directory), 0);
+    return found;
+}
+
+static void assert_frame_glyph(const char *directory, char glyph) {
+    char path[600];
+    char text[1024];
+    make_path(path, sizeof(path), directory, "frame_000.txt");
+    read_file(path, text, sizeof(text));
+    {
+        char expected[32];
+        assert_true(snprintf(expected, sizeof(expected), "pattern_0=%c\n", glyph) > 0);
+        assert_non_null(strstr(text, expected));
+    }
+}
+
+static void prepare_existing_sprite(AssetRegistry *assets, SpriteDocument *document,
+                                    const char *root) {
+    PatternCell original = {(uint8_t)'A', UINT16_C(1)};
+    assert_true(asset_registry_set_sprite(assets, 1U, 1, 1, &original));
+    assert_int_equal(sprite_document_open_loaded(document, assets, 1U, root),
+                     SPRITE_DOCUMENT_OK);
+    document->dirty = true;
+    assert_int_equal(sprite_document_save(document, assets, root), SPRITE_DOCUMENT_OK);
+    document->cells[0] = (PatternCell){(uint8_t)'B', UINT16_C(1)};
+    document->dirty = true;
 }
 
 static void test_static_folder_save_commit_and_reopen(void **state) {
@@ -250,12 +293,163 @@ static void test_invalid_inputs_and_failed_save_preserve_document(void **state) 
     asset_registry_clear(&assets);
 }
 
+static void test_uncommitted_faults_restore_old_target_and_registry(void **state) {
+    const SpriteDocumentSaveFault faults[] = {
+        SPRITE_DOCUMENT_SAVE_FAULT_SYNC,
+        SPRITE_DOCUMENT_SAVE_FAULT_BACKUP_MOVE,
+        SPRITE_DOCUMENT_SAVE_FAULT_PUBLISH_MOVE
+    };
+    (void)state;
+    for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
+        AssetRegistry assets;
+        SpriteDocument document;
+        char root[] = "/tmp/tsg_sprite_fault_XXXXXX";
+        char target[512];
+        char backup[540];
+        uint32_t generation;
+        assert_true(asset_registry_init(&assets));
+        mark_material_loaded(&assets, 1);
+        sprite_document_init(&document);
+        assert_non_null(mkdtemp(root));
+        prepare_existing_sprite(&assets, &document, root);
+        generation = assets.generation;
+        assert_true(snprintf(target, sizeof(target), "%s/1", root) > 0);
+        assert_true(snprintf(backup, sizeof(backup), "%s.backup", target) > 0);
+        assert_int_equal(sprite_document_internal_save(
+                             &document, &assets, root, faults[i]),
+                         SPRITE_DOCUMENT_IO_ERROR);
+        assert_true(document.dirty);
+        assert_string_equal(document.path, target);
+        assert_frame_glyph(target, 'A');
+        assert_int_equal(access(backup, F_OK), -1);
+        assert_int_equal(asset_registry_get_sprite(
+                             &assets, 1)->pattern[0].glyph, 'A');
+        assert_int_equal(assets.generation, generation);
+        sprite_document_destroy(&document);
+        asset_registry_clear(&assets);
+        remove_sprite_folder(root, 1U, 1U);
+        assert_int_equal(rmdir(root), 0);
+    }
+}
+
+static void test_incomplete_cleanup_and_restore_are_typed(void **state) {
+    AssetRegistry assets;
+    SpriteDocument document;
+    char root[] = "/tmp/tsg_sprite_incomplete_XXXXXX";
+    char target[512];
+    char backup[540];
+    char temporary[600];
+    uint32_t generation;
+    (void)state;
+    assert_true(asset_registry_init(&assets));
+    mark_material_loaded(&assets, 1);
+    sprite_document_init(&document);
+    assert_non_null(mkdtemp(root));
+    prepare_existing_sprite(&assets, &document, root);
+    generation = assets.generation;
+    assert_true(snprintf(target, sizeof(target), "%s/1", root) > 0);
+    assert_true(snprintf(backup, sizeof(backup), "%s.backup", target) > 0);
+    assert_int_equal(sprite_document_internal_save(
+                         &document, &assets, root,
+                         SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP),
+                     SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE);
+    assert_true(document.dirty);
+    assert_frame_glyph(target, 'A');
+    assert_true(find_entry_with_prefix(root, "1.tmp", temporary, sizeof(temporary)));
+    assert_frame_glyph(temporary, 'B');
+    {
+        char path[700];
+        make_path(path, sizeof(path), temporary, "animation.txt");
+        assert_int_equal(unlink(path), 0);
+        make_path(path, sizeof(path), temporary, "frame_000.txt");
+        assert_int_equal(unlink(path), 0);
+        assert_int_equal(rmdir(temporary), 0);
+    }
+    assert_int_equal(sprite_document_internal_save(
+                         &document, &assets, root,
+                         SPRITE_DOCUMENT_SAVE_FAULT_RESTORE_MOVE),
+                     SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE);
+    assert_true(document.dirty);
+    assert_int_equal(access(target, F_OK), -1);
+    assert_frame_glyph(backup, 'A');
+    assert_false(find_entry_with_prefix(root, "1.tmp", temporary, sizeof(temporary)));
+    assert_int_equal(asset_registry_get_sprite(&assets, 1)->pattern[0].glyph, 'A');
+    assert_int_equal(assets.generation, generation);
+    {
+        char path[700];
+        make_path(path, sizeof(path), backup, "animation.txt"); (void)unlink(path);
+        make_path(path, sizeof(path), backup, "frame_000.txt"); (void)unlink(path);
+        assert_int_equal(rmdir(backup), 0);
+    }
+    sprite_document_destroy(&document);
+    asset_registry_clear(&assets);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_committed_warnings_publish_clean_without_registry_mutation(void **state) {
+    const SpriteDocumentSaveFault faults[] = {
+        SPRITE_DOCUMENT_SAVE_FAULT_BACKUP_CLEANUP,
+        SPRITE_DOCUMENT_SAVE_FAULT_DURABILITY
+    };
+    (void)state;
+    assert_true(sprite_document_result_is_committed(SPRITE_DOCUMENT_OK));
+    assert_true(sprite_document_result_is_committed(
+        SPRITE_DOCUMENT_OK_DURABILITY_WARNING));
+    assert_false(sprite_document_result_is_committed(SPRITE_DOCUMENT_IO_ERROR));
+    assert_false(sprite_document_result_is_committed(
+        SPRITE_DOCUMENT_TRANSACTION_INCOMPLETE));
+    for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
+        AssetRegistry assets;
+        SpriteDocument document;
+        char root[] = "/tmp/tsg_sprite_warning_XXXXXX";
+        char target[512];
+        char backup[540];
+        uint32_t generation;
+        assert_true(asset_registry_init(&assets));
+        mark_material_loaded(&assets, 1);
+        sprite_document_init(&document);
+        assert_non_null(mkdtemp(root));
+        prepare_existing_sprite(&assets, &document, root);
+        generation = assets.generation;
+        assert_true(snprintf(target, sizeof(target), "%s/1", root) > 0);
+        assert_true(snprintf(backup, sizeof(backup), "%s.backup", target) > 0);
+        assert_int_equal(sprite_document_internal_save(
+                             &document, &assets, root, faults[i]),
+                         SPRITE_DOCUMENT_OK_DURABILITY_WARNING);
+        assert_false(document.dirty);
+        assert_string_equal(document.path, target);
+        assert_frame_glyph(target, 'B');
+        assert_int_equal(asset_registry_get_sprite(
+                             &assets, 1)->pattern[0].glyph, 'A');
+        assert_int_equal(assets.generation, generation);
+        if (faults[i] == SPRITE_DOCUMENT_SAVE_FAULT_BACKUP_CLEANUP) {
+            assert_frame_glyph(backup, 'A');
+            remove_sprite_folder(root, 1U, 1U);
+            {
+                char path[700];
+                make_path(path, sizeof(path), backup, "animation.txt"); (void)unlink(path);
+                make_path(path, sizeof(path), backup, "frame_000.txt"); (void)unlink(path);
+                assert_int_equal(rmdir(backup), 0);
+            }
+        } else {
+            assert_int_equal(access(backup, F_OK), -1);
+            remove_sprite_folder(root, 1U, 1U);
+        }
+        sprite_document_destroy(&document);
+        asset_registry_clear(&assets);
+        assert_int_equal(rmdir(root), 0);
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_static_folder_save_commit_and_reopen),
         cmocka_unit_test(test_frame_operations_neighbors_and_animation_commit),
         cmocka_unit_test(test_animation_save_preserves_order_metadata_and_staging),
         cmocka_unit_test(test_invalid_inputs_and_failed_save_preserve_document),
+        cmocka_unit_test(test_uncommitted_faults_restore_old_target_and_registry),
+        cmocka_unit_test(test_incomplete_cleanup_and_restore_are_typed),
+        cmocka_unit_test(test_committed_warnings_publish_clean_without_registry_mutation),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
