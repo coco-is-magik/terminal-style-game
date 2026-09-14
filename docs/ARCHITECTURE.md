@@ -187,7 +187,12 @@ in `TODO.md`.
   selection without owning document pointers or indices.
 - `entity_trigger_session`: session-only trigger/runtime effects over borrowed scene data.
 - `frame_dispatch`: deterministic benchmark scenario mutation.
-- `map_catalog`: sorted filtered file snapshots for editor open/import/catalog workflows.
+- `platform_catalog`: direct-child native directory enumeration, strict UTF-8 name
+  conversion, and typed no-follow file/directory/link metadata; it streams borrowed
+  entries and owns no catalog snapshot.
+- `map_catalog`: owned sorted filtered file snapshots for editor open/import/catalog
+  workflows; it retains filtering, allocation, path construction, candidate cleanup,
+  and transactional live-snapshot replacement.
 - `menu_controller` / `menu_state`: pure application menu action decoding and stack state.
 - `number_parse`: dependency-free strict integer and finite-double parsing for
   project text formats; outputs remain unchanged on rejection.

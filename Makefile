@@ -229,6 +229,7 @@ SRC_LIGHTING      := src/lighting.c
 SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
 SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
+SRC_PLATFORM_CATALOG := src/platform_catalog.c
 SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c \
 	$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
@@ -239,7 +240,7 @@ SRC_EDITOR_SELECTION := src/editor_selection.c
 SRC_EDITOR_HIGHLIGHT := src/editor_highlight.c
 SRC_EDITOR_DOMAIN    := src/editor_domain.c
 SRC_UNIFIED_EDITOR := src/unified_editor.c
-SRC_MAP_CATALOG    := src/map_catalog.c
+SRC_MAP_CATALOG    := src/map_catalog.c $(SRC_PLATFORM_CATALOG)
 SRC_UI_PREFERENCES := src/ui_preferences.c $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
 SRC_UI_CANVAS      := src/ui_canvas.c
 SRC_UI_COMPOSITOR  := src/ui_compositor.c
@@ -667,8 +668,9 @@ $(TEST_CAMERA_RUNNER): tests/test_camera.c $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_V
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_camera.c $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) \
 		$(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) -o $(TEST_CAMERA_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_MAP_CATALOG_RUNNER): tests/test_map_catalog.c $(SRC_MAP_CATALOG) | dirs
+$(TEST_MAP_CATALOG_RUNNER): tests/test_map_catalog.c $(SRC_MAP_CATALOG) $(SRC_PLATFORM_PATH) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_map_catalog.c $(SRC_MAP_CATALOG) \
+		$(SRC_PLATFORM_PATH) \
 		-o $(TEST_MAP_CATALOG_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_VERTICAL_PHYSICS_RUNNER): tests/test_vertical_physics.c $(SRC_VERTICAL_PHYSICS) $(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) | dirs
@@ -700,9 +702,9 @@ $(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c \
 		-o $(TEST_APP_OPTIONS_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_PLATFORM_CAPABILITIES_RUNNER): tests/test_platform_capabilities.c $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) | dirs
+$(TEST_PLATFORM_CAPABILITIES_RUNNER): tests/test_platform_capabilities.c $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_CATALOG) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_platform_capabilities.c \
-		$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) \
+		$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_CATALOG) \
 		-o $(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_SMC_STATE_RUNNER): tests/test_smc_state_tracker.c src/smc_state_tracker.c | dirs
@@ -755,10 +757,11 @@ $(TEST_MATERIAL_DOCUMENT_RUNNER): tests/test_material_document.c $(SRC_ASSET_DOC
 		$(SRC_ASSETS) $(SRC_CHECKED_SIZE) \
 		-o $(TEST_MATERIAL_DOCUMENT_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_DECAL_DOCUMENT_RUNNER): tests/test_decal_document.c $(SRC_ASSET_DOCUMENT) $(SRC_DECAL_DOCUMENT) $(SRC_DECAL_PAINTER) $(SRC_DECAL_IO) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
+$(TEST_DECAL_DOCUMENT_RUNNER): tests/test_decal_document.c $(SRC_ASSET_DOCUMENT) $(SRC_DECAL_DOCUMENT) $(SRC_DECAL_PAINTER) $(SRC_DECAL_IO) $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_decal_document.c $(SRC_ASSET_DOCUMENT) \
 		$(SRC_DECAL_DOCUMENT) $(SRC_DECAL_PAINTER) $(SRC_DECAL_IO) $(SRC_ASSETS) \
-		$(SRC_CHECKED_SIZE) -o $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_LIBS) $(RPATH)
+		$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_CHECKED_SIZE) \
+		-o $(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_SPRITE_DOCUMENT_RUNNER): tests/test_sprite_document.c $(SRC_SPRITE_DOCUMENT) $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_sprite_document.c $(SRC_SPRITE_DOCUMENT) \

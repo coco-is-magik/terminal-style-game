@@ -54,6 +54,13 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md)
   — sprite candidate/backup/publication/restoration transaction, committed and incomplete
   outcomes, strict/sanitizer/native evidence, and decal-owner handoff.
+- [`reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md`](reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md)
+  — decal persistence platform migration, exact bytes and commit-state ownership,
+  strict/sanitizer/native evidence, current Clang blockers, recorded failures, and W3
+  catalog handoff.
+- [`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md)
+  — direct-child platform enumeration and MapCatalog migration, strict/sanitizer/native
+  evidence, failure corrections and limitations, and W4 locale handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

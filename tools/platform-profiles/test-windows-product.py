@@ -98,9 +98,12 @@ class WindowsProductTests(unittest.TestCase):
         make_commands = [command for command in self.client.commands if "make CC=gcc" in command]
         self.assertEqual(len(make_commands), 5)
         self.assertIn("build/test-platform-capabilities", make_commands[0])
+        self.assertIn("build/test-map-catalog", make_commands[0])
         self.assertIn("file format pei-x86-64", make_commands[0])
         self.assertIn("msys-2.0.dll", make_commands[0])
         self.assertIn("cygwin1.dll", make_commands[0])
+        self.assertIn("./build/test-platform-capabilities.exe", make_commands[0])
+        self.assertIn("./build/test-map-catalog.exe", make_commands[0])
         targets = ["all", "test-build", "test", "standards-core"]
         for command, target in zip(make_commands[1:], targets, strict=True):
             self.assertIn(f"make CC=gcc {target}", command)

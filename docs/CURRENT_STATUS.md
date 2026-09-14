@@ -18,10 +18,12 @@ activation path.
 
 The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
 accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
-evidence reconciliation** is Active at its documentation/evidence-only B0 increment.
+evidence reconciliation** is Active. B0/C1 evidence is captured, W1 through W2-D2 and
+W2-C6 plus W3 are complete, and W4 locale-independent numeric conversion is next.
 Its focused execution authority is
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
-Production portability changes have not begun.
+Production portability changes are underway through isolated platform capabilities and
+owner-by-owner persistence migrations.
 
 V1-0 must also reconcile any current mirror report with the planar reflected-curvature
 defect already reproduced, corrected, and guarded on 2026-09-12. Mirror source changes
@@ -58,6 +60,14 @@ is still required. With Docker restored and the pinned Ubuntu image rebuilt, req
 Clang 18 now reaches strict compilation: every first-party newline failure is gone and
 only those four pinned SMC files remain. See
 [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
+
+That statement describes the C1 checkpoint. After later W2 work arrived, a fresh local
+Clang application build found six newly added private first-party headers without final
+newlines (`flow_document_internal.h`, `flow_workspace_internal.h`,
+`sprite_document_internal.h`, `ui_document_internal.h`, `ui_menu_workspace_internal.h`,
+and `unified_editor_internal.h`) in addition to the four pinned SMC files. W2-C6's new
+private header was corrected immediately and the decal owner passes strict Clang 7/7. The
+remaining newline set stays in the independent C1/C2 remediation track.
 
 The platform harness passes, including daemon-failure classification and all Windows
 lifecycle/guest/dependency/product fixtures. A native Windows run completed without an
@@ -119,8 +129,18 @@ I/O errors; incomplete cleanup/restoration is explicit; committed durability/cle
 publish path and clean state. Editor callers commit warning saves to the registry/runtime and
 display durability warning. Platform tests pass 8/8 locally and 11/11 natively, sprite tests
 pass 7/7, unified editor passes 99/99 under strict compilers and sanitizers, and all 63 runners
-pass. Native `sprite_document.c` diagnostics are zero; blockers remain only in
-`decal_document`, `map_catalog`, and `scene_format`. W2-C6 `decal_document` is next. See
+pass. Native `sprite_document.c` diagnostics are zero. W2-C6 now routes decal sync,
+no-follow destination inspection, and replacement through `platform_fs`. Uncommitted
+failures preserve destination/document identity; committed durability warnings publish
+path, saved snapshot, and clean state; asset refresh continues after every committed
+result. Strict GCC/Clang decal tests pass 7/7, asset refresh passes 7/7, unified editor
+passes 99/99, focused sanitizers pass, and all 63 runners pass. At the W2-C6 checkpoint,
+native Windows strict compilation had no decal-owner diagnostic and stopped only in
+`map_catalog` and `scene_format`. W3 now moves direct-child enumeration and no-follow metadata into
+`platform_catalog`; `MapCatalog` retains filtering, owned snapshots, sorting, and
+transactional replacement. Local strict/sanitizer tests pass, native platform capabilities
+pass 13/13, native `MapCatalog` passes 7/7 with reparse and multilingual evidence, and the
+full native application now stops only in `scene_format`. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
@@ -140,13 +160,17 @@ See also
 [`reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md`](reviews/2026-09-14-v1-0-w2d1-managed-directory-creation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md`](reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is W2-C6 `decal_document` persistence migration. See
+portability increment is W4 locale-independent numeric conversion for `scene_format`. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

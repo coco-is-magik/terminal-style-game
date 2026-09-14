@@ -47,12 +47,17 @@ class WindowsProductSurvey:
 export MSYSTEM=UCRT64
 export PATH='{windows_to_msys(self.dependencies)}/bin:/ucrt64/bin:/usr/bin'
 cd '{source}' || exit 3
-timeout 300s make CC=gcc build/test-platform-capabilities >'{guest_log}' 2>&1 || exit $?
+timeout 300s make CC=gcc build/test-platform-capabilities build/test-map-catalog >'{guest_log}' 2>&1 || exit $?
 objdump -f build/test-platform-capabilities.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
 imports="$(objdump -p build/test-platform-capabilities.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
-printf 'native_imports=%s\n' "$imports" >>'{guest_log}'
+printf 'platform_capabilities_native_imports=%s\n' "$imports" >>'{guest_log}'
 case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
-timeout 120s ./build/test-platform-capabilities.exe >>'{guest_log}' 2>&1
+objdump -f build/test-map-catalog.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
+imports="$(objdump -p build/test-map-catalog.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
+printf 'map_catalog_native_imports=%s\n' "$imports" >>'{guest_log}'
+case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
+timeout 120s ./build/test-platform-capabilities.exe >>'{guest_log}' 2>&1 || exit $?
+timeout 120s ./build/test-map-catalog.exe >>'{guest_log}' 2>&1
 """
         code, stdout, stderr = self.client.exec(
             r"C:\msys64\usr\bin\bash.exe", ["-lc", script], 480

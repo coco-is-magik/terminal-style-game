@@ -27,6 +27,8 @@
 
 #include "../src/platform_fs.h"
 #include "../src/platform_fs_internal.h"
+#include "../src/platform_catalog.h"
+#include "../src/platform_catalog_internal.h"
 #include "../src/platform_path.h"
 #include "../src/platform_path_internal.h"
 
@@ -118,7 +120,9 @@ static int teardown(void **state) {
         "file", "link", "temp", "destination", "sync",
         "sharing-temp", "sharing-destination", "readonly-temp",
         "readonly-destination", "cross-volume-destination", "ensure-file",
-        "ensure-link", "move-source-file", "move-destination-file"
+        "ensure-link", "move-source-file", "move-destination-file",
+        "catalog-file", "catalog-\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88.txt",
+        "catalog-link"
     };
     char path[512];
     (void)state;
@@ -127,6 +131,8 @@ static int teardown(void **state) {
         (void)remove(path);
     }
     path_for(path, sizeof(path), "directory");
+    (void)test_rmdir(path);
+    path_for(path, sizeof(path), "catalog-directory");
     (void)test_rmdir(path);
     path_for(path, sizeof(path), "ensure-\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88");
 #ifdef _WIN32
@@ -495,6 +501,160 @@ static void test_invalid_arguments_preserve_outputs(void **state) {
     assert_int_equal(replacement.commit_state, PLATFORM_COMMIT_NOT_COMMITTED);
 }
 
+typedef struct {
+    char names[16][128];
+    PlatformCatalogEntryKind kinds[16];
+    size_t count;
+    bool stop_after_first;
+    bool reject;
+} CatalogCollector;
+
+static PlatformCatalogCallbackResult collect_catalog_entry(
+    const PlatformCatalogEntry *entry, void *context
+) {
+    CatalogCollector *collector = context;
+    if (collector->reject) return PLATFORM_CATALOG_CALLBACK_FAILED;
+    assert_true(collector->count < 16U);
+    assert_true(snprintf(collector->names[collector->count],
+                         sizeof(collector->names[collector->count]), "%s",
+                         entry->name) > 0);
+    collector->kinds[collector->count] = entry->kind;
+    collector->count++;
+    return collector->stop_after_first
+        ? PLATFORM_CATALOG_CALLBACK_STOP
+        : PLATFORM_CATALOG_CALLBACK_CONTINUE;
+}
+
+static bool collector_has(
+    const CatalogCollector *collector, const char *name,
+    PlatformCatalogEntryKind kind
+) {
+    for (size_t i = 0U; i < collector->count; i++)
+        if (strcmp(collector->names[i], name) == 0 &&
+            collector->kinds[i] == kind) return true;
+    return false;
+}
+
+static void test_catalog_enumeration_metadata_utf8_and_stop(void **state) {
+    static const char unicode_name[] =
+        "catalog-\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88.txt";
+    char file[512];
+    char unicode_file[512];
+    char directory[512];
+    char link[512];
+    CatalogCollector collector = {0};
+    PlatformNativeError error;
+    bool link_created = false;
+    (void)state;
+    path_for(file, sizeof(file), "catalog-file");
+    path_for(unicode_file, sizeof(unicode_file), unicode_name);
+    path_for(directory, sizeof(directory), "catalog-directory");
+    path_for(link, sizeof(link), "catalog-link");
+#ifdef _WIN32
+    write_text_native(file, "file\n");
+    write_text_native(unicode_file, "unicode\n");
+    assert_int_equal(_mkdir(directory), 0);
+    {
+        wchar_t *native_file = native_text(file);
+        wchar_t *native_link = native_text(link);
+        link_created = CreateSymbolicLinkW(
+            native_link, native_file,
+            SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) != 0;
+        free(native_link);
+        free(native_file);
+    }
+#else
+    write_text(file, "file\n");
+    write_text(unicode_file, "unicode\n");
+    assert_int_equal(mkdir(directory, 0700), 0);
+    assert_int_equal(symlink("catalog-file", link), 0);
+    link_created = true;
+#endif
+    assert_int_equal(platform_catalog_enumerate(
+                         root, collect_catalog_entry, &collector, &error),
+                     PLATFORM_CATALOG_OK);
+    assert_true(collector_has(
+        &collector, "catalog-file", PLATFORM_CATALOG_ENTRY_REGULAR_FILE));
+    assert_true(collector_has(
+        &collector, unicode_name, PLATFORM_CATALOG_ENTRY_REGULAR_FILE));
+    assert_true(collector_has(
+        &collector, "catalog-directory", PLATFORM_CATALOG_ENTRY_DIRECTORY));
+    if (link_created) {
+        assert_true(collector_has(
+            &collector, "catalog-link",
+            PLATFORM_CATALOG_ENTRY_LINK_OR_REPARSE));
+#ifdef _WIN32
+        printf("W3_CATALOG_REPARSE=PROVEN\n");
+#endif
+    } else {
+#ifdef _WIN32
+        printf("W3_CATALOG_REPARSE=UNAVAILABLE native_error=%lu\n",
+               (unsigned long)GetLastError());
+#endif
+    }
+    collector = (CatalogCollector){.stop_after_first = true};
+    assert_int_equal(platform_catalog_enumerate(
+                         root, collect_catalog_entry, &collector, &error),
+                     PLATFORM_CATALOG_OK);
+    assert_int_equal(collector.count, 1U);
+#ifdef _WIN32
+    printf("W3_CATALOG_ENUMERATION=PROVEN\n");
+    {
+        wchar_t *native_unicode = native_text(unicode_file);
+        wchar_t *native_link = native_text(link);
+        if (link_created) assert_true(DeleteFileW(native_link));
+        assert_true(DeleteFileW(native_unicode));
+        free(native_link);
+        free(native_unicode);
+    }
+#endif
+}
+
+static void test_catalog_faults_and_callback_rejection_are_typed(void **state) {
+    static const char invalid_root[] = "invalid-\xff";
+    const PlatformCatalogFault faults[] = {
+        PLATFORM_CATALOG_FAULT_OPEN,
+        PLATFORM_CATALOG_FAULT_READ,
+        PLATFORM_CATALOG_FAULT_METADATA,
+        PLATFORM_CATALOG_FAULT_NAME_CONVERSION
+    };
+    const PlatformCatalogResult results[] = {
+        PLATFORM_CATALOG_OPEN_FAILED,
+        PLATFORM_CATALOG_READ_FAILED,
+        PLATFORM_CATALOG_METADATA_FAILED,
+        PLATFORM_CATALOG_PATH_INVALID
+    };
+    char file[512];
+    PlatformNativeError error;
+    CatalogCollector collector = {0};
+    (void)state;
+    path_for(file, sizeof(file), "catalog-file");
+#ifdef _WIN32
+    write_text_native(file, "file\n");
+#else
+    write_text(file, "file\n");
+#endif
+    for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
+        collector = (CatalogCollector){0};
+        assert_int_equal(platform_catalog_internal_enumerate(
+                             root, collect_catalog_entry, &collector, &error,
+                             faults[i]),
+                         results[i]);
+    }
+    collector = (CatalogCollector){.reject = true};
+    assert_int_equal(platform_catalog_enumerate(
+                         root, collect_catalog_entry, &collector, &error),
+                     PLATFORM_CATALOG_CALLBACK_REJECTED);
+    assert_int_equal(platform_catalog_enumerate(
+                         NULL, collect_catalog_entry, &collector, &error),
+                     PLATFORM_CATALOG_INVALID_ARGUMENT);
+    assert_int_equal(platform_catalog_enumerate(root, NULL, NULL, &error),
+                     PLATFORM_CATALOG_INVALID_ARGUMENT);
+    assert_int_equal(platform_catalog_enumerate(
+                         invalid_root, collect_catalog_entry, &collector, &error),
+                     PLATFORM_CATALOG_PATH_INVALID);
+}
+
 #ifdef _WIN32
 static void test_windows_unicode_existing_replace_and_attributes(void **state) {
     static const char temporary_name[] = "temp_\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88";
@@ -688,6 +848,10 @@ int main(void) {
         cmocka_unit_test_setup_teardown(
             test_move_and_flat_directory_contracts, setup, teardown),
         cmocka_unit_test(test_invalid_arguments_preserve_outputs),
+        cmocka_unit_test_setup_teardown(
+            test_catalog_enumeration_metadata_utf8_and_stop, setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_catalog_faults_and_callback_rejection_are_typed, setup, teardown),
 #ifdef _WIN32
         cmocka_unit_test_setup_teardown(
             test_windows_unicode_existing_replace_and_attributes, setup, teardown),

@@ -5,18 +5,14 @@
  * before replacing the caller's live catalog.
  */
 
-#define _POSIX_C_SOURCE 200809L
-
 #include "map_catalog.h"
+#include "map_catalog_internal.h"
+#include "platform_catalog.h"
 
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 static char *catalog_duplicate(const char *text) {
     size_t len;
@@ -128,50 +124,72 @@ void map_catalog_clear(MapCatalog *catalog) {
     map_catalog_init(catalog);
 }
 
-MapCatalogResult map_catalog_refresh_extension(MapCatalog *catalog,
-                                               const char *root_path,
-                                               const char *extension) {
+typedef struct {
+    MapCatalog *candidate;
+    const char *root_path;
+    const char *extension;
+    MapCatalogResult result;
+} MapCatalogBuildContext;
+
+static PlatformCatalogCallbackResult catalog_collect(
+    const PlatformCatalogEntry *entry, void *context_ptr
+) {
+    MapCatalogBuildContext *context = context_ptr;
+    if (!entry || !context) return PLATFORM_CATALOG_CALLBACK_FAILED;
+    if (entry->kind != PLATFORM_CATALOG_ENTRY_REGULAR_FILE ||
+        !catalog_name_has_extension(entry->name, context->extension)) {
+        return PLATFORM_CATALOG_CALLBACK_CONTINUE;
+    }
+    context->result = catalog_append(
+        context->candidate, context->root_path, entry->name);
+    return context->result == MAP_CATALOG_OK
+        ? PLATFORM_CATALOG_CALLBACK_CONTINUE
+        : PLATFORM_CATALOG_CALLBACK_FAILED;
+}
+
+static MapCatalogResult catalog_platform_result(PlatformCatalogResult result) {
+    switch (result) {
+        case PLATFORM_CATALOG_OK: return MAP_CATALOG_OK;
+        case PLATFORM_CATALOG_INVALID_ARGUMENT:
+            return MAP_CATALOG_INVALID_ARGUMENT;
+        case PLATFORM_CATALOG_OPEN_FAILED: return MAP_CATALOG_OPEN_FAILED;
+        case PLATFORM_CATALOG_READ_FAILED: return MAP_CATALOG_READ_FAILED;
+        case PLATFORM_CATALOG_METADATA_FAILED:
+            return MAP_CATALOG_METADATA_FAILED;
+        case PLATFORM_CATALOG_PATH_INVALID:
+            return MAP_CATALOG_PATH_INVALID;
+        case PLATFORM_CATALOG_OUT_OF_MEMORY:
+            return MAP_CATALOG_OUT_OF_MEMORY;
+        case PLATFORM_CATALOG_CALLBACK_REJECTED:
+            return MAP_CATALOG_OUT_OF_MEMORY;
+    }
+    return MAP_CATALOG_READ_FAILED;
+}
+
+MapCatalogResult map_catalog_internal_refresh_extension(
+    MapCatalog *catalog, const char *root_path, const char *extension,
+    PlatformCatalogFault fault
+) {
     MapCatalog candidate;
-    DIR *directory;
-    struct dirent *entry;
-    MapCatalogResult result = MAP_CATALOG_OK;
-    int directory_fd;
+    MapCatalogBuildContext context;
+    PlatformNativeError error;
+    PlatformCatalogResult platform_result;
+    MapCatalogResult result;
 
     if (!catalog || !root_path || root_path[0] == '\0' || !extension ||
         extension[0] != '.' || extension[1] == '\0') {
         return MAP_CATALOG_INVALID_ARGUMENT;
     }
 
-    directory = opendir(root_path);
-    if (!directory) return MAP_CATALOG_OPEN_FAILED;
-    directory_fd = dirfd(directory);
-    if (directory_fd < 0) {
-        closedir(directory);
-        return MAP_CATALOG_OPEN_FAILED;
-    }
-
     map_catalog_init(&candidate);
-    errno = 0;
-    while ((entry = readdir(directory)) != NULL) {
-        struct stat metadata;
-
-        if (!catalog_name_has_extension(entry->d_name, extension)) continue;
-        if (fstatat(directory_fd, entry->d_name, &metadata,
-                    AT_SYMLINK_NOFOLLOW) != 0) {
-            result = MAP_CATALOG_METADATA_FAILED;
-            break;
-        }
-        if (!S_ISREG(metadata.st_mode)) continue;
-        result = catalog_append(&candidate, root_path, entry->d_name);
-        if (result != MAP_CATALOG_OK) break;
-        errno = 0;
-    }
-    if (result == MAP_CATALOG_OK && errno != 0) {
-        result = MAP_CATALOG_READ_FAILED;
-    }
-    if (closedir(directory) != 0 && result == MAP_CATALOG_OK) {
-        result = MAP_CATALOG_READ_FAILED;
-    }
+    context.candidate = &candidate;
+    context.root_path = root_path;
+    context.extension = extension;
+    context.result = MAP_CATALOG_OK;
+    platform_result = platform_catalog_internal_enumerate(
+        root_path, catalog_collect, &context, &error, fault);
+    result = platform_result == PLATFORM_CATALOG_CALLBACK_REJECTED
+        ? context.result : catalog_platform_result(platform_result);
     if (result != MAP_CATALOG_OK) {
         map_catalog_clear(&candidate);
         return result;
@@ -184,6 +202,13 @@ MapCatalogResult map_catalog_refresh_extension(MapCatalog *catalog,
     map_catalog_clear(catalog);
     *catalog = candidate;
     return MAP_CATALOG_OK;
+}
+
+MapCatalogResult map_catalog_refresh_extension(MapCatalog *catalog,
+                                               const char *root_path,
+                                               const char *extension) {
+    return map_catalog_internal_refresh_extension(
+        catalog, root_path, extension, PLATFORM_CATALOG_FAULT_NONE);
 }
 
 MapCatalogResult map_catalog_refresh(MapCatalog *catalog, const char *root_path) {

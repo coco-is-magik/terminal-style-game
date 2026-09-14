@@ -2,8 +2,8 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W2-D2 complete; W2-C6, pinned-SMC, performance,
-and final platform acceptance remain open.**
+**Active: B0/C1 evidence captured; W1 through W3 complete; W4,
+pinned-SMC, performance, and final platform acceptance remain open.**
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -436,6 +436,26 @@ a distinct result. Strict/sanitizer platform, sprite, and editor tests pass. Nat
 passes 11/11 and `sprite_document.c` has zero diagnostics. See
 [`reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md`](reviews/2026-09-14-v1-0-w2d2-sprite-folder-publication.md).
 
+**W2-C6 result (2026-09-14):** Decal document Save and Save As now use platform file
+sync, no-follow destination inspection, and replacement. Uncommitted failures preserve
+destination, path, saved snapshot, and dirty state; committed durability warnings publish
+path/snapshot/clean state. Asset refresh recognizes every committed decal result. Strict
+GCC/Clang owner tests pass 7/7, focused ASan/LeakSanitizer and UBSan pass, asset refresh
+passes 7/7, unified editor passes 99/99, and all 63 registered runners pass. Native Windows
+strict compilation reports no decal-owner diagnostic and now stops only in W3/W4 owners.
+See
+[`reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md`](reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md).
+
+**W3 result (2026-09-14):** `platform_catalog` now streams borrowed strict-UTF-8
+direct-child names with typed no-follow regular-file/directory/link-or-reparse/other
+metadata. `MapCatalog` retains filtering, dynamic ownership, sorting, and transactional
+snapshot replacement. Local strict GCC/Clang owner tests pass 8/8, platform tests pass
+10/10, focused ASan/LeakSanitizer and UBSan pass, and all 63 runners pass. Native Windows
+platform tests pass 13/13, native `MapCatalog` passes 7/7, real reparse and multilingual
+enumeration are proven, and strict application compilation now stops only in W4's
+`scene_format` locale calls. See
+[`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -519,11 +539,13 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to W2-C6 and migrate only `decal_document` single-file persistence, preserving exact
-bytes, ID allocation, registry/snapshot ownership, path/dirty identity, and truthful committed
-warning outcomes. In
+Proceed to W4 with fixed parse/format corpus tests, then add the POSIX/UCRT
+`platform_number` capability and migrate `scene_format` parsing and formatting in separate
+bounded steps while preserving exact grammar, canonical bytes, finite/range checks,
+negative-zero normalization, output preservation, and no process-locale mutation. If UCRT
+`%.17g` differs from the accepted corpus, stop for a focused formatter decision. In
 parallel, obtain a strict-compatible
 pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
 Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
-host. Do not combine dependency, performance, or portability increments, and do not change
+host. Do not combine dependency, performance, or W4 locale increments, and do not change
 mirror, glyph, font, UI, or sprite behavior during V1-0 remediation.

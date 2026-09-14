@@ -46,7 +46,8 @@ typedef enum {
     DECAL_DOCUMENT_OUT_OF_MEMORY,
     DECAL_DOCUMENT_STATE_ID_EXHAUSTED,
     DECAL_DOCUMENT_NO_PATH,
-    DECAL_DOCUMENT_IO_ERROR
+    DECAL_DOCUMENT_IO_ERROR,
+    DECAL_DOCUMENT_OK_DURABILITY_WARNING
 } DecalDocumentResult;
 
 void decal_document_init(DecalDocument *document);
@@ -76,6 +77,7 @@ DecalDocumentResult decal_document_undo(DecalDocument *document);
 DecalDocumentResult decal_document_redo(DecalDocument *document);
 void decal_document_discard(DecalDocument *document);
 bool decal_document_is_dirty(const DecalDocument *document);
+bool decal_document_result_is_committed(DecalDocumentResult result);
 DecalPatternAsset decal_document_preview(const DecalDocument *document);
 DecalDocumentResult decal_document_save(DecalDocument *document,
                                         const AssetRegistry *assets);

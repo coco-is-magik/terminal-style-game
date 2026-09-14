@@ -2,10 +2,12 @@
 
 #include "decal_document.h"
 
+#include "decal_document_internal.h"
+
 #include "decal_io.h"
 #include "decal_painter.h"
+#include "platform_fs.h"
 
-#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -442,6 +444,11 @@ bool decal_document_is_dirty(const DecalDocument *document) {
     return document && asset_document_state_is_dirty(&document->state);
 }
 
+bool decal_document_result_is_committed(DecalDocumentResult result) {
+    return result == DECAL_DOCUMENT_OK ||
+           result == DECAL_DOCUMENT_OK_DURABILITY_WARNING;
+}
+
 DecalPatternAsset decal_document_preview(const DecalDocument *document) {
     DecalPatternAsset preview;
     memset(&preview, 0, sizeof(preview));
@@ -453,11 +460,20 @@ DecalPatternAsset decal_document_preview(const DecalDocument *document) {
     return preview;
 }
 
-static DecalDocumentResult atomic_write(const DecalDocument *document,
-                                        const char *path) {
+static DecalDocumentResult atomic_write(
+    const DecalDocument *document, const char *path,
+    DecalDocumentSaveFault fault
+) {
     char temp_path[1200];
     Decal decal;
     int fd;
+    FILE *file;
+    PlatformFileMetadata metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformFsResult sync_result = PLATFORM_FS_OK;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     if (snprintf(temp_path, sizeof(temp_path), "%s.tmp.XXXXXX", path) >=
         (int)sizeof(temp_path)) return DECAL_DOCUMENT_IO_ERROR;
     fd = mkstemp(temp_path);
@@ -476,26 +492,50 @@ static DecalDocumentResult atomic_write(const DecalDocument *document,
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;
     }
-    fd = open(temp_path, O_RDONLY);
-    if (fd < 0) {
+    file = fopen(temp_path, "rb");
+    if (!file) {
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;
     }
-    bool sync_failed = fsync(fd) != 0;
-    if (close(fd) != 0) sync_failed = true;
-    if (sync_failed) {
+    if (fault != DECAL_DOCUMENT_SAVE_FAULT_SYNC) {
+        sync_result = platform_fs_sync_file(file, &platform_error);
+    }
+    if (fclose(file) != 0 || fault == DECAL_DOCUMENT_SAVE_FAULT_SYNC ||
+        sync_result != PLATFORM_FS_OK) {
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;
     }
-    if (rename(temp_path, path) != 0) {
+    inspect_result = platform_fs_inspect_nofollow(
+        path, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK &&
+        inspect_result != PLATFORM_FS_NOT_FOUND) {
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;
+    }
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (fault == DECAL_DOCUMENT_SAVE_FAULT_REPLACE) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+    } else {
+        replace_result = platform_fs_replace(
+            temp_path, path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        unlink(temp_path);
+        return DECAL_DOCUMENT_IO_ERROR;
+    }
+    if (fault == DECAL_DOCUMENT_SAVE_FAULT_DURABILITY ||
+        replace_result.commit_state ==
+            PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING) {
+        return DECAL_DOCUMENT_OK_DURABILITY_WARNING;
     }
     return DECAL_DOCUMENT_OK;
 }
 
-DecalDocumentResult decal_document_save(DecalDocument *document,
-                                        const AssetRegistry *assets) {
+DecalDocumentResult decal_document_internal_save(
+    DecalDocument *document, const AssetRegistry *assets,
+    DecalDocumentSaveFault fault
+) {
     DecalDocumentValue saved;
     DecalDocumentResult result;
     if (!document) return DECAL_DOCUMENT_INVALID_ARGUMENT;
@@ -506,8 +546,8 @@ DecalDocumentResult decal_document_save(DecalDocument *document,
     if (!value_copy(&saved, &document->value)) {
         return DECAL_DOCUMENT_OUT_OF_MEMORY;
     }
-    result = atomic_write(document, document->path);
-    if (result == DECAL_DOCUMENT_OK) {
+    result = atomic_write(document, document->path, fault);
+    if (decal_document_result_is_committed(result)) {
         value_clear(&document->saved_value);
         document->saved_value = saved;
         asset_document_state_mark_saved(&document->state);
@@ -517,9 +557,16 @@ DecalDocumentResult decal_document_save(DecalDocument *document,
     return result;
 }
 
-DecalDocumentResult decal_document_save_as(DecalDocument *document,
-                                           const AssetRegistry *assets,
-                                           const char *decal_directory) {
+DecalDocumentResult decal_document_save(DecalDocument *document,
+                                        const AssetRegistry *assets) {
+    return decal_document_internal_save(
+        document, assets, DECAL_DOCUMENT_SAVE_FAULT_NONE);
+}
+
+DecalDocumentResult decal_document_internal_save_as(
+    DecalDocument *document, const AssetRegistry *assets,
+    const char *decal_directory, DecalDocumentSaveFault fault
+) {
     char path[1024];
     char *owned;
     DecalDocumentValue saved;
@@ -538,8 +585,8 @@ DecalDocumentResult decal_document_save_as(DecalDocument *document,
         free(owned);
         return DECAL_DOCUMENT_OUT_OF_MEMORY;
     }
-    result = atomic_write(document, path);
-    if (result != DECAL_DOCUMENT_OK) {
+    result = atomic_write(document, path, fault);
+    if (!decal_document_result_is_committed(result)) {
         value_clear(&saved);
         free(owned);
         return result;
@@ -549,7 +596,14 @@ DecalDocumentResult decal_document_save_as(DecalDocument *document,
     value_clear(&document->saved_value);
     document->saved_value = saved;
     asset_document_state_mark_saved(&document->state);
-    return DECAL_DOCUMENT_OK;
+    return result;
+}
+
+DecalDocumentResult decal_document_save_as(DecalDocument *document,
+                                           const AssetRegistry *assets,
+                                           const char *decal_directory) {
+    return decal_document_internal_save_as(
+        document, assets, decal_directory, DECAL_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 DecalDocumentResult decal_document_commit_to_registry(

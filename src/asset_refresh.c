@@ -102,8 +102,10 @@ AssetRefreshResult asset_refresh_save_decal_as(
     if (!document || !registry || !scene || !decal_directory || !asset_root) {
         return ASSET_REFRESH_INVALID_ARGUMENT;
     }
-    if (decal_document_save_as(document, registry, decal_directory) !=
-        DECAL_DOCUMENT_OK) return ASSET_REFRESH_ASSET_SAVE_FAILED;
+    if (!decal_document_result_is_committed(
+            decal_document_save_as(document, registry, decal_directory))) {
+        return ASSET_REFRESH_ASSET_SAVE_FAILED;
+    }
     return asset_refresh_after_commit(registry, scene, asset_root, diagnostic);
 }
 
@@ -117,7 +119,8 @@ AssetRefreshResult asset_refresh_save_decal(
     if (!document || !registry || !scene || !asset_root) {
         return ASSET_REFRESH_INVALID_ARGUMENT;
     }
-    if (decal_document_save(document, registry) != DECAL_DOCUMENT_OK) {
+    if (!decal_document_result_is_committed(
+            decal_document_save(document, registry))) {
         return ASSET_REFRESH_ASSET_SAVE_FAILED;
     }
     return asset_refresh_after_commit(registry, scene, asset_root, diagnostic);

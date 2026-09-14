@@ -28,7 +28,8 @@ typedef enum {
     MAP_CATALOG_READ_FAILED,
     MAP_CATALOG_METADATA_FAILED,
     MAP_CATALOG_PATH_TOO_LONG,
-    MAP_CATALOG_OUT_OF_MEMORY
+    MAP_CATALOG_OUT_OF_MEMORY,
+    MAP_CATALOG_PATH_INVALID
 } MapCatalogResult;
 
 void map_catalog_init(MapCatalog *catalog);
