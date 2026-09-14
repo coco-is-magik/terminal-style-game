@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "../src/flow_workspace.h"
+#include "../src/flow_workspace_internal.h"
 #include "../src/ui_nested_inspector.h"
 
 static FlowDocument document_fixture(FlowNodeId *scene, FlowNodeId *menu,
@@ -202,6 +203,56 @@ static void test_invalid_and_empty_operations_are_typed(void **state) {
                      FLOW_WORKSPACE_NO_ACTION);
     assert_int_equal(flow_workspace_handle_input(&workspace,
         (FlowWorkspaceInput)99), FLOW_WORKSPACE_INVALID_ARGUMENT);
+}
+
+static void test_workspace_committed_warning_updates_owned_snapshots(void **state) {
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId start_edge;
+    FlowDocument document = document_fixture(&scene, &menu, &start_edge);
+    FlowWorkspace workspace;
+    char path[] = "/tmp/tsg_flow_workspace_warning_XXXXXX";
+    int fd = mkstemp(path);
+    (void)state;
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    assert_true(flow_workspace_result_is_committed(FLOW_WORKSPACE_OK));
+    assert_true(flow_workspace_result_is_committed(
+        FLOW_WORKSPACE_OK_DURABILITY_WARNING));
+    assert_false(flow_workspace_result_is_committed(FLOW_WORKSPACE_SAVE_FAILED));
+    assert_int_equal(flow_workspace_open_document(&workspace, &document),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_handle_input(
+                         &workspace, FLOW_WORKSPACE_INPUT_CONFIRM),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_handle_input(
+                         &workspace, FLOW_WORKSPACE_INPUT_CONFIRM),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_handle_input(
+                         &workspace, FLOW_WORKSPACE_INPUT_NEXT),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_handle_input(
+                         &workspace, FLOW_WORKSPACE_INPUT_CONFIRM),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.change_count, 1U);
+    assert_true(flow_workspace_is_dirty(&workspace));
+    assert_int_equal(flow_workspace_internal_save_as(
+                         &workspace, path,
+                         FLOW_DOCUMENT_SAVE_FAULT_DURABILITY),
+                     FLOW_WORKSPACE_OK_DURABILITY_WARNING);
+    assert_int_equal(workspace.last_document_result,
+                     FLOW_DOCUMENT_OK_DURABILITY_WARNING);
+    assert_false(flow_workspace_is_dirty(&workspace));
+    assert_string_equal(workspace.document.path, path);
+    assert_memory_equal(&workspace.saved_document, &workspace.document,
+                        sizeof(workspace.document));
+    assert_string_equal(workspace.changes[0].before.path, path);
+    assert_string_equal(workspace.changes[0].after.path, path);
+    assert_int_equal(workspace.changes[0].before.state.saved_state,
+                     workspace.document.state.saved_state);
+    assert_int_equal(workspace.changes[0].after.state.saved_state,
+                     workspace.document.state.saved_state);
+    assert_int_equal(unlink(path), 0);
 }
 
 static void test_undo_redo_save_identity_and_branch_truncation(void **state) {
@@ -416,6 +467,7 @@ int main(void) {
         cmocka_unit_test(test_close_prompt_discard_cancel_and_clean_close),
         cmocka_unit_test(test_save_load_and_failure_are_transactional),
         cmocka_unit_test(test_invalid_and_empty_operations_are_typed),
+        cmocka_unit_test(test_workspace_committed_warning_updates_owned_snapshots),
         cmocka_unit_test(test_undo_redo_save_identity_and_branch_truncation),
         cmocka_unit_test(test_dirty_close_default_save_commits_and_closes),
         cmocka_unit_test(test_catalog_connect_add_remove_and_history)

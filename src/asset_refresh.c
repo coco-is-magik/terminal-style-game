@@ -62,8 +62,13 @@ AssetRefreshResult asset_refresh_save_material_as(
     if (!document || !registry || !scene || !material_directory || !asset_root) {
         return ASSET_REFRESH_INVALID_ARGUMENT;
     }
-    if (material_document_save_as(document, material_directory) !=
-        MATERIAL_DOCUMENT_OK) return ASSET_REFRESH_ASSET_SAVE_FAILED;
+    {
+        MaterialDocumentResult result =
+            material_document_save_as(document, material_directory);
+        if (!material_document_result_is_committed(result)) {
+            return ASSET_REFRESH_ASSET_SAVE_FAILED;
+        }
+    }
     return asset_refresh_after_commit(registry, scene, asset_root, diagnostic);
 }
 
@@ -77,8 +82,11 @@ AssetRefreshResult asset_refresh_save_material(
     if (!document || !registry || !scene || !asset_root) {
         return ASSET_REFRESH_INVALID_ARGUMENT;
     }
-    if (material_document_save(document) != MATERIAL_DOCUMENT_OK) {
-        return ASSET_REFRESH_ASSET_SAVE_FAILED;
+    {
+        MaterialDocumentResult result = material_document_save(document);
+        if (!material_document_result_is_committed(result)) {
+            return ASSET_REFRESH_ASSET_SAVE_FAILED;
+        }
     }
     return asset_refresh_after_commit(registry, scene, asset_root, diagnostic);
 }

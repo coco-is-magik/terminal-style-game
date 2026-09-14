@@ -9,6 +9,37 @@
 #include <unistd.h>
 
 #include "../src/flow_document.h"
+#include "../src/flow_document_internal.h"
+
+static char *read_file(const char *path) {
+    char buffer[1024];
+    FILE *file = fopen(path, "rb");
+    size_t count;
+    char *copy;
+    assert_non_null(file);
+    count = fread(buffer, 1U, sizeof(buffer) - 1U, file);
+    assert_false(ferror(file));
+    assert_int_equal(fclose(file), 0);
+    buffer[count] = '\0';
+    copy = malloc(count + 1U);
+    assert_non_null(copy);
+    memcpy(copy, buffer, count + 1U);
+    return copy;
+}
+
+static FlowDocument save_fixture(void) {
+    FlowDocument document;
+    FlowNodeId scene;
+    FlowEdgeId edge;
+    flow_document_init(&document);
+    assert_int_equal(flow_document_add_node(
+                         &document, FLOW_NODE_SCENE, "hub", &scene),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(
+                         &document, 1U, "start", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    return document;
+}
 
 static void test_init_add_connect_and_cycle(void **state) {
     FlowDocument document;
@@ -44,6 +75,63 @@ static void test_rejects_invalid_ports_references_and_unreachable_nodes(void **s
     assert_int_equal(flow_document_connect(&document, 1U, "start", scene, &edge), FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_connect(&document, 1U, "start", scene, &edge), FLOW_DOCUMENT_DUPLICATE_SOURCE_PORT);
     assert_int_equal(flow_document_validate(&document), FLOW_DOCUMENT_OK);
+}
+
+static void test_result_commit_classification(void **state) {
+    (void)state;
+    assert_true(flow_document_result_is_committed(FLOW_DOCUMENT_OK));
+    assert_true(flow_document_result_is_committed(
+        FLOW_DOCUMENT_OK_DURABILITY_WARNING));
+    assert_false(flow_document_result_is_committed(FLOW_DOCUMENT_IO_ERROR));
+    assert_false(flow_document_result_is_committed(
+        FLOW_DOCUMENT_INVALID_ARGUMENT));
+}
+
+static void test_save_failures_and_warning_preserve_commit_boundaries(void **state) {
+    const FlowDocumentSaveFault faults[] = {
+        FLOW_DOCUMENT_SAVE_FAULT_SYNC,
+        FLOW_DOCUMENT_SAVE_FAULT_REPLACE
+    };
+    char path[] = "/tmp/tsg_flow_save_boundaries_XXXXXX";
+    int fd = mkstemp(path);
+    (void)state;
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
+        FlowDocument document = save_fixture();
+        FlowDocument before = document;
+        char *bytes;
+        FILE *file = fopen(path, "wb");
+        assert_non_null(file);
+        assert_true(fputs("old bytes\n", file) >= 0);
+        assert_int_equal(fclose(file), 0);
+        assert_int_equal(flow_document_internal_save_as(
+                             &document, path, faults[i]),
+                         FLOW_DOCUMENT_IO_ERROR);
+        assert_memory_equal(&document, &before, sizeof(document));
+        bytes = read_file(path);
+        assert_string_equal(bytes, "old bytes\n");
+        free(bytes);
+    }
+    {
+        FlowDocument document = save_fixture();
+        char *bytes;
+        assert_int_equal(flow_document_internal_save_as(
+                             &document, path,
+                             FLOW_DOCUMENT_SAVE_FAULT_DURABILITY),
+                         FLOW_DOCUMENT_OK_DURABILITY_WARNING);
+        assert_false(flow_document_is_dirty(&document));
+        assert_string_equal(document.path, path);
+        bytes = read_file(path);
+        assert_string_equal(
+            bytes,
+            "flow_version=1\nnext_node_id=3\nnext_edge_id=2\n"
+            "[node]\nid=1\ntype=start\nasset=\n"
+            "[node]\nid=2\ntype=scene\nasset=hub\n"
+            "[edge]\nid=1\nsource=1\nport=start\ntarget=2\n");
+        free(bytes);
+    }
+    assert_int_equal(unlink(path), 0);
 }
 
 static void test_save_load_round_trip_and_transactional_failure(void **state) {
@@ -205,6 +293,8 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_init_add_connect_and_cycle),
         cmocka_unit_test(test_rejects_invalid_ports_references_and_unreachable_nodes),
+        cmocka_unit_test(test_result_commit_classification),
+        cmocka_unit_test(test_save_failures_and_warning_preserve_commit_boundaries),
         cmocka_unit_test(test_save_load_round_trip_and_transactional_failure),
         cmocka_unit_test(test_validation_rejects_duplicate_ids_and_missing_nodes),
         cmocka_unit_test(test_set_edge_target_is_validated_and_transactional),

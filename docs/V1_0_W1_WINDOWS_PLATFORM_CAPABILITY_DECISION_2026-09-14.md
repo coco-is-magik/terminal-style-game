@@ -430,6 +430,36 @@ Migrate one owner per increment in this order:
 Each increment adds owner-specific pre/post-commit failure tests before migration. Do not
 change all result enums in one pass.
 
+**W2-C1 `ui_preferences` result (2026-09-14): complete.** File sync/replacement now use
+`platform_fs`; pre-commit active-not-saved behavior is preserved, and committed durability
+warning has distinct appended I/O/change outcomes. Native strict compilation reports zero
+preference-owner diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md`](reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md).
+
+**W2-C2 `material_document` result (2026-09-14): complete.** File sync/replacement now use
+`platform_fs`; a committed-result predicate protects Save/Save As and asset-refresh handling,
+and warning commits update path/snapshot/clean state. Native strict compilation reports zero
+material-owner diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c2-material-document-migration.md`](reviews/2026-09-14-v1-0-w2c2-material-document-migration.md).
+
+**W2-C3 `object_document` result (2026-09-14): complete.** Atomic creation now uses
+`platform_fs`; uncommitted failure leaves output ID zero, warning commit publishes the ID,
+and registry/generation remain untouched. Native strict compilation reports zero object-owner
+diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c3-object-document-migration.md`](reviews/2026-09-14-v1-0-w2c3-object-document-migration.md).
+
+**W2-C4 `flow_document` result (2026-09-14): complete.** Flow save now uses `platform_fs`;
+uncommitted failure preserves destination/document identity, and warning commits update path,
+clean state, workspace snapshots, close behavior, and truthful editor feedback. Native strict
+compilation reports zero flow-owner diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md`](reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md).
+
+**W2-C5 `ui_document` result (2026-09-14): complete.** Authored UI save now uses
+`platform_fs`; uncommitted failure preserves destination/document/workspace identity, and
+warning commits update heap-owned history, close behavior, and truthful editor feedback.
+Native strict compilation reports zero authored UI-document diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md).
+
 ### W2-D — Managed directories and sprite-folder transaction
 
 - Migrate `ui_menu_workspace` and `unified_editor` to safe one-level directory creation.
@@ -508,9 +538,10 @@ W1 is complete because:
 
 ## Next safe action
 
-Proceed to **W2-C1 `ui_preferences` persistence migration** as one owner-only increment.
-Preserve active-not-saved behavior and pre/post-commit state. W2-B2 evidence is in
-[`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
+Proceed to **W2-C4 `flow_document` persistence migration** as one owner-only increment.
+Preserve graph validation, exact bytes, path identity, saved/dirty state, and transactional
+load; handle warning commit truthfully in flow workspace. W2-C3 evidence is in
+[`reviews/2026-09-14-v1-0-w2c3-object-document-migration.md`](reviews/2026-09-14-v1-0-w2c3-object-document-migration.md).
 
 In parallel, the pinned-SMC C2 dependency update and P1 performance reproduction remain
 independent. Do not externally timeout platform profiles.

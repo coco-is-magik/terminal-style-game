@@ -9,6 +9,23 @@
 #include <unistd.h>
 
 #include "../src/ui_document.h"
+#include "../src/ui_document_internal.h"
+
+static char *read_file_bytes(const char *path) {
+    char buffer[8192];
+    FILE *file = fopen(path, "rb");
+    size_t count;
+    char *copy;
+    assert_non_null(file);
+    count = fread(buffer, 1U, sizeof(buffer) - 1U, file);
+    assert_false(ferror(file));
+    assert_int_equal(fclose(file), 0);
+    buffer[count] = '\0';
+    copy = malloc(count + 1U);
+    assert_non_null(copy);
+    memcpy(copy, buffer, count + 1U);
+    return copy;
+}
 
 static void build_menu(UiDocument *document, UiElementId *panel,
                        UiElementId *button) {
@@ -171,6 +188,70 @@ static void test_round_trip_save_and_transactional_load_failure(void **state) {
     assert_int_equal(ui_document_load(&loaded, path), UI_DOCUMENT_PARSE_ERROR);
     assert_memory_equal(&loaded, &before, sizeof(loaded));
     assert_int_equal(unlink(path), 0);
+}
+
+static void test_save_commit_boundaries_preserve_bytes_and_identity(void **state) {
+    const UiDocumentSaveFault failures[] = {
+        UI_DOCUMENT_SAVE_FAULT_SYNC,
+        UI_DOCUMENT_SAVE_FAULT_REPLACE
+    };
+    UiDocument baseline;
+    UiElementId panel;
+    UiElementId button;
+    char baseline_path[] = "/tmp/tsg_ui_document_baseline_XXXXXX";
+    char destination[] = "/tmp/tsg_ui_document_boundary_XXXXXX";
+    int baseline_fd = mkstemp(baseline_path);
+    int destination_fd = mkstemp(destination);
+    char *expected;
+    (void)state;
+    assert_true(baseline_fd >= 0);
+    assert_true(destination_fd >= 0);
+    assert_int_equal(close(baseline_fd), 0);
+    assert_int_equal(close(destination_fd), 0);
+    build_menu(&baseline, &panel, &button);
+    assert_int_equal(ui_document_save_as(&baseline, baseline_path), UI_DOCUMENT_OK);
+    expected = read_file_bytes(baseline_path);
+    assert_true(strncmp(expected, "ui_version=3\n", strlen("ui_version=3\n")) == 0);
+    assert_true(expected[strlen(expected) - 1U] == '\n');
+    for (size_t i = 0U; i < sizeof(failures) / sizeof(failures[0]); i++) {
+        UiDocument document;
+        UiDocument before;
+        FILE *file = fopen(destination, "wb");
+        char *actual;
+        assert_non_null(file);
+        assert_true(fputs("old ui bytes\n", file) >= 0);
+        assert_int_equal(fclose(file), 0);
+        build_menu(&document, &panel, &button);
+        before = document;
+        assert_int_equal(ui_document_internal_save_as(
+                             &document, destination, failures[i]),
+                         UI_DOCUMENT_IO_ERROR);
+        assert_memory_equal(&document, &before, sizeof(document));
+        actual = read_file_bytes(destination);
+        assert_string_equal(actual, "old ui bytes\n");
+        free(actual);
+    }
+    {
+        UiDocument document;
+        char *actual;
+        build_menu(&document, &panel, &button);
+        assert_int_equal(ui_document_internal_save_as(
+                             &document, destination,
+                             UI_DOCUMENT_SAVE_FAULT_DURABILITY),
+                         UI_DOCUMENT_OK_DURABILITY_WARNING);
+        assert_true(ui_document_result_is_committed(UI_DOCUMENT_OK));
+        assert_true(ui_document_result_is_committed(
+            UI_DOCUMENT_OK_DURABILITY_WARNING));
+        assert_false(ui_document_result_is_committed(UI_DOCUMENT_IO_ERROR));
+        assert_false(ui_document_is_dirty(&document));
+        assert_string_equal(document.path, destination);
+        actual = read_file_bytes(destination);
+        assert_string_equal(actual, expected);
+        free(actual);
+    }
+    free(expected);
+    assert_int_equal(unlink(destination), 0);
+    assert_int_equal(unlink(baseline_path), 0);
 }
 
 static void test_v1_migrates_to_explicit_layout_defaults(void **state) {
@@ -398,6 +479,7 @@ int main(void) {
         cmocka_unit_test(test_button_port_capacity_is_transactional),
         cmocka_unit_test(test_validation_rejects_cycles_and_bad_roots),
         cmocka_unit_test(test_round_trip_save_and_transactional_load_failure)
+        ,cmocka_unit_test(test_save_commit_boundaries_preserve_bytes_and_identity)
         ,cmocka_unit_test(test_v1_migrates_to_explicit_layout_defaults)
         ,cmocka_unit_test(test_layout_mutations_reject_invalid_document_without_change)
         ,cmocka_unit_test(test_v1_rejects_v2_fields_on_earlier_element)

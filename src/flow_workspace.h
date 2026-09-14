@@ -41,7 +41,8 @@ typedef enum {
     FLOW_WORKSPACE_NO_ACTION,
     FLOW_WORKSPACE_SAVE_FAILED,
     FLOW_WORKSPACE_MUTATION_FAILED,
-    FLOW_WORKSPACE_CATALOG_FAILED
+    FLOW_WORKSPACE_CATALOG_FAILED,
+    FLOW_WORKSPACE_OK_DURABILITY_WARNING
 } FlowWorkspaceResult;
 
 typedef struct {
@@ -85,6 +86,7 @@ FlowWorkspaceResult flow_workspace_handle_input(FlowWorkspace *workspace,
 FlowWorkspaceResult flow_workspace_undo(FlowWorkspace *workspace);
 FlowWorkspaceResult flow_workspace_redo(FlowWorkspace *workspace);
 bool flow_workspace_is_dirty(const FlowWorkspace *workspace);
+bool flow_workspace_result_is_committed(FlowWorkspaceResult result);
 size_t flow_workspace_outgoing_count(const FlowWorkspace *workspace);
 size_t flow_workspace_connection_count(const FlowWorkspace *workspace);
 size_t flow_workspace_target_count(const FlowWorkspace *workspace);

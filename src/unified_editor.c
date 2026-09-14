@@ -5411,6 +5411,9 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
         grid_print(grid, 1, row++, "Menu name is invalid or already exists", warn, bg);
     else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_SAVE_FAILED)
         grid_print(grid, 1, row++, "Menu save failed", warn, bg);
+    else if (editor->last_ui_menu_result ==
+             UI_MENU_WORKSPACE_OK_DURABILITY_WARNING)
+        grid_print(grid, 1, row++, "Menu saved; durability warning", warn, bg);
     else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_MUTATION_FAILED ||
              editor->last_ui_menu_result == UI_MENU_WORKSPACE_HISTORY_FULL)
         grid_print(grid, 1, row++, "Menu change rejected", warn, bg);
@@ -5727,6 +5730,11 @@ void unified_editor_render_text_overlay(
             if (editor->last_flow_result == FLOW_WORKSPACE_SAVE_FAILED)
                 grid_print(grid, 1, row++,
                            "Flow save failed: use a valid existing path or Save As",
+                           warn, bg);
+            else if (editor->last_flow_result ==
+                     FLOW_WORKSPACE_OK_DURABILITY_WARNING)
+                grid_print(grid, 1, row++,
+                           "Flow saved; durability warning",
                            warn, bg);
             else if (editor->last_flow_result == FLOW_WORKSPACE_INVALID_DOCUMENT)
                 grid_print(grid, 1, row++,

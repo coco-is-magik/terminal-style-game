@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "ui_menu_workspace.h"
+#include "ui_menu_workspace_internal.h"
 #include "ui_layout_resolver.h"
 #include "ui_nested_inspector.h"
 
@@ -262,6 +263,11 @@ UiMenuWorkspaceResult ui_menu_workspace_open(UiMenuWorkspace *workspace,
 bool ui_menu_workspace_is_dirty(const UiMenuWorkspace *workspace) {
     return workspace && workspace->active && workspace->has_document &&
            ui_document_is_dirty(&workspace->document);
+}
+
+bool ui_menu_workspace_result_is_committed(UiMenuWorkspaceResult result) {
+    return result == UI_MENU_WORKSPACE_OK ||
+           result == UI_MENU_WORKSPACE_OK_DURABILITY_WARNING;
 }
 
 const UiDocumentElement *ui_menu_workspace_selected_element(
@@ -823,14 +829,18 @@ static UiMenuWorkspaceResult remove_selected(UiMenuWorkspace *workspace) {
     return result;
 }
 
-UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace) {
+UiMenuWorkspaceResult ui_menu_workspace_internal_save(
+    UiMenuWorkspace *workspace, UiDocumentSaveFault fault
+) {
     UiDocument candidate;
+    UiDocumentResult result;
     size_t i;
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
     if (!workspace->has_document) return UI_MENU_WORKSPACE_NO_ACTION;
     candidate = workspace->document;
-    if (ui_document_save(&candidate) != UI_DOCUMENT_OK)
+    result = ui_document_internal_save(&candidate, fault);
+    if (!ui_document_result_is_committed(result))
         return UI_MENU_WORKSPACE_SAVE_FAILED;
     workspace->document = candidate;
     workspace->saved_document = candidate;
@@ -842,10 +852,18 @@ UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace) {
         memcpy(workspace->changes[i].after->path, candidate.path,
                strlen(candidate.path) + 1U);
     }
-    return UI_MENU_WORKSPACE_OK;
+    return result == UI_DOCUMENT_OK_DURABILITY_WARNING
+        ? UI_MENU_WORKSPACE_OK_DURABILITY_WARNING : UI_MENU_WORKSPACE_OK;
 }
 
-UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
+UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace) {
+    return ui_menu_workspace_internal_save(
+        workspace, UI_DOCUMENT_SAVE_FAULT_NONE);
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_internal_confirm(
+    UiMenuWorkspace *workspace, UiDocumentSaveFault fault
+) {
     const UiDocumentElement *element;
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
@@ -919,8 +937,10 @@ UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
     }
     if (workspace->mode == UI_MENU_WORKSPACE_CLOSE_PROMPT) {
         if (workspace->close_choice == UI_MENU_CLOSE_SAVE) {
-            UiMenuWorkspaceResult result = ui_menu_workspace_save(workspace);
-            if (result == UI_MENU_WORKSPACE_OK) {
+            UiMenuWorkspaceResult result = ui_menu_workspace_internal_save(
+                workspace, fault);
+            if (ui_menu_workspace_result_is_committed(result)) {
+                UiMenuWorkspaceResult save_result = result;
                 result = refresh_catalog(workspace);
                 if (result != UI_MENU_WORKSPACE_OK) {
                     workspace->mode = UI_MENU_WORKSPACE_HIERARCHY;
@@ -928,6 +948,7 @@ UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
                 }
                 workspace->has_document = false;
                 workspace->mode = UI_MENU_WORKSPACE_CHOOSER;
+                result = save_result;
             }
             return result;
         }
@@ -940,6 +961,11 @@ UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
         return UI_MENU_WORKSPACE_OK;
     }
     return UI_MENU_WORKSPACE_NO_ACTION;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
+    return ui_menu_workspace_internal_confirm(
+        workspace, UI_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 UiMenuWorkspaceResult ui_menu_workspace_escape(UiMenuWorkspace *workspace) {

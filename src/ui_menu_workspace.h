@@ -110,7 +110,8 @@ typedef enum {
     UI_MENU_WORKSPACE_INVALID_NAME,
     UI_MENU_WORKSPACE_SAVE_FAILED,
     UI_MENU_WORKSPACE_MUTATION_FAILED,
-    UI_MENU_WORKSPACE_HISTORY_FULL
+    UI_MENU_WORKSPACE_HISTORY_FULL,
+    UI_MENU_WORKSPACE_OK_DURABILITY_WARNING
 } UiMenuWorkspaceResult;
 
 typedef struct {
@@ -188,6 +189,7 @@ UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_undo(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace);
 bool ui_menu_workspace_is_dirty(const UiMenuWorkspace *workspace);
+bool ui_menu_workspace_result_is_committed(UiMenuWorkspaceResult result);
 bool ui_menu_workspace_build_hierarchy(
     const UiMenuWorkspace *workspace,
     size_t out_document_indices[UI_DOCUMENT_MAX_ELEMENTS],

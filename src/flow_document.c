@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "flow_document.h"
+#include "flow_document_internal.h"
+#include "platform_fs.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -78,6 +80,11 @@ void flow_document_init(FlowDocument *document) {
 
 bool flow_document_is_dirty(const FlowDocument *document) {
     return document && asset_document_state_is_dirty(&document->state);
+}
+
+bool flow_document_result_is_committed(FlowDocumentResult result) {
+    return result == FLOW_DOCUMENT_OK ||
+           result == FLOW_DOCUMENT_OK_DURABILITY_WARNING;
 }
 
 const FlowNode *flow_document_find_node(const FlowDocument *document,
@@ -340,11 +347,18 @@ static bool write_document(FILE *file, const FlowDocument *document) {
     return true;
 }
 
-FlowDocumentResult flow_document_save_as(FlowDocument *document,
-                                         const char *path) {
+FlowDocumentResult flow_document_internal_save_as(
+    FlowDocument *document, const char *path, FlowDocumentSaveFault fault
+) {
     char temporary[FLOW_PATH_CAPACITY + 32U];
     FILE *file;
     int fd;
+    PlatformFileMetadata metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformFsResult sync_result = PLATFORM_FS_OK;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     bool failed = false;
     FlowDocumentResult validation;
     if (!document || !path || path[0] == '\0' || strlen(path) >= FLOW_PATH_CAPACITY)
@@ -363,16 +377,45 @@ FlowDocumentResult flow_document_save_as(FlowDocument *document,
     }
     if (!write_document(file, document)) failed = true;
     if (!failed && fflush(file) != 0) failed = true;
-    if (!failed && fsync(fd) != 0) failed = true;
+    if (!failed && fault != FLOW_DOCUMENT_SAVE_FAULT_SYNC) {
+        sync_result = platform_fs_sync_file(file, &platform_error);
+    }
+    if (!failed && (fault == FLOW_DOCUMENT_SAVE_FAULT_SYNC ||
+                    sync_result != PLATFORM_FS_OK)) failed = true;
     if (fclose(file) != 0) failed = true;
-    if (!failed && rename(temporary, path) != 0) failed = true;
     if (failed) {
+        (void)unlink(temporary);
+        return FLOW_DOCUMENT_IO_ERROR;
+    }
+    inspect_result = platform_fs_inspect_nofollow(path, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
+        (void)unlink(temporary);
+        return FLOW_DOCUMENT_IO_ERROR;
+    }
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (fault == FLOW_DOCUMENT_SAVE_FAULT_REPLACE) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+    } else {
+        replace_result = platform_fs_replace(temporary, path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
         (void)unlink(temporary);
         return FLOW_DOCUMENT_IO_ERROR;
     }
     (void)copy_string(document->path, sizeof(document->path), path);
     asset_document_state_mark_saved(&document->state);
+    if (fault == FLOW_DOCUMENT_SAVE_FAULT_DURABILITY ||
+        replace_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING) {
+        return FLOW_DOCUMENT_OK_DURABILITY_WARNING;
+    }
     return FLOW_DOCUMENT_OK;
+}
+
+FlowDocumentResult flow_document_save_as(FlowDocument *document,
+                                         const char *path) {
+    return flow_document_internal_save_as(
+        document, path, FLOW_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 FlowDocumentResult flow_document_save(FlowDocument *document) {

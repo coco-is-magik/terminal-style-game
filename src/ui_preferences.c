@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "ui_preferences.h"
+#include "ui_preferences_internal.h"
+#include "platform_fs.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -132,10 +134,17 @@ int ui_preferences_default_scale(const UiPreferences *preferences) {
     return preferences ? preferences->default_scale_percent : UI_PREFERENCES_EMERGENCY_SCALE;
 }
 
-UiPreferencesIoResult ui_preferences_save(const UiPreferences *preferences) {
+UiPreferencesIoResult ui_preferences_internal_save(
+    const UiPreferences *preferences, UiPreferencesSaveFault fault
+) {
     char temporary_path[UI_PREFERENCES_PATH_MAX + 48];
     FILE *file;
-    int fd;
+    PlatformNativeError platform_error;
+    PlatformFileMetadata metadata;
+    PlatformFsResult inspect_result;
+    PlatformFsResult sync_result = PLATFORM_FS_OK;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     bool failed = false;
     if (!preferences || preferences->user_path[0] == '\0' ||
         !ui_preferences_is_valid_scale(preferences->active_scale_percent)) {
@@ -150,30 +159,68 @@ UiPreferencesIoResult ui_preferences_save(const UiPreferences *preferences) {
     if (fprintf(file, "version = %d\nui_scale_percent = %d\n",
                 UI_PREFERENCES_VERSION, preferences->active_scale_percent) < 0) failed = true;
     if (!failed && fflush(file) != 0) failed = true;
-    fd = fileno(file);
-    if (!failed && (fd < 0 || fsync(fd) != 0)) failed = true;
+    if (!failed && fault != UI_PREFERENCES_SAVE_FAULT_SYNC) {
+        sync_result = platform_fs_sync_file(file, &platform_error);
+    }
+    if (!failed && (fault == UI_PREFERENCES_SAVE_FAULT_SYNC ||
+                    sync_result != PLATFORM_FS_OK)) failed = true;
     if (fclose(file) != 0) failed = true;
     if (failed) {
         remove(temporary_path);
         return UI_PREFERENCES_IO_FAILED;
     }
-    if (rename(temporary_path, preferences->user_path) != 0) {
+    inspect_result = platform_fs_inspect_nofollow(
+        preferences->user_path, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
         remove(temporary_path);
         return UI_PREFERENCES_IO_FAILED;
+    }
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (fault == UI_PREFERENCES_SAVE_FAULT_REPLACE) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+    } else {
+        replace_result = platform_fs_replace(
+            temporary_path, preferences->user_path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        remove(temporary_path);
+        return UI_PREFERENCES_IO_FAILED;
+    }
+    if (fault == UI_PREFERENCES_SAVE_FAULT_DURABILITY ||
+        replace_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING) {
+        return UI_PREFERENCES_IO_OK_DURABILITY_WARNING;
     }
     return UI_PREFERENCES_IO_OK;
 }
 
-static UiPreferencesChangeResult activate_and_save(UiPreferences *preferences,
-                                                    int scale_percent) {
+UiPreferencesIoResult ui_preferences_save(const UiPreferences *preferences) {
+    return ui_preferences_internal_save(preferences,
+                                        UI_PREFERENCES_SAVE_FAULT_NONE);
+}
+
+UiPreferencesChangeResult ui_preferences_internal_activate_and_save(
+    UiPreferences *preferences, int scale_percent, UiPreferencesSaveFault fault
+) {
     if (!preferences || preferences->active_scale_percent == scale_percent) {
         return UI_PREFERENCES_CHANGE_UNCHANGED;
     }
     preferences->active_scale_percent = scale_percent;
-    preferences->last_save_result = ui_preferences_save(preferences);
-    return preferences->last_save_result == UI_PREFERENCES_IO_OK
-        ? UI_PREFERENCES_CHANGE_SAVED
-        : UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED;
+    preferences->last_save_result = ui_preferences_internal_save(preferences, fault);
+    if (preferences->last_save_result == UI_PREFERENCES_IO_OK) {
+        return UI_PREFERENCES_CHANGE_SAVED;
+    }
+    if (preferences->last_save_result ==
+        UI_PREFERENCES_IO_OK_DURABILITY_WARNING) {
+        return UI_PREFERENCES_CHANGE_SAVED_DURABILITY_WARNING;
+    }
+    return UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED;
+}
+
+static UiPreferencesChangeResult activate_and_save(UiPreferences *preferences,
+                                                    int scale_percent) {
+    return ui_preferences_internal_activate_and_save(
+        preferences, scale_percent, UI_PREFERENCES_SAVE_FAULT_NONE);
 }
 
 UiPreferencesChangeResult ui_preferences_increase(UiPreferences *preferences) {

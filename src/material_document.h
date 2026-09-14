@@ -46,7 +46,8 @@ typedef enum {
     MATERIAL_DOCUMENT_OUT_OF_MEMORY,
     MATERIAL_DOCUMENT_STATE_ID_EXHAUSTED,
     MATERIAL_DOCUMENT_NO_PATH,
-    MATERIAL_DOCUMENT_IO_ERROR
+    MATERIAL_DOCUMENT_IO_ERROR,
+    MATERIAL_DOCUMENT_OK_DURABILITY_WARNING
 } MaterialDocumentResult;
 
 void material_document_init(MaterialDocument *document);
@@ -80,6 +81,7 @@ MaterialDocumentResult material_document_undo(MaterialDocument *document);
 MaterialDocumentResult material_document_redo(MaterialDocument *document);
 void material_document_discard(MaterialDocument *document);
 bool material_document_is_dirty(const MaterialDocument *document);
+bool material_document_result_is_committed(MaterialDocumentResult result);
 Material material_document_preview(const MaterialDocument *document);
 MaterialDocumentResult material_document_save(MaterialDocument *document);
 MaterialDocumentResult material_document_save_as(MaterialDocument *document,

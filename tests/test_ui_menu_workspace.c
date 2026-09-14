@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "../src/ui_menu_workspace.h"
+#include "../src/ui_menu_workspace_internal.h"
 
 static void make_paths(char root[64], char menus[96]) {
     memcpy(root, "/tmp/tsg_ui_workspace_XXXXXX",
@@ -729,6 +730,62 @@ static void test_created_hierarchy_exposes_valid_reparent_destination(void **sta
     assert_int_equal(rmdir(root), 0);
 }
 
+static void test_committed_warning_updates_heap_history_identity(void **state) {
+    UiMenuWorkspace workspace;
+    char root[64], menus[96], path[128];
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    ui_menu_workspace_init(&workspace);
+    assert_true(ui_menu_workspace_result_is_committed(UI_MENU_WORKSPACE_OK));
+    assert_true(ui_menu_workspace_result_is_committed(
+        UI_MENU_WORKSPACE_OK_DURABILITY_WARNING));
+    assert_false(ui_menu_workspace_result_is_committed(
+        UI_MENU_WORKSPACE_SAVE_FAILED));
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_next(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust(&workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.change_count, 1U);
+    assert_true(ui_menu_workspace_is_dirty(&workspace));
+    {
+        UiMenuWorkspace before = workspace;
+        assert_int_equal(ui_menu_workspace_internal_save(
+                             &workspace, UI_DOCUMENT_SAVE_FAULT_SYNC),
+                         UI_MENU_WORKSPACE_SAVE_FAILED);
+        assert_memory_equal(&workspace, &before, sizeof(workspace));
+    }
+    assert_int_equal(ui_menu_workspace_internal_save(
+                         &workspace, UI_DOCUMENT_SAVE_FAULT_DURABILITY),
+                     UI_MENU_WORKSPACE_OK_DURABILITY_WARNING);
+    assert_false(ui_menu_workspace_is_dirty(&workspace));
+    assert_memory_equal(&workspace.saved_document, &workspace.document,
+                        sizeof(workspace.document));
+    assert_string_equal(workspace.changes[0].before->path, path);
+    assert_string_equal(workspace.changes[0].after->path, path);
+    assert_int_equal(workspace.changes[0].before->state.saved_state,
+                     workspace.document.state.saved_state);
+    assert_int_equal(workspace.changes[0].after->state.saved_state,
+                     workspace.document.state.saved_state);
+    assert_int_equal(ui_menu_workspace_adjust(&workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_true(ui_menu_workspace_is_dirty(&workspace));
+    assert_int_equal(ui_menu_workspace_escape(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, UI_MENU_WORKSPACE_HIERARCHY);
+    assert_int_equal(ui_menu_workspace_escape(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, UI_MENU_WORKSPACE_CLOSE_PROMPT);
+    assert_int_equal(ui_menu_workspace_internal_confirm(
+                         &workspace, UI_DOCUMENT_SAVE_FAULT_DURABILITY),
+                     UI_MENU_WORKSPACE_OK_DURABILITY_WARNING);
+    assert_false(workspace.has_document);
+    assert_int_equal(workspace.mode, UI_MENU_WORKSPACE_CHOOSER);
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
@@ -743,6 +800,7 @@ int main(void) {
         ,cmocka_unit_test(test_i17_preview_settings_are_session_only)
         ,cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits)
         ,cmocka_unit_test(test_created_hierarchy_exposes_valid_reparent_destination)
+        ,cmocka_unit_test(test_committed_warning_updates_heap_history_identity)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

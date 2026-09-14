@@ -116,7 +116,9 @@ static void ui_scale_feedback_set(UiScaleFeedback *feedback,
                                   const UiPreferences *preferences,
                                   UiPreferencesChangeResult result) {
     const char *suffix = result == UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED
-        ? " active; preference not saved" : "";
+        ? " active; preference not saved"
+        : result == UI_PREFERENCES_CHANGE_SAVED_DURABILITY_WARNING
+            ? " saved; durability warning" : "";
     if (!feedback || !preferences) return;
     snprintf(feedback->text, sizeof(feedback->text), "UI Scale: %d%%%s",
              ui_preferences_scale(preferences), suffix);

@@ -82,20 +82,53 @@ scene's same-directory transaction. W2-B2 now routes native scene metadata, file
 replacement, and commit state through the adapter. Scene owner tests pass 48/48 under strict
 GCC/Clang, ASan/LeakSanitizer, and UBSan; all accepted recovery/identity/dirty-state contracts
 remain intact. Native strict compilation reports zero `scene_document.c` diagnostics, while
-end-to-end native owner execution awaits W4 locale remediation. W2-C1 `ui_preferences` is
-next. See
+end-to-end native owner execution awaits W4 locale remediation. W2-C1 now routes UI
+preference sync/replacement through the adapter. Pre-commit failures remain active-not-saved
+and preserve destination bytes; committed durability warning is a distinct saved result with
+accurate feedback. Focused strict/sanitizer tests pass 6/6 and native strict compilation has
+zero `ui_preferences.c` diagnostics. W2-C2 now routes material sync/replacement through the
+adapter. Pre-commit failure preserves destination/snapshot/path/dirty state; warning commit
+updates path/snapshot/clean state, and asset refresh accepts both committed outcomes. Focused
+strict/sanitizer tests pass 8/8, asset refresh passes 7/7, and native strict compilation has
+zero `material_document.c` diagnostics. W2-C3 now routes object atomic creation through the
+adapter. Uncommitted failure keeps `out_id` zero and preserves destination bytes; warning
+commit publishes the lowest-free ID, while registry/generation remain untouched. Focused
+strict/sanitizer tests pass 4/4 and native strict compilation has zero
+`object_document.c` diagnostics. W2-C4 now routes flow-document sync, destination inspection,
+and replacement through the adapter. Pre-commit failures preserve destination bytes and the
+complete document; warning commits update path and clean-state identity. Flow workspace and
+editor handling preserve committed state while reporting the warning truthfully. Strict
+GCC/Clang flow-document tests pass 9/9, flow-workspace tests pass 10/10, sanitizer checks pass,
+all 63 runners pass, and native strict compilation has zero `flow_document.c` diagnostics.
+W2-C5 now routes authored UI-document sync, destination inspection, and replacement through
+the adapter. Pre-commit failures preserve destination/document/workspace/history identity;
+warning commits update clean-state identity, remain warning results through Save-and-close,
+and receive truthful editor feedback. Strict GCC/Clang UI-document tests pass 14/14,
+UI-menu-workspace tests pass 13/13, sanitizer checks pass, all 63 runners pass, and native
+strict compilation has zero `ui_document.c` diagnostics. W2-D1 managed one-level directory
+creation for `ui_menu_workspace` and `unified_editor` is next. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md`](reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c2-material-document-migration.md`](reviews/2026-09-14-v1-0-w2c2-material-document-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c3-object-document-migration.md`](reviews/2026-09-14-v1-0-w2c3-object-document-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md`](reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md).
+See also
+[`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is now W2-C1 `ui_preferences` persistence migration. See
+portability increment is now W2-C4 `flow_document` persistence migration. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

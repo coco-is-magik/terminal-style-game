@@ -127,11 +127,13 @@ typedef enum {
     UI_DOCUMENT_PARSE_ERROR,
     UI_DOCUMENT_UNSUPPORTED_VERSION,
     UI_DOCUMENT_NO_PATH,
-    UI_DOCUMENT_IO_ERROR
+    UI_DOCUMENT_IO_ERROR,
+    UI_DOCUMENT_OK_DURABILITY_WARNING
 } UiDocumentResult;
 
 void ui_document_init(UiDocument *document);
 bool ui_document_is_dirty(const UiDocument *document);
+bool ui_document_result_is_committed(UiDocumentResult result);
 const UiDocumentElement *ui_document_find_element(const UiDocument *document,
                                                   UiElementId id);
 UiDocumentResult ui_document_create_menu(UiDocument *document, const char *name);

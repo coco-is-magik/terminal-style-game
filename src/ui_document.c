@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "ui_document.h"
+#include "ui_document_internal.h"
+#include "platform_fs.h"
 #include "rgba_parse.h"
 
 #include <ctype.h>
@@ -248,6 +250,11 @@ void ui_document_init(UiDocument *document) {
 
 bool ui_document_is_dirty(const UiDocument *document) {
     return document && asset_document_state_is_dirty(&document->state);
+}
+
+bool ui_document_result_is_committed(UiDocumentResult result) {
+    return result == UI_DOCUMENT_OK ||
+           result == UI_DOCUMENT_OK_DURABILITY_WARNING;
 }
 
 const UiDocumentElement *ui_document_find_element(const UiDocument *document,
@@ -774,10 +781,18 @@ static bool write_document(FILE *file, const UiDocument *document) {
     return true;
 }
 
-UiDocumentResult ui_document_save_as(UiDocument *document, const char *path) {
+UiDocumentResult ui_document_internal_save_as(
+    UiDocument *document, const char *path, UiDocumentSaveFault fault
+) {
     char temporary[UI_DOCUMENT_PATH_CAPACITY + 32U];
     int fd;
     FILE *file;
+    PlatformFileMetadata metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformFsResult sync_result = PLATFORM_FS_OK;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     bool failed = false;
     UiDocumentResult validation;
     if (!document || !path || path[0] == '\0' ||
@@ -795,22 +810,54 @@ UiDocumentResult ui_document_save_as(UiDocument *document, const char *path) {
     }
     if (!write_document(file, document)) failed = true;
     if (!failed && fflush(file) != 0) failed = true;
-    if (!failed && fsync(fd) != 0) failed = true;
+    if (!failed && fault != UI_DOCUMENT_SAVE_FAULT_SYNC)
+        sync_result = platform_fs_sync_file(file, &platform_error);
+    if (!failed && (fault == UI_DOCUMENT_SAVE_FAULT_SYNC ||
+                    sync_result != PLATFORM_FS_OK)) failed = true;
     if (fclose(file) != 0) failed = true;
-    if (!failed && rename(temporary, path) != 0) failed = true;
     if (failed) {
+        (void)unlink(temporary);
+        return UI_DOCUMENT_IO_ERROR;
+    }
+    inspect_result = platform_fs_inspect_nofollow(path, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
+        (void)unlink(temporary);
+        return UI_DOCUMENT_IO_ERROR;
+    }
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (fault == UI_DOCUMENT_SAVE_FAULT_REPLACE) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+    } else {
+        replace_result = platform_fs_replace(temporary, path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
         (void)unlink(temporary);
         return UI_DOCUMENT_IO_ERROR;
     }
     (void)copy_string(document->path, sizeof(document->path), path);
     asset_document_state_mark_saved(&document->state);
+    if (fault == UI_DOCUMENT_SAVE_FAULT_DURABILITY ||
+        replace_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING)
+        return UI_DOCUMENT_OK_DURABILITY_WARNING;
     return UI_DOCUMENT_OK;
 }
 
-UiDocumentResult ui_document_save(UiDocument *document) {
+UiDocumentResult ui_document_save_as(UiDocument *document, const char *path) {
+    return ui_document_internal_save_as(
+        document, path, UI_DOCUMENT_SAVE_FAULT_NONE);
+}
+
+UiDocumentResult ui_document_internal_save(
+    UiDocument *document, UiDocumentSaveFault fault
+) {
     if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
     if (document->path[0] == '\0') return UI_DOCUMENT_NO_PATH;
-    return ui_document_save_as(document, document->path);
+    return ui_document_internal_save_as(document, document->path, fault);
+}
+
+UiDocumentResult ui_document_save(UiDocument *document) {
+    return ui_document_internal_save(document, UI_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {

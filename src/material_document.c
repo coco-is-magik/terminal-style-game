@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "material_document.h"
+#include "material_document_internal.h"
+#include "platform_fs.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -260,11 +262,19 @@ Material material_document_preview(const MaterialDocument *document) {
     return material;
 }
 
-static MaterialDocumentResult atomic_write(const MaterialDocument *document,
-                                           const char *path) {
+static MaterialDocumentResult atomic_write(
+    const MaterialDocument *document, const char *path,
+    MaterialDocumentSaveFault fault
+) {
     char temp_path[1200];
     int fd;
     FILE *file;
+    PlatformFileMetadata metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformFsResult sync_result = PLATFORM_FS_OK;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     bool failed = false;
     if (snprintf(temp_path, sizeof(temp_path), "%s.tmp.XXXXXX", path) >=
         (int)sizeof(temp_path)) return MATERIAL_DOCUMENT_IO_ERROR;
@@ -282,30 +292,67 @@ static MaterialDocumentResult atomic_write(const MaterialDocument *document,
                 document->value.glyphs[0], document->value.glyphs[1],
                 document->value.glyphs[2], document->value.glyphs[3]) < 0) failed = true;
     if (!failed && fflush(file) != 0) failed = true;
-    if (!failed && fsync(fd) != 0) failed = true;
+    if (!failed && fault != MATERIAL_DOCUMENT_SAVE_FAULT_SYNC) {
+        sync_result = platform_fs_sync_file(file, &platform_error);
+    }
+    if (!failed && (fault == MATERIAL_DOCUMENT_SAVE_FAULT_SYNC ||
+                    sync_result != PLATFORM_FS_OK)) failed = true;
     if (fclose(file) != 0) failed = true;
-    if (!failed && rename(temp_path, path) != 0) failed = true;
     if (failed) {
         unlink(temp_path);
         return MATERIAL_DOCUMENT_IO_ERROR;
     }
+    inspect_result = platform_fs_inspect_nofollow(path, &metadata, &platform_error);
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
+        unlink(temp_path);
+        return MATERIAL_DOCUMENT_IO_ERROR;
+    }
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (fault == MATERIAL_DOCUMENT_SAVE_FAULT_REPLACE) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+    } else {
+        replace_result = platform_fs_replace(temp_path, path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        unlink(temp_path);
+        return MATERIAL_DOCUMENT_IO_ERROR;
+    }
+    if (fault == MATERIAL_DOCUMENT_SAVE_FAULT_DURABILITY ||
+        replace_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING) {
+        return MATERIAL_DOCUMENT_OK_DURABILITY_WARNING;
+    }
     return MATERIAL_DOCUMENT_OK;
 }
 
-MaterialDocumentResult material_document_save(MaterialDocument *document) {
+bool material_document_result_is_committed(MaterialDocumentResult result) {
+    return result == MATERIAL_DOCUMENT_OK ||
+           result == MATERIAL_DOCUMENT_OK_DURABILITY_WARNING;
+}
+
+MaterialDocumentResult material_document_internal_save(
+    MaterialDocument *document, MaterialDocumentSaveFault fault
+) {
     MaterialDocumentResult result;
     if (!document) return MATERIAL_DOCUMENT_INVALID_ARGUMENT;
     if (!document->path) return MATERIAL_DOCUMENT_NO_PATH;
-    result = atomic_write(document, document->path);
-    if (result == MATERIAL_DOCUMENT_OK) {
+    result = atomic_write(document, document->path, fault);
+    if (material_document_result_is_committed(result)) {
         document->saved_value = document->value;
         asset_document_state_mark_saved(&document->state);
     }
     return result;
 }
 
-MaterialDocumentResult material_document_save_as(MaterialDocument *document,
-                                                 const char *material_directory) {
+MaterialDocumentResult material_document_save(MaterialDocument *document) {
+    return material_document_internal_save(
+        document, MATERIAL_DOCUMENT_SAVE_FAULT_NONE);
+}
+
+MaterialDocumentResult material_document_internal_save_as(
+    MaterialDocument *document, const char *material_directory,
+    MaterialDocumentSaveFault fault
+) {
     char path[1024];
     char *owned;
     MaterialDocumentResult result;
@@ -318,8 +365,8 @@ MaterialDocumentResult material_document_save_as(MaterialDocument *document,
     }
     owned = duplicate_string(path);
     if (!owned) return MATERIAL_DOCUMENT_OUT_OF_MEMORY;
-    result = atomic_write(document, path);
-    if (result != MATERIAL_DOCUMENT_OK) {
+    result = atomic_write(document, path, fault);
+    if (!material_document_result_is_committed(result)) {
         free(owned);
         return result;
     }
@@ -327,7 +374,13 @@ MaterialDocumentResult material_document_save_as(MaterialDocument *document,
     document->path = owned;
     document->saved_value = document->value;
     asset_document_state_mark_saved(&document->state);
-    return MATERIAL_DOCUMENT_OK;
+    return result;
+}
+
+MaterialDocumentResult material_document_save_as(MaterialDocument *document,
+                                                 const char *material_directory) {
+    return material_document_internal_save_as(
+        document, material_directory, MATERIAL_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 MaterialDocumentResult material_document_commit_to_registry(

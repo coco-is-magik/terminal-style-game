@@ -61,11 +61,13 @@ typedef enum {
     FLOW_DOCUMENT_UNREACHABLE_NODE,
     FLOW_DOCUMENT_PARSE_ERROR,
     FLOW_DOCUMENT_UNSUPPORTED_VERSION,
-    FLOW_DOCUMENT_IO_ERROR
+    FLOW_DOCUMENT_IO_ERROR,
+    FLOW_DOCUMENT_OK_DURABILITY_WARNING
 } FlowDocumentResult;
 
 void flow_document_init(FlowDocument *document);
 bool flow_document_is_dirty(const FlowDocument *document);
+bool flow_document_result_is_committed(FlowDocumentResult result);
 const FlowNode *flow_document_find_node(const FlowDocument *document,
                                         FlowNodeId id);
 const FlowEdge *flow_document_find_edge(const FlowDocument *document,

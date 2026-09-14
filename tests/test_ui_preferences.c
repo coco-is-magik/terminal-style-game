@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "../src/ui_preferences.h"
+#include "../src/ui_preferences_internal.h"
 
 static char root[] = "/tmp/tsg_ui_preferences_XXXXXX";
 
@@ -24,6 +25,22 @@ static void write_text(const char *path, const char *text) {
     assert_non_null(file);
     assert_true(fputs(text, file) >= 0);
     assert_int_equal(fclose(file), 0);
+}
+
+static char *read_text(const char *path) {
+    char buffer[128];
+    FILE *file = fopen(path, "rb");
+    size_t count;
+    char *copy;
+    assert_non_null(file);
+    count = fread(buffer, 1U, sizeof(buffer) - 1U, file);
+    assert_false(ferror(file));
+    assert_int_equal(fclose(file), 0);
+    buffer[count] = '\0';
+    copy = malloc(count + 1U);
+    assert_non_null(copy);
+    memcpy(copy, buffer, count + 1U);
+    return copy;
 }
 
 static int setup(void **state) {
@@ -133,12 +150,67 @@ static void test_failed_save_keeps_active_and_destination(void **state) {
     assert_int_equal(access(blocked, F_OK), 0);
 }
 
+static void test_injected_precommit_failures_preserve_destination(void **state) {
+    const UiPreferencesSaveFault faults[] = {
+        UI_PREFERENCES_SAVE_FAULT_SYNC,
+        UI_PREFERENCES_SAVE_FAULT_REPLACE
+    };
+    UiPreferences preferences;
+    char defaults[512];
+    char user[512];
+    (void)state;
+    path_for(defaults, sizeof(defaults), "default.ini");
+    path_for(user, sizeof(user), "user.ini");
+    write_text(defaults, "version = 1\nui_scale_percent = 125\n");
+    for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
+        char *bytes;
+        write_text(user, "version = 1\nui_scale_percent = 125\n");
+        ui_preferences_init(&preferences, defaults, user);
+        assert_int_equal(ui_preferences_internal_activate_and_save(
+                             &preferences, 150, faults[i]),
+                         UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED);
+        assert_int_equal(ui_preferences_scale(&preferences), 150);
+        assert_int_equal(preferences.last_save_result,
+                         UI_PREFERENCES_IO_FAILED);
+        bytes = read_text(user);
+        assert_string_equal(bytes, "version = 1\nui_scale_percent = 125\n");
+        free(bytes);
+    }
+}
+
+static void test_committed_warning_is_saved_not_active_unsaved(void **state) {
+    UiPreferences preferences;
+    char defaults[512];
+    char user[512];
+    char *bytes;
+    (void)state;
+    path_for(defaults, sizeof(defaults), "default.ini");
+    path_for(user, sizeof(user), "user.ini");
+    write_text(defaults, "version = 1\nui_scale_percent = 125\n");
+    write_text(user, "version = 1\nui_scale_percent = 125\n");
+    ui_preferences_init(&preferences, defaults, user);
+    assert_int_equal(ui_preferences_internal_activate_and_save(
+                         &preferences, 150,
+                         UI_PREFERENCES_SAVE_FAULT_DURABILITY),
+                     UI_PREFERENCES_CHANGE_SAVED_DURABILITY_WARNING);
+    assert_int_equal(ui_preferences_scale(&preferences), 150);
+    assert_int_equal(preferences.last_save_result,
+                     UI_PREFERENCES_IO_OK_DURABILITY_WARNING);
+    bytes = read_text(user);
+    assert_string_equal(bytes, "version = 1\nui_scale_percent = 150\n");
+    free(bytes);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_precedence_and_missing_user, setup, teardown),
         cmocka_unit_test_setup_teardown(test_invalid_files_are_transactionally_rejected, setup, teardown),
         cmocka_unit_test_setup_teardown(test_transitions_reset_and_endpoint_no_write, setup, teardown),
         cmocka_unit_test_setup_teardown(test_failed_save_keeps_active_and_destination, setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_injected_precommit_failures_preserve_destination, setup, teardown),
+        cmocka_unit_test_setup_teardown(
+            test_committed_warning_is_saved_not_active_unsaved, setup, teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

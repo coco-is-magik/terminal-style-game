@@ -33,6 +33,21 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md)
   — native scene platform-adapter migration, preserved save/failure contracts, local
   strict/sanitizer evidence, native compile progress, limitations, and W2-C1 handoff.
+- [`reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md`](reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md)
+  — UI preference sync/replacement migration, truthful committed-warning outcomes,
+  owner/sanitizer/native compile evidence, limitations, and W2-C2 handoff.
+- [`reviews/2026-09-14-v1-0-w2c2-material-document-migration.md`](reviews/2026-09-14-v1-0-w2c2-material-document-migration.md)
+  — material sync/replacement migration, committed-result contract, saved-state and
+  asset-refresh preservation, verification, limitations, and W2-C3 handoff.
+- [`reviews/2026-09-14-v1-0-w2c3-object-document-migration.md`](reviews/2026-09-14-v1-0-w2c3-object-document-migration.md)
+  — object atomic-creation migration, output-ID and registry invariants, exact bytes,
+  strict/sanitizer/native evidence, limitations, and W2-C4 handoff.
+- [`reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md`](reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md)
+  — flow-document and workspace committed-warning contracts, exact bytes, transaction
+  boundaries, strict/sanitizer/native evidence, limitations, and W2-C5 handoff.
+- [`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md)
+  — authored UI-document and workspace committed-warning contracts, byte/identity boundaries,
+  strict/sanitizer/native evidence, limitations, and W2-D1 handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

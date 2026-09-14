@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W2-B2 complete; W2-C1, pinned-SMC, performance,
+**Active: B0/C1 evidence captured; W1 through W2-C5 complete; W2-D1, pinned-SMC, performance,
 and final platform acceptance remain open.**
 
 This is the focused execution plan for
@@ -387,6 +387,40 @@ recovery, identity, and dirty-state contract. Local strict/sanitizer owner tests
 native strict compilation reports zero scene-document diagnostics. See
 [`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
 
+**W2-C1 result (2026-09-14):** UI preferences now use platform file sync/replacement.
+Injected pre-commit failures preserve destination bytes and remain active-not-saved;
+committed durability warning has a distinct appended saved outcome and user feedback. Local
+strict/sanitizer tests pass 6/6 and native strict compilation reports zero owner diagnostics.
+See
+[`reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md`](reviews/2026-09-14-v1-0-w2c1-ui-preferences-migration.md).
+
+**W2-C2 result (2026-09-14):** Material save/Save As now use platform sync/replacement.
+Pre-commit failure preserves destination/snapshot/path/dirty state; warning commit updates
+path/snapshot/clean state. Asset refresh recognizes both committed outcomes. Strict and
+sanitizer owner tests pass 8/8; native strict compilation has zero owner diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c2-material-document-migration.md`](reviews/2026-09-14-v1-0-w2c2-material-document-migration.md).
+
+**W2-C3 result (2026-09-14):** Object atomic creation now uses platform sync/replacement.
+Uncommitted failures keep `out_id` zero and preserve destination bytes; warning commit sets
+the selected lowest-free ID. Registry/generation remain untouched. Strict/sanitizer owner
+tests pass 4/4; native strict compilation reports zero owner diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c3-object-document-migration.md`](reviews/2026-09-14-v1-0-w2c3-object-document-migration.md).
+
+**W2-C4 result (2026-09-14):** Flow saves now use platform sync, destination inspection, and
+replacement. Uncommitted failures preserve destination/document identity; warning commits
+update path and clean state. Workspace history/saved ownership and editor feedback distinguish
+committed warning from failure. Strict GCC/Clang document tests pass 9/9, workspace tests pass
+10/10, sanitizer checks pass, and native strict compilation reports zero owner diagnostics.
+See [`reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md`](reviews/2026-09-14-v1-0-w2c4-flow-document-migration.md).
+
+**W2-C5 result (2026-09-14):** Authored UI saves now use platform sync, destination
+inspection, and replacement. Uncommitted failures preserve destination/document/workspace
+identity; warning commits update clean state and heap-owned history snapshots. Warning
+Save-and-close refreshes and closes without becoming a failed save. Strict GCC/Clang document
+tests pass 14/14, workspace tests pass 13/13, sanitizer checks pass, and native strict
+compilation reports zero `ui_document.c` diagnostics. See
+[`reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md`](reviews/2026-09-14-v1-0-w2c5-ui-document-migration.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -470,8 +504,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to W2-C1 and migrate only `ui_preferences` file sync/replacement while preserving
-active-not-saved and pre/post-commit behavior. In parallel, obtain a strict-compatible
+Proceed to W2-D1 and migrate only safe one-level directory creation in `ui_menu_workspace`
+and `unified_editor`, preserving non-recursive ownership, existing-directory behavior,
+file/reparse rejection, and caller state. In
+parallel, obtain a strict-compatible
 pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
 Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
 host. Do not combine dependency, performance, or portability increments, and do not change

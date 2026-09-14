@@ -1,4 +1,5 @@
 #include "flow_workspace.h"
+#include "flow_workspace_internal.h"
 #include "ui_nested_inspector.h"
 
 #include <stdio.h>
@@ -71,6 +72,11 @@ FlowWorkspaceResult flow_workspace_load(FlowWorkspace *workspace,
 bool flow_workspace_is_dirty(const FlowWorkspace *workspace) {
     return workspace && workspace->active &&
            flow_document_is_dirty(&workspace->document);
+}
+
+bool flow_workspace_result_is_committed(FlowWorkspaceResult result) {
+    return result == FLOW_WORKSPACE_OK ||
+           result == FLOW_WORKSPACE_OK_DURABILITY_WARNING;
 }
 
 const FlowNode *flow_workspace_selected_node(const FlowWorkspace *workspace) {
@@ -250,14 +256,18 @@ static FlowWorkspaceResult commit_candidate(FlowWorkspace *workspace,
     return record_change(workspace, before, candidate);
 }
 
-FlowWorkspaceResult flow_workspace_save_as(FlowWorkspace *workspace,
-                                            const char *path) {
+FlowWorkspaceResult flow_workspace_internal_save_as(
+    FlowWorkspace *workspace, const char *path, FlowDocumentSaveFault fault
+) {
     FlowDocument candidate;
+    FlowDocumentResult result;
     size_t i;
     if (!workspace || !path) return FLOW_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return FLOW_WORKSPACE_INACTIVE;
     candidate = workspace->document;
-    if (flow_document_save_as(&candidate, path) != FLOW_DOCUMENT_OK)
+    result = flow_document_internal_save_as(&candidate, path, fault);
+    workspace->last_document_result = result;
+    if (!flow_document_result_is_committed(result))
         return FLOW_WORKSPACE_SAVE_FAILED;
     workspace->document = candidate;
     workspace->saved_document = candidate;
@@ -269,7 +279,14 @@ FlowWorkspaceResult flow_workspace_save_as(FlowWorkspace *workspace,
         (void)snprintf(workspace->changes[i].after.path,
                        sizeof(workspace->changes[i].after.path), "%s", candidate.path);
     }
-    return FLOW_WORKSPACE_OK;
+    return result == FLOW_DOCUMENT_OK_DURABILITY_WARNING
+        ? FLOW_WORKSPACE_OK_DURABILITY_WARNING : FLOW_WORKSPACE_OK;
+}
+
+FlowWorkspaceResult flow_workspace_save_as(FlowWorkspace *workspace,
+                                            const char *path) {
+    return flow_workspace_internal_save_as(
+        workspace, path, FLOW_DOCUMENT_SAVE_FAULT_NONE);
 }
 
 FlowWorkspaceResult flow_workspace_undo(FlowWorkspace *workspace) {
@@ -402,7 +419,8 @@ FlowWorkspaceResult flow_workspace_handle_input(FlowWorkspace *workspace,
         if (input == FLOW_WORKSPACE_INPUT_CONFIRM) {
             if (workspace->close_choice == FLOW_WORKSPACE_CLOSE_SAVE) {
                 FlowWorkspaceResult result = flow_workspace_save(workspace);
-                if (result == FLOW_WORKSPACE_OK) workspace->active = false;
+                if (flow_workspace_result_is_committed(result))
+                    workspace->active = false;
                 return result;
             }
             if (workspace->close_choice == FLOW_WORKSPACE_CLOSE_DISCARD) {
