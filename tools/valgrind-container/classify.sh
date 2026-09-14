@@ -7,6 +7,11 @@ classify_result() {
 
     case "$phase" in
         docker)
+            if test "$status" -eq 1 &&
+              grep -Eiq 'failed to connect to the docker API|Cannot connect to the Docker daemon' "$log"; then
+                echo "FAIL-TOOL: reason=docker-daemon-or-runtime status=1"
+                return 3
+            fi
             case "$status" in
                 0) echo "PASS: reason=container-completed"; return 0 ;;
                 1) echo "FAIL-PRODUCT: reason=contained-product-failure status=1"; return 1 ;;

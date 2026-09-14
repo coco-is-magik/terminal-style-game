@@ -413,6 +413,7 @@ Stable reasons include:
 ```text
 FAIL-MISSING-TOOL: reason=docker-not-found
 FAIL-MISSING-TOOL: reason=valgrind-not-found
+FAIL-TOOL: reason=docker-daemon-or-runtime status=1
 FAIL-TOOL: reason=docker-daemon-or-runtime status=125
 FAIL-TOOL: reason=container-command-not-executable status=126
 FAIL-TOOL: reason=container-command-not-found status=127

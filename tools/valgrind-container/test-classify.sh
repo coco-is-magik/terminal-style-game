@@ -18,11 +18,13 @@ check() {
 
 : >"$tmp/empty.log"
 printf '%s\n' 'valgrind: Unrecognised instruction at address 0x1' >"$tmp/sigill.log"
+printf '%s\n' 'failed to connect to the docker API at unix:///var/run/docker.sock: connect: no such file or directory' >"$tmp/docker-daemon.log"
 check 0 'PASS: reason=container-completed' docker 0 "$tmp/empty.log"
 check 4 'FAIL-TIMEOUT: reason=container-timeout status=124' docker 124 "$tmp/empty.log"
 check 3 'FAIL-TOOL: reason=docker-daemon-or-runtime status=125' docker 125 "$tmp/empty.log"
 check 3 'FAIL-TOOL: reason=container-command-not-executable status=126' docker 126 "$tmp/empty.log"
 check 3 'FAIL-TOOL: reason=container-command-not-found status=127' docker 127 "$tmp/empty.log"
+check 3 'FAIL-TOOL: reason=docker-daemon-or-runtime status=1' docker 1 "$tmp/docker-daemon.log"
 check 1 'FAIL-PRODUCT: reason=contained-product-failure status=1' docker 1 "$tmp/empty.log"
 check 2 'FAIL-MISSING-TOOL: reason=contained-missing-tool status=2' docker 2 "$tmp/empty.log"
 check 3 'FAIL-TOOL: reason=contained-tool-failure status=3' docker 3 "$tmp/empty.log"

@@ -23,6 +23,11 @@ classify_platform_result() {
             return 3
             ;;
         docker)
+            if test "$status" -eq 1 &&
+              grep -Eiq 'failed to connect to the docker API|Cannot connect to the Docker daemon' "$log"; then
+                echo "FAIL-TOOL|docker-daemon-or-runtime|1"
+                return 3
+            fi
             case "$status" in
                 0) echo "PASS|container-completed|0"; return 0 ;;
                 1) echo "FAIL-PRODUCT|contained-product-failure|1"; return 1 ;;
