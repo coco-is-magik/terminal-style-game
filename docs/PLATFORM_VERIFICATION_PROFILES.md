@@ -31,9 +31,9 @@ profiles were attempted and classified; it is not itself a support claim.
 | Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; native Valgrind remains diagnostic |
 | Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | GCC complete headless profile passes; Clang strict app build is `FAIL-PRODUCT`; focused canonical Valgrind passes; display evidence deferred |
 | Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Fedora 43 GCC complete headless profile passes; display evidence deferred |
-| Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Deferred: no target environment is available |
-| Windows | Native Windows runner | Windows loader/filesystem/path behavior and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
-| macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Deferred: no native runner or verified dependency build is available |
+| Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Informational for v1; no target environment is available |
+| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; current UCRT64 strict build is `FAIL-PRODUCT` and must be remediated |
+| macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Post-v1; no v1 support claim or release gate |
 
 ## Container boundary
 
@@ -62,8 +62,10 @@ Headless cell, layout, interaction, smoke, benchmark, and stability checks do no
 prove native window presentation or application-edge pointer coordinate conversion.
 Display-backed checks must identify the video backend, logical/window dimensions,
 scale factor, input device, and whether the session is physical, virtual, or remote.
-Reliable authored Button pointer activation remains explicitly deferred; keyboard
-activation remains required.
+Reliable authored Button pointer activation is not part of the verified R12 foundation;
+it is a committed v1 pointer-model outcome. Keyboard activation remains required
+throughout its implementation. Native Linux and Windows evidence is required before the
+v1 pointer boundary is called verified.
 
 ## Failure reporting
 

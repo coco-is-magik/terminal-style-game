@@ -331,8 +331,8 @@ Maintainer references:
 - `docs/README.md` — documentation index and authority map.
 - `docs/CURRENT_STATUS.md` — concise current state, verified foundation, next
   safe action, and known deferred source-level TODOs.
-- `docs/FEATURE_ROADMAP.md` — concise roadmap authority, verified phase summary,
-  current cleanup status, and future sequencing guidance.
+- `docs/FEATURE_ROADMAP.md` — dependency-aware authority from the verified R0-R12
+  foundation through the required v1.0 outcomes and release proofs.
 - `docs/TODO.md` — unordered future-feature ideas, unresolved questions, and
   deferred work; it is intentionally not a roadmap.
 - `docs/EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` — accepted unified-editor

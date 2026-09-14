@@ -16,13 +16,28 @@ activation path.
 
 ## Next safe action
 
-The 2026-09-11 non-SMC code-standards audit and corrective-action pass are
-manually approved and closed. No post-closeout implementation bucket is selected.
-Before further work, choose one deferred structural, data-authority, or roadmap
-item and write a focused requirements and regression plan.
+The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
+accepted on 2026-09-14. Its first executable phase is **V1-0 — Baseline,
+required-platform remediation, and evidence reconciliation**. Before production changes,
+write its focused requirements/evidence plan and capture unchanged strict, complete-suite,
+SMC, platform, and performance results.
+
+V1-0 must also reconcile any current mirror report with the planar reflected-curvature
+defect already reproduced, corrected, and guarded on 2026-09-12. Mirror source changes
+remain evidence-blocked unless a distinct failing scene is captured. In parallel,
+documentation-only Q1 preparation may inventory measurable UI rules and Unicode/font
+research. Sprite-painter behavior characterization may proceed under a focused plan, but
+final glyph-aware workbench formats depend on the Unicode/glyph foundation.
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
 phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
+
+The roadmap commits Linux x64 and Windows x64 as required v1 release platforms,
+Steam Deck / SteamOS as informational, and macOS as post-v1. It also promotes broad
+Unicode/custom-font support, reliable pointer and major-context motion, the sprite
+workbench follow-ups, directional sprites, sprite stacking, native project execution,
+gameplay depth, audio, bounded cooperative multiplayer, and export. These are committed
+outcomes, not claims of current implementation or Q1 readiness.
 
 The 2026-09-12 verification-policy increment removed the temporary partial aggregate
 suite, made `make test` the only complete functional aggregate, added strict

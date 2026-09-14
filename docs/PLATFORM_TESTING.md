@@ -29,6 +29,10 @@ behavior.
 
 Alpine is a portability probe, not a supported-platform promise. Its result does
 not determine `platform-check` unless its profile role is deliberately promoted.
+The v1 product roadmap requires native Linux x64 and Windows x64 release evidence;
+the current informational `windows-10-x64-gcc` survey remains evidence of a known
+`FAIL-PRODUCT`, not yet a passing required release profile. Steam Deck / SteamOS is
+informational for v1, and macOS is post-v1.
 
 ## Profile providers
 

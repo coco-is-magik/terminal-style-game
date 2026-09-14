@@ -10,8 +10,8 @@ only a small set of documents should be treated as current authority.
   asset-system overview, and maintainer entry points.
 - [`CURRENT_STATUS.md`](CURRENT_STATUS.md) — concise current state, verified
   foundation, next safe action, and known deferred source-level TODOs.
-- [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) — concise roadmap authority,
-  verified phase summary, current cleanup status, and next sequencing guidance.
+- [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) — dependency-aware roadmap authority
+  from the verified R0-R12 foundation through the required v1.0 release proofs.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)
@@ -34,8 +34,9 @@ only a small set of documents should be treated as current authority.
 
 ## Current authority
 
-- [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) defines verified roadmap
-  foundations, current cleanup status, and future sequencing guidance.
+- [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) defines verified roadmap foundations,
+  committed v1 outcomes, dependency order, phase-entry gates, rollback boundaries,
+  required platforms, and release evidence.
 - [`TODO.md`](TODO.md) is the complete unordered inventory for future/deferred
   work. Items must be promoted into focused requirements/planning before
   implementation.

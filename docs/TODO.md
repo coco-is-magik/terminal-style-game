@@ -129,7 +129,7 @@ Each file family must define ownership, validation, missing-reference handling,
 transactional save/discard rules, and whether it is per-user, per-project, per-scene, or
 per-asset.
 
-## UI design system, standards, motion, and tactile feel — **Major design track**
+## UI design system, standards, motion, and tactile feel — **Promoted to v1 roadmap V1-1/V1-3**
 
 **Wanted:** Turn the current readable UI foundation into a rock-solid, reusable design
 system and implementation standard. New buttons, menus, property rows, graph widgets,
@@ -157,6 +157,13 @@ contrast, focus visibility, deterministic input, and a reduced-motion path.
 The first high-pressure consumer is the game-flow editor polish track, but the standards
 should apply broadly to editor inspectors, authored Menu editing, asset pickers, and
 future gameplay/project tools.
+
+The accepted v1 sequencing, separate editor/authored-UI ownership boundary, semantic
+token scope, pointer foundation, and major-context motion policy now live in
+[`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md). Opening and closing major contexts receive
+motion; submenus normally change immediately within their stable parent. Exact measurable
+tokens, context roles, timings, and reduced-motion equivalents remain V1-1/V1-3 Q1 work,
+not decisions to duplicate in this inventory.
 
 ### Theme and interface color customization — **Small feature after token contract**
 
@@ -426,21 +433,22 @@ selection, atomic batch commands, mixed-value inspector states, bounded memory,
 and clear handling of invalid targets. Decide initial target types, mixed-type
 selection, and persistence through structural edits.
 
-## Broad Unicode glyph and font support — **Needs architecture/design and research**
+## Broad Unicode glyph and font support — **Promoted to v1 roadmap V1-4 through V1-7**
 
-**Wanted:** Support a much wider set of glyphs, especially characters used by Asian
-languages, both for ordinary text and as first-class visual elements in the ASCII/glyph
-art that defines a project. Ideally, every character that can be represented as one
-display glyph cell can be authored, persisted, and rendered consistently.
+The v1 roadmap now commits validated UTF-8/NFC text, grapheme-aware editing, shaping,
+bidirectional layout, exact-cell glyph art, CJK/kana/hangul priority, project/custom
+fonts, deterministic project fallback, visible missing-glyph diagnostics, IME input,
+versioned asset migration, and Linux/Windows export parity. Ordinary text and glyph-art
+cells are deliberately distinct primitives. Full/color emoji, arbitrary ZWJ sequences,
+and glyph-art clusters requiring neighboring cells remain deferred.
 
-Also support selecting among different fonts and loading project/user-supplied custom
-fonts. Requirements must define UTF-8 storage, glyph-cell width, font fallback, missing
-glyph behavior, combining sequences, East Asian width, shaping, and which emoji or other
-multi-code-point sequences count as one editable cell. Font metrics must preserve the
-project's cell-grid layout and one-authored-glyph-to-one-rendered-glyph invariant across
-editor, runtime, export, and supported platforms.
+The current one-byte `Cell`, material, sprite/decal, UI, dirty-stream, and built-in 8x8
+raster assumptions require a measured cross-cutting migration. SMC remains mandatory;
+the migration cannot remove, bypass, demote, or materially erase its accepted performance
+gains. Dependency selection, fallback fonts, raster dimensions, explicit cell syntax,
+cache budgets, and parity details remain V1-4 Q1 research rather than unresolved scope.
 
-## Clipboard paste into editor canvases — **Needs focused interaction design**
+## Clipboard paste into editor canvases — **Promoted to v1 roadmap V1-6 through V1-8**
 
 **Wanted:** Paste clipboard text directly into applicable editor canvases, including
 multi-line ASCII art and valid glyphs that are difficult or impossible to type with the
@@ -600,7 +608,7 @@ Save/Open. Missing-asset support geometry uses visible repair mode.
 Remaining: grouped spray-stroke undo, overlap/layering UI, spacing/randomization,
 edge wrapping, and capacity/performance policy beyond existing limits.
 
-## Sprite and animation authoring — **R11 foundation verified; feature-completeness open**
+## Sprite and animation authoring — **R11 foundation verified; v1 depth promoted to V1-8 through V1-10**
 
 **Implemented (2026-08-28/09-02):** `SpriteAsset` patterns render as decorative
 camera-facing billboards (R11 I1: depth-tested against world geometry and
@@ -614,7 +622,7 @@ and animated assets, integrated painter frame authoring, circular neighbor previ
 FPS/loop editing, staged Save/Discard, and atomic folder replacement. Automated
 gates, manual acceptance, and the final R11 boundary review passed on 2026-09-04.
 
-Planned improvements are tracked separately in
+Historical follow-up observations are tracked in
 [`archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md`](archive/r11/R11_PLANNED_ANIMATION_IMPROVEMENTS_2026-09-04.md):
 
 1. investigate subtle frame-change flicker/jitter without assuming its cause;
@@ -622,9 +630,16 @@ Planned improvements are tracked separately in
 3. expose sprite search/create/edit from object/entity sprite workflows; and
 4. research sprite stacking and multiple-angle sprites.
 
-Still open: oriented versus billboard behavior, live world preview of staged sprite
-edits, a saved-versus-current-edits preview toggle, solid/occluding sprites, mirror
-visibility, and sprite-to-object attachment (recorded in the R11 stop boundary).
+The v1 roadmap promotes all four outcomes: evidence-first flicker correction,
+add-selected-frame-as-copy, object/entity sprite search/create/edit, and typed directional
+and stacked sprite systems. Multi-angle sprites and sprite stacking are required, not
+optional research: directional views communicate movement/facing, while ordered reusable
+layers support appearance customization, equipment, and visible state changes.
+
+Still phase-entry work: exact angle buckets/ties/fallback, composition and entity visual
+assembly schemas, layer transforms/synchronization, solid/occluding behavior, and complete
+mirror participation. Live staged **Current** preview with explicit **Saved** switching and
+sprite-to-object/entity authoring are committed V1-8 outcomes.
 
 Sprite-painter tool depth also remains open. Add selectable brush sizes, reusable default
 shape stamps, crop-to-content, and an explicit way to create a new animation frame by
