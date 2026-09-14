@@ -14,6 +14,9 @@ only a small set of documents should be treated as current authority.
   verified phase summary, current cleanup status, and next sequencing guidance.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
+- [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)
+  — accepted v1 product philosophy, default/template/inference rules, ordered atomic
+  entity-part model, and universal progression-connection foundation for the next roadmap.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current module boundaries, ownership
   rules, data flows, persistent-data boundaries, and verification ownership.
 - [`VERIFICATION_POLICY.md`](VERIFICATION_POLICY.md) — canonical verification gates,
@@ -36,6 +39,10 @@ only a small set of documents should be treated as current authority.
 - [`TODO.md`](TODO.md) is the complete unordered inventory for future/deferred
   work. Items must be promoted into focused requirements/planning before
   implementation.
+- [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)
+  defines the accepted product and authored-model constraints that future v1 roadmap
+  sequencing and focused requirements must preserve. It is not an implementation-status
+  claim or a sequenced roadmap.
 - [`EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md`](EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md)
   is the accepted unified-editor behavior and regression contract until a planned
   and tested change deliberately revises it.
