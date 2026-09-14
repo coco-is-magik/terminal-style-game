@@ -227,7 +227,10 @@ SRC_RAYCAST_OPTICAL := $(SRC_RAYCAST) src/raycast_optical.c \
 	src/optical_compositor.c src/mirror_trace.c
 SRC_LIGHTING      := src/lighting.c
 SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
-SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c
+SRC_PLATFORM_PATH := src/platform_path.c
+SRC_PLATFORM_FS := src/platform_fs.c
+SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c \
+	$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
 SRC_SCENE_FORMAT := src/scene_format.c
 SRC_SCENE_BLOCK_CODEC := src/scene_block_codec.c
@@ -263,8 +266,6 @@ SRC_SCENE_FLOW_ADAPTER := src/scene_flow_adapter.c
 SRC_ENTITY_TRIGGER_SESSION := src/entity_trigger_session.c
 SRC_ASSET_REFRESH := src/asset_refresh.c
 SRC_OPTICAL_RUNTIME_VIEW := src/optical_runtime_view.c
-SRC_PLATFORM_PATH := src/platform_path.c
-SRC_PLATFORM_FS := src/platform_fs.c
 
 
 

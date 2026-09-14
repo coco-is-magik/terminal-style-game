@@ -78,18 +78,24 @@ preflight: the focused executable is PE x86-64 without MSYS/Cygwin imports and p
 It proves Unicode same-directory absent/existing replacement, hidden-attribute preservation,
 read-only/sharing failure before commit with destination/temp preservation, and reparse
 classification. Cross-volume is unavailable on the single-volume VM and outside native
-scene's same-directory transaction. W2-B2 native scene migration is next. See
+scene's same-directory transaction. W2-B2 now routes native scene metadata, file sync,
+replacement, and commit state through the adapter. Scene owner tests pass 48/48 under strict
+GCC/Clang, ASan/LeakSanitizer, and UBSan; all accepted recovery/identity/dirty-state contracts
+remain intact. Native strict compilation reports zero `scene_document.c` diagnostics, while
+end-to-end native owner execution awaits W4 locale remediation. W2-C1 `ui_preferences` is
+next. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
+See also
+[`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is now W2-B2 native scene migration through the proven same-directory
-capabilities. See
+portability increment is now W2-C1 `ui_preferences` persistence migration. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

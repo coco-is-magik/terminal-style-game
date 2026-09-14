@@ -400,7 +400,12 @@ cross-volume is unavailable and outside that transaction. Existing-destination W
 publication remains conservatively committed-with-durability-warning. See
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
 
-**W2-B2 scene migration: next.**
+**W2-B2 scene migration (2026-09-14): complete.** Native scene metadata, file sync,
+replacement, and commit-state handling now use `platform_fs`. Local owner tests preserve
+all accepted scene contracts; native strict compilation reports zero scene-document
+diagnostics. Native owner execution remains blocked on W4's `scene_format` locale migration.
+See
+[`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
 
 - Migrate native scene file sync, mode/attribute preservation, replacement, and parent
   durability through the platform layer.
@@ -503,10 +508,9 @@ W1 is complete because:
 
 ## Next safe action
 
-Proceed to **W2-B2 native scene migration**. Preserve every scene save result, diagnostic,
-temporary-retention, identity, and dirty-state contract, and keep existing-destination
-Windows publication conservative as a committed durability warning. W2-B1 evidence is in
-[`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
+Proceed to **W2-C1 `ui_preferences` persistence migration** as one owner-only increment.
+Preserve active-not-saved behavior and pre/post-commit state. W2-B2 evidence is in
+[`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
 
 In parallel, the pinned-SMC C2 dependency update and P1 performance reproduction remain
 independent. Do not externally timeout platform profiles.

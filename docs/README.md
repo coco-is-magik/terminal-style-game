@@ -30,6 +30,9 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md)
   — native Windows PE/import and 9/9 runtime replacement evidence, conservative guarantee
   limits, harness preflight, failures/corrections, and W2-B2 scene-migration handoff.
+- [`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md)
+  — native scene platform-adapter migration, preserved save/failure contracts, local
+  strict/sanitizer evidence, native compile progress, limitations, and W2-C1 handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

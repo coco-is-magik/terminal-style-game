@@ -22,6 +22,7 @@
 #include "map_loader.h"
 #include "config.h"
 #include "checked_size.h"
+#include "platform_fs.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -1135,9 +1136,12 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     char temp_path[SCENE_PATH_MAX + 32U];
     char directory[SCENE_PATH_MAX + 1U];
     char *prepared_path;
-    struct stat destination_stat;
+    PlatformFileMetadata destination_metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult platform_result;
+    PlatformReplaceResult replace_result;
     bool destination_exists = false;
-    int fd = -1;
+    int fd;
     FILE *stream = NULL;
     int saved_error = 0;
 
@@ -1161,9 +1165,11 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
                                "Save path allocation failed", 0);
         return SCENE_SAVE_TEMP_CREATE_FAILED;
     }
-    if (stat(path, &destination_stat) == 0) destination_exists = true;
-    else if (errno != ENOENT) {
-        saved_error = errno;
+    platform_result = platform_fs_inspect_nofollow(
+        path, &destination_metadata, &platform_error);
+    if (platform_result == PLATFORM_FS_OK) destination_exists = true;
+    else if (platform_result != PLATFORM_FS_NOT_FOUND) {
+        saved_error = (int)platform_error.code;
         free(prepared_path);
         native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_TEMP_CREATE,
                                SCENE_DIAGNOSTIC_SEVERITY_ERROR, path,
@@ -1259,18 +1265,26 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
                                "temporary file flush failed", saved_error);
         return SCENE_SAVE_FLUSH_FAILED;
     }
+    if (destination_exists && fault != SCENE_SAVE_FAULT_MODE) {
+        platform_result = platform_fs_apply_metadata(
+            stream, &destination_metadata, &platform_error);
+    }
     if (destination_exists &&
-        (fault == SCENE_SAVE_FAULT_MODE ||
-         fchmod(fileno(stream), destination_stat.st_mode & (mode_t)07777) != 0)) {
-        saved_error = fault == SCENE_SAVE_FAULT_MODE ? EIO : errno;
+        (fault == SCENE_SAVE_FAULT_MODE || platform_result != PLATFORM_FS_OK)) {
+        saved_error = fault == SCENE_SAVE_FAULT_MODE
+            ? EIO : (int)platform_error.code;
         fclose(stream); remove(temp_path); free(prepared_path);
         native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_WRITE,
                                SCENE_DIAGNOSTIC_SEVERITY_ERROR, path,
                                "destination mode preservation failed", saved_error);
         return SCENE_SAVE_MODE_FAILED;
     }
-    if (fault == SCENE_SAVE_FAULT_FILE_SYNC || fsync(fileno(stream)) != 0) {
-        saved_error = fault == SCENE_SAVE_FAULT_FILE_SYNC ? EIO : errno;
+    if (fault != SCENE_SAVE_FAULT_FILE_SYNC) {
+        platform_result = platform_fs_sync_file(stream, &platform_error);
+    }
+    if (fault == SCENE_SAVE_FAULT_FILE_SYNC || platform_result != PLATFORM_FS_OK) {
+        saved_error = fault == SCENE_SAVE_FAULT_FILE_SYNC
+            ? EIO : (int)platform_error.code;
         fclose(stream); remove(temp_path); free(prepared_path);
         native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_WRITE,
                                SCENE_DIAGNOSTIC_SEVERITY_ERROR, path,
@@ -1292,8 +1306,17 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
                                "temporary file close failed", saved_error);
         return SCENE_SAVE_CLOSE_FAILED;
     }
-    if (fault == SCENE_SAVE_FAULT_RENAME || rename(temp_path, path) != 0) {
-        saved_error = fault == SCENE_SAVE_FAULT_RENAME ? EIO : errno;
+    if (fault == SCENE_SAVE_FAULT_RENAME) {
+        replace_result.result = PLATFORM_FS_IO_ERROR;
+        replace_result.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+        replace_result.error.domain = PLATFORM_NATIVE_ERROR_NONE;
+        replace_result.error.code = (uint32_t)EIO;
+    } else {
+        replace_result = platform_fs_replace(temp_path, path, destination_exists);
+    }
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        saved_error = fault == SCENE_SAVE_FAULT_RENAME
+            ? EIO : (int)replace_result.error.code;
         free(prepared_path);
         native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_REPLACE,
                                SCENE_DIAGNOSTIC_SEVERITY_ERROR, temp_path,
@@ -1308,21 +1331,13 @@ static SceneSaveResult native_save_impl(SceneDocument *document,
     document->imported_unsaved = false;
     document->migration_pending = false;
     document->saved_state = document->current_state;
-    fd = open(directory, O_RDONLY);
-    if (fd < 0 || fault == SCENE_SAVE_FAULT_DIRECTORY_SYNC || fsync(fd) != 0) {
-        saved_error = fault == SCENE_SAVE_FAULT_DIRECTORY_SYNC ? EIO : errno;
-        if (fd >= 0) close(fd);
+    if (fault == SCENE_SAVE_FAULT_DIRECTORY_SYNC ||
+        replace_result.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING) {
+        saved_error = fault == SCENE_SAVE_FAULT_DIRECTORY_SYNC
+            ? EIO : (int)replace_result.error.code;
         native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_DIRECTORY_SYNC,
                                SCENE_DIAGNOSTIC_SEVERITY_WARNING, path,
                                "Save committed, but parent-directory sync failed",
-                               saved_error);
-        return SCENE_SAVE_OK_DURABILITY_WARNING;
-    }
-    if (close(fd) != 0) {
-        saved_error = errno;
-        native_save_diagnostic(diagnostic, SCENE_DIAGNOSTIC_ENV_DIRECTORY_SYNC,
-                               SCENE_DIAGNOSTIC_SEVERITY_WARNING, path,
-                               "Save committed, but parent-directory close failed",
                                saved_error);
         return SCENE_SAVE_OK_DURABILITY_WARNING;
     }

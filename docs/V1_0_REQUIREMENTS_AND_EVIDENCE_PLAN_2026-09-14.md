@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1, W2-A, and W2-B1 complete; W2-B2, pinned-SMC, performance,
+**Active: B0/C1 evidence captured; W1 through W2-B2 complete; W2-C1, pinned-SMC, performance,
 and final platform acceptance remain open.**
 
 This is the focused execution plan for
@@ -381,6 +381,12 @@ Cross-volume evidence is unavailable on the single-volume VM and is outside nati
 same-directory transaction. See
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
 
+**W2-B2 result (2026-09-14):** Native scene save now uses platform metadata, file sync,
+replacement, and commit state while retaining every existing scene result, diagnostic,
+recovery, identity, and dirty-state contract. Local strict/sanitizer owner tests pass 48/48;
+native strict compilation reports zero scene-document diagnostics. See
+[`reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md`](reviews/2026-09-14-v1-0-w2b2-native-scene-save-migration.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -464,10 +470,8 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to W2-B2 and migrate only native scene save through the proven platform path/file
-primitives while preserving exact results, diagnostics, recovery files, identity, and dirty
-state. Keep Windows existing-destination success as a committed durability warning. In
-parallel, obtain a strict-compatible
+Proceed to W2-C1 and migrate only `ui_preferences` file sync/replacement while preserving
+active-not-saved and pre/post-commit behavior. In parallel, obtain a strict-compatible
 pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
 Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
 host. Do not combine dependency, performance, or portability increments, and do not change
