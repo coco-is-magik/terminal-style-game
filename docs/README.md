@@ -27,6 +27,9 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md)
   — implemented path/file capability foundation, focused and sanitizer evidence, current
   63-runner inventory, native Windows compile evidence, and W2-B prototype handoff.
+- [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md)
+  — native Windows PE/import and 9/9 runtime replacement evidence, conservative guarantee
+  limits, harness preflight, failures/corrections, and W2-B2 scene-migration handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

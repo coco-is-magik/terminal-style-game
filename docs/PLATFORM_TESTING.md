@@ -104,7 +104,10 @@ rejects malformed, mismatched, duplicate, or stale evidence. After evidence
 retrieval, cleanup validates and removes only the exact current run workspace.
 Routine execution validates the published dependency set, creates only guest-local
 `vendor/` and `build/` adaptations, confirms the current 63-runner inventory, and
-runs the normal Make targets in order. Only `CC=gcc` is supplied; warning flags,
+runs a focused native platform-capability preflight before the normal Make targets. The
+preflight builds, inspects, and runs `test-platform-capabilities`; it rejects non-PE x86-64
+or MSYS/Cygwin-linked output and preserves a separate log. Only `CC=gcc` is supplied;
+warning flags,
 libraries, runtime paths, targets, and first-party files are not changed. Logs are
 retrieved after every reachable phase, and the run stops at the first failure.
 

@@ -19,6 +19,8 @@ class ProductClient:
         self.failure_target = ""
         self.failure_code = 1
         self.failure_log = b"compile error"
+        self.preflight_failure = 0
+        self.preflight_log = b"[  PASSED  ] 9 test(s).\n"
         self.runner_count = 63
         self.native_failure = ""
         self.log_retrieval_failure = False
@@ -32,6 +34,9 @@ class ProductClient:
         if "runner_count=" in script:
             code = 0 if self.runner_count == 63 else 1
             return code, f"runner_count={self.runner_count}\n".encode(), b""
+        if "platform-capability-preflight.log" in script:
+            self.logs["platform-capability-preflight"] = self.preflight_log
+            return self.preflight_failure, b"", b""
         for target, phase in (
             ("all", "strict-app-build"),
             ("test-build", "strict-test-build"),
@@ -91,9 +96,13 @@ class WindowsProductTests(unittest.TestCase):
     def test_complete_phase_order_and_unchanged_make_policy(self) -> None:
         self.product.run()
         make_commands = [command for command in self.client.commands if "make CC=gcc" in command]
-        self.assertEqual(len(make_commands), 4)
+        self.assertEqual(len(make_commands), 5)
+        self.assertIn("build/test-platform-capabilities", make_commands[0])
+        self.assertIn("file format pei-x86-64", make_commands[0])
+        self.assertIn("msys-2.0.dll", make_commands[0])
+        self.assertIn("cygwin1.dll", make_commands[0])
         targets = ["all", "test-build", "test", "standards-core"]
-        for command, target in zip(make_commands, targets, strict=True):
+        for command, target in zip(make_commands[1:], targets, strict=True):
             self.assertIn(f"make CC=gcc {target}", command)
             for forbidden in ("CFLAGS=", "LIBS=", "TEST_LIBS=", "RPATH="):
                 self.assertNotIn(forbidden, command)
@@ -124,6 +133,17 @@ class WindowsProductTests(unittest.TestCase):
         with self.assertRaisesRegex(SurveyFailure, "application-compile-failure"):
             self.product.run()
         self.assertFalse(any("make CC=gcc test-build" in command for command in self.client.commands))
+
+    def test_platform_preflight_failure_stops_before_application(self) -> None:
+        self.client.preflight_failure = 1
+        with self.assertRaises(SurveyFailure) as raised:
+            self.product.run()
+        self.assertEqual(
+            (raised.exception.outcome, raised.exception.phase, raised.exception.reason),
+            ("FAIL-PRODUCT", "platform-capability-preflight",
+             "platform-capability-failure"),
+        )
+        self.assertFalse(any("make CC=gcc all" in command for command in self.client.commands))
 
     def test_application_link_failure_is_distinguished(self) -> None:
         self.client.failure_target = "all"
@@ -173,7 +193,7 @@ class WindowsProductTests(unittest.TestCase):
             self.product.run()
         self.assertEqual(
             (raised.exception.outcome, raised.exception.phase, raised.exception.reason),
-            ("FAIL-TOOL", "strict-app-build", "guest-phase-log-missing"),
+            ("FAIL-TOOL", "platform-capability-preflight", "guest-phase-log-missing"),
         )
 
 

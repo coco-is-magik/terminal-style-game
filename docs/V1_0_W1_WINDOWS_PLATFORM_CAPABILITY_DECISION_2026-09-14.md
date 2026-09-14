@@ -394,6 +394,14 @@ The W2-B native replacement-semantics prototype remains required before document
 
 ### W2-B — Native scene vertical slice
 
+**W2-B1 prototype gate (2026-09-14): complete.** Native PE/import inspection and 9/9
+Windows runtime tests prove the same-directory replacement boundary needed by scene save;
+cross-volume is unavailable and outside that transaction. Existing-destination Windows
+publication remains conservatively committed-with-durability-warning. See
+[`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
+
+**W2-B2 scene migration: next.**
+
 - Migrate native scene file sync, mode/attribute preservation, replacement, and parent
   durability through the platform layer.
 - Preserve every existing `SceneSaveResult`, diagnostic, temp-retention rule, identity, and
@@ -495,11 +503,10 @@ W1 is complete because:
 
 ## Next safe action
 
-Implement the **W2-B isolated native replacement-semantics prototype** and record exact
-existing/absent destination, metadata, sharing, same-volume, failure, and durability
-behavior. Do not migrate `scene_document` until the focused native runner and prototype
-pass. W2-A local implementation/evidence is in
-[`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
+Proceed to **W2-B2 native scene migration**. Preserve every scene save result, diagnostic,
+temporary-retention, identity, and dirty-state contract, and keep existing-destination
+Windows publication conservative as a committed durability warning. W2-B1 evidence is in
+[`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
 
 In parallel, the pinned-SMC C2 dependency update and P1 performance reproduction remain
 independent. Do not externally timeout platform profiles.

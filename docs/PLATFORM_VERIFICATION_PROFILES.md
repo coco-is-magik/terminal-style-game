@@ -32,7 +32,7 @@ profiles were attempted and classified; it is not itself a support claim.
 | Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | GCC complete headless profile passes; Clang reaches strict app build and fails only on four pinned SMC final newlines; focused canonical Valgrind passes; display evidence deferred |
 | Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Fedora 43 GCC complete headless profile passes; display evidence deferred |
 | Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Informational for v1; no target environment is available |
-| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; W2-A modules compile cleanly under UCRT64 while unmigrated filesystem/catalog/locale/mkdir callers still block; VM cleanup passes |
+| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; W2-B1 native platform preflight passes 9/9 with PE/import, Unicode replacement, metadata/failure, and reparse evidence; unmigrated callers still block full strict app; VM cleanup passes |
 | macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Post-v1; no v1 support claim or release gate |
 
 ## Container boundary

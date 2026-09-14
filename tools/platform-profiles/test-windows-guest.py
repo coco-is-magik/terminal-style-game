@@ -100,6 +100,11 @@ class FakeQga:
             return 0, b"", b""
         if "runner_count=" in command:
             return 0, b"runner_count=63\n", b""
+        if "platform-capability-preflight.log" in command:
+            self.files[next(key.rsplit("\\", 1)[0] + "\\platform-capability-preflight.log"
+                            for key in self.files if key.endswith("source-payload.zip"))] = \
+                b"[  PASSED  ] 9 test(s).\n"
+            return 0, b"", b""
         if "make CC=gcc" in command:
             return 0, b"0\n", b""
         if "file format pei-x86-64" in command:

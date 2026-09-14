@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 and W2-A complete; W2-B, pinned-SMC, performance,
+**Active: B0/C1 evidence captured; W1, W2-A, and W2-B1 complete; W2-B2, pinned-SMC, performance,
 and final platform acceptance remain open.**
 
 This is the focused execution plan for
@@ -373,6 +373,14 @@ strict-compiles the new platform modules without diagnostics, then stops in know
 callers before runner execution. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 
+**W2-B1 result (2026-09-14):** The native Windows profile now builds, inspects, and runs the
+isolated platform runner before the full application. Native PE/import checks pass; 9/9
+tests prove Unicode same-directory absent/existing replacement, hidden-attribute
+preservation, read-only/sharing pre-commit failure preservation, and reparse classification.
+Cross-volume evidence is unavailable on the single-volume VM and is outside native scene's
+same-directory transaction. See
+[`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -456,9 +464,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to the W2-B isolated native Windows replacement prototype; do not migrate a
-document until it proves commit, metadata, sharing,
-same-volume, failure, and durability semantics. In parallel, obtain a strict-compatible
+Proceed to W2-B2 and migrate only native scene save through the proven platform path/file
+primitives while preserving exact results, diagnostics, recovery files, identity, and dirty
+state. Keep Windows existing-destination success as a committed durability warning. In
+parallel, obtain a strict-compatible
 pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
 Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
 host. Do not combine dependency, performance, or portability increments, and do not change

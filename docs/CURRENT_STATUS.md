@@ -73,17 +73,23 @@ Strict GCC/Clang focused tests pass 6/6; focused ASan/LeakSanitizer and UBSan pa
 GCC and local Clang applications build; all 63 functional runners, `standards-core`, and the
 platform harness pass. Native Windows accepts the new inventory and compiles both platform
 modules without diagnostics, then remains `FAIL-PRODUCT` in the known unmigrated callers;
-cleanup passed and the VM is `shut off`. W2-B is blocked on native replacement-semantics
-runtime evidence. See
+cleanup passed and the VM is `shut off`. W2-B1 now adds a mandatory isolated native
+preflight: the focused executable is PE x86-64 without MSYS/Cygwin imports and passes 9/9.
+It proves Unicode same-directory absent/existing replacement, hidden-attribute preservation,
+read-only/sharing failure before commit with destination/temp preservation, and reparse
+classification. Cross-volume is unavailable on the single-volume VM and outside native
+scene's same-directory transaction. W2-B2 native scene migration is next. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
+See also
+[`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is now the W2-B native replacement-semantics prototype before any
-document migration. See
+portability increment is now W2-B2 native scene migration through the proven same-directory
+capabilities. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

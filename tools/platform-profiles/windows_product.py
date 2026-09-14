@@ -22,6 +22,7 @@ class WindowsProductSurvey:
     def run(self) -> None:
         self.arrange_dependencies()
         self.verify_runner_inventory()
+        self.run_platform_capability_preflight()
         self.run_make_phase(
             "strict-app-build", "all", 900, "application-compile-failure"
         )
@@ -35,6 +36,55 @@ class WindowsProductSurvey:
             "standards-core", "standards-core", 300, "standards-core-failure"
         )
         self.verify_native_binaries()
+
+    def run_platform_capability_preflight(self) -> None:
+        source = windows_to_msys(self.source)
+        guest_log = (
+            windows_to_msys(self.source.rsplit("\\source", 1)[0])
+            + "/platform-capability-preflight.log"
+        )
+        script = f"""set -u
+export MSYSTEM=UCRT64
+export PATH='{windows_to_msys(self.dependencies)}/bin:/ucrt64/bin:/usr/bin'
+cd '{source}' || exit 3
+timeout 300s make CC=gcc build/test-platform-capabilities >'{guest_log}' 2>&1 || exit $?
+objdump -f build/test-platform-capabilities.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
+imports="$(objdump -p build/test-platform-capabilities.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
+printf 'native_imports=%s\n' "$imports" >>'{guest_log}'
+case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
+timeout 120s ./build/test-platform-capabilities.exe >>'{guest_log}' 2>&1
+"""
+        code, stdout, stderr = self.client.exec(
+            r"C:\msys64\usr\bin\bash.exe", ["-lc", script], 480
+        )
+        guest_log_windows = (
+            self.source.rsplit("\\source", 1)[0]
+            + "\\platform-capability-preflight.log"
+        )
+        try:
+            log = self.client.get_file(guest_log_windows)
+        except QgaError as error:
+            raise SurveyFailure(
+                "FAIL-TOOL", "platform-capability-preflight",
+                "guest-phase-log-missing", 3
+            ) from error
+        (self.output / "platform-capability-preflight.log").write_bytes(log)
+        if code == 0:
+            return
+        if code in (124, 137, 143):
+            raise SurveyFailure(
+                "FAIL-TIMEOUT", "platform-capability-preflight",
+                "execution-timeout", 4
+            )
+        text = (log + stdout + stderr).decode("utf-8", "replace").lower()
+        if "internal compiler error" in text:
+            raise SurveyFailure(
+                "FAIL-TOOL", "platform-capability-preflight", "compiler-crash", 3
+            )
+        raise SurveyFailure(
+            "FAIL-PRODUCT", "platform-capability-preflight",
+            "platform-capability-failure", 1
+        )
 
     def arrange_dependencies(self) -> None:
         source = windows_to_msys(self.source)
