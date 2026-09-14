@@ -130,6 +130,7 @@ TEST_GLYPH_CACHE_RUNNER      := $(BUILD_DIR)/test-glyph-block-cache
 TEST_LIGHTING_CACHE_RUNNER   := $(BUILD_DIR)/test-lighting-cache
 TEST_LIGHTING_RUNNER         := $(BUILD_DIR)/test-lighting
 TEST_APP_OPTIONS_RUNNER      := $(BUILD_DIR)/test-app-options
+TEST_PLATFORM_CAPABILITIES_RUNNER := $(BUILD_DIR)/test-platform-capabilities
 TEST_SMC_STATE_RUNNER        := $(BUILD_DIR)/test-smc-state-tracker
 TEST_SMC_INDEXED_RUNNER      := $(BUILD_DIR)/test-smc-indexed-state-tracker
 TEST_BENCHMARK_RUNNER        := $(BUILD_DIR)/test-benchmark-session
@@ -262,6 +263,8 @@ SRC_SCENE_FLOW_ADAPTER := src/scene_flow_adapter.c
 SRC_ENTITY_TRIGGER_SESSION := src/entity_trigger_session.c
 SRC_ASSET_REFRESH := src/asset_refresh.c
 SRC_OPTICAL_RUNTIME_VIEW := src/optical_runtime_view.c
+SRC_PLATFORM_PATH := src/platform_path.c
+SRC_PLATFORM_FS := src/platform_fs.c
 
 
 
@@ -694,6 +697,11 @@ $(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c \
 		-o $(TEST_APP_OPTIONS_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_PLATFORM_CAPABILITIES_RUNNER): tests/test_platform_capabilities.c $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_platform_capabilities.c \
+		$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) \
+		-o $(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_SMC_STATE_RUNNER): tests/test_smc_state_tracker.c src/smc_state_tracker.c | dirs
 	$(CC) $(CFLAGS) -DUSE_SMC_STATE_TRACKER=1 $(INCLUDES) \
 		-I"vendor/src/smc/include" -I"vendor/src/smc/src/c" \
@@ -968,6 +976,7 @@ run-stress: $(APP)
 TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
+	$(TEST_PLATFORM_CAPABILITIES_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
@@ -1007,6 +1016,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_UI_ELE_RUNNER)
 	./$(TEST_RGBA_PARSE_RUNNER)
 	./$(TEST_NUMBER_PARSE_RUNNER)
+	./$(TEST_PLATFORM_CAPABILITIES_RUNNER)
 	./$(TEST_SCENE_DOCUMENT_RUNNER)
 	./$(TEST_SCENE_FORMAT_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)

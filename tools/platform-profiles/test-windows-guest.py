@@ -99,7 +99,7 @@ class FakeQga:
         if 'test ! -e "$source/vendor"' in command:
             return 0, b"", b""
         if "runner_count=" in command:
-            return 0, b"runner_count=62\n", b""
+            return 0, b"runner_count=63\n", b""
         if "make CC=gcc" in command:
             return 0, b"0\n", b""
         if "file format pei-x86-64" in command:

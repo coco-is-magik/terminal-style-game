@@ -15,9 +15,18 @@ only a small set of documents should be treated as current authority.
 - [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md)
   — active V1-0 baseline, required-platform remediation, mirror reconciliation,
   non-ASCII inventory, rollback, and verification plan.
+- [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md)
+  — accepted filesystem, catalog, locale-number, UTF-8 path, commit-state, fault,
+  migration, and native Windows verification boundaries for W2-W4.
 - [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md)
   — byte-exact first-party newline correction, pinned-SMC boundary, local verification,
   Docker/classifier failure, and required-profile handoff.
+- [`reviews/2026-09-14-v1-0-platform-profile-evidence.md`](reviews/2026-09-14-v1-0-platform-profile-evidence.md)
+  — verified harness, bounded Ubuntu image/profile evidence, native Windows portability
+  findings, lifecycle cleanup, and the W1/pinned-SMC handoff.
+- [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md)
+  — implemented path/file capability foundation, focused and sanitizer evidence, current
+  63-runner inventory, native Windows compile evidence, and W2-B prototype handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

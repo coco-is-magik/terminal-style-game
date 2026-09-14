@@ -2,13 +2,16 @@
 
 ## Status
 
-**Partially implemented and locally verified; required-profile acceptance blocked.**
+**Partially implemented; parent correction verified in the required profile, with
+pinned-SMC acceptance still blocked.**
 
 C1 corrected every parent-repository first-party production/test C file identified by
 the B0 newline inventory. Four affected SMC files are image-owned pinned dependency
 inputs rather than parent-repository files and require a new reviewed SMC revision.
-The required Ubuntu Clang profile could not run because the Docker daemon socket was
-unavailable.
+The first required Ubuntu Clang attempt could not run because the Docker daemon socket
+was unavailable. Docker was subsequently restored, the pinned image was rebuilt, and
+the profile proved that only the four image-owned SMC files remain. See
+[`2026-09-14-v1-0-platform-profile-evidence.md`](2026-09-14-v1-0-platform-profile-evidence.md).
 
 ## Requirements preserved
 
@@ -163,10 +166,13 @@ then the complete aggregate passed. The timeout remains recorded as `FAIL-TIMEOU
    dependency process.
 2. Correct and test platform classification so a Docker daemon-connect failure cannot
    be emitted as a contained product failure.
-3. Restore an operational Docker daemon and rerun the required Ubuntu Clang profile.
-4. Only after that profile passes may C1/C2 be closed.
+3. Rebuild and rerun the required Ubuntu Clang profile after the pin changes. The
+   2026-09-14 continuation already restored Docker and proved all parent newline errors
+   are gone.
+4. Only after the complete required profile passes may C1/C2 be closed.
 5. Keep the independent P1 surface-render budget failure open; newline remediation
    does not change or waive it.
 
-Do not repeat the Ubuntu profile until Docker availability is confirmed. Do not edit
-the ignored local SMC clone as a substitute for a pinned dependency revision.
+Do not repeat the Ubuntu profile before the pinned SMC revision changes; the current
+failure is deterministic. Do not edit the ignored local SMC clone as a substitute for
+a pinned dependency revision.

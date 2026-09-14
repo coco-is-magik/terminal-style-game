@@ -2,8 +2,8 @@
 
 ## Status and authority
 
-**Active: B0 captured; C1 partially implemented and locally verified; performance,
-pinned-SMC, Docker, and required-profile work remain open.**
+**Active: B0/C1 evidence captured; W1 and W2-A complete; W2-B, pinned-SMC, performance,
+and final platform acceptance remain open.**
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -326,10 +326,16 @@ C2 + W5 + W6 + L1 + M1 disposition + byte inventory -> V1-0 closeout
 their original bytes plus one LF and pass strict GCC/Clang, focused SMC, standards-core,
 and complete functional gates. Four affected SMC files are supplied to profiles from a
 pinned upstream archive, so ignored local-vendor edits were restored and cannot satisfy
-the required profile. Required Ubuntu Clang evidence is additionally blocked because the
-Docker daemon socket is unavailable; the wrapper misclassified that pre-container failure
-as `FAIL-PRODUCT`, while policy requires `FAIL-TOOL`. See
+the required profile. After Docker was restored and the pinned image rebuilt, required
+Ubuntu Clang 18 reached strict compilation: every first-party newline diagnostic was gone
+and only the same four pinned SMC files failed. See
 [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
+
+**Platform evidence continuation (2026-09-14):** The complete platform harness passed;
+the Ubuntu Clang image built; required Ubuntu Clang isolated the four pinned SMC files;
+and native Windows reproduced the complete W1 portability families while restoring the
+VM to `shut off`. No external timeout wrapped a platform command. See
+[`reviews/2026-09-14-v1-0-platform-profile-evidence.md`](reviews/2026-09-14-v1-0-platform-profile-evidence.md).
 
 ### W1 — Windows platform-boundary decision record
 
@@ -346,6 +352,12 @@ and Windows equivalent. Resolve:
 
 **Rollback:** Decision record only.
 
+**W1 result (2026-09-14):** Complete. Capability ownership, commit state, native
+scene/asset/sprite transaction boundaries, metadata, safe directory creation, reparse-safe
+catalog discovery, C-locale number conversion, strict UTF-8/native paths, fault injection,
+implementation increments, and acceptance are locked in
+[`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
+
 ### W2-W4 — Narrow portability adapters
 
 Land one capability family at a time. Domain APIs keep their current typed outcomes and
@@ -354,6 +366,12 @@ before replacing each call site.
 
 **Rollback:** Each adapter and caller migration is independently revertible. Do not mix file
 durability, catalogs, and numeric parsing in one code increment.
+
+**W2-A result (2026-09-14):** Isolated path/file primitives and the 63rd focused runner are
+implemented and locally verified. Native Windows accepts the 63-runner inventory and
+strict-compiles the new platform modules without diagnostics, then stops in known unmigrated
+callers before runner execution. See
+[`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 
 ### W5 — Native Windows functional profile
 
@@ -438,9 +456,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Continue C1/C2 by obtaining a strict-compatible pinned SMC revision, correcting the
-platform daemon-failure classifier in a separate tested harness increment, and restoring
-Docker before rerunning required Ubuntu Clang. P1 performance reproduction and W1 Windows
-design may proceed independently. Do not combine newline/dependency work with renderer
-optimization or Windows adapters. Do not change mirror, glyph, font, UI, or sprite
-production behavior during V1-0 baseline/remediation work.
+Proceed to the W2-B isolated native Windows replacement prototype; do not migrate a
+document until it proves commit, metadata, sharing,
+same-volume, failure, and durability semantics. In parallel, obtain a strict-compatible
+pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
+Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
+host. Do not combine dependency, performance, or portability increments, and do not change
+mirror, glyph, font, UI, or sprite behavior during V1-0 remediation.

@@ -66,7 +66,7 @@ runners="$(make -pn 2>/dev/null | sed -n 's/^TEST_RUNNERS := //p' | head -n 1)"
 set -- $runners
 printf 'runner_count=%s\n' "$#"
 printf '%s\n' "$runners"
-test "$#" -eq 62
+test "$#" -eq 63
 """
         self._run_command(
             "test-inventory.log",
@@ -118,7 +118,7 @@ exit "$status"
 export PATH=/ucrt64/bin:/usr/bin
 cd '{source}'
 set -- build/ascii-fps.exe build/test-*.exe
-test "$#" -eq 63
+test "$#" -eq 64
 for binary in "$@"; do
   test -f "$binary"
   objdump -f "$binary" | grep -F 'file format pei-x86-64' >/dev/null

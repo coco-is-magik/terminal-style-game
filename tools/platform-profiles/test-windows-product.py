@@ -19,7 +19,7 @@ class ProductClient:
         self.failure_target = ""
         self.failure_code = 1
         self.failure_log = b"compile error"
-        self.runner_count = 62
+        self.runner_count = 63
         self.native_failure = ""
         self.log_retrieval_failure = False
 
@@ -30,7 +30,7 @@ class ProductClient:
         if "test ! -e \"$source/vendor\"" in script:
             return 0, b"", b""
         if "runner_count=" in script:
-            code = 0 if self.runner_count == 62 else 1
+            code = 0 if self.runner_count == 63 else 1
             return code, f"runner_count={self.runner_count}\n".encode(), b""
         for target, phase in (
             ("all", "strict-app-build"),
@@ -97,8 +97,8 @@ class WindowsProductTests(unittest.TestCase):
             self.assertIn(f"make CC=gcc {target}", command)
             for forbidden in ("CFLAGS=", "LIBS=", "TEST_LIBS=", "RPATH="):
                 self.assertNotIn(forbidden, command)
-        self.assertIn('test "$#" -eq 62', self.client.commands[1])
-        self.assertIn('test "$#" -eq 63', self.client.commands[-1])
+        self.assertIn('test "$#" -eq 63', self.client.commands[1])
+        self.assertIn('test "$#" -eq 64', self.client.commands[-1])
         self.assertIn("msys-2.0.dll", self.client.commands[-1])
         self.assertIn("cygwin1.dll", self.client.commands[-1])
 

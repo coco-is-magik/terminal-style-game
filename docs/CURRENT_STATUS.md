@@ -54,10 +54,37 @@ first-party/test files are their original bytes plus one final LF; strict GCC an
 Clang builds, focused SMC owners, `standards-core`, the complete runner build, and all 62
 functional runners pass. Four affected SMC files come from the image-owned pinned SMC
 archive, so local ignored-vendor corrections were restored and a reviewed pinned revision
-is still required. The required Ubuntu Clang profile did not run because
-`/var/run/docker.sock` is unavailable. Its wrapper output incorrectly called Docker status
-1 a contained `FAIL-PRODUCT`; policy-correct classification is `FAIL-TOOL`. See
+is still required. With Docker restored and the pinned Ubuntu image rebuilt, required
+Clang 18 now reaches strict compilation: every first-party newline failure is gone and
+only those four pinned SMC files remain. See
 [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
+
+The platform harness passes, including daemon-failure classification and all Windows
+lifecycle/guest/dependency/product fixtures. A native Windows run completed without an
+external timeout, reproduced the W1 `fsync`/`fchmod`, safe catalog, POSIX locale, and
+two-argument `mkdir` compile blockers, and restored the `win10-survey` VM from `shut off`
+back to `shut off` through QGA. That evidence supplied the native inputs for the completed
+W1 capability decision. See
+[`reviews/2026-09-14-v1-0-platform-profile-evidence.md`](reviews/2026-09-14-v1-0-platform-profile-evidence.md).
+
+W1 is complete as a design gate. W2-A now implements isolated `platform_fs` and
+`platform_path` foundations plus a 63rd focused runner without migrating any document.
+Strict GCC/Clang focused tests pass 6/6; focused ASan/LeakSanitizer and UBSan pass; strict
+GCC and local Clang applications build; all 63 functional runners, `standards-core`, and the
+platform harness pass. Native Windows accepts the new inventory and compiles both platform
+modules without diagnostics, then remains `FAIL-PRODUCT` in the known unmigrated callers;
+cleanup passed and the VM is `shut off`. W2-B is blocked on native replacement-semantics
+runtime evidence. See
+[`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
+
+The W1 design selects isolated `platform_fs`, `platform_catalog`,
+`platform_number`, and `platform_path` responsibilities; preserves document-owned
+serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
+publication separate; rejects Windows reparse points in managed directories/catalogs; and
+requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
+portability increment is now the W2-B native replacement-semantics prototype before any
+document migration. See
+[`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
 phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).

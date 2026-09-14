@@ -22,10 +22,10 @@ behavior.
 | Profile | Role | Environment | Current result |
 |---|---|---|---|
 | `ubuntu-24.04-gcc` | Required | Ubuntu 24.04, glibc 2.39, GCC 13.3.0 | `PASS` through complete profile |
-| `ubuntu-24.04-clang` | Required | Ubuntu 24.04, glibc 2.39, Clang 18.1.3 | `FAIL-PRODUCT` at strict application build |
+| `ubuntu-24.04-clang` | Required | Ubuntu 24.04, glibc 2.39, Clang 18.1.3 | `FAIL-PRODUCT` at strict application build; first-party newlines fixed, four pinned SMC files remain |
 | `fedora-gcc` | Required | Fedora 43, glibc 2.42, GCC 15.3.1 | `PASS` through complete profile |
 | `alpine-musl-gcc` | Informational | Alpine 3.22, musl 1.2.5, GCC 14.2.0 | `PASS` through complete profile |
-| `windows-10-x64-gcc` | Informational | Windows 10 Pro 22H2 x64, UCRT64 GCC 16.2.0 | `FAIL-PRODUCT` at strict application compilation |
+| `windows-10-x64-gcc` | Informational | Windows 10 Pro 22H2 x64, UCRT64 GCC 16.2.0 | `FAIL-PRODUCT` at strict application compilation; 2026-09-14 rerun reproduced W1 portability families and passed lifecycle cleanup |
 
 Alpine is a portability probe, not a supported-platform promise. Its result does
 not determine `platform-check` unless its profile role is deliberately promoted.
@@ -33,6 +33,10 @@ The v1 product roadmap requires native Linux x64 and Windows x64 release evidenc
 the current informational `windows-10-x64-gcc` survey remains evidence of a known
 `FAIL-PRODUCT`, not yet a passing required release profile. Steam Deck / SteamOS is
 informational for v1, and macOS is post-v1.
+
+Platform profile commands can run for a long time on the current low-end host. Do not
+wrap them in an additional external timeout. Their repository-owned image, container,
+guest-build, test, command, readiness, retrieval, and lifecycle bounds remain authoritative.
 
 ## Profile providers
 
@@ -99,12 +103,12 @@ extracts to guest-local NTFS, generates its own SHA-256 manifest, and the host
 rejects malformed, mismatched, duplicate, or stale evidence. After evidence
 retrieval, cleanup validates and removes only the exact current run workspace.
 Routine execution validates the published dependency set, creates only guest-local
-`vendor/` and `build/` adaptations, confirms the unchanged 62-runner inventory, and
+`vendor/` and `build/` adaptations, confirms the current 63-runner inventory, and
 runs the normal Make targets in order. Only `CC=gcc` is supplied; warning flags,
 libraries, runtime paths, targets, and first-party files are not changed. Logs are
 retrieved after every reachable phase, and the run stops at the first failure.
 
-If all Make phases pass, exactly 63 outputs (`ascii-fps.exe` and 62 test executables)
+If all Make phases pass, exactly 64 outputs (`ascii-fps.exe` and 63 test executables)
 must identify as PE x86-64 and must not import `msys-2.0.dll` or `cygwin1.dll`.
 
 ### Windows dependency bootstrap
@@ -233,7 +237,7 @@ Each profile stops at its first failed prerequisite:
 3. Record the environment and installed-package manifests.
 4. Validate image-owned dependency artifacts.
 5. Build the application with strict C11 warnings-as-errors.
-6. Build the complete 62-runner inventory without execution.
+6. Build the complete 63-runner inventory without execution.
 7. Execute the complete `make test` aggregate.
 8. Run `make standards-core`.
 
