@@ -28,6 +28,8 @@ state = Path(os.environ["FAKE_QGA_STATE"])
 log = Path(os.environ["FAKE_QGA_LOG"])
 with log.open("a", encoding="utf-8") as output:
     output.write(execute + "\n")
+with (state / "arguments.log").open("a", encoding="utf-8") as output:
+    output.write(json.dumps(sys.argv[1:]) + "\n")
 files = state / "files"
 files.mkdir(exist_ok=True)
 if os.environ.get("FAKE_QGA_SCENARIO") == "invalid-json":
@@ -90,6 +92,22 @@ class QgaClientTests(unittest.TestCase):
     def test_exec_decodes_captured_output(self) -> None:
         code, stdout, stderr = self.client.exec("cmd.exe", ["/c", "ver"], 5)
         self.assertEqual((code, stdout, stderr), (0, b"ok", b""))
+
+    def test_call_passes_explicit_timeout_to_virsh(self) -> None:
+        self.client.call("guest-ping")
+        arguments = json.loads((self.root / "arguments.log").read_text().splitlines()[0])
+        self.assertEqual(
+            arguments[:7],
+            [
+                "-c",
+                "qemu:///fixture",
+                "qemu-agent-command",
+                "fixture",
+                "--timeout",
+                "5",
+                '{"execute":"guest-ping"}',
+            ],
+        )
 
     def test_chunked_file_round_trip(self) -> None:
         source = self.root / "source.bin"

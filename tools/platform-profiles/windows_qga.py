@@ -16,6 +16,8 @@ class QgaError(RuntimeError):
 
 
 class QgaClient:
+    SUBPROCESS_TIMEOUT_GRACE = 5
+
     def __init__(
         self,
         uri: str,
@@ -40,6 +42,8 @@ class QgaClient:
             self.uri,
             "qemu-agent-command",
             self.domain,
+            "--timeout",
+            str(self.command_timeout),
             json.dumps(request, separators=(",", ":")),
         ]
         try:
@@ -48,7 +52,7 @@ class QgaClient:
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=self.command_timeout,
+                timeout=self.command_timeout + self.SUBPROCESS_TIMEOUT_GRACE,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise QgaError(f"QGA command failed: {execute}: {error}") from error
