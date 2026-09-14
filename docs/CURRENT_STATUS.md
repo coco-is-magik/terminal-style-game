@@ -17,10 +17,11 @@ activation path.
 ## Next safe action
 
 The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
-accepted on 2026-09-14. Its first executable phase is **V1-0 — Baseline,
-required-platform remediation, and evidence reconciliation**. Before production changes,
-write its focused requirements/evidence plan and capture unchanged strict, complete-suite,
-SMC, platform, and performance results.
+accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
+evidence reconciliation** is Active at its documentation/evidence-only B0 increment.
+Its focused execution authority is
+[`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
+Production portability changes have not begun.
 
 V1-0 must also reconcile any current mirror report with the planar reflected-curvature
 defect already reproduced, corrected, and guarded on 2026-09-12. Mirror source changes
@@ -28,6 +29,35 @@ remain evidence-blocked unless a distinct failing scene is captured. In parallel
 documentation-only Q1 preparation may inventory measurable UI rules and Unicode/font
 research. Sprite-painter behavior characterization may proceed under a focused plan, but
 final glyph-aware workbench formats depend on the Unicode/glyph foundation.
+
+The initial bounded asset scan found no non-ASCII runtime-authored asset file.
+`assets/README.md` contains non-ASCII documentation bytes and is classified separately;
+no legacy code-page meaning has been assigned.
+
+The 2026-09-14 B0 local baseline passes the strict default GCC/SMC-stream application
+build, both focused mirror owners (4/4 and 19/19), the complete 62-runner build and
+functional aggregate, all nine UI standards owners, `standards-core`, and smoke. A local
+Clang 22 strict application build also passes, but does not replace required Ubuntu Clang
+18 profile evidence. The first full `make test` attempt timed out during compilation; the
+recorded narrower `test-build` then `test` recovery passed.
+
+`make benchmark-headless` is currently `FAIL-PRODUCT`: the deterministic surface-render
+workload measured `flat_height_avg_ms=6.188057` against its 6 ms budget. Later benchmark
+workloads and `stability-headless` remain unrun behind that blocker. The B0 scan found 192
+of 254 scoped production/test/pinned-SMC C files lacked final newlines, matching the
+preserved Ubuntu Clang 18 failure class even though local Clang 22 accepted them. P1
+performance reproduction remains independent; Windows adapter work remains at the W1
+design gate.
+
+C1 is partially implemented and locally verified as of 2026-09-14. Exactly 188 tracked
+first-party/test files are their original bytes plus one final LF; strict GCC and local
+Clang builds, focused SMC owners, `standards-core`, the complete runner build, and all 62
+functional runners pass. Four affected SMC files come from the image-owned pinned SMC
+archive, so local ignored-vendor corrections were restored and a reviewed pinned revision
+is still required. The required Ubuntu Clang profile did not run because
+`/var/run/docker.sock` is unavailable. Its wrapper output incorrectly called Docker status
+1 a contained `FAIL-PRODUCT`; policy-correct classification is `FAIL-TOOL`. See
+[`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
 phase status belong in [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
@@ -45,11 +75,12 @@ project-wide standards gates, and established typed tool-failure handling. The
 implementation and current Gentoo Valgrind `FAIL-TOOL` evidence are recorded in
 [`reviews/2026-09-12-verification-policy-and-tool-failure.md`](reviews/2026-09-12-verification-policy-and-tool-failure.md).
 At that pre-expansion checkpoint, the complete 60-runner suite and repository-owned
-standards guards passed. cppcheck is now installed and working; its current findings
-in `src/scene_format.c` are `FAIL-PRODUCT`, not a tool failure, and are outside this
-Valgrind increment. Native Valgrind remains incompatible with the host loader, while
-the canonical pinned Ubuntu 24.04 amd64 container gate now provides focused Memcheck
-evidence for `test-decal-io` and `test-core`.
+standards guards passed. That historical run found cppcheck product findings in
+`src/scene_format.c`; the fresh 2026-09-14 B0 environment has no `cppcheck` on its
+command path, so current `make standards` evidence is unavailable and is not claimed.
+Native Valgrind also remains unavailable on the current command path; the canonical
+pinned Ubuntu 24.04 amd64 container gate retains the recorded focused Memcheck evidence
+for `test-decal-io` and `test-core`.
 The complete Docker host/kernel requirements and operational handoff are in
 [`DOCKER_VALGRIND_GATE.md`](DOCKER_VALGRIND_GATE.md).
 

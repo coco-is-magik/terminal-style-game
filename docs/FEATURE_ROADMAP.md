@@ -264,7 +264,7 @@ parallel models.
 
 ## V1-0 — Baseline, required-platform remediation, and evidence reconciliation
 
-**Status:** Ready for Q1.
+**Status:** Active — B0 baseline evidence and inventories.
 
 **Purpose:** Establish an unchanged baseline and make Linux/Windows first-class
 constraints before cross-platform file, text, font, input, and packaging work.
@@ -288,6 +288,9 @@ no format or renderer migration occurs here.
 **Exit gate:** Required strict builds pass; baseline evidence is reproducible; the
 mirror issue is classified as already covered or distinct; no non-ASCII legacy byte is
 silently interpreted through a host code page.
+
+**Detailed plan:**
+[`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
 
 ## V1-1 — UI architecture, measurable design rules, and semantic tokens
 

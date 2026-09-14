@@ -12,6 +12,12 @@ only a small set of documents should be treated as current authority.
   foundation, next safe action, and known deferred source-level TODOs.
 - [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) — dependency-aware roadmap authority
   from the verified R0-R12 foundation through the required v1.0 release proofs.
+- [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md)
+  — active V1-0 baseline, required-platform remediation, mirror reconciliation,
+  non-ASCII inventory, rollback, and verification plan.
+- [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md)
+  — byte-exact first-party newline correction, pinned-SMC boundary, local verification,
+  Docker/classifier failure, and required-profile handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)
