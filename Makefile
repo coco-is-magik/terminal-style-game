@@ -188,7 +188,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-prepare-windows platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight benchmark-surface-render stability-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux display-acceptance-windows display-acceptance-windows-preflight display-acceptance-windows-prepare display-acceptance-windows-build-start display-acceptance-windows-status display-acceptance-windows-wait-build display-acceptance-windows-observe display-acceptance-windows-collect display-acceptance-windows-cleanup display-acceptance-windows-cancel platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-prepare-windows platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -704,8 +704,8 @@ $(BENCH_COLORED_LIGHTING_RUNNER): tests/benchmark_colored_lighting.c $(SRC_CHECK
 		$(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CONFIG) $(SRC_MATH) $(SRC_GRID) $(SRC_INPUT) \
 		$(TEST_FEATURE_EXTRA_SRC) -o $(BENCH_COLORED_LIGHTING_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
-$(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c \
+$(TEST_APP_OPTIONS_RUNNER): tests/test_app_options.c src/app_options.c src/display_acceptance.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_options.c src/app_options.c src/display_acceptance.c \
 		-o $(TEST_APP_OPTIONS_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_PLATFORM_CAPABILITIES_RUNNER): tests/test_platform_capabilities.c $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_CATALOG) | dirs
@@ -1167,6 +1167,8 @@ test-platform-harness:
 	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-guest.py
 	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-dependencies.py
 	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-product.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/test_windows_procedure.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/test_x11_drive.py
 	@tools/platform-profiles/test-survey.sh
 
 platform-image-ubuntu-gcc:
@@ -1310,6 +1312,38 @@ matrix-one:
 
 smoke: all
 	./$(APP) --smoke-test
+
+display-acceptance-linux: all
+	@tools/display-acceptance/run-x11.sh
+
+display-acceptance-windows:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py run
+
+display-acceptance-windows-preflight:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py preflight
+
+display-acceptance-windows-prepare:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py prepare
+
+display-acceptance-windows-build-start:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py build-start
+
+display-acceptance-windows-status:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py status
+
+display-acceptance-windows-wait-build:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py wait-build
+
+display-acceptance-windows-observe:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py observe
+
+display-acceptance-windows-collect:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py collect
+
+display-acceptance-windows-cleanup:
+	@PYTHONDONTWRITEBYTECODE=1 python3 tools/display-acceptance/windows_procedure.py cleanup
+
+display-acceptance-windows-cancel: display-acceptance-windows-cleanup
 
 
 

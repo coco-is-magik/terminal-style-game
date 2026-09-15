@@ -103,6 +103,13 @@ AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out
         } else if (strcmp(option, "--smoke-test") == 0) {
             result = select_run_mode(&candidate, RUN_MODE_SMOKE, VISUAL_RAYCAST);
             if (result != APP_OPTIONS_OK) return result;
+        } else if (strcmp(option, "--display-acceptance") == 0) {
+            if (++i >= argc) return APP_OPTIONS_MISSING_VALUE;
+            if (!parse_positive_double(argv[i], &candidate.run_duration_seconds)) {
+                return APP_OPTIONS_INVALID_VALUE;
+            }
+            result = select_run_mode(&candidate, RUN_MODE_DISPLAY_ACCEPTANCE, VISUAL_RAYCAST);
+            if (result != APP_OPTIONS_OK) return result;
         } else if (strcmp(option, "--frames") == 0) {
             if (++i >= argc) return APP_OPTIONS_MISSING_VALUE;
             if (frames_seen || !parse_positive_int(argv[i], &candidate.benchmark_frames)) {

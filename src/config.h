@@ -111,7 +111,8 @@ typedef enum {
     RUN_MODE_BENCHMARK_SCENARIO,  /* Deterministic scenario benchmark (fixed frames) */
     RUN_MODE_BENCHMARK_LIGHTING,  /* Timed lighting benchmark, prints JSON results */
     RUN_MODE_STABILITY,           /* Stability test (detects leaks/crashes) */
-    RUN_MODE_SMOKE                /* Headless startup/assets validation */
+    RUN_MODE_SMOKE,               /* Headless startup/assets validation */
+    RUN_MODE_DISPLAY_ACCEPTANCE   /* Bounded native display/input evidence */
 } RunMode;
 
 /* ---- Visual mode enum ---- */

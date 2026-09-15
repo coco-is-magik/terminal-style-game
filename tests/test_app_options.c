@@ -4,6 +4,7 @@
 #include <cmocka.h>
 
 #include "../src/app_options.h"
+#include "../src/display_acceptance.h"
 
 static void test_defaults_and_modes(void **state) {
     AppOptions options;
@@ -47,6 +48,61 @@ static void test_smoke_mode(void **state) {
     assert_int_equal(options.mode, RUN_MODE_SMOKE);
 }
 
+static void test_display_acceptance_mode(void **state) {
+    AppOptions options;
+    char *valid[] = {"app", "--display-acceptance", "20"};
+    char *missing[] = {"app", "--display-acceptance"};
+    char *invalid[] = {"app", "--display-acceptance", "0"};
+    char *conflict[] = {"app", "--display-acceptance", "20", "--smoke-test"};
+    (void)state;
+
+    assert_int_equal(app_options_parse(3, valid, &options), APP_OPTIONS_OK);
+    assert_int_equal(options.mode, RUN_MODE_DISPLAY_ACCEPTANCE);
+    assert_float_equal(options.run_duration_seconds, 20.0, 0.0001);
+    assert_int_equal(app_options_parse(2, missing, &options), APP_OPTIONS_MISSING_VALUE);
+    assert_int_equal(app_options_parse(3, invalid, &options), APP_OPTIONS_INVALID_VALUE);
+    assert_int_equal(app_options_parse(4, conflict, &options), APP_OPTIONS_CONFLICT);
+}
+
+static void test_display_acceptance_requires_all_observations(void **state) {
+    DisplayAcceptance acceptance = {0};
+    InputState input = {0};
+    (void)state;
+
+    assert_false(display_acceptance_passed(&acceptance));
+    input.confirm = true;
+    input.mouse_dx = 2.0f;
+    input.mouse_left_pressed = true;
+    input.mouse_left_released = true;
+    display_acceptance_observe_input(&acceptance, &input);
+    display_acceptance_observe_transition(
+        &acceptance, APP_STATE_MAIN_MENU, APP_STATE_PLAYING);
+    display_acceptance_observe_presentation(&acceptance);
+    acceptance.resized = true;
+    assert_true(display_acceptance_passed(&acceptance));
+
+    display_acceptance_observe_input(NULL, &input);
+    display_acceptance_observe_input(&acceptance, NULL);
+    display_acceptance_observe_transition(NULL, APP_STATE_MAIN_MENU, APP_STATE_PLAYING);
+    display_acceptance_observe_presentation(NULL);
+    assert_false(display_acceptance_passed(NULL));
+}
+
+static void test_display_acceptance_json_text_is_bounded(void **state) {
+    char output[32];
+    char small[4] = "old";
+    (void)state;
+
+    assert_true(display_acceptance_json_text(output, sizeof(output), "a\"b\\c\n"));
+    assert_string_equal(output, "a\\\"b\\\\c\\u000a");
+    assert_true(display_acceptance_json_text(output, sizeof(output), NULL));
+    assert_string_equal(output, "unknown");
+    assert_false(display_acceptance_json_text(small, sizeof(small), "long"));
+    assert_string_equal(small, "lon");
+    assert_false(display_acceptance_json_text(NULL, sizeof(output), "x"));
+    assert_false(display_acceptance_json_text(output, 0, "x"));
+}
+
 static void test_rejects_missing_unknown_and_invalid(void **state) {
     AppOptions options;
     char *missing[] = {"app", "--frames"};
@@ -80,6 +136,9 @@ int main(void) {
         cmocka_unit_test(test_defaults_and_modes),
         cmocka_unit_test(test_benchmark_forms),
         cmocka_unit_test(test_smoke_mode),
+        cmocka_unit_test(test_display_acceptance_mode),
+        cmocka_unit_test(test_display_acceptance_requires_all_observations),
+        cmocka_unit_test(test_display_acceptance_json_text_is_bounded),
         cmocka_unit_test(test_rejects_missing_unknown_and_invalid),
         cmocka_unit_test(test_rejects_conflicts_transactionally),
     };

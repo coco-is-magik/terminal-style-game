@@ -5,6 +5,7 @@
 #include "app_options.h"
 #include "app_resources.h"
 #include "benchmark_session.h"
+#include "display_acceptance.h"
 #include "frame_dispatch.h"
 #include "menu_controller.h"
 #include "config.h"
@@ -493,6 +494,8 @@ int app_main(int argc, char* argv[]) {
     }
 
     RunMode mode = options.mode;
+    bool interactive_mode = mode == RUN_MODE_NORMAL || mode == RUN_MODE_DISPLAY_ACCEPTANCE;
+    bool display_acceptance_mode = mode == RUN_MODE_DISPLAY_ACCEPTANCE;
     VisualMode visual_mode = options.visual_mode;
     double run_duration_seconds = options.run_duration_seconds;
     const char *benchmark_scenario = options.benchmark_scenario;
@@ -506,7 +509,7 @@ int app_main(int argc, char* argv[]) {
                                      cfg->cell_width, cfg->cell_height);
     if (!ren) {
         fprintf(stderr, "Failed to initialize renderer. (Headless environment expected)\n");
-        return 0;
+        return display_acceptance_mode ? 1 : 0;
     }
     resources.renderer = ren;
 
@@ -598,7 +601,7 @@ int app_main(int argc, char* argv[]) {
       smc_indexed_state_tracker_reset(); }
 #endif
 
-    AppState app_state = (mode == RUN_MODE_NORMAL) ? APP_STATE_MAIN_MENU : APP_STATE_PLAYING;
+    AppState app_state = interactive_mode ? APP_STATE_MAIN_MENU : APP_STATE_PLAYING;
 
     if (mode == RUN_MODE_BENCHMARK_RAYCAST) {
         cam.transform.pos.x = 1.5;
@@ -609,7 +612,7 @@ int app_main(int argc, char* argv[]) {
 
     MenuStack ms;
     menu_stack_init(&ms);
-    if (mode == RUN_MODE_NORMAL) {
+    if (interactive_mode) {
         menu_stack_push(&ms, MENU_MAIN);
     }
 
@@ -623,6 +626,8 @@ int app_main(int argc, char* argv[]) {
     perf_stats_init(&perf_stats);
     InputState input = {0};
     UnifiedEditorState ued = {0};
+    DisplayAcceptance display_acceptance;
+    display_acceptance_init(&display_acceptance, ren);
 
     UiCache menu_cache;
     UiLayout *menu_layouts[MENU_ID_COUNT];
@@ -684,6 +689,10 @@ int app_main(int argc, char* argv[]) {
     int initial_alloc_count = renderer_alloc_count;
     int initial_texture_count = renderer_texture_create_count;
 
+    if (display_acceptance_mode) {
+        display_acceptance_print_start(&display_acceptance, ren);
+    }
+
     while (!input.quit) {
         uint64_t start_time = SDL_GetPerformanceCounter();
         double elapsed_total_sec = (double)(start_time - initial_time) / SDL_GetPerformanceFrequency();
@@ -692,13 +701,17 @@ int app_main(int argc, char* argv[]) {
                                           elapsed_total_sec, run_duration_seconds)) {
             input.quit = true; break;
         }
+        if (display_acceptance_mode && elapsed_total_sec >= run_duration_seconds) {
+            input.quit = true;
+            break;
+        }
 
         double delta_time_ms = (double)((start_time - last_time) * 1000) / SDL_GetPerformanceFrequency();
         last_time = start_time;
 
         sync_editor_text_input(ren, app_state, &ued);
-        input_process(&input, mode != RUN_MODE_NORMAL);
-        if (mode == RUN_MODE_NORMAL) {
+        input_process(&input, !interactive_mode);
+        if (interactive_mode) {
             float render_x;
             float render_y;
             (void)SDL_GetMouseState(&input.mouse_x, &input.mouse_y);
@@ -709,12 +722,16 @@ int app_main(int argc, char* argv[]) {
                 input.mouse_grid_y = (int)(render_y / (float)ren->cell_h);
             }
         }
+        if (display_acceptance_mode) {
+            display_acceptance_observe_input(&display_acceptance, &input);
+            display_acceptance_observe_window(&display_acceptance, ren);
+        }
         if (input.quit && app_state == APP_STATE_EDITOR && ued.active) {
             input.quit = false;
             unified_editor_request_window_close(&ued);
         }
 
-        if (mode == RUN_MODE_NORMAL) {
+        if (interactive_mode) {
             UiPreferencesChangeResult scale_result;
             bool scale_changed = false;
             if (input.ui_scale_reset_pressed) {
@@ -737,7 +754,7 @@ int app_main(int argc, char* argv[]) {
         }
 
         {
-            bool want_lock = (mode == RUN_MODE_NORMAL)
+            bool want_lock = interactive_mode
                              && (ms.depth == 0)
                              && ((app_state == APP_STATE_PLAYING)
                                  || (app_state == APP_STATE_EDITOR
@@ -774,6 +791,7 @@ int app_main(int argc, char* argv[]) {
                     menu_selected[mid] = (menu_selected[mid] + 1) % count;
             }
             if (input.confirm && count > 0) {
+                AppState state_before_action = app_state;
                 int sel = menu_selected[mid];
                 if (active_layout) {
                     UiElement *focused = ui_layout_get_focused(active_layout, sel);
@@ -788,6 +806,10 @@ int app_main(int argc, char* argv[]) {
                     }
                 }
                 active_menu = menu_stack_peek(&ms);
+                if (display_acceptance_mode) {
+                    display_acceptance_observe_transition(
+                        &display_acceptance, state_before_action, app_state);
+                }
             }
         }
 
@@ -1005,7 +1027,7 @@ int app_main(int argc, char* argv[]) {
             grid_clear(grid, bg);
         }
 
-        if (mode == RUN_MODE_NORMAL && scale_feedback.frames_remaining > 0) {
+        if (interactive_mode && scale_feedback.frames_remaining > 0) {
             SDL_Color feedback_fg = {255, 255, 255, 255};
             SDL_Color feedback_bg = {80, 0, 0, 255};
             ui_canvas_print(ui_resources.feedback, 1, 0, scale_feedback.text,
@@ -1018,11 +1040,14 @@ int app_main(int argc, char* argv[]) {
         }
 
         uint64_t render_start = SDL_GetPerformanceCounter();
-        if (mode == RUN_MODE_NORMAL || layered_ui_benchmark) {
+        if (interactive_mode || layered_ui_benchmark) {
             renderer_draw_layers(ren, grid, &ui_layers,
                                  layered_ui_benchmark ? 150 : ui_preferences_scale(&preferences));
         } else {
             renderer_draw(ren, grid);
+        }
+        if (display_acceptance_mode) {
+            display_acceptance_observe_presentation(&display_acceptance);
         }
         uint64_t render_end = SDL_GetPerformanceCounter();
         double current_render_ms = (double)((render_end - render_start) * 1000) / SDL_GetPerformanceFrequency();
@@ -1108,6 +1133,15 @@ int app_main(int argc, char* argv[]) {
     ui_cache_destroy(&menu_cache);
     app_ui_resources_destroy(&ui_resources);
     app_resources_cleanup(&resources);
+
+    if (display_acceptance_mode) {
+        uint64_t completed_time = SDL_GetPerformanceCounter();
+        double duration_seconds = (double)(completed_time - initial_time) /
+                                  (double)SDL_GetPerformanceFrequency();
+        bool passed = display_acceptance_passed(&display_acceptance);
+        display_acceptance_print_result(&display_acceptance, duration_seconds, frame_count);
+        return passed ? 0 : 1;
+    }
 
     if (benchmark_session_is_active(mode)) {
         uint64_t measured_frames = mode == RUN_MODE_BENCHMARK_SCENARIO

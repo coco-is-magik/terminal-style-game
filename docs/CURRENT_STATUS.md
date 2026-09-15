@@ -20,9 +20,12 @@ The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 wa
 accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
 evidence reconciliation** is Active. B0/C1 evidence is captured and W1 through W5 are complete.
 The native Windows functional profile now passes strict application/test builds, all 64 runners,
-`standards-core`, and inspection of the application plus all 64 test binaries. The next platform
-increment is L1/W6 native display/input acceptance; pinned-SMC/newline, performance, mirror,
-and final evidence reconciliation remain independently open.
+`standards-core`, and inspection of the application plus all 64 test binaries. L1 native Linux
+X11 display/input acceptance passes through the repository-owned procedure. The phase-driven W6
+Windows SPICE procedure is implemented and fixture-tested, but native execution remains pending;
+pinned-SMC/newline, performance, mirror, and final evidence reconciliation remain independently open.
+The display procedure is defined in
+[`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Its focused execution authority is
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
 Production portability changes are underway through isolated platform capabilities and

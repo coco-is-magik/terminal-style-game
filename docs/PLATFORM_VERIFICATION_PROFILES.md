@@ -28,11 +28,11 @@ profiles were attempted and classified; it is not itself a support claim.
 
 | Profile | Appropriate execution | Additional evidence | Current state |
 |---|---|---|---|
-| Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Headless functional/benchmark/stability evidence available; native Valgrind remains diagnostic |
+| Gentoo Linux | Native developer host | glibc/loader/tool compatibility and real display | Native X11 display/input acceptance passes through the repository procedure; headless functional/benchmark/stability evidence available; native Valgrind remains diagnostic |
 | Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | GCC complete headless profile passes; Clang reaches strict app build and fails only on four pinned SMC final newlines; focused canonical Valgrind passes; display evidence deferred |
 | Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Fedora 43 GCC complete headless profile passes; display evidence deferred |
 | Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Informational for v1; no target environment is available |
-| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; W2-B1 native platform preflight passes 9/9 with PE/import, Unicode replacement, metadata/failure, and reparse evidence; unmigrated callers still block full strict app; VM cleanup passes |
+| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; W5 passes strict application/test builds, all 64 runners, `standards-core`, and PE/import inspection; phase-driven SPICE display/input procedure is implemented and locally fixture-tested, but native W6 execution remains pending |
 | macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Post-v1; no v1 support claim or release gate |
 
 ## Container boundary
@@ -62,6 +62,8 @@ Headless cell, layout, interaction, smoke, benchmark, and stability checks do no
 prove native window presentation or application-edge pointer coordinate conversion.
 Display-backed checks must identify the video backend, logical/window dimensions,
 scale factor, input device, and whether the session is physical, virtual, or remote.
+The reproducible host/guest procedure, evidence fields, phase controls, and safe
+cleanup policy are defined in [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Reliable authored Button pointer activation is not part of the verified R12 foundation;
 it is a committed v1 pointer-model outcome. Keyboard activation remains required
 throughout its implementation. Native Linux and Windows evidence is required before the

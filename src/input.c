@@ -100,8 +100,8 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         bool pressed = event->type == INPUT_EVENT_MOUSE_BUTTON_DOWN;
         if (event->button == 1) {
             input->mouse_left = pressed;
-            input->mouse_left_pressed = pressed;
-            input->mouse_left_released = !pressed;
+            if (pressed) input->mouse_left_pressed = true;
+            else input->mouse_left_released = true;
         }
         if (event->button == 3) input->mouse_right = pressed;
         return;

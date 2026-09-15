@@ -263,6 +263,15 @@ static void test_text_mouse_buttons_and_wheel(void **state) {
     input_apply_event(&input, &event, false);
     assert_false(input.mouse_left);
     assert_true(input.mouse_left_released);
+    assert_false(input.mouse_left_pressed);
+    input_begin_frame(&input);
+    event.type = INPUT_EVENT_MOUSE_BUTTON_DOWN;
+    input_apply_event(&input, &event, false);
+    event.type = INPUT_EVENT_MOUSE_BUTTON_UP;
+    input_apply_event(&input, &event, false);
+    assert_false(input.mouse_left);
+    assert_true(input.mouse_left_pressed);
+    assert_true(input.mouse_left_released);
     event.type = INPUT_EVENT_MOUSE_WHEEL; event.x = 1.0f; event.y = -2.0f;
     input_apply_event(&input, &event, false);
     assert_float_equal(input.mouse_wheel_y, -2.0f, 0.001f);
