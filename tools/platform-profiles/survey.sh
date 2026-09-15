@@ -6,7 +6,7 @@ profiles=${PLATFORM_PROFILES_DIR:-$root/tools/platform-profiles/profiles}
 output=${PLATFORM_OUTPUT:-$root/build/platform-profiles}
 prepare_profile=${PLATFORM_PREPARE_PROFILE:-$root/tools/platform-profiles/prepare-profile.sh}
 run_provider=${PLATFORM_RUN_PROVIDER:-$root/tools/platform-profiles/run-provider.sh}
-profile_names=${PLATFORM_PROFILE_NAMES:-ubuntu-24.04-gcc ubuntu-24.04-clang fedora-gcc alpine-musl-gcc windows-10-x64-gcc}
+profile_names=${PLATFORM_PROFILE_NAMES:-ubuntu-24.04-gcc ubuntu-24.04-clang fedora-gcc alpine-musl-gcc}
 summary="$output/survey-summary.tsv"
 mkdir -p "$output"
 printf 'profile\trole\tprovider_prepare\tphase\toutcome\treason\tstatus\n' >"$summary"

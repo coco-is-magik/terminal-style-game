@@ -6,7 +6,7 @@ appropriate container.
 
 ## Common required evidence
 
-Every supported profile must record:
+Linux profiles record the full applicable verification set:
 
 - OS/distribution and release, kernel where applicable, architecture, compiler,
   linker, C library/runtime, SDL, SDL_mixer, enet, and cmocka versions;
@@ -20,6 +20,11 @@ Every supported profile must record:
 - native display startup, presentation, resize, keyboard input, and pointer checks
   where a graphical session is available.
 
+Native Windows verification is intentionally narrower. It requires only the strict
+application build and the complete `make test` aggregate. VM timing, benchmarks,
+stability workloads, standards, sanitizers, binary inspection, smoke, and display/input
+automation are not Windows acceptance gates.
+
 Reproducible Linux survey mechanics and current compiler/libc results are defined in
 [`PLATFORM_TESTING.md`](PLATFORM_TESTING.md). Survey completion means all configured
 profiles were attempted and classified; it is not itself a support claim.
@@ -32,7 +37,7 @@ profiles were attempted and classified; it is not itself a support claim.
 | Ubuntu Linux | Container for headless gates; native/VM for display | packaged GCC/Clang and SDL runtime | GCC complete headless profile passes; Clang reaches strict app build and fails only on four pinned SMC final newlines; focused canonical Valgrind passes; display evidence deferred |
 | Fedora Linux | Container for headless gates; native/VM for display | current GCC/glibc behavior | Fedora 43 GCC complete headless profile passes; display evidence deferred |
 | Steam Deck / SteamOS | Native device or representative self-hosted SteamOS environment | Gamescope display, controller, touch/pointer, suspend/resume, constrained stability | Informational for v1; no target environment is available |
-| Windows x64 | Native Windows runner | Windows loader/filesystem/path behavior, native SDL presentation/input, UTF-8/IME/clipboard/font behavior, packaging, and Linux interoperability where applicable | Required for v1; W5 passes strict application/test builds, all 64 runners, `standards-core`, and PE/import inspection; phase-driven SPICE display/input procedure is implemented and locally fixture-tested, but native W6 execution remains pending |
+| Windows x64 | Native Windows runner | Strict application compilation and complete regression/unit test execution | Passed on 2026-09-15: strict application build and all 64 test runners; run only `PROFILE_VM_NAME=<domain> make platform-test-windows` |
 | macOS | Native macOS runner on supported architecture | Apple toolchain/runtime and native SDL presentation/input | Post-v1; no v1 support claim or release gate |
 
 ## Container boundary

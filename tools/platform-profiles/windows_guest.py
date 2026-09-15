@@ -286,7 +286,7 @@ class GuestSurvey:
         from windows_product import WindowsProductSurvey
 
         WindowsProductSurvey(self.client, self.root, self.output, self.source).run()
-        self.phase = "native-binary-check"
+        self.phase = "complete-test-run"
 
     def cleanup_workspace(self) -> None:
         if not self.workspace_created:
@@ -367,7 +367,7 @@ def main() -> int:
     if failure is not None:
         write_primary(primary, failure)
         return failure.status
-    write_primary(primary, SurveyFailure("PASS", "native-binary-check", "profile-compatible", 0))
+    write_primary(primary, SurveyFailure("PASS", "complete-test-run", "profile-compatible", 0))
     return 0
 
 

@@ -34,12 +34,6 @@ printf '%s\n' "$PROFILE_ID" >>"$PLATFORM_CALLS"
 printf 'OUTCOME=PASS\nREASON=fixture-prepared\nSTATUS=0\n' \
   >"$PLATFORM_OUTPUT/$PROFILE_ID/image-result.env"
 EOF
-cat >"$tmp/windows-prepare.sh" <<'EOF'
-#!/bin/sh
-. "$1"
-printf 'OUTCOME=PASS\nREASON=fixture-prepared\nSTATUS=0\n' \
-  >"$PLATFORM_OUTPUT/$PROFILE_ID/prepare-result.env"
-EOF
 cat >"$tmp/run.sh" <<'EOF'
 #!/bin/sh
 . "$1"
@@ -53,7 +47,7 @@ cat >"$tmp/virsh" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-chmod 0755 "$tmp/prepare.sh" "$tmp/windows-prepare.sh" "$tmp/run.sh" \
+chmod 0755 "$tmp/prepare.sh" "$tmp/run.sh" \
   "$tmp/fail-without-result.sh" "$tmp/virsh"
 
 export PLATFORM_OUTPUT="$tmp/output"
@@ -81,23 +75,20 @@ test ! -e "$tmp/output/default-docker/prepare-result.env"
 "$script_dir/run-provider.sh" "$tmp/docker.env"
 test "$(grep -Fxc 'explicit-docker' "$tmp/calls")" -eq 2
 
-PLATFORM_LIBVIRT_WINDOWS_PREPARE="$tmp/windows-prepare.sh" \
-  "$script_dir/prepare-profile.sh" "$tmp/windows.env"
 PLATFORM_LIBVIRT_WINDOWS_RUN="$tmp/run.sh" \
   "$script_dir/run-provider.sh" "$tmp/windows.env"
 grep -Fx 'windows' "$tmp/calls" >/dev/null
 
 status=0
-PLATFORM_VIRSH="$tmp/virsh" PLATFORM_KVM_DEVICE=/dev/null PROFILE_VM_NAME= \
-  "$script_dir/prepare-profile.sh" "$tmp/windows.env" >/dev/null || status=$?
-test "$status" -eq 2
-grep -Fx 'REASON=windows-vm-not-configured' \
+"$script_dir/prepare-profile.sh" "$tmp/windows.env" >/dev/null || status=$?
+test "$status" -eq 3
+grep -Fx 'REASON=unsupported-profile-provider' \
   "$tmp/output/windows/prepare-result.env" >/dev/null
 
 status=0
 output=$(PROFILE_VM_NAME= "$script_dir/run-provider.sh" "$tmp/windows.env") || status=$?
 test "$status" -eq 2
-test "$output" = 'FAIL-MISSING-TOOL: profile=windows phase=vm-locate reason=windows-vm-not-configured status=2'
+test "$output" = 'FAIL-MISSING-TOOL: profile=windows phase=vm-locate reason=windows-vm-not-configured status=2 vm=unknown'
 
 status=0
 "$script_dir/prepare-profile.sh" "$tmp/invalid.env" || status=$?

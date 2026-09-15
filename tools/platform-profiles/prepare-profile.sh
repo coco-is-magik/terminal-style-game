@@ -15,10 +15,6 @@ case "$PROFILE_PROVIDER" in
         prepare=${PLATFORM_DOCKER_PREPARE:-$root/tools/platform-profiles/build-image.sh}
         provider_result="$output/$PROFILE_ID/image-result.env"
         ;;
-    libvirt-windows)
-        prepare=${PLATFORM_LIBVIRT_WINDOWS_PREPARE:-$root/tools/platform-profiles/prepare-libvirt-windows.sh}
-        provider_result=$result
-        ;;
     *)
         printf 'PREPARE_PHASE=provider-prepare\nOUTCOME=FAIL-TOOL\nREASON=unsupported-profile-provider\nSTATUS=3\n' \
           >"$result"

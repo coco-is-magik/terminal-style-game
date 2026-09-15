@@ -141,9 +141,9 @@ passed.
 
 ## Remaining risks and next safe action
 
-1. Proceed to **L1/W6 native Linux and Windows display/input acceptance**, recording backend,
-   dimensions, scaling, devices, session context, presentation, resize, input, transitions, and
-   clean teardown. Do not infer display/input success from this headless functional profile.
+1. Native Windows verification is complete when strict application compilation and the complete
+   regression/unit suite pass through the single `platform-test-windows` target. Windows
+   display/input and VM performance are outside this profile.
 2. C1/C2 still require strict-compatible final newlines, including the pinned SMC revision/hash
    decision; W5 does not upgrade required Ubuntu Clang evidence.
 3. P1 performance/stability and final baseline reconciliation remain open.

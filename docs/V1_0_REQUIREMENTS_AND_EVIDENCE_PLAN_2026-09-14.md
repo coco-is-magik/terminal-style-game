@@ -61,7 +61,7 @@ outcomes and retains unavailable native/platform gates as unverified.
    catalog bounds, locale-independent numeric parsing, and cleanup behavior.
 8. Use genuine native Windows for Windows verification. Cross-compilation, Wine, or Linux
    containers do not prove native Windows behavior.
-9. Establish native Linux and Windows display/input evidence with backend, dimensions,
+9. Establish native Linux display/input evidence with backend, dimensions,
    scale, devices, and physical/virtual/remote context recorded.
 10. Inventory bytes at or above `0x80` separately for runtime-authored data and
     documentation; do not infer an encoding from byte values.
@@ -265,7 +265,7 @@ was assigned.
 - `make standards`: unrun because `cppcheck` is unavailable; `standards-core` passed.
 - current ASan, UBSan, canonical leak, and coverage: unrun; historical evidence remains.
 - required Linux Docker profiles and native Windows profile: not rerun.
-- native Linux/Windows display/input hosts: not run and not passed.
+- native Linux display/input host: not run and not passed. Windows display/input is out of scope.
 
 ### B0 disposition
 
@@ -514,7 +514,7 @@ untouched. Complete reflected entities/sprites remain V1-11 work.
 | File durability | Atomic replacement | Existing destination, metadata, directory sync | Pre/post-commit failures distinguished | Dirty/saved state and destination rules | Native Windows filesystem |
 | Catalog | Sorted regular direct children | symlink/reparse, long names, missing root | Refresh preserves old catalog | Existing POSIX catalog behavior | Native Windows paths |
 | Numeric parsing | C-locale finite values | range, decimal separator, overflow | Output unchanged | Existing strict full consumption | Linux/Windows locale variation |
-| Display/input | Startup/present/input/teardown | resize, scale, repeated transitions | backend/device/init failure | Headless controllers unchanged | Native Linux and Windows |
+| Display/input | Startup/present/input/teardown | resize, scale, repeated transitions | backend/device/init failure | Headless controllers unchanged | Native Linux |
 | Mirror | Existing planar fixture | camera height and bilateral bounds | opening/second mirror fallback | one bounce and cache rules | Distinct report only |
 | Byte inventory | Runtime assets scan clean/known | every regular asset file | unreadable file is reported | no inferred code page | Rescan before V1-4 |
 
@@ -548,7 +548,7 @@ V1-0 may become Verified only when:
 
 1. the current baseline and final post-remediation baseline are recorded;
 2. all required Linux profiles and native Windows W5 pass;
-3. native Linux and Windows display/input smoke evidence passes;
+3. native Linux display/input smoke evidence passes;
 4. SMC runners, default shipping mode, matrix roles, performance, and stability remain intact;
 5. the mirror report is documented as covered or a distinct defect is corrected through a
    display-level failing fixture;
@@ -558,9 +558,9 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to L1/W6 native Linux and Windows display/input acceptance without changing headless
-domain behavior. Record backend, dimensions, scale, devices, session context, presentation,
-resize, keyboard/mouse input, application transitions, and clean teardown. In parallel, obtain a
+Proceed with native Linux display/input acceptance without changing headless domain behavior.
+Native Windows verification is limited to strict application compilation and complete `make test`
+through the single `platform-test-windows` target. In parallel, obtain a
 strict-compatible pinned SMC revision and update its reviewed commit/hash before rebuilding
 required Ubuntu Clang. P1 remains independent. Do not externally timeout platform profiles on
 this low-end host, and do not broaden display acceptance into later pointer, glyph, font, or

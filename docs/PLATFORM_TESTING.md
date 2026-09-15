@@ -52,7 +52,7 @@ docker:
 
 libvirt-windows:
   prepare = validate KVM, libvirt, domain identity, and the QGA channel
-  run = enforce VM ownership, readiness, guest-command, and cleanup lifecycle
+  run = start an off VM, wait for readiness, execute the guest checks, leave it running
 ```
 
 The `libvirt-windows` host lifecycle is implemented. The machine-local VM name must
@@ -60,23 +60,20 @@ be supplied through ignored local configuration or `PROFILE_VM_NAME`; it is not
 stored in a tracked profile. The host requires Python 3 for bounded QGA JSON,
 process, and file transport; only Python's standard library is used.
 
-The lifecycle runner records the initial state before acting. It starts only a
-`shut off` VM and stops only a VM whose start request succeeded. An initially
-running or concurrently externally started VM remains running. Paused, suspended,
-blocked, crashed, and unknown states are rejected without mutation. Shutdown uses
-QGA followed by an ACPI fallback; forced power-off is never used.
+The lifecycle runner records the initial state before acting. It starts a `shut off`
+VM once and otherwise requires a running VM. It never stops, reboots, suspends, resets,
+or restores VM power state. The VM remains running after both passing and failing runs
+so subsequent Windows checks do not pay repeated boot cost.
 
-Primary compatibility and cleanup evidence are separate in `result.env`:
+The result records the product outcome and observed VM state:
 
 ```text
 PRIMARY_OUTCOME  PRIMARY_PHASE  PRIMARY_REASON  PRIMARY_STATUS
 VM_INITIAL_STATE  VM_STARTED_BY_HARNESS  VM_FINAL_STATE
-CLEANUP_OUTCOME  CLEANUP_REASON  CLEANUP_STATUS
 OUTCOME  PHASE  REASON  STATUS
 ```
 
-A cleanup failure controls the aggregate outcome but does not overwrite the
-primary result.
+Only the unique transferred guest workspace is cleaned; VM power state is untouched.
 
 ### Windows guest workspace
 
@@ -194,13 +191,12 @@ make platform-test-fedora-gcc
 make platform-image-alpine-gcc
 make platform-test-alpine-gcc
 
-PROFILE_VM_NAME=<local-domain-name> make platform-prepare-windows
 PROFILE_VM_NAME=<local-domain-name> make platform-test-windows
 ```
 
 The tracked Windows profile deliberately contains no VM name. Supply it through the
-environment or ignored machine-local configuration. Preparation is non-mutating;
-profile execution uses the ownership-aware lifecycle and restores a VM it started.
+environment or ignored machine-local configuration. This is the only routine Windows
+test command. It starts an off VM when necessary and always leaves it running.
 
 Build all profile images:
 
@@ -231,7 +227,7 @@ and classified. It does **not** mean every profile passed. `platform-check` is t
 compatibility gate and currently fails because Ubuntu Clang is incompatible under
 the unchanged strict build.
 
-## Ordered profile phases
+## Ordered Linux profile phases
 
 Each profile stops at its first failed prerequisite:
 
@@ -246,6 +242,12 @@ Each profile stops at its first failed prerequisite:
 
 `make test-build` is an orchestration-only target whose prerequisites are exactly
 the existing `TEST_RUNNERS`. It does not modify test registration or behavior.
+
+The Windows profile does not use that expanded phase list. After required transport,
+toolchain, dependency, and source-integrity setup, it runs exactly:
+
+1. `make CC=gcc all`;
+2. `make CC=gcc test`.
 
 Later phases do not run after a prerequisite fails. The survey host proceeds to
 the next profile so one incompatibility does not hide the rest of the matrix.

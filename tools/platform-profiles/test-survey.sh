@@ -102,7 +102,10 @@ if grep -q '^PROFILE_VM_NAME=' "$windows_profile"; then
     echo "FAIL: tracked Windows profile contains a machine-local VM name"
     exit 1
 fi
-grep -F 'windows-10-x64-gcc' "$script_dir/survey.sh" >/dev/null
+if grep -F 'windows-10-x64-gcc' "$script_dir/survey.sh" >/dev/null; then
+    echo "FAIL: default platform survey must not launch Windows testing"
+    exit 1
+fi
 awk '/^platform-test-windows:/{getline; print}' "$root/Makefile" |
   grep -F 'run-provider.sh tools/platform-profiles/profiles/windows-10-x64-gcc.env' >/dev/null
 echo "PASS: platform survey continuation tests passed"

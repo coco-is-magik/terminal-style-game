@@ -151,9 +151,7 @@ class FakeQga:
             return b"abc123  ./fixture.dll\n"
         for phase in (
             "strict-app-build",
-            "strict-test-build",
             "complete-test-run",
-            "standards-core",
         ):
             if guest_path.endswith(f"{phase}.log"):
                 return b"PASS\n"

@@ -19,10 +19,16 @@ activation path.
 The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
 accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
 evidence reconciliation** is Active. B0/C1 evidence is captured and W1 through W5 are complete.
-The native Windows functional profile now passes strict application/test builds, all 64 runners,
-`standards-core`, and inspection of the application plus all 64 test binaries. L1 native Linux
-X11 display/input acceptance passes through the repository-owned procedure. The phase-driven W6
-Windows SPICE procedure is implemented and fixture-tested, but native execution remains pending;
+Native Windows verification is deliberately limited to two product checks under one command:
+strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
+`PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
+compilation and all 64 test runners. The runner starts the VM only
+when it is off and never stops it. Windows VM benchmarks, stability workloads, standards,
+sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
+previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
+performance measurements are non-qualifying and are not Windows product failures. The VM was
+already running and remained running. L1 native Linux X11 display/input acceptance remains
+separate and unchanged;
 pinned-SMC/newline, performance, mirror, and final evidence reconciliation remain independently open.
 The display procedure is defined in
 [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).

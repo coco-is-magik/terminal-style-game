@@ -275,8 +275,8 @@ constraints before cross-platform file, text, font, input, and packaging work.
    stability, Linux-profile, and Windows-profile results with typed outcomes.
 2. Remediate the current required Ubuntu Clang and native Windows strict-build product
    failures without weakening warnings or omitting first-party/pinned sources.
-3. Establish native Linux and Windows display/input smoke hosts and reproducible
-   dependency identities.
+3. Establish native Linux display/input smoke evidence and reproducible dependency identities;
+   native Windows requires only strict compilation and the complete regression/unit suite.
 4. Reconcile any current mirror report with the already verified 2026-09-12 planar
    curvature regression. If the report is distinct, capture its exact scene, camera,
    geometry, viewport, actual output, and expected output as a new failing fixture.
