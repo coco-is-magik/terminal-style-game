@@ -293,9 +293,14 @@ silently interpreted through a host code page.
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
 
 **P1 reproduction result (2026-09-15):** The physical-host surface-render failure is
-repeatable and deterministic in the current opaque prepared-heightfield path. Optimization
-remains open as a separate increment; the 6 ms budget and current renderer pipeline remain
-unchanged.
+repeatable and deterministic in the current opaque prepared-heightfield path.
+
+**P2 optimization result (2026-09-15):** Complete. Prepared columns now group contiguous
+uniform-height runs; the opaque sampler binary-searches horizontal ownership within each run
+and evaluates only run-edge boundaries through the same interval evaluator as the generic
+reference path. Five isolated benchmark and three isolated 1,000-iteration stability trials
+all passed the unchanged 6 ms budget with exact checksums. Optical composition remains a
+separate path and its transparent/mirror aggregate finding remains actionable.
 
 **Clang/SMC disposition (2026-09-15):** Ubuntu Clang is informational. Its strict
 `-Werror` result remains nonzero for four known SMC final-newline diagnostics, while a

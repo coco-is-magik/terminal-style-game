@@ -3,8 +3,8 @@
 ## Status and authority
 
 **Active: B0/C1 evidence captured; W1 through W5, scoped native Windows verification,
-L1, P1 reproduction, and Clang diagnostic continuation complete; performance optimization and final
-platform acceptance remain open.**
+L1, P1/P2 opaque-surface performance work, and Clang diagnostic continuation complete;
+optical aggregate performance and final platform acceptance remain open.**
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -513,7 +513,7 @@ untouched. Complete reflected entities/sprites remain V1-11 work.
 | Track | Normal | Boundary | Failure | Preserved regression | Platform/manual |
 |---|---|---|---|---|---|
 | B0 | Strict build and complete aggregate | Full registered inventory | Missing/broken tools typed | Default SMC and mirror tests | Current-host limits recorded |
-| Clang | Strict app/test builds | First-party plus pinned SMC inputs | Compiler failure remains nonzero | File bytes except final newline | Required Ubuntu Clang profile |
+| Clang | Strict app build plus diagnostic sweep | First-party plus pinned SMC inputs | Compiler failure remains nonzero | No warning suppression; exact four-file deferral | Informational Ubuntu Clang profile |
 | File durability | Atomic replacement | Existing destination, metadata, directory sync | Pre/post-commit failures distinguished | Dirty/saved state and destination rules | Native Windows filesystem |
 | Catalog | Sorted regular direct children | symlink/reparse, long names, missing root | Refresh preserves old catalog | Existing POSIX catalog behavior | Native Windows paths |
 | Numeric parsing | C-locale finite values | range, decimal separator, overflow | Output unchanged | Existing strict full consumption | Linux/Windows locale variation |
@@ -561,8 +561,11 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed with the focused opaque prepared-heightfield optimization plan authorized by
-completed P1. The four-file owned-upstream SMC correction is deferred to V1-20 and guarded
-by the strict informational Clang diagnostic sweep. Do not externally timeout platform
-profiles on this low-end host, and do not broaden the optimization into optical composition
-or later feature semantics.
+P2 opaque prepared-heightfield optimization is complete. Proceed with a separate focused
+reproduction/optimization increment for the current `benchmark-optical-render` transparent
+and mirror paths: opaque parity is sub-budget, but transparent and mirror composition remain
+about 10.3–10.4 ms against 6 ms in benchmark and stability aggregates. Preserve optical
+checksums, one-bounce/cache semantics, zero timed-loop allocations, and the unchanged budget.
+Then complete mirror disposition and final V1-0 evidence reconciliation. The four-file
+owned-upstream SMC correction remains deferred to V1-20 and guarded by the strict
+informational Clang diagnostic sweep.

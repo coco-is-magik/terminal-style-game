@@ -66,6 +66,8 @@ typedef struct {
     const SceneAuthoredCell *interval_next_cell[HEIGHTFIELD_TRACE_MAX_INTERVALS];
     double interval_floor_z[HEIGHTFIELD_TRACE_MAX_INTERVALS];
     double interval_ceiling_z[HEIGHTFIELD_TRACE_MAX_INTERVALS];
+    size_t run_count;
+    size_t run_start[HEIGHTFIELD_TRACE_MAX_INTERVALS];
     bool valid;
 } HeightfieldTraceColumn;
 
@@ -79,6 +81,11 @@ bool heightfield_trace_prepare_column(
 );
 
 HeightfieldHit heightfield_trace_prepared_sample(
+    const HeightfieldTraceColumn *column, int screen_y
+);
+
+/** Sample opaque geometry through prepared uniform-height runs. */
+HeightfieldHit heightfield_trace_prepared_opaque_sample(
     const HeightfieldTraceColumn *column, int screen_y
 );
 

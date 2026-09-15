@@ -120,6 +120,51 @@ static void test_opaque_default_matches_nearest_fast_path(void **state) {
     assert_int_equal(result.layers[0].optical.transmission, 0U);
 }
 
+static void assert_opaque_sampler_matches_generic(SelectiveFixture *fixture) {
+    for (int x = 0; x < 41; x++) {
+        HeightfieldTraceColumn column;
+        assert_true(heightfield_trace_prepare_column(
+            &column, &fixture->camera, &fixture->map, &fixture->heights,
+            41, VIEWPORT_HEIGHT, x, 20.0));
+        for (int y = 0; y < VIEWPORT_HEIGHT; y++) {
+            HeightfieldHit generic = heightfield_trace_prepared_sample(&column, y);
+            HeightfieldHit opaque =
+                heightfield_trace_prepared_opaque_sample(&column, y);
+            assert_hit_equal(&opaque, &generic);
+        }
+    }
+}
+
+static void test_opaque_prepared_sampler_matches_generic(void **state) {
+    SelectiveFixture fixture;
+    (void)state;
+    fixture_init(&fixture);
+    fixture_wall(&fixture, 3, 10U);
+    for (int camera_case = 0; camera_case < 3; camera_case++) {
+        fixture.camera.z = camera_case == 0 ? 0.5 : 0.75;
+        fixture.camera.pitch = camera_case == 2 ? 3.25 : 0.0;
+        assert_opaque_sampler_matches_generic(&fixture);
+    }
+    for (int y = 0; y < FIXTURE_HEIGHT; y++) {
+        size_t index = fixture_index(3, y);
+        fixture.cells[index].floor_height_step = UINT16_C(0x0080);
+        fixture.cells[index].ceiling_height_step = UINT16_C(0x0180);
+    }
+    assert_opaque_sampler_matches_generic(&fixture);
+    fixture.cells[fixture_index(4, 2)].floor_material = 7U;
+    fixture.cells[fixture_index(4, 2)].ceiling_material = 8U;
+    assert_opaque_sampler_matches_generic(&fixture);
+    fixture.cells[fixture_index(5, 2)].floor_present = false;
+    fixture.cells[fixture_index(6, 2)].ceiling_present = false;
+    fixture_wall(&fixture, 8, 20U);
+    assert_opaque_sampler_matches_generic(&fixture);
+    {
+        HeightfieldTraceColumn invalid = {0};
+        HeightfieldHit hit = heightfield_trace_prepared_opaque_sample(&invalid, 0);
+        assert_false(hit.hit);
+    }
+}
+
 static void test_transparent_material_continues_to_opaque_wall(void **state) {
     SelectiveFixture fixture;
     HeightfieldTraceColumn column;
@@ -327,6 +372,7 @@ static void test_invalid_inputs_preserve_output(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_opaque_default_matches_nearest_fast_path),
+        cmocka_unit_test(test_opaque_prepared_sampler_matches_generic),
         cmocka_unit_test(test_transparent_material_continues_to_opaque_wall),
         cmocka_unit_test(test_zero_transmission_stops_nonblocking_surface),
         cmocka_unit_test(test_ray_blocking_stops_positive_transmission),

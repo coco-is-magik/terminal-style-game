@@ -28,8 +28,9 @@ sanitizers, binary inspection, smoke, and SPICE/display automation are outside t
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
 performance measurements are non-qualifying and are not Windows product failures. The VM was
 already running and remained running. L1 native Linux X11 display/input acceptance remains
-separate and unchanged; performance, mirror, and final evidence reconciliation remain
-independently open. Pinned-SMC newline maintenance is deferred to V1-20.
+separate and unchanged; optical-composition performance, mirror disposition, and final
+evidence reconciliation remain independently open. Pinned-SMC newline maintenance is
+deferred to V1-20.
 The display procedure is defined in
 [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Its focused execution authority is
@@ -58,9 +59,9 @@ recorded narrower `test-build` then `test` recovery passed.
 P1 reproduced the deterministic surface-render failure on the physical host without changing
 code, flags, methodology, or the 6 ms budget. Five benchmark trials all failed with flat-path
 median 7.526312 ms; three 1,000-iteration stability trials all failed with median 7.693334 ms.
-All checksums were identical and deterministic. The affected stage is the current opaque
-prepared-heightfield renderer, not optical composition. P1 reproduction is complete; a separate
-optimization increment is required. The B0 scan found 192
+All checksums were identical and deterministic. The affected stage was the current opaque
+prepared-heightfield renderer, not optical composition. P1 reproduction and the subsequent
+P2 optimization are complete. The B0 scan found 192
 of 254 scoped production/test/pinned-SMC C files lacked final newlines, matching the
 preserved Ubuntu Clang 18 failure class even though local Clang 22 accepted them.
 
@@ -82,6 +83,20 @@ and `unified_editor_internal.h`) in addition to the four pinned SMC files. W2-C6
 private header was corrected immediately and the decal owner passes strict Clang 7/7.
 Any additional Clang finding is immediate work; only the exact four known SMC newline
 errors are deferred.
+
+P2 closes the opaque prepared-heightfield performance blocker. `HeightfieldTraceColumn`
+now records contiguous uniform-height runs during its existing bounded DDA preparation.
+The opaque renderer binary-searches horizontal ownership in each run and checks only the
+run-edge boundary through the generic sampler's shared interval evaluator. Exact equivalence
+fixtures cover flat and raised planes, material changes, missing surfaces, walls, camera
+height, pitch, and invalid input. Final isolated timing evidence under the unchanged 6 ms
+budget passed five benchmark trials (flat 2.403860–4.817409 ms; raised
+3.896334–4.656326 ms) and three 1,000-iteration stability trials (flat
+2.440316–3.378517 ms; raised 3.920074–4.968514 ms). All five canonical checksums remained
+exact and every trial was deterministic. Loaded/concurrent attempts that exceeded the budget
+are preserved as non-qualifying evidence rather than erased. The broader headless aggregates
+now pass the surface owner but remain nonzero in the separate optical transparent/mirror
+workload at about 10.3–10.4 ms; opaque optical parity remains below budget.
 
 The platform harness passes, including daemon-failure classification and all Windows
 lifecycle/guest/dependency/product fixtures. A native Windows run completed without an

@@ -253,7 +253,8 @@ void raycast_render_heightfield_opaque_impl(
                 config_get()->raycast_max_distance)) continue;
         z_buffer[x] = raycast_heightfield_column_depth(&column);
         for (y = 0; y < grid->height; y++) {
-            HeightfieldHit hit = heightfield_trace_prepared_sample(&column, y);
+            HeightfieldHit hit =
+                heightfield_trace_prepared_opaque_sample(&column, y);
             size_t output_index = (size_t)y * (size_t)grid->width + (size_t)x;
             Cell sampled = raycast_sample_heightfield_hit(map, assets, &hit);
             {

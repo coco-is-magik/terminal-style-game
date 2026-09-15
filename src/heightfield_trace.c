@@ -47,6 +47,7 @@ bool heightfield_trace_prepare_column(
         !scene_height_view_is_valid(heights, map->width, map->height)) return false;
     column->valid = false;
     column->interval_count = 0U;
+    column->run_count = 0U;
     camera_x = 2.0 * (screen_x + 0.5) / viewport_width - 1.0;
     ray_angle = camera->transform.angle + atan(camera_x * tan(camera->fov / 2.0));
     column->correction = cos(ray_angle - camera->transform.angle);
@@ -111,12 +112,30 @@ bool heightfield_trace_prepare_column(
         map_y = next_y;
         enter = exit;
     }
+    for (size_t i = 0U; i < column->interval_count; i++) {
+        const SceneAuthoredCell *cell = column->interval_cell[i];
+        bool begins_run = i == 0U;
+        if (!begins_run) {
+            const SceneAuthoredCell *previous = column->interval_cell[i - 1U];
+            begins_run = !cell || !previous ||
+                cell->occupancy != previous->occupancy ||
+                cell->floor_present != previous->floor_present ||
+                cell->ceiling_present != previous->ceiling_present ||
+                cell->floor_height_step != previous->floor_height_step ||
+                cell->ceiling_height_step != previous->ceiling_height_step;
+        }
+        if (begins_run) {
+            column->run_start[column->run_count] = i;
+            column->run_count++;
+        }
+    }
     column->valid = true;
     return true;
 }
 
-HeightfieldHit heightfield_trace_prepared_sample(
-    const HeightfieldTraceColumn *column, int screen_y
+static bool heightfield_trace_sample_interval(
+    const HeightfieldTraceColumn *column, double row_delta,
+    size_t interval_index, HeightfieldHit *out_hit
 ) {
     HeightfieldHit none = {0};
     const Camera *camera;
@@ -125,19 +144,13 @@ HeightfieldHit heightfield_trace_prepared_sample(
     double dir_x;
     double dir_y;
     double correction;
-    double row_delta;
-    size_t interval_index;
-    if (!column || !column->valid || screen_y < 0 ||
-        screen_y >= column->viewport_height) return none;
     camera = column->camera;
     map = column->map;
     viewport_height = column->viewport_height;
     dir_x = column->direction_x;
     dir_y = column->direction_y;
     correction = column->correction;
-    row_delta = screen_y + 0.5 - camera_horizon_row(camera, viewport_height);
-    for (interval_index = 0U; interval_index < column->interval_count;
-         interval_index++) {
+    {
         int map_x = column->interval_map_x[interval_index];
         int map_y = column->interval_map_y[interval_index];
         int next_x = column->interval_next_x[interval_index];
@@ -152,14 +165,23 @@ HeightfieldHit heightfield_trace_prepared_sample(
         HeightfieldHitKind kind;
         uint16_t material;
         bool owner_is_to;
-        if (!cell) return none;
+        if (!cell) {
+            *out_hit = none;
+            return true;
+        }
         horizontal = heightfield_horizontal_hit(
             camera, cell, column->interval_floor_z[interval_index],
             column->interval_ceiling_z[interval_index], map_x, map_y,
             viewport_height, row_delta, correction, dir_x, dir_y, enter, exit);
-        if (horizontal.hit) return horizontal;
+        if (horizontal.hit) {
+            *out_hit = horizontal;
+            return true;
+        }
         if ((row_delta > 0.0 && !cell->floor_present) ||
-            (row_delta < 0.0 && !cell->ceiling_present)) return none;
+            (row_delta < 0.0 && !cell->ceiling_present)) {
+            *out_hit = none;
+            return true;
+        }
         perpendicular = exit * correction;
         z = camera->z - row_delta * perpendicular / viewport_height;
         if (heightfield_boundary_span(cell, column->interval_next_cell[interval_index], z,
@@ -178,7 +200,90 @@ HeightfieldHit heightfield_trace_prepared_sample(
                 boundary.map_x = map_x;
                 boundary.map_y = map_y;
             }
-            return boundary;
+            *out_hit = boundary;
+            return true;
+        }
+    }
+    return false;
+}
+
+HeightfieldHit heightfield_trace_prepared_sample(
+    const HeightfieldTraceColumn *column, int screen_y
+) {
+    HeightfieldHit none = {0};
+    double row_delta;
+    size_t interval_index;
+    if (!column || !column->valid || screen_y < 0 ||
+        screen_y >= column->viewport_height) return none;
+    row_delta = screen_y + 0.5 -
+        camera_horizon_row(column->camera, column->viewport_height);
+    for (interval_index = 0U; interval_index < column->interval_count;
+         interval_index++) {
+        HeightfieldHit hit;
+        if (heightfield_trace_sample_interval(
+                column, row_delta, interval_index, &hit)) return hit;
+    }
+    return none;
+}
+
+HeightfieldHit heightfield_trace_prepared_opaque_sample(
+    const HeightfieldTraceColumn *column, int screen_y
+) {
+    HeightfieldHit none = {0};
+    const Camera *camera;
+    double row_delta;
+    size_t run_index;
+    if (!column || !column->valid || screen_y < 0 ||
+        screen_y >= column->viewport_height || column->run_count == 0U)
+        return none;
+    camera = column->camera;
+    row_delta = screen_y + 0.5 -
+        camera_horizon_row(camera, column->viewport_height);
+    for (run_index = 0U; run_index < column->run_count; run_index++) {
+        size_t start = column->run_start[run_index];
+        size_t end = run_index + 1U < column->run_count
+            ? column->run_start[run_index + 1U] - 1U
+            : column->interval_count - 1U;
+        const SceneAuthoredCell *cell = column->interval_cell[start];
+        if (fabs(row_delta) > HEIGHTFIELD_TRACE_EPSILON &&
+            (row_delta > 0.0 ? cell->floor_present : cell->ceiling_present)) {
+            double z = scene_height_world(row_delta > 0.0
+                ? cell->floor_height_step : cell->ceiling_height_step);
+            double perpendicular =
+                (camera->z - z) * column->viewport_height / row_delta;
+            if (perpendicular > HEIGHTFIELD_TRACE_EPSILON) {
+                double distance = perpendicular / column->correction;
+                size_t low = start;
+                size_t high = end + 1U;
+                while (low < high) {
+                    size_t middle = low + (high - low) / 2U;
+                    if (column->interval_exit[middle] +
+                            HEIGHTFIELD_TRACE_EPSILON < distance)
+                        low = middle + 1U;
+                    else high = middle;
+                }
+                if (low <= end && distance + HEIGHTFIELD_TRACE_EPSILON >=
+                        column->interval_enter[low]) {
+                    const SceneAuthoredCell *owner = column->interval_cell[low];
+                    HeightfieldHit hit = {
+                        row_delta > 0.0 ? HEIGHTFIELD_HIT_FLOOR
+                                        : HEIGHTFIELD_HIT_CEILING,
+                        distance, perpendicular,
+                        camera->transform.pos.x + distance * column->direction_x,
+                        camera->transform.pos.y + distance * column->direction_y, z,
+                        column->interval_map_x[low], column->interval_map_y[low], -1,
+                        row_delta > 0.0 ? owner->floor_material
+                                        : owner->ceiling_material,
+                        false, true
+                    };
+                    return hit;
+                }
+            }
+        }
+        {
+            HeightfieldHit boundary;
+            if (heightfield_trace_sample_interval(
+                    column, row_delta, end, &boundary)) return boundary;
         }
     }
     return none;
