@@ -10,13 +10,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/asset_refresh.h"
 #include "../src/asset_loader.h"
 #include "../src/config.h"
 
-static char root[] = "/tmp/tsg_asset_refresh_XXXXXX";
+static char root[] = "build/tsg_asset_refresh_XXXXXX";
 static char palettes[1024];
 static char materials[1024];
 static char decals[1024];
@@ -38,17 +44,17 @@ static void write_file(const char *path, const char *content) {
 static int setup(void **state) {
     char path[1024];
     (void)state;
-    memcpy(root, "/tmp/tsg_asset_refresh_XXXXXX",
-           sizeof("/tmp/tsg_asset_refresh_XXXXXX"));
+    memcpy(root, "build/tsg_asset_refresh_XXXXXX",
+           sizeof("build/tsg_asset_refresh_XXXXXX"));
     if (!mkdtemp(root)) return -1;
     make_path(palettes, sizeof(palettes), root, "palettes");
     make_path(materials, sizeof(materials), root, "materials");
     make_path(decals, sizeof(decals), root, "decals");
     make_path(objects, sizeof(objects), root, "objects");
     make_path(sprites, sizeof(sprites), root, "sprites");
-    if (mkdir(palettes, 0700) != 0 || mkdir(materials, 0700) != 0 ||
-        mkdir(decals, 0700) != 0 || mkdir(objects, 0700) != 0 ||
-        mkdir(sprites, 0700) != 0) return -1;
+    if (test_mkdir(palettes) != 0 || test_mkdir(materials) != 0 ||
+        test_mkdir(decals) != 0 || test_mkdir(objects) != 0 ||
+        test_mkdir(sprites) != 0) return -1;
     make_path(path, sizeof(path), palettes, "1.txt");
     write_file(path, "near=10,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n");
     make_path(path, sizeof(path), materials, "1.txt");
@@ -333,26 +339,26 @@ static void test_sprite_folders_load_static_and_animation_strictly(
     make_path(path, sizeof(path), sprites, "5.txt");
     write_file(path, first);
     make_path(directory, sizeof(directory), sprites, "6");
-    assert_int_equal(mkdir(directory, 0700), 0);
+    assert_int_equal(test_mkdir(directory), 0);
     make_path(path, sizeof(path), directory, "animation.txt");
     write_file(path, "static\n");
     make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
 
     make_path(directory, sizeof(directory), sprites, "7");
-    assert_int_equal(mkdir(directory, 0700), 0);
+    assert_int_equal(test_mkdir(directory), 0);
     make_path(path, sizeof(path), directory, "animation.txt");
     write_file(path, "fps=8\nframe=second.txt\nframe=first.txt\n");
     make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
     make_path(path, sizeof(path), directory, "second.txt"); write_file(path, second);
 
     make_path(directory, sizeof(directory), sprites, "8");
-    assert_int_equal(mkdir(directory, 0700), 0);
+    assert_int_equal(test_mkdir(directory), 0);
     make_path(path, sizeof(path), directory, "animation.txt");
     write_file(path, "fps=8\nframe=first.txt\n");
     make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);
 
     make_path(directory, sizeof(directory), sprites, "9");
-    assert_int_equal(mkdir(directory, 0700), 0);
+    assert_int_equal(test_mkdir(directory), 0);
     make_path(path, sizeof(path), directory, "animation.txt");
     write_file(path, "static\n");
     make_path(path, sizeof(path), directory, "first.txt"); write_file(path, first);

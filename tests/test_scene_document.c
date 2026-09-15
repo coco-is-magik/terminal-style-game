@@ -20,7 +20,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
 #include <unistd.h>
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 
 #include "../src/scene_document.h"
 #include "../src/scene_document_internal.h"
@@ -43,15 +49,20 @@ static void *failing_resize_calloc(size_t count, size_t size) {
 
 static void passthrough_resize_free(void *ptr) { free(ptr); }
 
+static void assert_scene_save_committed(SceneSaveResult result) {
+    assert_true(result == SCENE_SAVE_OK ||
+                result == SCENE_SAVE_OK_DURABILITY_WARNING);
+}
+
 /* ===================================================================
  *  Temp directory helpers
  * =================================================================== */
 
-static char g_tmpdir[] = "/tmp/tsg_scene_doc_XXXXXX";
+static char g_tmpdir[] = "build/tsg_scene_doc_XXXXXX";
 static int g_tmpdir_ready = 0;
 
 static int make_tmpdir(void) {
-    memcpy(g_tmpdir, "/tmp/tsg_scene_doc_XXXXXX", sizeof("/tmp/tsg_scene_doc_XXXXXX"));
+    memcpy(g_tmpdir, "build/tsg_scene_doc_XXXXXX", sizeof("build/tsg_scene_doc_XXXXXX"));
     if (!mkdtemp(g_tmpdir)) return -1;
     g_tmpdir_ready = 1;
     return 0;
@@ -1050,7 +1061,7 @@ static void test_failed_replace_preserves_destination(void **state) {
     char dest_dir[512], seed[512];
     path_in_tmpdir(dest_dir, sizeof(dest_dir), "not_a_file");
     path_in_tmpdir(seed, sizeof(seed), "seed_map.txt");
-    assert_int_equal(mkdir(dest_dir, 0700), 0);
+    assert_int_equal(test_mkdir(dest_dir), 0);
     assert_int_equal(write_text_file(seed, "111\n101\n111\n"), 0);
 
     SceneDocument doc;
@@ -1223,14 +1234,15 @@ static void test_native_save_as_canonical_identity_and_modes(void **state) {
     assert_int_equal(scene_document_load_native(&doc, source, &diagnostic),
                      SCENE_LOAD_OK);
     scene_document_internal_set_current_state(&doc, 8U);
-    assert_int_equal(scene_document_save_as_native(
-                         &doc, destination, "saved_room", &diagnostic),
-                     SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, destination, "saved_room", &diagnostic));
     assert_string_equal(doc.path, destination);
     assert_string_equal(doc.name, "saved_room");
     assert_false(scene_document_is_dirty(&doc));
     assert_int_equal(stat(destination, &st), 0);
+#ifndef _WIN32
     assert_int_equal(st.st_mode & 0777, 0640);
+#endif
     text = read_text_file(destination);
     assert_non_null(text);
     assert_non_null(strstr(text, "scene_type = terminal_scene\n"));
@@ -1242,20 +1254,19 @@ static void test_native_save_as_canonical_identity_and_modes(void **state) {
     assert_string_equal(reloaded.name, "saved_room");
     scene_document_destroy(&reloaded);
     scene_document_internal_set_current_state(&doc, 9U);
-    assert_int_equal(scene_document_save_as_native(
-                         &doc, new_destination, "new_room", &diagnostic),
-                     SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, new_destination, "new_room", &diagnostic));
     assert_int_equal(stat(new_destination, &st), 0);
+#ifndef _WIN32
     assert_int_equal(st.st_mode & 0777, 0600);
+#endif
     assert_int_equal(scene_document_save_as_native(
                          &doc, new_destination, "bad name", &diagnostic),
                      SCENE_SAVE_INVALID_DOCUMENT);
-    assert_int_equal(scene_document_save_as_native(
-                         &doc, source, "wrong_extension", &diagnostic),
-                     SCENE_SAVE_OK);
-    assert_int_equal(scene_document_save_as_native(
-                         &doc, destination, "still_native", &diagnostic),
-                     SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, source, "wrong_extension", &diagnostic));
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, destination, "still_native", &diagnostic));
     destination[strlen(destination) - 1U] = 'X';
     assert_int_equal(scene_document_save_as_native(
                          &doc, destination, "bad_suffix", &diagnostic),
@@ -1521,9 +1532,8 @@ static void test_v1_migration_save_emits_v5_and_reopens_clean(void **state) {
     assert_int_equal(count, 9U);
     assert_int_equal(cells[4].occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
 
-    assert_int_equal(scene_document_save_as_native(
-                         &doc, destination, "migrated_room", &diagnostic),
-                     SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, destination, "migrated_room", &diagnostic));
     assert_false(doc.migration_pending);
     assert_false(scene_document_is_dirty(&doc));
     saved = read_text_file(destination);
@@ -1637,9 +1647,8 @@ static void test_checked_in_r4_v3_fixture_migrates_to_v5(void **state) {
     assert_int_equal(material, 4U);
     assert_int_equal(scene_document_validate_for_save(&document), SCENE_SAVE_OK);
 
-    assert_int_equal(scene_document_save_as_native(
-        &document, destination, "r4_surface_workflow", &diagnostic),
-        SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &document, destination, "r4_surface_workflow", &diagnostic));
     fixture_text = read_text_file(fixture);
     saved_text = read_text_file(destination);
     assert_non_null(fixture_text);
@@ -1736,9 +1745,8 @@ static void test_v6_optical_document_persistence_and_borrowed_view(void **state)
         OPTICAL_OVERRIDE_PLAYER_BLOCKS;
     document.optical_cell_overrides[0].optical.player_blocks = 0U;
 
-    assert_int_equal(scene_document_save_as_native(
-                         &document, path, "v6_optical", &diagnostic),
-                     SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &document, path, "v6_optical", &diagnostic));
     assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic),
                      SCENE_LOAD_OK);
     assert_true(scene_document_get_optical_view(&reopened, &view, &generation));
@@ -1844,8 +1852,8 @@ static void test_v3_growth_provenance_save_reopen(void **state) {
     doc.east_growth_count = 2U;
     doc.south_growth[0] = 1;
     doc.south_growth_count = 1U;
-    assert_int_equal(scene_document_save_as_native(
-        &doc, destination, "growth", &diagnostic), SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &doc, destination, "growth", &diagnostic));
     scene_document_init(&reopened);
     assert_int_equal(scene_document_load_native(
         &reopened, destination, &diagnostic), SCENE_LOAD_OK);
@@ -1903,8 +1911,8 @@ static void test_v8_sprite_document_runtime_repair_and_round_trip(void **state) 
     assert_int_equal(scene_document_refresh_repair_diagnostics(
                          &document, &assets, &diagnostic), SCENE_LOAD_OK);
     assert_false(scene_document_is_repair_required(&document));
-    assert_int_equal(scene_document_save_as_native(
-                         &document, path, "v8_sprite", &diagnostic), SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &document, path, "v8_sprite", &diagnostic));
     assert_int_equal(scene_document_load_native_with_assets(
                          &reopened, path, &assets, &diagnostic), SCENE_LOAD_OK);
     assert_false(reopened.migration_pending);
@@ -1943,8 +1951,8 @@ static void test_v9_trigger_document_round_trip_and_resize_guard(void **state) {
         assert_false(scene_document_internal_set_trigger(&document, 1U, &invalid));
         assert_true(scene_document_find_trigger(&document, 1U)->max_x == 2.0);
     }
-    assert_int_equal(scene_document_save_as_native(
-        &document, path, "v9_trigger", &diagnostic), SCENE_SAVE_OK);
+    assert_scene_save_committed(scene_document_save_as_native(
+        &document, path, "v9_trigger", &diagnostic));
     assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic), SCENE_LOAD_OK);
     assert_false(reopened.migration_pending);
     found = scene_document_find_trigger(&reopened, 1U);

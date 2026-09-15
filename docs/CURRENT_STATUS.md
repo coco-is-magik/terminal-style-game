@@ -18,8 +18,11 @@ activation path.
 
 The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
 accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
-evidence reconciliation** is Active. B0/C1 evidence is captured, W1 through W2-D2 and
-W2-C6 plus W3 are complete, and W4 locale-independent numeric conversion is next.
+evidence reconciliation** is Active. B0/C1 evidence is captured and W1 through W5 are complete.
+The native Windows functional profile now passes strict application/test builds, all 64 runners,
+`standards-core`, and inspection of the application plus all 64 test binaries. The next platform
+increment is L1/W6 native display/input acceptance; pinned-SMC/newline, performance, mirror,
+and final evidence reconciliation remain independently open.
 Its focused execution authority is
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
 Production portability changes are underway through isolated platform capabilities and
@@ -140,7 +143,14 @@ native Windows strict compilation had no decal-owner diagnostic and stopped only
 `platform_catalog`; `MapCatalog` retains filtering, owned snapshots, sorting, and
 transactional replacement. Local strict/sanitizer tests pass, native platform capabilities
 pass 13/13, native `MapCatalog` passes 7/7 with reparse and multilingual evidence, and the
-full native application now stops only in `scene_format`. See
+W3 native application checkpoint stopped only in `scene_format`. W4 now moves finite ASCII
+double conversion into stateless per-call POSIX/UCRT `platform_number` operations while
+retaining exact scene grammar and canonical bytes. Strict GCC/Clang number tests pass 5/5,
+scene tests pass 24/24, focused sanitizers pass, all 64 local runners pass, and native Windows
+number/scene owners pass 5/5 and 24/24. W5 adds normal Windows ENet `winmm`/`ws2_32` Make policy,
+portable test fixtures, write-capable Windows durability sync, canonical decal bytes, correct
+legacy/sprite commit handling, and bounded heap ownership for oversized test snapshots. Native
+Windows now passes all 64 runners, `standards-core`, and PE/import inspection of 65 binaries. See
 [`reviews/2026-09-14-v1-0-w2a-platform-foundation.md`](reviews/2026-09-14-v1-0-w2a-platform-foundation.md).
 See also
 [`reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md`](reviews/2026-09-14-v1-0-w2b1-native-replacement-prototype.md).
@@ -164,13 +174,18 @@ See also
 [`reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md`](reviews/2026-09-14-v1-0-w2c6-decal-document-migration.md).
 See also
 [`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md).
+See also
+[`reviews/2026-09-14-v1-0-w4-locale-independent-number.md`](reviews/2026-09-14-v1-0-w4-locale-independent-number.md).
+See also
+[`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md).
 
 The W1 design selects isolated `platform_fs`, `platform_catalog`,
 `platform_number`, and `platform_path` responsibilities; preserves document-owned
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
-requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. The next safe
-portability increment is W4 locale-independent numeric conversion for `scene_format`. See
+requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. W4 has now proven that
+parity, and W5 has proven the complete headless native Windows functional profile. The next safe
+platform increment is L1/W6 display/input acceptance on native Linux and Windows hosts. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and

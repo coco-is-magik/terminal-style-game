@@ -7,6 +7,16 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#define test_rmdir(path) _rmdir(path)
+#else
+#include <unistd.h>
+#define test_mkdir(path) mkdir(path, 0700)
+#define test_rmdir(path) rmdir(path)
+#endif
 
 #include "../src/grid.h"
 #include "../src/map.h"
@@ -21,6 +31,36 @@
 
 static void lighting_update_current(Map *map, WorldState *world) {
     lighting_update_optical(map, world, NULL, 0U);
+}
+
+static void create_asset_test_tree(void) {
+    static const char *const directories[] = {
+        "tests/assets_test",
+        "tests/assets_test/maps",
+        "tests/assets_test/decals",
+        "tests/assets_test/lights",
+        "tests/assets_test/materials",
+        "tests/assets_test/palettes",
+        "tests/assets_test/sprites"
+    };
+    for (size_t i = 0U; i < sizeof(directories) / sizeof(directories[0]); i++)
+        assert_int_equal(test_mkdir(directories[i]), 0);
+}
+
+static void remove_asset_test_tree(void) {
+    static const char *const directories[] = {
+        "tests/assets_test/sprites",
+        "tests/assets_test/palettes",
+        "tests/assets_test/materials",
+        "tests/assets_test/lights",
+        "tests/assets_test/decals",
+        "tests/assets_test/maps",
+        "tests/assets_test"
+    };
+    assert_int_equal(remove("tests/assets_test/decals/1.txt"), 0);
+    assert_int_equal(remove("tests/assets_test/maps/1.txt"), 0);
+    for (size_t i = 0U; i < sizeof(directories) / sizeof(directories[0]); i++)
+        assert_int_equal(test_rmdir(directories[i]), 0);
 }
 
 static int count_grid_glyph(Grid *g, uint8_t glyph) {
@@ -387,15 +427,19 @@ static void test_decal_fisheye_correction(void **state) {
 
 static void test_decal_art_format(void **state) {
     (void)state;
-    assert_int_equal(system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites"), 0);
+    create_asset_test_tree();
     
-    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
-    fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
-    fclose(fmap);
+    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "wb");
+    assert_non_null(fmap);
+    assert_true(fputs("width=3\nheight=3\ndata=\n###\n###\n###\n", fmap) >= 0);
+    assert_int_equal(fclose(fmap), 0);
     
-    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "w");
-    fprintf(fdecal, "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHELLO\nWORLD\n");
-    fclose(fdecal);
+    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "wb");
+    assert_non_null(fdecal);
+    assert_true(fputs(
+        "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHELLO\nWORLD\n",
+        fdecal) >= 0);
+    assert_int_equal(fclose(fdecal), 0);
 
     WorldState world;
     world_init(&world);
@@ -412,20 +456,24 @@ static void test_decal_art_format(void **state) {
     
     world_clear(&world);
     map_destroy(m);
-    assert_int_equal(system("rm -rf tests/assets_test"), 0);
+    remove_asset_test_tree();
 }
 
 static void test_decal_art_format_failure(void **state) {
     (void)state;
-    assert_int_equal(system("mkdir -p tests/assets_test/maps tests/assets_test/decals tests/assets_test/lights tests/assets_test/materials tests/assets_test/palettes tests/assets_test/sprites"), 0);
+    create_asset_test_tree();
     
-    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "w");
-    fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
-    fclose(fmap);
+    FILE *fmap = fopen("tests/assets_test/maps/1.txt", "wb");
+    assert_non_null(fmap);
+    assert_true(fputs("width=3\nheight=3\ndata=\n###\n###\n###\n", fmap) >= 0);
+    assert_int_equal(fclose(fmap), 0);
     
-    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "w");
-    fprintf(fdecal, "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHEL\nWOR\n");
-    fclose(fdecal);
+    FILE *fdecal = fopen("tests/assets_test/decals/1.txt", "wb");
+    assert_non_null(fdecal);
+    assert_true(fputs(
+        "surface=0\npattern_cols=5\npattern_rows=2\nart=\nHEL\nWOR\n",
+        fdecal) >= 0);
+    assert_int_equal(fclose(fdecal), 0);
 
     WorldState world;
     world_init(&world);
@@ -439,7 +487,7 @@ static void test_decal_art_format_failure(void **state) {
     
     world_clear(&world);
     map_destroy(m);
-    assert_int_equal(system("rm -rf tests/assets_test"), 0);
+    remove_asset_test_tree();
 }
 
 static void test_decal_floor_continuous_sampling(void **state) {

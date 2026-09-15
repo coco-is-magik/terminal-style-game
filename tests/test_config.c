@@ -12,7 +12,7 @@
 
 #include "../src/config.h"
 
-static char path[] = "/tmp/tsg_config_XXXXXX";
+static char path[] = "build/tsg_config_XXXXXX";
 
 static void write_config(const char *text) {
     int descriptor = mkstemp(path);
@@ -25,7 +25,7 @@ static void write_config(const char *text) {
 }
 
 static void reset_path(void) {
-    memcpy(path, "/tmp/tsg_config_XXXXXX", sizeof("/tmp/tsg_config_XXXXXX"));
+    memcpy(path, "build/tsg_config_XXXXXX", sizeof("build/tsg_config_XXXXXX"));
 }
 
 static void test_defaults_and_valid_override(void **state) {

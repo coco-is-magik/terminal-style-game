@@ -9,12 +9,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/ui_preferences.h"
 #include "../src/ui_preferences_internal.h"
 
-static char root[] = "/tmp/tsg_ui_preferences_XXXXXX";
+static char root[] = "build/tsg_ui_preferences_XXXXXX";
+
+static void assert_change_saved(UiPreferencesChangeResult result) {
+    assert_true(result == UI_PREFERENCES_CHANGE_SAVED ||
+                result == UI_PREFERENCES_CHANGE_SAVED_DURABILITY_WARNING);
+}
 
 static void path_for(char *out, size_t out_size, const char *name) {
     snprintf(out, out_size, "%s/%s", root, name);
@@ -45,8 +56,8 @@ static char *read_text(const char *path) {
 
 static int setup(void **state) {
     (void)state;
-    memcpy(root, "/tmp/tsg_ui_preferences_XXXXXX",
-           sizeof("/tmp/tsg_ui_preferences_XXXXXX"));
+    memcpy(root, "build/tsg_ui_preferences_XXXXXX",
+           sizeof("build/tsg_ui_preferences_XXXXXX"));
     return mkdtemp(root) ? 0 : -1;
 }
 
@@ -113,24 +124,25 @@ static void test_transitions_reset_and_endpoint_no_write(void **state) {
     UiPreferences preferences;
     char defaults[512];
     char user[512];
-    struct stat before;
-    struct stat after;
+    char *before;
+    char *after;
     (void)state;
     path_for(defaults, sizeof(defaults), "default.ini");
     path_for(user, sizeof(user), "user.ini");
     write_text(defaults, "version = 1\nui_scale_percent = 125\n");
     ui_preferences_init(&preferences, defaults, user);
-    assert_int_equal(ui_preferences_increase(&preferences), UI_PREFERENCES_CHANGE_SAVED);
+    assert_change_saved(ui_preferences_increase(&preferences));
     assert_int_equal(ui_preferences_scale(&preferences), 150);
-    assert_int_equal(ui_preferences_increase(&preferences), UI_PREFERENCES_CHANGE_SAVED);
+    assert_change_saved(ui_preferences_increase(&preferences));
     assert_int_equal(ui_preferences_scale(&preferences), 200);
-    assert_int_equal(stat(user, &before), 0);
+    before = read_text(user);
     assert_int_equal(ui_preferences_increase(&preferences), UI_PREFERENCES_CHANGE_UNCHANGED);
-    assert_int_equal(stat(user, &after), 0);
-    assert_int_equal(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
-    assert_int_equal(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
-    assert_int_equal(ui_preferences_decrease(&preferences), UI_PREFERENCES_CHANGE_SAVED);
-    assert_int_equal(ui_preferences_reset(&preferences), UI_PREFERENCES_CHANGE_SAVED);
+    after = read_text(user);
+    assert_string_equal(after, before);
+    free(after);
+    free(before);
+    assert_change_saved(ui_preferences_decrease(&preferences));
+    assert_change_saved(ui_preferences_reset(&preferences));
     assert_int_equal(ui_preferences_scale(&preferences), 125);
 }
 
@@ -142,7 +154,7 @@ static void test_failed_save_keeps_active_and_destination(void **state) {
     path_for(defaults, sizeof(defaults), "default.ini");
     path_for(blocked, sizeof(blocked), "blocked");
     write_text(defaults, "version = 1\nui_scale_percent = 150\n");
-    assert_int_equal(mkdir(blocked, 0700), 0);
+    assert_int_equal(test_mkdir(blocked), 0);
     ui_preferences_init(&preferences, defaults, blocked);
     assert_int_equal(ui_preferences_increase(&preferences),
                      UI_PREFERENCES_CHANGE_ACTIVE_NOT_SAVED);

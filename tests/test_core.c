@@ -8,7 +8,15 @@
 #include <string.h>
 #include <math.h>        /* cos(), atan(), tan() */
 #include <sys/stat.h>    /* mkdir() */
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#define test_rmdir(path) _rmdir(path)
+#else
 #include <unistd.h>      /* rmdir() */
+#define test_mkdir(path) mkdir(path, 0755)
+#define test_rmdir(path) rmdir(path)
+#endif
 #include <cmocka.h>
 
 #include "../src/grid.h"
@@ -1279,7 +1287,7 @@ static void test_material_count(void **state) {
 
 /* ===================================================================
  *  Named material loading tests
- *  These tests use isolated temp directories under /tmp to avoid
+ *  These tests use isolated directories under build/ to avoid
  *  touching the real assets and to keep results deterministic.
  * =================================================================== */
 
@@ -1292,91 +1300,91 @@ static void write_mat_file(const char *path, const char *content) {
 static void test_named_material_auto_assign(void **state) {
     /* 2.txt locks ID 2; stone_brick.txt has no id= field → first free = ID 1 */
     (void)state;
-    mkdir("/tmp/tst_mat1", 0755);
-    write_mat_file("/tmp/tst_mat1/2.txt",          "palette=1\nglyphs=##\n");
-    write_mat_file("/tmp/tst_mat1/stone_brick.txt", "palette=1\nglyphs=XX\n");
+    assert_int_equal(test_mkdir("build/tst_mat1"), 0);
+    write_mat_file("build/tst_mat1/2.txt",          "palette=1\nglyphs=##\n");
+    write_mat_file("build/tst_mat1/stone_brick.txt", "palette=1\nglyphs=XX\n");
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    asset_loader_load_materials(&assets, "/tmp/tst_mat1");
+    asset_loader_load_materials(&assets, "build/tst_mat1");
 
     assert_int_equal(material_find_by_name(&assets, "stone_brick"), 1);
     assert_int_equal(material_find_by_name(&assets, "2"),           2);
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat1/2.txt");
-    remove("/tmp/tst_mat1/stone_brick.txt");
-    rmdir("/tmp/tst_mat1");
+    assert_int_equal(remove("build/tst_mat1/2.txt"), 0);
+    assert_int_equal(remove("build/tst_mat1/stone_brick.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat1"), 0);
 }
 
 static void test_named_material_gap_assign(void **state) {
     /* 1.txt and 3.txt occupy IDs 1 and 3; extra.txt → first free = ID 2 */
     (void)state;
-    mkdir("/tmp/tst_mat2", 0755);
-    write_mat_file("/tmp/tst_mat2/1.txt",    "palette=1\nglyphs=##\n");
-    write_mat_file("/tmp/tst_mat2/3.txt",    "palette=1\nglyphs=##\n");
-    write_mat_file("/tmp/tst_mat2/extra.txt","palette=1\nglyphs=EE\n");
+    assert_int_equal(test_mkdir("build/tst_mat2"), 0);
+    write_mat_file("build/tst_mat2/1.txt",    "palette=1\nglyphs=##\n");
+    write_mat_file("build/tst_mat2/3.txt",    "palette=1\nglyphs=##\n");
+    write_mat_file("build/tst_mat2/extra.txt","palette=1\nglyphs=EE\n");
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    asset_loader_load_materials(&assets, "/tmp/tst_mat2");
+    asset_loader_load_materials(&assets, "build/tst_mat2");
 
     assert_int_equal(material_find_by_name(&assets, "extra"), 2);
 
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat2/1.txt");
-    remove("/tmp/tst_mat2/3.txt");
-    remove("/tmp/tst_mat2/extra.txt");
-    rmdir("/tmp/tst_mat2");
+    assert_int_equal(remove("build/tst_mat2/1.txt"), 0);
+    assert_int_equal(remove("build/tst_mat2/3.txt"), 0);
+    assert_int_equal(remove("build/tst_mat2/extra.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat2"), 0);
 }
 
 static void test_named_material_explicit_id(void **state) {
     /* wood.txt requests id=8 explicitly */
     (void)state;
-    mkdir("/tmp/tst_mat3", 0755);
-    write_mat_file("/tmp/tst_mat3/wood.txt", "palette=1\nglyphs=WW\nid=8\n");
+    assert_int_equal(test_mkdir("build/tst_mat3"), 0);
+    write_mat_file("build/tst_mat3/wood.txt", "palette=1\nglyphs=WW\nid=8\n");
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    asset_loader_load_materials(&assets, "/tmp/tst_mat3");
+    asset_loader_load_materials(&assets, "build/tst_mat3");
 
     assert_int_equal(material_find_by_name(&assets, "wood"), 8);
     assert_true(material_id_is_loaded(&assets, 8));
 
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat3/wood.txt");
-    rmdir("/tmp/tst_mat3");
+    assert_int_equal(remove("build/tst_mat3/wood.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat3"), 0);
 }
 
 static void test_named_material_high_explicit_id(void **state) {
     AssetRegistry assets;
     (void)state;
-    mkdir("/tmp/tst_mat_high", 0755);
-    write_mat_file("/tmp/tst_mat_high/high.txt",
+    assert_int_equal(test_mkdir("build/tst_mat_high"), 0);
+    write_mat_file("build/tst_mat_high/high.txt",
                    "palette=65535\nglyphs=HH\nid=60000\n");
 
     assert_true(asset_registry_init(&assets));
-    asset_loader_load_materials(&assets, "/tmp/tst_mat_high");
+    asset_loader_load_materials(&assets, "build/tst_mat_high");
     assert_int_equal(material_find_by_name(&assets, "high"), 60000);
     assert_int_equal(assets.materials[60000].palette_id, 65535);
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat_high/high.txt");
-    rmdir("/tmp/tst_mat_high");
+    assert_int_equal(remove("build/tst_mat_high/high.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat_high"), 0);
 }
 
 static void test_named_material_collision_skipped(void **state) {
     /* 1.txt loads ID 1; conflict.txt requests id=1 → collision, skipped */
     (void)state;
-    mkdir("/tmp/tst_mat4", 0755);
-    write_mat_file("/tmp/tst_mat4/1.txt",        "palette=1\nglyphs=##\n");
-    write_mat_file("/tmp/tst_mat4/conflict.txt",  "palette=1\nglyphs=CC\nid=1\n");
+    assert_int_equal(test_mkdir("build/tst_mat4"), 0);
+    write_mat_file("build/tst_mat4/1.txt",        "palette=1\nglyphs=##\n");
+    write_mat_file("build/tst_mat4/conflict.txt",  "palette=1\nglyphs=CC\nid=1\n");
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    asset_loader_load_materials(&assets, "/tmp/tst_mat4");
+    asset_loader_load_materials(&assets, "build/tst_mat4");
 
     /* ID 1 still holds the numeric file's name, not "conflict" */
     assert_string_equal(material_name_by_id(&assets, 1), "1");
@@ -1384,30 +1392,30 @@ static void test_named_material_collision_skipped(void **state) {
 
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat4/1.txt");
-    remove("/tmp/tst_mat4/conflict.txt");
-    rmdir("/tmp/tst_mat4");
+    assert_int_equal(remove("build/tst_mat4/1.txt"), 0);
+    assert_int_equal(remove("build/tst_mat4/conflict.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat4"), 0);
 }
 
 static void test_named_material_count_is_count(void **state) {
     /* material_count == number of loaded slots, not highest ID */
     (void)state;
-    mkdir("/tmp/tst_mat5", 0755);
-    write_mat_file("/tmp/tst_mat5/1.txt",   "palette=1\nglyphs=##\n");
-    write_mat_file("/tmp/tst_mat5/wood.txt","palette=1\nglyphs=WW\n");
+    assert_int_equal(test_mkdir("build/tst_mat5"), 0);
+    write_mat_file("build/tst_mat5/1.txt",   "palette=1\nglyphs=##\n");
+    write_mat_file("build/tst_mat5/wood.txt","palette=1\nglyphs=WW\n");
 
     AssetRegistry assets;
     asset_registry_init(&assets);
-    asset_loader_load_materials(&assets, "/tmp/tst_mat5");
+    asset_loader_load_materials(&assets, "build/tst_mat5");
 
     /* Two files loaded → count == 2, not 2 from highest-ID tracking */
     assert_int_equal(assets.material_count, 2);
 
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_mat5/1.txt");
-    remove("/tmp/tst_mat5/wood.txt");
-    rmdir("/tmp/tst_mat5");
+    assert_int_equal(remove("build/tst_mat5/1.txt"), 0);
+    assert_int_equal(remove("build/tst_mat5/wood.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_mat5"), 0);
 }
 
 static void test_numeric_material_regression(void **state) {
@@ -1424,20 +1432,20 @@ static void test_numeric_material_regression(void **state) {
 }
 
 static void test_sparse_high_id_bulk_asset_loading(void **state) {
-    const char *root = "/tmp/tst_assets_high";
+    const char *root = "build/tst_assets_high";
     AssetRegistry assets;
     const DecalPatternAsset *decal;
     SDL_Color sampled;
     (void)state;
 
-    mkdir(root, 0755);
-    mkdir("/tmp/tst_assets_high/palettes", 0755);
-    mkdir("/tmp/tst_assets_high/materials", 0755);
-    mkdir("/tmp/tst_assets_high/sprites", 0755);
-    mkdir("/tmp/tst_assets_high/decals", 0755);
-    write_mat_file("/tmp/tst_assets_high/palettes/50000.txt",
+    assert_int_equal(test_mkdir(root), 0);
+    assert_int_equal(test_mkdir("build/tst_assets_high/palettes"), 0);
+    assert_int_equal(test_mkdir("build/tst_assets_high/materials"), 0);
+    assert_int_equal(test_mkdir("build/tst_assets_high/sprites"), 0);
+    assert_int_equal(test_mkdir("build/tst_assets_high/decals"), 0);
+    write_mat_file("build/tst_assets_high/palettes/50000.txt",
                    "near=10,20,30,255\nmid=4,5,6,255\nfar=1,2,3,255\n");
-    write_mat_file("/tmp/tst_assets_high/decals/50000.txt",
+    write_mat_file("build/tst_assets_high/decals/50000.txt",
                    "pattern_cols=1\npattern_rows=1\ndefault_material=65535\n"
                    "pattern_0=X\nmaterial_0=65535\n");
 
@@ -1456,13 +1464,13 @@ static void test_sparse_high_id_bulk_asset_loading(void **state) {
     assert_int_equal(decal->pattern[0].material_id, UINT16_MAX);
     asset_registry_clear(&assets);
 
-    remove("/tmp/tst_assets_high/palettes/50000.txt");
-    remove("/tmp/tst_assets_high/decals/50000.txt");
-    rmdir("/tmp/tst_assets_high/palettes");
-    rmdir("/tmp/tst_assets_high/materials");
-    rmdir("/tmp/tst_assets_high/sprites");
-    rmdir("/tmp/tst_assets_high/decals");
-    rmdir(root);
+    assert_int_equal(remove("build/tst_assets_high/palettes/50000.txt"), 0);
+    assert_int_equal(remove("build/tst_assets_high/decals/50000.txt"), 0);
+    assert_int_equal(test_rmdir("build/tst_assets_high/palettes"), 0);
+    assert_int_equal(test_rmdir("build/tst_assets_high/materials"), 0);
+    assert_int_equal(test_rmdir("build/tst_assets_high/sprites"), 0);
+    assert_int_equal(test_rmdir("build/tst_assets_high/decals"), 0);
+    assert_int_equal(test_rmdir(root), 0);
 }
 
 int main(void) {

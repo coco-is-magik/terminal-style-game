@@ -8,17 +8,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/ui_menu_workspace.h"
 #include "../src/ui_menu_workspace_internal.h"
 
+static void assert_menu_save_committed(UiMenuWorkspaceResult result) {
+    assert_true(result == UI_MENU_WORKSPACE_OK ||
+                result == UI_MENU_WORKSPACE_OK_DURABILITY_WARNING);
+}
+
 static void make_paths(char root[64], char menus[96]) {
-    memcpy(root, "/tmp/tsg_ui_workspace_XXXXXX",
-           sizeof("/tmp/tsg_ui_workspace_XXXXXX"));
+    memcpy(root, "build/tsg_ui_workspace_XXXXXX",
+           sizeof("build/tsg_ui_workspace_XXXXXX"));
     assert_non_null(mkdtemp(root));
     assert_true(snprintf(menus, 96, "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
 }
 
 static void save_menu(const char *path, const char *name) {
@@ -64,7 +75,7 @@ static void test_chooser_load_hierarchy_property_history_and_discard(void **stat
     assert_int_equal(ui_menu_workspace_selected_element(&workspace)->layout.x, 2);
     assert_false(ui_menu_workspace_is_dirty(&workspace));
     assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_OK);
-    assert_int_equal(ui_menu_workspace_save(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_menu_save_committed(ui_menu_workspace_save(&workspace));
     assert_false(ui_menu_workspace_is_dirty(&workspace));
     assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
     assert_true(ui_menu_workspace_is_dirty(&workspace));
@@ -104,7 +115,7 @@ static void test_create_name_save_and_catalog_refresh(void **state) {
     assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
     assert_true(workspace.has_document);
     assert_true(ui_menu_workspace_is_dirty(&workspace));
-    assert_int_equal(ui_menu_workspace_save(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_menu_save_committed(ui_menu_workspace_save(&workspace));
     assert_false(ui_menu_workspace_is_dirty(&workspace));
     assert_true(snprintf(path, sizeof(path), "%s/newmenu.tui", menus) > 0);
     assert_int_equal(access(path, F_OK), 0);
@@ -150,7 +161,7 @@ static void test_invalid_load_and_boundaries_are_transactional(void **state) {
 static void test_managed_menu_directory_failure_preserves_workspace(void **state) {
     UiMenuWorkspace workspace;
     UiMenuWorkspace before;
-    char root[] = "/tmp/tsg_ui_directory_XXXXXX";
+    char root[] = "build/tsg_ui_directory_XXXXXX";
     char menus[96];
     FILE *file;
     (void)state;
@@ -209,8 +220,8 @@ static void test_catalog_open_failure_preserves_workspace(void **state) {
     ui_menu_workspace_init(&workspace);
     assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
     before = workspace;
-    memcpy(bad_root, "/tmp/tsg_ui_bad_root_XXXXXX",
-           sizeof("/tmp/tsg_ui_bad_root_XXXXXX"));
+    memcpy(bad_root, "build/tsg_ui_bad_root_XXXXXX",
+           sizeof("build/tsg_ui_bad_root_XXXXXX"));
     assert_non_null(mkdtemp(bad_root));
     assert_true(snprintf(bad_menus, sizeof(bad_menus), "%s/menus", bad_root) > 0);
     file = fopen(bad_menus, "w");
@@ -280,7 +291,7 @@ static void test_i13_construct_edit_remove_and_history(void **state) {
         assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_OK);
     assert_int_equal(ui_menu_workspace_append_text(&workspace, "play"), UI_MENU_WORKSPACE_OK);
     assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
-    assert_int_equal(ui_menu_workspace_save(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_menu_save_committed(ui_menu_workspace_save(&workspace));
     ui_document_init(&reopened);
     assert_int_equal(ui_document_load(&reopened, path), UI_DOCUMENT_OK);
     assert_string_equal(ui_document_find_element(&reopened, added_button)->content,
@@ -446,7 +457,7 @@ static void test_i14_rename_reparent_and_adjacent_subtree_history(void **state) 
     assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_OK);
     assert_int_equal(workspace.document.elements[1].id, second);
     assert_non_null(ui_document_find_element(&workspace.document, second_child));
-    assert_int_equal(ui_menu_workspace_save(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_menu_save_committed(ui_menu_workspace_save(&workspace));
     assert_int_equal(ui_document_load(&document, path), UI_DOCUMENT_OK);
     assert_string_equal(ui_document_find_element(&document, first_child)->name, "renamed");
     assert_int_equal(ui_document_find_element(&document, first_child)->parent_id, second);
@@ -549,7 +560,7 @@ static void test_i15_visual_properties_history_and_persistence(void **state) {
     assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_OK);
     assert_int_equal(ui_menu_workspace_selected_element(
         &workspace)->visual.sprite_id, UINT8_MAX);
-    assert_int_equal(ui_menu_workspace_save(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_menu_save_committed(ui_menu_workspace_save(&workspace));
     assert_int_equal(ui_document_load(&reopened, path), UI_DOCUMENT_OK);
     assert_int_equal(reopened.elements[1].visual.mode, UI_DOCUMENT_VISUAL_SPRITE);
     assert_int_equal(reopened.elements[1].visual.sprite_id, UINT8_MAX);

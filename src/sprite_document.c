@@ -464,9 +464,7 @@ SpriteDocumentResult sprite_document_internal_save(
             PlatformMoveResult restore = move_folder(
                 backup, target,
                 fault == SPRITE_DOCUMENT_SAVE_FAULT_RESTORE_MOVE, false);
-            restored = restore.commit_state != PLATFORM_COMMIT_NOT_COMMITTED &&
-                       restore.commit_state !=
-                           PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING;
+            restored = restore.commit_state != PLATFORM_COMMIT_NOT_COMMITTED;
         }
         cleaned = clean_folder(
             temporary, fault == SPRITE_DOCUMENT_SAVE_FAULT_CANDIDATE_CLEANUP);

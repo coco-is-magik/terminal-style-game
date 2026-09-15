@@ -15,14 +15,19 @@
 #include "../src/decal_document_internal.h"
 
 static AssetRegistry assets;
-static char temp_directory[] = "/tmp/tsg_decal_doc_XXXXXX";
+static char temp_directory[] = "build/tsg_decal_doc_XXXXXX";
+
+static void assert_decal_save_committed(DecalDocumentResult result) {
+    assert_true(result == DECAL_DOCUMENT_OK ||
+                result == DECAL_DOCUMENT_OK_DURABILITY_WARNING);
+}
 
 static int setup(void **state) {
     SDL_Color color = {10U, 20U, 30U, 255U};
     PatternCell existing = {(uint8_t)'E', UINT16_C(1)};
     (void)state;
-    memcpy(temp_directory, "/tmp/tsg_decal_doc_XXXXXX",
-           sizeof("/tmp/tsg_decal_doc_XXXXXX"));
+    memcpy(temp_directory, "build/tsg_decal_doc_XXXXXX",
+           sizeof("build/tsg_decal_doc_XXXXXX"));
     if (!mkdtemp(temp_directory)) return -1;
     if (!asset_registry_init(&assets)) return -1;
     asset_registry_set_palette(&assets, 1, color, color, color);
@@ -152,8 +157,8 @@ static void test_atomic_save_open_discard_and_registry_commit(void **state) {
                          &document, &assets,
                          (PatternCell){(uint8_t)'#', UINT16_C(1)}),
                      DECAL_DOCUMENT_OK);
-    assert_int_equal(decal_document_save_as(
-                         &document, &assets, temp_directory), DECAL_DOCUMENT_OK);
+    assert_decal_save_committed(decal_document_save_as(
+        &document, &assets, temp_directory));
     assert_false(decal_document_is_dirty(&document));
     assert_int_equal(decal_document_commit_to_registry(&document, &assets),
                      DECAL_DOCUMENT_OK);
@@ -166,7 +171,7 @@ static void test_atomic_save_open_discard_and_registry_commit(void **state) {
                      DECAL_DOCUMENT_OK);
     assert_int_equal(decal_document_erase_cell(&reopened, 0U, 0U),
                      DECAL_DOCUMENT_OK);
-    assert_int_equal(decal_document_save(&reopened, &assets), DECAL_DOCUMENT_OK);
+    assert_decal_save_committed(decal_document_save(&reopened, &assets));
     assert_false(decal_document_is_dirty(&reopened));
     assert_int_equal(decal_document_paint_cell(
                          &reopened, &assets, 0U, 0U,

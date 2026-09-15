@@ -15,13 +15,13 @@
 #include "../src/material_document_internal.h"
 
 static AssetRegistry assets;
-static char temp_directory[] = "/tmp/tsg_material_doc_XXXXXX";
+static char temp_directory[] = "build/tsg_material_doc_XXXXXX";
 
 static int setup(void **state) {
     SDL_Color color = {10U, 20U, 30U, 255U};
     (void)state;
-    memcpy(temp_directory, "/tmp/tsg_material_doc_XXXXXX",
-           sizeof("/tmp/tsg_material_doc_XXXXXX"));
+    memcpy(temp_directory, "build/tsg_material_doc_XXXXXX",
+           sizeof("build/tsg_material_doc_XXXXXX"));
     if (!mkdtemp(temp_directory)) return -1;
     if (!asset_registry_init(&assets)) return -1;
     asset_registry_set_palette(&assets, 1, color, color, color);

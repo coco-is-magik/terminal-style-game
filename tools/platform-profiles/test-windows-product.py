@@ -21,7 +21,7 @@ class ProductClient:
         self.failure_log = b"compile error"
         self.preflight_failure = 0
         self.preflight_log = b"[  PASSED  ] 9 test(s).\n"
-        self.runner_count = 63
+        self.runner_count = 64
         self.native_failure = ""
         self.log_retrieval_failure = False
 
@@ -32,7 +32,7 @@ class ProductClient:
         if "test ! -e \"$source/vendor\"" in script:
             return 0, b"", b""
         if "runner_count=" in script:
-            code = 0 if self.runner_count == 63 else 1
+            code = 0 if self.runner_count == 64 else 1
             return code, f"runner_count={self.runner_count}\n".encode(), b""
         if "platform-capability-preflight.log" in script:
             self.logs["platform-capability-preflight"] = self.preflight_log
@@ -98,19 +98,23 @@ class WindowsProductTests(unittest.TestCase):
         make_commands = [command for command in self.client.commands if "make CC=gcc" in command]
         self.assertEqual(len(make_commands), 5)
         self.assertIn("build/test-platform-capabilities", make_commands[0])
+        self.assertIn("build/test-platform-number", make_commands[0])
         self.assertIn("build/test-map-catalog", make_commands[0])
+        self.assertIn("build/test-scene-format", make_commands[0])
         self.assertIn("file format pei-x86-64", make_commands[0])
         self.assertIn("msys-2.0.dll", make_commands[0])
         self.assertIn("cygwin1.dll", make_commands[0])
         self.assertIn("./build/test-platform-capabilities.exe", make_commands[0])
+        self.assertIn("./build/test-platform-number.exe", make_commands[0])
         self.assertIn("./build/test-map-catalog.exe", make_commands[0])
+        self.assertIn("./build/test-scene-format.exe", make_commands[0])
         targets = ["all", "test-build", "test", "standards-core"]
         for command, target in zip(make_commands[1:], targets, strict=True):
             self.assertIn(f"make CC=gcc {target}", command)
             for forbidden in ("CFLAGS=", "LIBS=", "TEST_LIBS=", "RPATH="):
                 self.assertNotIn(forbidden, command)
-        self.assertIn('test "$#" -eq 63', self.client.commands[1])
-        self.assertIn('test "$#" -eq 64', self.client.commands[-1])
+        self.assertIn('test "$#" -eq 64', self.client.commands[1])
+        self.assertIn('test "$#" -eq 65', self.client.commands[-1])
         self.assertIn("msys-2.0.dll", self.client.commands[-1])
         self.assertIn("cygwin1.dll", self.client.commands[-1])
 

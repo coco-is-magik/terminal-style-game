@@ -276,6 +276,17 @@ static void test_metadata_and_sync_faults_are_typed(void **state) {
     assert_int_equal(metadata_result, PLATFORM_FS_IO_ERROR);
 #endif
     assert_int_not_equal(metadata_error.domain, PLATFORM_NATIVE_ERROR_NONE);
+#ifdef _WIN32
+    file = fopen(path, "rb");
+    assert_non_null(file);
+    assert_int_equal(platform_fs_sync_file(file, &error), PLATFORM_FS_ACCESS_DENIED);
+    assert_int_equal(error.domain, PLATFORM_NATIVE_ERROR_WIN32);
+    assert_int_equal(fclose(file), 0);
+    file = fopen(path, "r+b");
+    assert_non_null(file);
+    assert_int_equal(platform_fs_sync_file(file, &error), PLATFORM_FS_OK);
+    assert_int_equal(fclose(file), 0);
+#endif
 }
 
 static void test_ensure_directory_contract(void **state) {

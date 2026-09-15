@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W3 complete; W4,
+**Active: B0/C1 evidence captured; W1 through W5 complete; L1/W6,
 pinned-SMC, performance, and final platform acceptance remain open.**
 
 This is the focused execution plan for
@@ -456,6 +456,15 @@ enumeration are proven, and strict application compilation now stops only in W4'
 `scene_format` locale calls. See
 [`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md).
 
+**W4 result (2026-09-14):** `platform_number` now parses complete finite ASCII decimals and
+formats canonical `%.17g` tokens through per-call POSIX/UCRT locale objects without
+process-global locale mutation or failed-output changes. `scene_format` delegates conversion
+while retaining grammar, diagnostics, exact bytes, and transactional ownership. Local strict
+GCC/Clang number tests pass 5/5, scene tests pass 24/24, focused sanitizers pass, and all 64
+runners pass. Native PE/import checks pass; UCRT number tests pass 5/5, native scene format
+passes 24/24, and the strict application builds. See
+[`reviews/2026-09-14-v1-0-w4-locale-independent-number.md`](reviews/2026-09-14-v1-0-w4-locale-independent-number.md).
+
 ### W5 — Native Windows functional profile
 
 Run the unchanged strict policy in the existing native Windows provider through:
@@ -468,6 +477,16 @@ Run the unchanged strict policy in the existing native Windows provider through:
 6. native binary inspection proving no accidental `msys-2.0.dll` or `cygwin1.dll` dependency.
 
 Any first failure remains nonzero and preserves later phases as unrun.
+
+**W5 result (2026-09-15):** Normal Make policy now links pinned static ENet's Windows
+dependencies in order without affecting Linux. Test fixtures use portable `build/` roots and
+shell-free bounded setup; persistence tests honor documented committed warnings; decal sync uses
+a write-capable Windows handle; decal output remains canonical LF; legacy replacement and sprite
+rollback follow the established platform commit model; and oversized test snapshots use checked
+heap ownership. Native Windows passes strict application compilation, strict compilation and
+execution of all 64 runners, `standards-core`, and PE/import inspection of the application plus
+all 64 test binaries with no MSYS/Cygwin runtime. See
+[`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md).
 
 ### L1/W6 — Native display and input hosts
 
@@ -539,13 +558,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed to W4 with fixed parse/format corpus tests, then add the POSIX/UCRT
-`platform_number` capability and migrate `scene_format` parsing and formatting in separate
-bounded steps while preserving exact grammar, canonical bytes, finite/range checks,
-negative-zero normalization, output preservation, and no process-locale mutation. If UCRT
-`%.17g` differs from the accepted corpus, stop for a focused formatter decision. In
-parallel, obtain a strict-compatible
-pinned SMC revision and update its reviewed commit/hash before rebuilding required Ubuntu
-Clang. P1 remains independent. Do not externally timeout platform profiles on this low-end
-host. Do not combine dependency, performance, or W4 locale increments, and do not change
-mirror, glyph, font, UI, or sprite behavior during V1-0 remediation.
+Proceed to L1/W6 native Linux and Windows display/input acceptance without changing headless
+domain behavior. Record backend, dimensions, scale, devices, session context, presentation,
+resize, keyboard/mouse input, application transitions, and clean teardown. In parallel, obtain a
+strict-compatible pinned SMC revision and update its reviewed commit/hash before rebuilding
+required Ubuntu Clang. P1 remains independent. Do not externally timeout platform profiles on
+this low-end host, and do not broaden display acceptance into later pointer, glyph, font, or
+sprite feature semantics.

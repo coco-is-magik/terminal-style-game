@@ -8,6 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/flow_project_catalog.h"
@@ -57,7 +63,7 @@ static void test_invalid_refresh_preserves_catalog(void **state) {
     FlowProjectCatalog catalog;
     FlowProjectCatalog before;
     AssetRegistry assets;
-    char root[] = "/tmp/tsg_flow_catalog_XXXXXX";
+    char root[] = "build/tsg_flow_catalog_XXXXXX";
     char menus[256];
     char path[256];
     (void)state;
@@ -66,7 +72,7 @@ static void test_invalid_refresh_preserves_catalog(void **state) {
     assert_true(asset_registry_init(&assets));
     assert_true(asset_loader_load_registry(&assets, "assets"));
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/bad.tui", menus) > 0);
     assert_int_equal(write_file(path, "ui_version=99\n"), 0);
     flow_project_catalog_init(&catalog);

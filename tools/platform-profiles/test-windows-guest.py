@@ -99,7 +99,7 @@ class FakeQga:
         if 'test ! -e "$source/vendor"' in command:
             return 0, b"", b""
         if "runner_count=" in command:
-            return 0, b"runner_count=63\n", b""
+            return 0, b"runner_count=64\n", b""
         if "platform-capability-preflight.log" in command:
             self.files[next(key.rsplit("\\", 1)[0] + "\\platform-capability-preflight.log"
                             for key in self.files if key.endswith("source-payload.zip"))] = \

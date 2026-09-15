@@ -190,6 +190,9 @@ in `TODO.md`.
 - `platform_catalog`: direct-child native directory enumeration, strict UTF-8 name
   conversion, and typed no-follow file/directory/link metadata; it streams borrowed
   entries and owns no catalog snapshot.
+- `platform_number`: stateless locale-independent ASCII finite-double parsing and canonical
+  `%.17g` formatting through per-call POSIX/UCRT locale objects; outputs remain unchanged on
+  failure and the process numeric locale is never mutated.
 - `map_catalog`: owned sorted filtered file snapshots for editor open/import/catalog
   workflows; it retains filtering, allocation, path construction, candidate cleanup,
   and transactional live-snapshot replacement.
@@ -202,6 +205,8 @@ in `TODO.md`.
   by asset and UI formats; outputs remain unchanged on rejection.
 - `scene_document` / `command_system`: authored scene document ownership,
   validation, mutation, undo, and redo.
+- `scene_format`: headless scene grammar, migration, validation, and canonical byte ownership;
+  it delegates only numeric conversion mechanics to `platform_number`.
 - `ui_ele`: application-owned UI element/layout/cache data and mutation/query APIs.
 - `unified_editor`: editor workflow state, input routing, staged workspace
   orchestration, and domain-command dispatch.

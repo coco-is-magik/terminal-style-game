@@ -3,6 +3,7 @@
 #include "scene_format.h"
 
 #include "checked_size.h"
+#include "platform_number.h"
 #include "scene_block_codec.h"
 
 #include <float.h>
@@ -10,7 +11,6 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <locale.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -246,41 +246,8 @@ static bool parse_uint_range(const char *text, unsigned maximum, unsigned *value
     return true;
 }
 
-static bool float_grammar(const char *text) {
-    const unsigned char *p = (const unsigned char *)text;
-    bool before = false;
-    bool after = false;
-    if (*p == '+' || *p == '-') p++;
-    while (*p >= '0' && *p <= '9') { before = true; p++; }
-    if (*p == '.') {
-        p++;
-        while (*p >= '0' && *p <= '9') { after = true; p++; }
-    }
-    if (!before && !after) return false;
-    if (*p == 'e' || *p == 'E') {
-        bool exponent = false;
-        p++;
-        if (*p == '+' || *p == '-') p++;
-        while (*p >= '0' && *p <= '9') { exponent = true; p++; }
-        if (!exponent) return false;
-    }
-    return *p == '\0';
-}
-
 static bool parse_double_c(const char *text, double *value) {
-    locale_t c_locale;
-    char *end = NULL;
-    double parsed;
-    if (!float_grammar(text)) return false;
-    c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    if (c_locale == (locale_t)0) return false;
-    errno = 0;
-    parsed = strtod_l(text, &end, c_locale);
-    freelocale(c_locale);
-    if (errno == ERANGE || !end || *end != '\0' || parsed != parsed ||
-        parsed > DBL_MAX || parsed < -DBL_MAX) return false;
-    *value = parsed;
-    return true;
+    return platform_number_parse_double(text, value) == PLATFORM_NUMBER_OK;
 }
 
 static bool split_tuple(char *text, char **parts, size_t count) {
@@ -2301,15 +2268,14 @@ static bool writer_printf(TextWriter *writer, const char *format, ...) {
 }
 
 static bool writer_double(TextWriter *writer, double value) {
-    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    locale_t previous;
-    bool ok;
-    if (c_locale == (locale_t)0) return false;
-    if (value == 0.0) value = 0.0;
-    previous = uselocale(c_locale);
-    ok = writer_printf(writer, "%.17g", value);
-    uselocale(previous); freelocale(c_locale);
-    return ok;
+    char text[32];
+    size_t length;
+    if (platform_number_format_double(value, text, sizeof(text), &length) !=
+        PLATFORM_NUMBER_OK) return false;
+    if (!writer_reserve(writer, length)) return false;
+    memcpy(writer->data + writer->size, text, length + 1U);
+    writer->size += length;
+    return true;
 }
 
 static bool writer_quoted(TextWriter *writer, const char *text) {
@@ -2405,21 +2371,12 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     const SceneTrigger *triggers[SCENE_MAX_TRIGGERS];
     const SceneObjectInstance *objects[SCENE_MAX_OBJECTS];
     size_t i, x, y;
-    locale_t c_locale;
-    locale_t previous;
     SceneFormatResult result;
     unsigned int output_version;
     if (!candidate || !out) return SCENE_FORMAT_INVALID_ARGUMENT;
     if (diagnostic) scene_diagnostic_reset(diagnostic);
     result = scene_format_validate(candidate, NULL, diagnostic);
     if (result != SCENE_FORMAT_OK) return result;
-    c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    if (c_locale == (locale_t)0) {
-        set_error(diagnostic, SCENE_DIAGNOSTIC_ENV_ALLOCATION, NULL, NULL, NULL,
-                  "C numeric locale creation failed", 0U, 0U);
-        return SCENE_FORMAT_OUT_OF_MEMORY;
-    }
-    previous = uselocale(c_locale);
     output_version = candidate->source_version == 0U
         ? SCENE_VERSION_V1 : candidate->source_version;
     for (i = 0U; i < candidate->light_count; i++) lights[i] = &candidate->lights[i];
@@ -2689,7 +2646,6 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
         }
     }
 #undef APPEND
-    uselocale(previous); freelocale(c_locale);
     if (writer.size > SCENE_FILE_MAX_BYTES) {
         free(writer.data);
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, NULL, NULL,
@@ -2699,7 +2655,7 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
     out->data = writer.data; out->size = writer.size;
     return SCENE_FORMAT_OK;
 allocation_failed:
-    uselocale(previous); freelocale(c_locale); free(writer.data);
+    free(writer.data);
     set_error(diagnostic, SCENE_DIAGNOSTIC_ENV_ALLOCATION, NULL, NULL, NULL,
               "serialization buffer allocation failed", 0U, 0U);
     return SCENE_FORMAT_OUT_OF_MEMORY;

@@ -47,17 +47,27 @@ class WindowsProductSurvey:
 export MSYSTEM=UCRT64
 export PATH='{windows_to_msys(self.dependencies)}/bin:/ucrt64/bin:/usr/bin'
 cd '{source}' || exit 3
-timeout 300s make CC=gcc build/test-platform-capabilities build/test-map-catalog >'{guest_log}' 2>&1 || exit $?
+timeout 300s make CC=gcc build/test-platform-capabilities build/test-platform-number build/test-map-catalog build/test-scene-format >'{guest_log}' 2>&1 || exit $?
 objdump -f build/test-platform-capabilities.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
 imports="$(objdump -p build/test-platform-capabilities.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
 printf 'platform_capabilities_native_imports=%s\n' "$imports" >>'{guest_log}'
+case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
+objdump -f build/test-platform-number.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
+imports="$(objdump -p build/test-platform-number.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
+printf 'platform_number_native_imports=%s\n' "$imports" >>'{guest_log}'
 case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
 objdump -f build/test-map-catalog.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
 imports="$(objdump -p build/test-map-catalog.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
 printf 'map_catalog_native_imports=%s\n' "$imports" >>'{guest_log}'
 case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
+objdump -f build/test-scene-format.exe | grep -F 'file format pei-x86-64' >>'{guest_log}' 2>&1 || exit $?
+imports="$(objdump -p build/test-scene-format.exe | sed -n 's/.*DLL Name: //p' | tr '[:upper:]' '[:lower:]')"
+printf 'scene_format_native_imports=%s\n' "$imports" >>'{guest_log}'
+case "$imports" in *msys-2.0.dll*|*cygwin1.dll*) exit 42;; esac
 timeout 120s ./build/test-platform-capabilities.exe >>'{guest_log}' 2>&1 || exit $?
-timeout 120s ./build/test-map-catalog.exe >>'{guest_log}' 2>&1
+timeout 120s ./build/test-platform-number.exe >>'{guest_log}' 2>&1 || exit $?
+timeout 120s ./build/test-map-catalog.exe >>'{guest_log}' 2>&1 || exit $?
+timeout 120s ./build/test-scene-format.exe >>'{guest_log}' 2>&1
 """
         code, stdout, stderr = self.client.exec(
             r"C:\msys64\usr\bin\bash.exe", ["-lc", script], 480
@@ -121,7 +131,7 @@ runners="$(make -pn 2>/dev/null | sed -n 's/^TEST_RUNNERS := //p' | head -n 1)"
 set -- $runners
 printf 'runner_count=%s\n' "$#"
 printf '%s\n' "$runners"
-test "$#" -eq 63
+test "$#" -eq 64
 """
         self._run_command(
             "test-inventory.log",
@@ -173,7 +183,7 @@ exit "$status"
 export PATH=/ucrt64/bin:/usr/bin
 cd '{source}'
 set -- build/ascii-fps.exe build/test-*.exe
-test "$#" -eq 64
+test "$#" -eq 65
 for binary in "$@"; do
   test -f "$binary"
   objdump -f "$binary" | grep -F 'file format pei-x86-64' >/dev/null

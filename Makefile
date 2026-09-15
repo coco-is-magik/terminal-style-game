@@ -60,8 +60,12 @@ endif
 VENDOR_DIR := $(shell pwd)/vendor/dist
 
 INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include"
-LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet -lm
-TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet -lm
+PLATFORM_LIBS :=
+ifeq ($(OS),Windows_NT)
+  PLATFORM_LIBS := -lwinmm -lws2_32
+endif
+LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet $(PLATFORM_LIBS) -lm
+TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet $(PLATFORM_LIBS) -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
 
 ifeq ($(USE_SMC_STATE_TRACKER),1)
@@ -131,6 +135,7 @@ TEST_LIGHTING_CACHE_RUNNER   := $(BUILD_DIR)/test-lighting-cache
 TEST_LIGHTING_RUNNER         := $(BUILD_DIR)/test-lighting
 TEST_APP_OPTIONS_RUNNER      := $(BUILD_DIR)/test-app-options
 TEST_PLATFORM_CAPABILITIES_RUNNER := $(BUILD_DIR)/test-platform-capabilities
+TEST_PLATFORM_NUMBER_RUNNER := $(BUILD_DIR)/test-platform-number
 TEST_SMC_STATE_RUNNER        := $(BUILD_DIR)/test-smc-state-tracker
 TEST_SMC_INDEXED_RUNNER      := $(BUILD_DIR)/test-smc-indexed-state-tracker
 TEST_BENCHMARK_RUNNER        := $(BUILD_DIR)/test-benchmark-session
@@ -230,10 +235,11 @@ SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
 SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
 SRC_PLATFORM_CATALOG := src/platform_catalog.c
+SRC_PLATFORM_NUMBER := src/platform_number.c
 SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c \
 	$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
-SRC_SCENE_FORMAT := src/scene_format.c
+SRC_SCENE_FORMAT := src/scene_format.c $(SRC_PLATFORM_NUMBER)
 SRC_SCENE_BLOCK_CODEC := src/scene_block_codec.c
 SRC_COMMAND_SYSTEM := src/command_system.c
 SRC_EDITOR_SELECTION := src/editor_selection.c
@@ -707,6 +713,10 @@ $(TEST_PLATFORM_CAPABILITIES_RUNNER): tests/test_platform_capabilities.c $(SRC_P
 		$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_CATALOG) \
 		-o $(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_PLATFORM_NUMBER_RUNNER): tests/test_platform_number.c $(SRC_PLATFORM_NUMBER) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_platform_number.c $(SRC_PLATFORM_NUMBER) \
+		-o $(TEST_PLATFORM_NUMBER_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_SMC_STATE_RUNNER): tests/test_smc_state_tracker.c src/smc_state_tracker.c | dirs
 	$(CC) $(CFLAGS) -DUSE_SMC_STATE_TRACKER=1 $(INCLUDES) \
 		-I"vendor/src/smc/include" -I"vendor/src/smc/src/c" \
@@ -994,7 +1004,7 @@ run-stress: $(APP)
 TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_MENU_STATE_RUNNER) $(TEST_DECAL_IO_RUNNER) $(TEST_DECAL_PAINTER_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
-	$(TEST_PLATFORM_CAPABILITIES_RUNNER) \
+	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
@@ -1035,6 +1045,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_RGBA_PARSE_RUNNER)
 	./$(TEST_NUMBER_PARSE_RUNNER)
 	./$(TEST_PLATFORM_CAPABILITIES_RUNNER)
+	./$(TEST_PLATFORM_NUMBER_RUNNER)
 	./$(TEST_SCENE_DOCUMENT_RUNNER)
 	./$(TEST_SCENE_FORMAT_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
@@ -1149,6 +1160,7 @@ test-leak-classifier:
 test-platform-harness:
 	@tools/platform-profiles/test-classify.sh
 	@tools/platform-profiles/test-check.sh
+	@tools/platform-profiles/test-make-platform-libs.sh
 	@tools/platform-profiles/test-provider.sh
 	@tools/platform-profiles/test-libvirt-lifecycle.sh
 	@PYTHONDONTWRITEBYTECODE=1 tools/platform-profiles/test-windows-qga.py

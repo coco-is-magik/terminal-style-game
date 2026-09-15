@@ -61,6 +61,12 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-14-v1-0-w3-direct-child-catalog.md`](reviews/2026-09-14-v1-0-w3-direct-child-catalog.md)
   — direct-child platform enumeration and MapCatalog migration, strict/sanitizer/native
   evidence, failure corrections and limitations, and W4 locale handoff.
+- [`reviews/2026-09-14-v1-0-w4-locale-independent-number.md`](reviews/2026-09-14-v1-0-w4-locale-independent-number.md)
+  — POSIX/UCRT finite-double conversion, exact cross-platform corpus and scene bytes,
+  strict/sanitizer/native evidence, failure corrections, and W5 Windows link handoff.
+- [`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md)
+  — complete native Windows strict/64-runner/standards/binary evidence, Make link policy,
+  persistence and fixture corrections, stack-bound remediation, failures, and L1/W6 handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

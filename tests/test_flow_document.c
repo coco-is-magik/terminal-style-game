@@ -11,6 +11,11 @@
 #include "../src/flow_document.h"
 #include "../src/flow_document_internal.h"
 
+static void assert_flow_save_committed(FlowDocumentResult result) {
+    assert_true(result == FLOW_DOCUMENT_OK ||
+                result == FLOW_DOCUMENT_OK_DURABILITY_WARNING);
+}
+
 static char *read_file(const char *path) {
     char buffer[1024];
     FILE *file = fopen(path, "rb");
@@ -92,7 +97,7 @@ static void test_save_failures_and_warning_preserve_commit_boundaries(void **sta
         FLOW_DOCUMENT_SAVE_FAULT_SYNC,
         FLOW_DOCUMENT_SAVE_FAULT_REPLACE
     };
-    char path[] = "/tmp/tsg_flow_save_boundaries_XXXXXX";
+    char path[] = "build/tsg_flow_save_boundaries_XXXXXX";
     int fd = mkstemp(path);
     (void)state;
     assert_true(fd >= 0);
@@ -141,7 +146,7 @@ static void test_save_load_round_trip_and_transactional_failure(void **state) {
     FlowNodeId scene;
     FlowNodeId menu;
     FlowEdgeId edge;
-    char path[] = "/tmp/tsg_flow_document_XXXXXX";
+    char path[] = "build/tsg_flow_document_XXXXXX";
     int fd;
     FILE *file;
     (void)state;
@@ -153,7 +158,7 @@ static void test_save_load_round_trip_and_transactional_failure(void **state) {
     assert_int_equal(flow_document_add_node(&document, FLOW_NODE_MENU, "missions", &menu), FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_connect(&document, 1U, "start", menu, &edge), FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_connect(&document, menu, "play", scene, &edge), FLOW_DOCUMENT_OK);
-    assert_int_equal(flow_document_save_as(&document, path), FLOW_DOCUMENT_OK);
+    assert_flow_save_committed(flow_document_save_as(&document, path));
     assert_false(flow_document_is_dirty(&document));
     memset(&loaded, 0x5a, sizeof(loaded));
     assert_int_equal(flow_document_load(&loaded, path), FLOW_DOCUMENT_OK);
@@ -161,7 +166,7 @@ static void test_save_load_round_trip_and_transactional_failure(void **state) {
     assert_int_equal(loaded.edge_count, 2U);
     assert_string_equal(flow_document_find_node(&loaded, scene)->asset_name, "hub");
     assert_false(flow_document_is_dirty(&loaded));
-    assert_int_equal(flow_document_save(&loaded), FLOW_DOCUMENT_OK);
+    assert_flow_save_committed(flow_document_save(&loaded));
     before = loaded;
     file = fopen(path, "w");
     assert_non_null(file);

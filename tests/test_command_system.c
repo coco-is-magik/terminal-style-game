@@ -34,11 +34,11 @@ void command_history_reset_allocator_for_test(void);
  *  Temp helpers
  * =================================================================== */
 
-static char g_tmpdir[] = "/tmp/tsg_cmd_sys_XXXXXX";
+static char g_tmpdir[] = "build/tsg_cmd_sys_XXXXXX";
 static int g_tmpdir_ready = 0;
 
 static int make_tmpdir(void) {
-    memcpy(g_tmpdir, "/tmp/tsg_cmd_sys_XXXXXX", sizeof("/tmp/tsg_cmd_sys_XXXXXX"));
+    memcpy(g_tmpdir, "build/tsg_cmd_sys_XXXXXX", sizeof("build/tsg_cmd_sys_XXXXXX"));
     if (!mkdtemp(g_tmpdir)) return -1;
     g_tmpdir_ready = 1;
     return 0;

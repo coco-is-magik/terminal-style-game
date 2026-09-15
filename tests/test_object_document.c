@@ -37,7 +37,7 @@ static char *read_file(const char *path) {
 
 static void test_create_validation_and_atomic_output(void **state) {
     AssetRegistry assets;
-    char directory[] = "/tmp/tsg_object_doc_XXXXXX";
+    char directory[] = "build/tsg_object_doc_XXXXXX";
     char path[1024];
     uint16_t id = 0U;
     char *content;
@@ -87,7 +87,7 @@ static void test_precommit_failures_preserve_destination_id_and_registry(void **
         OBJECT_DOCUMENT_CREATE_FAULT_REPLACE
     };
     AssetRegistry assets;
-    char directory[] = "/tmp/tsg_object_doc_fail_XXXXXX";
+    char directory[] = "build/tsg_object_doc_fail_XXXXXX";
     char path[1024];
     uint32_t generation;
     (void)state;
@@ -119,7 +119,7 @@ static void test_precommit_failures_preserve_destination_id_and_registry(void **
 
 static void test_committed_warning_sets_id_without_registry_mutation(void **state) {
     AssetRegistry assets;
-    char directory[] = "/tmp/tsg_object_doc_warning_XXXXXX";
+    char directory[] = "build/tsg_object_doc_warning_XXXXXX";
     char path[1024];
     char *bytes;
     uint16_t id = 0U;

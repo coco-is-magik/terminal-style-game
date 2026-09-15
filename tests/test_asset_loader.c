@@ -7,13 +7,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include <cmocka.h>
 
 #include "../src/asset_loader.h"
 
-static char root[] = "/tmp/tsg_asset_loader_XXXXXX";
+static char root[] = "build/tsg_asset_loader_XXXXXX";
 
 static void path_for(char *out, size_t capacity, const char *suffix) {
     int written = snprintf(out, capacity, "%s/%s", root, suffix);
@@ -23,7 +29,7 @@ static void path_for(char *out, size_t capacity, const char *suffix) {
 static void make_dir(const char *suffix) {
     char path[512];
     path_for(path, sizeof(path), suffix);
-    assert_int_equal(mkdir(path, 0700), 0);
+    assert_int_equal(test_mkdir(path), 0);
 }
 
 static void write_text(const char *suffix, const char *text) {
@@ -38,8 +44,8 @@ static void write_text(const char *suffix, const char *text) {
 
 static int setup(void **state) {
     (void)state;
-    memcpy(root, "/tmp/tsg_asset_loader_XXXXXX",
-           sizeof("/tmp/tsg_asset_loader_XXXXXX"));
+    memcpy(root, "build/tsg_asset_loader_XXXXXX",
+           sizeof("build/tsg_asset_loader_XXXXXX"));
     if (!mkdtemp(root)) return -1;
     make_dir("palettes");
     make_dir("materials");
@@ -129,8 +135,8 @@ static void test_missing_subdirectories_are_tolerated(void **state) {
     assert_int_equal(assets.generation, 1U);
     assert_int_equal(assets.material_count, 0U);
     asset_registry_clear(&assets);
-    assert_int_equal(mkdir(path, 0700), 0);
-    path_for(path, sizeof(path), "materials"); assert_int_equal(mkdir(path, 0700), 0);
+    assert_int_equal(test_mkdir(path), 0);
+    path_for(path, sizeof(path), "materials"); assert_int_equal(test_mkdir(path), 0);
 }
 
 static void test_overlong_material_name_is_ignored_without_partial_state(void **state) {

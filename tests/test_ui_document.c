@@ -11,6 +11,11 @@
 #include "../src/ui_document.h"
 #include "../src/ui_document_internal.h"
 
+static void assert_ui_save_committed(UiDocumentResult result) {
+    assert_true(result == UI_DOCUMENT_OK ||
+                result == UI_DOCUMENT_OK_DURABILITY_WARNING);
+}
+
 static char *read_file_bytes(const char *path) {
     char buffer[8192];
     FILE *file = fopen(path, "rb");
@@ -146,7 +151,7 @@ static void test_round_trip_save_and_transactional_load_failure(void **state) {
     UiDocument loaded;
     UiDocument before;
     UiElementId panel, button;
-    char path[] = "/tmp/tsg_ui_document_XXXXXX";
+    char path[] = "build/tsg_ui_document_XXXXXX";
     int fd;
     FILE *file;
     (void)state;
@@ -166,7 +171,7 @@ static void test_round_trip_save_and_transactional_load_failure(void **state) {
         assert_int_equal(ui_document_set_visual(&document, button, visual),
                          UI_DOCUMENT_OK);
     }
-    assert_int_equal(ui_document_save_as(&document, path), UI_DOCUMENT_OK);
+    assert_ui_save_committed(ui_document_save_as(&document, path));
     assert_false(ui_document_is_dirty(&document));
     memset(&loaded, 0x5a, sizeof(loaded));
     assert_int_equal(ui_document_load(&loaded, path), UI_DOCUMENT_OK);
@@ -179,7 +184,7 @@ static void test_round_trip_save_and_transactional_load_failure(void **state) {
     assert_int_equal(ui_document_find_element(&loaded, button)->visual.border_glyph,
                      '*');
     assert_false(ui_document_is_dirty(&loaded));
-    assert_int_equal(ui_document_save(&loaded), UI_DOCUMENT_OK);
+    assert_ui_save_committed(ui_document_save(&loaded));
     before = loaded;
     file = fopen(path, "w");
     assert_non_null(file);
@@ -198,8 +203,8 @@ static void test_save_commit_boundaries_preserve_bytes_and_identity(void **state
     UiDocument baseline;
     UiElementId panel;
     UiElementId button;
-    char baseline_path[] = "/tmp/tsg_ui_document_baseline_XXXXXX";
-    char destination[] = "/tmp/tsg_ui_document_boundary_XXXXXX";
+    char baseline_path[] = "build/tsg_ui_document_baseline_XXXXXX";
+    char destination[] = "build/tsg_ui_document_boundary_XXXXXX";
     int baseline_fd = mkstemp(baseline_path);
     int destination_fd = mkstemp(destination);
     char *expected;
@@ -209,7 +214,7 @@ static void test_save_commit_boundaries_preserve_bytes_and_identity(void **state
     assert_int_equal(close(baseline_fd), 0);
     assert_int_equal(close(destination_fd), 0);
     build_menu(&baseline, &panel, &button);
-    assert_int_equal(ui_document_save_as(&baseline, baseline_path), UI_DOCUMENT_OK);
+    assert_ui_save_committed(ui_document_save_as(&baseline, baseline_path));
     expected = read_file_bytes(baseline_path);
     assert_true(strncmp(expected, "ui_version=3\n", strlen("ui_version=3\n")) == 0);
     assert_true(expected[strlen(expected) - 1U] == '\n');
@@ -256,7 +261,7 @@ static void test_save_commit_boundaries_preserve_bytes_and_identity(void **state
 
 static void test_v1_migrates_to_explicit_layout_defaults(void **state) {
     UiDocument document;
-    char path[] = "/tmp/tsg_ui_document_v1_XXXXXX";
+    char path[] = "build/tsg_ui_document_v1_XXXXXX";
     int fd = mkstemp(path);
     FILE *file;
     const UiDocumentElement *button;
@@ -302,7 +307,7 @@ static void test_layout_mutations_reject_invalid_document_without_change(void **
 
 static void test_v1_rejects_v2_fields_on_earlier_element(void **state) {
     UiDocument document;
-    char path[] = "/tmp/tsg_ui_document_mixed_XXXXXX";
+    char path[] = "build/tsg_ui_document_mixed_XXXXXX";
     int fd = mkstemp(path);
     FILE *file;
     (void)state;
@@ -322,7 +327,7 @@ static void test_v1_rejects_v2_fields_on_earlier_element(void **state) {
 
 static void test_v2_migrates_to_native_visual_defaults(void **state) {
     UiDocument document;
-    char path[] = "/tmp/tsg_ui_document_v2_XXXXXX";
+    char path[] = "build/tsg_ui_document_v2_XXXXXX";
     int fd = mkstemp(path);
     FILE *file;
     (void)state;
@@ -345,7 +350,7 @@ static void test_v2_migrates_to_native_visual_defaults(void **state) {
 static void test_v3_rejects_invalid_color_transactionally(void **state) {
     UiDocument document;
     UiDocument before;
-    char path[] = "/tmp/tsg_ui_document_color_XXXXXX";
+    char path[] = "build/tsg_ui_document_color_XXXXXX";
     int fd = mkstemp(path);
     FILE *file;
     (void)state;

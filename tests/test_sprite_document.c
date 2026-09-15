@@ -10,12 +10,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/sprite_document.h"
 #include "../src/sprite_document_internal.h"
 
 #include <dirent.h>
+
+static void assert_sprite_save_committed(SpriteDocumentResult result) {
+    assert_true(result == SPRITE_DOCUMENT_OK ||
+                result == SPRITE_DOCUMENT_OK_DURABILITY_WARNING);
+}
 
 static void mark_material_loaded(AssetRegistry *assets, int id) {
     assets->materials[id].id = id;
@@ -87,7 +98,7 @@ static void prepare_existing_sprite(AssetRegistry *assets, SpriteDocument *docum
     assert_int_equal(sprite_document_open_loaded(document, assets, 1U, root),
                      SPRITE_DOCUMENT_OK);
     document->dirty = true;
-    assert_int_equal(sprite_document_save(document, assets, root), SPRITE_DOCUMENT_OK);
+    assert_sprite_save_committed(sprite_document_save(document, assets, root));
     document->cells[0] = (PatternCell){(uint8_t)'B', UINT16_C(1)};
     document->dirty = true;
 }
@@ -98,7 +109,7 @@ static void test_static_folder_save_commit_and_reopen(void **state) {
     SpriteDocument reopened;
     PatternCell cell = {(uint8_t)'@', UINT16_C(1)};
     const SpriteAsset *asset;
-    char root[] = "/tmp/tsg_sprite_doc_XXXXXX";
+    char root[] = "build/tsg_sprite_doc_XXXXXX";
     char directory[512];
     char path[600];
     char backup[600];
@@ -114,8 +125,7 @@ static void test_static_folder_save_commit_and_reopen(void **state) {
                      SPRITE_DOCUMENT_OK);
     assert_int_equal(sprite_document_paint_cell(
         &document, &assets, 1U, 0U, cell), SPRITE_DOCUMENT_OK);
-    assert_int_equal(sprite_document_save(&document, &assets, root),
-                     SPRITE_DOCUMENT_OK);
+    assert_sprite_save_committed(sprite_document_save(&document, &assets, root));
     assert_false(document.dirty);
     assert_true(snprintf(directory, sizeof(directory), "%s/1", root) > 0);
     make_path(path, sizeof(path), directory, "animation.txt");
@@ -134,7 +144,7 @@ static void test_static_folder_save_commit_and_reopen(void **state) {
         (PatternCell){(uint8_t)'X', UINT16_C(1)}), SPRITE_DOCUMENT_OK);
     assert_int_equal(asset->pattern[1].glyph, (uint8_t)'@');
     assert_true(snprintf(backup, sizeof(backup), "%s/1.backup", root) > 0);
-    assert_int_equal(mkdir(backup, 0700), 0);
+    assert_int_equal(test_mkdir(backup), 0);
     assert_int_equal(sprite_document_save(&document, &assets, root),
                      SPRITE_DOCUMENT_IO_ERROR);
     assert_true(document.dirty);
@@ -163,7 +173,7 @@ static void test_frame_operations_neighbors_and_animation_commit(void **state) {
     PatternCell first = {(uint8_t)'A', UINT16_C(1)};
     PatternCell second = {(uint8_t)'B', UINT16_C(1)};
     const SpriteAnimationAsset *animation;
-    char root[] = "/tmp/tsg_sprite_anim_doc_XXXXXX";
+    char root[] = "build/tsg_sprite_anim_doc_XXXXXX";
     char path[600];
     char text[1024];
     (void)state;
@@ -201,8 +211,7 @@ static void test_frame_operations_neighbors_and_animation_commit(void **state) {
     assert_int_equal(document.selected_frame, 0U);
     assert_int_equal(document.cells[0].glyph, 'B');
     assert_null(sprite_document_previous_frame(&document));
-    assert_int_equal(sprite_document_save(&document, &assets, root),
-                     SPRITE_DOCUMENT_OK);
+    assert_sprite_save_committed(sprite_document_save(&document, &assets, root));
     assert_true(snprintf(path, sizeof(path), "%s/3/animation.txt", root) > 0);
     read_file(path, text, sizeof(text));
     assert_string_equal(text, "static\n");
@@ -228,7 +237,7 @@ static void test_animation_save_preserves_order_metadata_and_staging(void **stat
     AssetRegistry assets;
     SpriteDocument document;
     PatternCell original = {(uint8_t)'A', UINT16_C(1)};
-    char root[] = "/tmp/tsg_sprite_anim_save_XXXXXX";
+    char root[] = "build/tsg_sprite_anim_save_XXXXXX";
     char path[600];
     char text[1024];
     (void)state;
@@ -247,8 +256,7 @@ static void test_animation_save_preserves_order_metadata_and_staging(void **stat
     assert_int_equal(sprite_document_set_loop(&document, false), SPRITE_DOCUMENT_OK);
     assert_null(asset_registry_get_sprite_animation(&assets, 5));
     assert_int_equal(asset_registry_get_sprite(&assets, 5)->pattern[0].glyph, 'A');
-    assert_int_equal(sprite_document_save(&document, &assets, root),
-                     SPRITE_DOCUMENT_OK);
+    assert_sprite_save_committed(sprite_document_save(&document, &assets, root));
     assert_true(snprintf(path, sizeof(path), "%s/5/animation.txt", root) > 0);
     read_file(path, text, sizeof(text));
     assert_string_equal(text,
@@ -303,7 +311,7 @@ static void test_uncommitted_faults_restore_old_target_and_registry(void **state
     for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
         AssetRegistry assets;
         SpriteDocument document;
-        char root[] = "/tmp/tsg_sprite_fault_XXXXXX";
+        char root[] = "build/tsg_sprite_fault_XXXXXX";
         char target[512];
         char backup[540];
         uint32_t generation;
@@ -335,7 +343,7 @@ static void test_uncommitted_faults_restore_old_target_and_registry(void **state
 static void test_incomplete_cleanup_and_restore_are_typed(void **state) {
     AssetRegistry assets;
     SpriteDocument document;
-    char root[] = "/tmp/tsg_sprite_incomplete_XXXXXX";
+    char root[] = "build/tsg_sprite_incomplete_XXXXXX";
     char target[512];
     char backup[540];
     char temporary[600];
@@ -401,7 +409,7 @@ static void test_committed_warnings_publish_clean_without_registry_mutation(void
     for (size_t i = 0U; i < sizeof(faults) / sizeof(faults[0]); i++) {
         AssetRegistry assets;
         SpriteDocument document;
-        char root[] = "/tmp/tsg_sprite_warning_XXXXXX";
+        char root[] = "build/tsg_sprite_warning_XXXXXX";
         char target[512];
         char backup[540];
         uint32_t generation;

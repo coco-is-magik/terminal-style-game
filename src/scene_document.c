@@ -1035,6 +1035,11 @@ SceneSaveResult scene_document_validate_for_save_diagnostic(
    or imported SceneDocuments. */
 SceneSaveResult scene_document_save(SceneDocument *document) {
     SceneSaveResult v = scene_document_validate_for_save(document);
+    PlatformFileMetadata destination_metadata;
+    PlatformNativeError platform_error;
+    PlatformFsResult inspect_result;
+    PlatformReplaceResult replace_result;
+    bool destination_exists;
     if (v != SCENE_SAVE_OK) return v;
 
     char temp_path[4096];
@@ -1066,7 +1071,16 @@ SceneSaveResult scene_document_save(SceneDocument *document) {
         return SCENE_SAVE_CLOSE_FAILED;
     }
 
-    if (rename(temp_path, document->path) != 0) {
+    inspect_result = platform_fs_inspect_nofollow(
+        document->path, &destination_metadata, &platform_error);
+    destination_exists = inspect_result == PLATFORM_FS_OK;
+    if (inspect_result != PLATFORM_FS_OK && inspect_result != PLATFORM_FS_NOT_FOUND) {
+        remove(temp_path);
+        return SCENE_SAVE_REPLACE_FAILED;
+    }
+    replace_result = platform_fs_replace(
+        temp_path, document->path, destination_exists);
+    if (replace_result.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
         remove(temp_path);
         return SCENE_SAVE_REPLACE_FAILED;
     }

@@ -492,7 +492,7 @@ static DecalDocumentResult atomic_write(
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;
     }
-    file = fopen(temp_path, "rb");
+    file = fopen(temp_path, "r+b");
     if (!file) {
         unlink(temp_path);
         return DECAL_DOCUMENT_IO_ERROR;

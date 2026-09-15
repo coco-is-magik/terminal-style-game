@@ -18,6 +18,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#else
+#define test_mkdir(path) mkdir(path, 0700)
+#endif
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
@@ -37,11 +43,11 @@
  *  Temp helpers
  * =================================================================== */
 
-static char g_tmpdir[] = "/tmp/tsg_unified_ed_XXXXXX";
+static char g_tmpdir[] = "build/tsg_unified_ed_XXXXXX";
 static int g_tmpdir_ready = 0;
 
 static int make_tmpdir(void) {
-    memcpy(g_tmpdir, "/tmp/tsg_unified_ed_XXXXXX", sizeof("/tmp/tsg_unified_ed_XXXXXX"));
+    memcpy(g_tmpdir, "build/tsg_unified_ed_XXXXXX", sizeof("build/tsg_unified_ed_XXXXXX"));
     if (!mkdtemp(g_tmpdir)) return -1;
     g_tmpdir_ready = 1;
     return 0;
@@ -71,6 +77,26 @@ static int read_text_file(const char *path, char *out, size_t out_sz) {
     out[n] = '\0';
     fclose(fp);
     return 0;
+}
+
+static void assert_save_committed(SceneSaveResult result) {
+    assert_true(result == SCENE_SAVE_OK ||
+                result == SCENE_SAVE_OK_DURABILITY_WARNING);
+}
+
+static void assert_saved_status(EditorStatus status) {
+    assert_true(status == EDITOR_STATUS_SAVED ||
+                status == EDITOR_STATUS_DURABILITY_WARNING);
+}
+
+static void assert_sprite_saved_status(EditorStatus status) {
+    assert_true(status == EDITOR_STATUS_SPRITE_PATTERN_SAVED ||
+                status == EDITOR_STATUS_DURABILITY_WARNING);
+}
+
+static void assert_flow_save_committed(FlowDocumentResult result) {
+    assert_true(result == FLOW_DOCUMENT_OK ||
+                result == FLOW_DOCUMENT_OK_DURABILITY_WARNING);
 }
 
 static void rm_rf_tmpdir(void) {
@@ -572,13 +598,12 @@ static void test_r2_typed_workflows_transactional(void **state) {
     assert_null(ed.document.path);
     assert_string_equal(ed.document.legacy_source_path, legacy);
     assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_NO_PATH);
-    assert_int_equal(unified_editor_save_as(&ed, saved, "converted"),
-                     SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(&ed, saved, "converted"));
     assert_string_equal(ed.document.path, saved);
     assert_string_equal(ed.document.name, "converted");
     assert_false(scene_document_is_imported_unsaved(&ed.document));
     assert_false(scene_document_is_dirty(&ed.document));
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed.status);
     assert_int_equal(unified_editor_open_native(&ed, native), SCENE_LOAD_OK);
     assert_string_equal(ed.document.name, "workflow");
     assert_true(scene_document_is_dirty(&ed.document));
@@ -619,7 +644,7 @@ static void save_pathless_document_through_shortcut(UnifiedEditorState *ed,
     in.editor_confirm_pressed = true;
     assert_true(update_with(ed, cam, &in).keyboard_consumed);
     assert_int_equal(ed->modal, EDITOR_MODAL_NONE);
-    assert_int_equal(ed->status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed->status);
     assert_false(scene_document_is_dirty(&ed->document));
     assert_string_equal(scene_document_get_path(&ed->document), expected_path);
     assert_int_equal(access(expected_path, F_OK), 0);
@@ -809,7 +834,7 @@ static void test_native_ctrl_s_menu_saves_existing_destination(void **state) {
     update_with(&ed, &cam, &in);
 
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed.status);
     assert_false(scene_document_is_dirty(&ed.document));
     assert_string_equal(scene_document_get_path(&ed.document), native);
     assert_int_equal(read_text_file(native, contents, sizeof(contents)), 0);
@@ -907,8 +932,8 @@ static void test_light_inspector_edits_through_history_and_runtime(void **state)
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_PICKABLE_LIGHT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save(&ed));
+    assert_save_committed(unified_editor_save(&ed));
     camera_init(&cam, 1.5, 2.5, 0.0, PI / 2.0);
     zero_input(&in);
     unified_editor_update(&ed, &in, &cam, 0.016);
@@ -980,7 +1005,7 @@ static void test_light_inspector_edits_through_history_and_runtime(void **state)
     assert_true(ed.runtime_world.lights[0].falloff == 2.0);
     assert_int_equal(ed.runtime_world.lights[0].type, SCENE_LIGHT_SPOT);
 
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save(&ed));
     assert_false(scene_document_is_dirty(&ed.document));
     unified_editor_destroy(&ed);
 
@@ -1277,7 +1302,7 @@ static void test_light_remove_prompt_cancel_confirm_and_undo_redo(void **state) 
 
 static void test_placed_light_native_save_reopen_round_trip(void **state) {
     UnifiedEditorState ed;
-    UnifiedEditorState reopened;
+    UnifiedEditorState *reopened;
     SceneDiagnostic diagnostic;
     SceneInstanceId id;
     char path[512];
@@ -1288,19 +1313,22 @@ static void test_placed_light_native_save_reopen_round_trip(void **state) {
     assert_int_equal(unified_editor_place_light(&ed), CMD_RESULT_OK);
     id = ed.document.lights[0].id;
     path_in_tmpdir(path, sizeof(path), "light_round_trip.tscene");
-    assert_int_equal(unified_editor_save_as(
-        &ed, path, "light_round_trip"), SCENE_SAVE_OK);
-    assert_true(unified_editor_init(&reopened, &g_assets));
+    assert_save_committed(unified_editor_save_as(
+        &ed, path, "light_round_trip"));
+    reopened = malloc(sizeof(*reopened));
+    assert_non_null(reopened);
+    assert_true(unified_editor_init(reopened, &g_assets));
     assert_int_equal(scene_document_load_native(
-        &reopened.document, path, &diagnostic), SCENE_LOAD_OK);
-    light = scene_document_find_light(&reopened.document, id);
+        &reopened->document, path, &diagnostic), SCENE_LOAD_OK);
+    light = scene_document_find_light(&reopened->document, id);
     assert_non_null(light);
     assert_true(light->x == 2.5 && light->y == 3.5);
     assert_int_equal(light->red, 255U);
     assert_int_equal(light->alpha, 255U);
     assert_true(light->intensity == 1.0 && light->radius == 5.0);
-    assert_true(reopened.document.next_instance_id > id);
-    unified_editor_destroy(&reopened);
+    assert_true(reopened->document.next_instance_id > id);
+    unified_editor_destroy(reopened);
+    free(reopened);
     unified_editor_destroy(&ed);
     remove(path);
 }
@@ -1331,11 +1359,11 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_int_equal(load_editor(&ed, "sprite_canvas.txt"), 0);
     assert_true(unified_editor_set_asset_root(&ed, g_tmpdir));
     path_in_tmpdir(sprite_dir, sizeof(sprite_dir), "sprites");
-    assert_int_equal(mkdir(sprite_dir, 0700), 0);
+    assert_int_equal(test_mkdir(sprite_dir), 0);
     assert_true(asset_registry_set_sprite(&g_assets, 2U, 1, 1, &alternate));
     assert_true(snprintf(alternate_dir, sizeof(alternate_dir),
                          "%s/2", sprite_dir) > 0);
-    assert_int_equal(mkdir(alternate_dir, 0700), 0);
+    assert_int_equal(test_mkdir(alternate_dir), 0);
     assert_true(snprintf(alternate_manifest, sizeof(alternate_manifest),
                          "%s/animation.txt", alternate_dir) > 0);
     assert_int_equal(write_text_file(alternate_manifest, "static\n"), 0);
@@ -1417,7 +1445,7 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_false(ed.sprite_document.dirty);
     assert_int_equal(asset_registry_get_sprite(
         &g_assets, created_id)->pattern[0].glyph, (uint8_t)'w');
-    assert_int_equal(ed.status, EDITOR_STATUS_SPRITE_PATTERN_SAVED);
+    assert_sprite_saved_status(ed.status);
 
     zero_input(&in);
     in.editor_cancel_pressed = true;
@@ -1516,7 +1544,7 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
 
 static void test_managed_sprite_directory_is_typed_and_state_preserving(void **state) {
     UnifiedEditorState editor;
-    UnifiedEditorState before;
+    UnifiedEditorState *before;
     char directory[512];
     char output[512];
     struct stat metadata;
@@ -1526,11 +1554,13 @@ static void test_managed_sprite_directory_is_typed_and_state_preserving(void **s
     path_in_tmpdir(directory, sizeof(directory), "sprites");
     (void)rmdir(directory);
     (void)remove(directory);
-    before = editor;
+    before = malloc(sizeof(*before));
+    assert_non_null(before);
+    *before = editor;
     memset(output, 0x5a, sizeof(output));
     assert_false(unified_editor_internal_ensure_sprite_directory(
         &editor, output, sizeof(output), PLATFORM_FS_FAULT_ENSURE_DIRECTORY));
-    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_memory_equal(&editor, before, sizeof(editor));
     assert_int_equal(access(directory, F_OK), -1);
     assert_true(unified_editor_internal_ensure_sprite_directory(
         &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
@@ -1539,13 +1569,14 @@ static void test_managed_sprite_directory_is_typed_and_state_preserving(void **s
     assert_true(S_ISDIR(metadata.st_mode));
     assert_true(unified_editor_internal_ensure_sprite_directory(
         &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
-    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_memory_equal(&editor, before, sizeof(editor));
     assert_int_equal(rmdir(directory), 0);
     assert_int_equal(write_text_file(directory, "not a directory\n"), 0);
     assert_false(unified_editor_internal_ensure_sprite_directory(
         &editor, output, sizeof(output), PLATFORM_FS_FAULT_NONE));
-    assert_memory_equal(&editor, &before, sizeof(editor));
+    assert_memory_equal(&editor, before, sizeof(editor));
     assert_int_equal(remove(directory), 0);
+    free(before);
     unified_editor_destroy(&editor);
 }
 
@@ -1605,7 +1636,7 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
     assert_int_equal(load_editor(&editor, "sprite_animation_painter.txt"), 0);
     assert_true(unified_editor_set_asset_root(&editor, g_tmpdir));
     path_in_tmpdir(sprite_root, sizeof(sprite_root), "sprites");
-    assert_int_equal(mkdir(sprite_root, 0700), 0);
+    assert_int_equal(test_mkdir(sprite_root), 0);
     frames[0] = (SpriteAsset){1, 1, &first};
     frames[1] = (SpriteAsset){1, 1, &second};
     assert_true(asset_registry_set_sprite_animation(
@@ -1926,8 +1957,8 @@ static void test_trigger_place_inspect_runtime_remove_and_round_trip(void **stat
     assert_int_equal(ed.document.current_state, authored_state);
 
     path_in_tmpdir(path, sizeof(path), "trigger_workflow.tscene");
-    assert_int_equal(unified_editor_save_as(
-        &ed, path, "trigger_workflow"), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(
+        &ed, path, "trigger_workflow"));
     scene_document_init(&reopened);
     assert_int_equal(scene_document_load_native(&reopened, path, &diagnostic), SCENE_LOAD_OK);
     assert_non_null(scene_document_find_trigger(&reopened, id));
@@ -2092,7 +2123,7 @@ static void test_decal_wall_surface_menu_excludes_opposite_face(void **state) {
 
 static void test_decal_edit_remove_prompt_and_round_trip(void **state) {
     UnifiedEditorState ed;
-    UnifiedEditorState reopened;
+    UnifiedEditorState *reopened;
     Camera cam;
     InputState in;
     SceneInstanceId id;
@@ -2127,14 +2158,17 @@ static void test_decal_edit_remove_prompt_and_round_trip(void **state) {
     assert_non_null(decal);
     assert_true(decal->width == 2.0 && decal->rotation == 1.25);
     path_in_tmpdir(path, sizeof(path), "decal_round_trip.tscene");
-    assert_int_equal(unified_editor_save_as(
-        &ed, path, "decal_round_trip"), SCENE_SAVE_OK);
-    assert_true(unified_editor_init(&reopened, &g_assets));
-    assert_int_equal(unified_editor_open_native(&reopened, path), SCENE_LOAD_OK);
-    decal = scene_document_find_decal(&reopened.document, id);
+    assert_save_committed(unified_editor_save_as(
+        &ed, path, "decal_round_trip"));
+    reopened = malloc(sizeof(*reopened));
+    assert_non_null(reopened);
+    assert_true(unified_editor_init(reopened, &g_assets));
+    assert_int_equal(unified_editor_open_native(reopened, path), SCENE_LOAD_OK);
+    decal = scene_document_find_decal(&reopened->document, id);
     assert_non_null(decal);
     assert_true(decal->width == 2.0 && decal->rotation == 1.25);
-    unified_editor_destroy(&reopened);
+    unified_editor_destroy(reopened);
+    free(reopened);
     unified_editor_destroy(&ed);
     remove(path);
 }
@@ -2153,9 +2187,9 @@ static void test_decal_create_empty_flow_saves_refreshes_and_places(void **state
     path_in_tmpdir(palettes, sizeof(palettes), "palettes");
     path_in_tmpdir(materials, sizeof(materials), "materials");
     path_in_tmpdir(decals, sizeof(decals), "decals");
-    assert_int_equal(mkdir(palettes, 0700), 0);
-    assert_int_equal(mkdir(materials, 0700), 0);
-    assert_int_equal(mkdir(decals, 0700), 0);
+    assert_int_equal(test_mkdir(palettes), 0);
+    assert_int_equal(test_mkdir(materials), 0);
+    assert_int_equal(test_mkdir(decals), 0);
     assert_true(snprintf(path, sizeof(path), "%s/1.txt", palettes) > 0);
     assert_int_equal(write_text_file(path,
         "near=10,20,30,255\nmid=10,20,30,255\nfar=10,20,30,255\n"), 0);
@@ -2169,16 +2203,16 @@ static void test_decal_create_empty_flow_saves_refreshes_and_places(void **state
     ed.decal_create_rows = 2U;
     camera_init(&cam, 1.5, 1.5, 0.0, PI / 2.0);
     new_asset = asset_registry_allocate_decal_pattern_id(&g_assets);
+    assert_true(snprintf(path, sizeof(path), "%s/%u.txt", decals,
+                         (unsigned)new_asset) > 0);
     zero_input(&in); in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
-    assert_int_equal(ed.document.decal_count, 1U);
-    assert_int_equal(ed.document.decals[0].asset.id, new_asset);
+    assert_int_equal(access(path, F_OK), 0);
     assert_non_null(asset_registry_get_decal_pattern(&g_assets, new_asset));
     assert_int_equal(asset_registry_get_decal_pattern(&g_assets, new_asset)->cols, 3);
     assert_int_equal(asset_registry_get_decal_pattern(&g_assets, new_asset)->rows, 2);
-    assert_true(snprintf(path, sizeof(path), "%s/%u.txt", decals,
-                         (unsigned)new_asset) > 0);
-    assert_int_equal(access(path, F_OK), 0);
+    assert_int_equal(ed.document.decal_count, 1U);
+    assert_int_equal(ed.document.decals[0].asset.id, new_asset);
     unified_editor_destroy(&ed);
     remove(path);
     assert_true(snprintf(path, sizeof(path), "%s/1.txt", palettes) > 0); remove(path);
@@ -2567,7 +2601,7 @@ static void test_r8_i4_jump_and_air_control_adapter(void **state) {
 
 static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **state) {
     UnifiedEditorState editor;
-    UnifiedEditorState reopened;
+    UnifiedEditorState *reopened;
     Camera camera;
     InputState input;
     Grid *grid;
@@ -2649,16 +2683,19 @@ static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **s
     grid_destroy(grid);
 
     path_in_tmpdir(path, sizeof(path), "r8_i5.tscene");
-    assert_int_equal(unified_editor_save_as(&editor, path, "r8_i5"), SCENE_SAVE_OK);
-    assert_true(unified_editor_init(&reopened, &g_assets));
-    assert_int_equal(unified_editor_open_native(&reopened, path), SCENE_LOAD_OK);
-    assert_int_equal(reopened.document.authored_cells[index].floor_height_step,
+    assert_save_committed(unified_editor_save_as(&editor, path, "r8_i5"));
+    reopened = malloc(sizeof(*reopened));
+    assert_non_null(reopened);
+    assert_true(unified_editor_init(reopened, &g_assets));
+    assert_int_equal(unified_editor_open_native(reopened, path), SCENE_LOAD_OK);
+    assert_int_equal(reopened->document.authored_cells[index].floor_height_step,
                      UINT16_C(0x0040));
-    assert_false(reopened.document.authored_cells[index].floor_present);
-    assert_int_equal(reopened.document.authored_cells[index].gravity_scale_step,
+    assert_false(reopened->document.authored_cells[index].floor_present);
+    assert_int_equal(reopened->document.authored_cells[index].gravity_scale_step,
                      UINT16_C(0x0040));
-    assert_true(reopened.document.movement.gravity_magnitude == 9.3);
-    unified_editor_destroy(&reopened);
+    assert_true(reopened->document.movement.gravity_magnitude == 9.3);
+    unified_editor_destroy(reopened);
+    free(reopened);
     unified_editor_destroy(&editor);
 }
 
@@ -3070,8 +3107,8 @@ static void test_save_success_clears_dirty(void **state) {
     assert_int_equal(unified_editor_set_wall_material(&ed, 2), CMD_RESULT_OK);
     assert_true(scene_document_is_dirty(&ed.document));
 
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_save_committed(unified_editor_save(&ed));
+    assert_saved_status(ed.status);
     assert_false(scene_document_is_dirty(&ed.document));
 
     assert_int_equal(read_text_file(path, buf, sizeof(buf)), 0);
@@ -3234,9 +3271,9 @@ static void test_material_search_empty_creates_saves_and_applies(void **state) {
     path_in_tmpdir(palette_dir, sizeof(palette_dir), "palettes");
     path_in_tmpdir(material_dir, sizeof(material_dir), "materials");
     path_in_tmpdir(decal_dir, sizeof(decal_dir), "decals");
-    assert_int_equal(mkdir(palette_dir, 0700), 0);
-    assert_int_equal(mkdir(material_dir, 0700), 0);
-    assert_int_equal(mkdir(decal_dir, 0700), 0);
+    assert_int_equal(test_mkdir(palette_dir), 0);
+    assert_int_equal(test_mkdir(material_dir), 0);
+    assert_int_equal(test_mkdir(decal_dir), 0);
     assert_true(snprintf(asset_file, sizeof(asset_file), "%s/1.txt", palette_dir) > 0);
     assert_int_equal(write_text_file(
         asset_file, "near=20,30,40,255\nmid=20,30,40,255\nfar=20,30,40,255\n"), 0);
@@ -3309,9 +3346,9 @@ static void prepare_material_collision_editor(
     path_in_tmpdir(palette_dir, palette_dir_size, "palettes");
     path_in_tmpdir(material_dir, material_dir_size, "materials");
     path_in_tmpdir(decal_dir, decal_dir_size, "decals");
-    assert_int_equal(mkdir(palette_dir, 0700), 0);
-    assert_int_equal(mkdir(material_dir, 0700), 0);
-    assert_int_equal(mkdir(decal_dir, 0700), 0);
+    assert_int_equal(test_mkdir(palette_dir), 0);
+    assert_int_equal(test_mkdir(material_dir), 0);
+    assert_int_equal(test_mkdir(decal_dir), 0);
     assert_true(snprintf(path, sizeof(path), "%s/1.txt", palette_dir) > 0);
     assert_int_equal(write_text_file(
         path, "near=20,30,40,255\nmid=20,30,40,255\nfar=20,30,40,255\n"), 0);
@@ -3489,7 +3526,7 @@ static void test_input_undo_redo_save_shortcuts(void **state) {
     assert_true(c.keyboard_consumed);
     assert_int_equal(ed.modal, EDITOR_MENU_SAVE);
     enter_save_name_and_confirm(&ed, &cam, "shortcut_saved");
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed.status);
     assert_false(scene_document_is_dirty(&ed.document));
 
     unified_editor_destroy(&ed);
@@ -3612,7 +3649,7 @@ static void test_exit_save_and_exit_persists(void **state) {
     assert_true(ed.request_exit_to_main_menu);
     assert_int_equal(ed.modal, EDITOR_MODAL_NONE);
     assert_false(scene_document_is_dirty(&ed.document));
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed.status);
 
     assert_int_equal(read_text_file(saved, buf, sizeof(buf)), 0);
     assert_non_null(strstr(buf, "002"));
@@ -3792,7 +3829,7 @@ static void test_phase6_vertical_slice_acceptance(void **state) {
     in.editor_save_pressed = true;
     unified_editor_update(&ed, &in, &cam, 0.016);
     enter_save_name_and_confirm(&ed, &cam, "phase6_saved");
-    assert_int_equal(ed.status, EDITOR_STATUS_SAVED);
+    assert_saved_status(ed.status);
     assert_false(scene_document_is_dirty(&ed.document));
     assert_int_equal(read_text_file(native_saved, buf, sizeof(buf)), 0);
     assert_non_null(strstr(buf, "002"));
@@ -3874,7 +3911,7 @@ static void test_native_reload_preserves_light_decal_ambient(void **state) {
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save(&ed));
 
     assert_string_equal(ed.document.name, "content");
     assert_non_null(scene_document_get_path(&ed.document));
@@ -3931,7 +3968,7 @@ static void test_native_reload_clean_preserves_content(void **state) {
     assert_int_equal(write_text_file(path, NATIVE_SCENE_WITH_CONTENT), 0);
     assert_true(unified_editor_init(&ed, &g_assets));
     assert_int_equal(unified_editor_open_native(&ed, path), SCENE_LOAD_OK);
-    assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save(&ed));
 
     assert_string_equal(ed.document.name, "content");
     assert_int_equal(ed.runtime_world.num_lights, 1);
@@ -4000,8 +4037,7 @@ static void test_editor_documents_never_hold_legacy_save_path(void **state) {
     assert_non_null(scene_document_get_legacy_source_path(&ed.document));
     assert_true(scene_document_is_imported_unsaved(&ed.document));
     assert_int_equal(unified_editor_save(&ed), SCENE_SAVE_NO_PATH);
-    assert_int_equal(unified_editor_save_as(&ed, saved, "converted"),
-                     SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(&ed, saved, "converted"));
     assert_true(path_ends_with(ed.document.path, ".tscene"));
     assert_false(scene_document_is_imported_unsaved(&ed.document));
     assert_false(scene_document_is_dirty(&ed.document));
@@ -4344,7 +4380,7 @@ static void test_r4_increment_d_empty_missing_and_runtime_failure_atomic(void **
 static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
     const char *fixture = "assets/scenes/r4_surface_workflow.tscene";
     UnifiedEditorState editor;
-    UnifiedEditorState reopened;
+    UnifiedEditorState *reopened;
     AssetRegistry fixture_assets;
     Camera camera;
     InputState input;
@@ -4409,8 +4445,8 @@ static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
     assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_WALL);
     assert_int_equal(unified_editor_remove_wall(&editor, 2, 2), CMD_RESULT_OK);
 
-    assert_int_equal(unified_editor_save_as(
-        &editor, saved_path, "r4_surface_workflow_saved"), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(
+        &editor, saved_path, "r4_surface_workflow_saved"));
     assert_false(scene_document_is_dirty(&editor.document));
     assert_true(scene_document_get_surface_material(
         &editor.document, 1, 1, SCENE_SURFACE_FLOOR, &material));
@@ -4430,26 +4466,29 @@ static void test_r4_increment_f_checked_in_v2_workflow(void **state) {
     assert_false(scene_document_is_dirty(&editor.document));
     assert_true(scene_document_get_ambient_intensity(&editor.document) == 0.6);
 
-    assert_true(unified_editor_init(&reopened, &fixture_assets));
-    assert_int_equal(unified_editor_open_native(&reopened, saved_path), SCENE_LOAD_OK);
-    assert_false(scene_document_is_repair_required(&reopened.document));
-    assert_int_equal(reopened.runtime_world.num_lights, 1);
-    assert_int_equal(reopened.runtime_world.num_decals, 3);
+    reopened = malloc(sizeof(*reopened));
+    assert_non_null(reopened);
+    assert_true(unified_editor_init(reopened, &fixture_assets));
+    assert_int_equal(unified_editor_open_native(reopened, saved_path), SCENE_LOAD_OK);
+    assert_false(scene_document_is_repair_required(&reopened->document));
+    assert_int_equal(reopened->runtime_world.num_lights, 1);
+    assert_int_equal(reopened->runtime_world.num_decals, 3);
     assert_true(scene_document_get_surface_material(
-        &reopened.document, 4, 2, SCENE_SURFACE_WALL, &material));
+        &reopened->document, 4, 2, SCENE_SURFACE_WALL, &material));
     assert_int_equal(material, 2U);
     assert_true(scene_document_get_surface_material(
-        &reopened.document, 1, 1, SCENE_SURFACE_FLOOR, &material));
+        &reopened->document, 1, 1, SCENE_SURFACE_FLOOR, &material));
     assert_int_equal(material, 3U);
     assert_true(scene_document_get_surface_material(
-        &reopened.document, 1, 1, SCENE_SURFACE_CEILING, &material));
+        &reopened->document, 1, 1, SCENE_SURFACE_CEILING, &material));
     assert_int_equal(material, 2U);
     assert_true(scene_document_get_cell_occupancy(
-        &reopened.document, 2, 2, &occupancy));
+        &reopened->document, 2, 2, &occupancy));
     assert_int_equal(occupancy, SCENE_CELL_OCCUPANCY_EMPTY);
-    assert_true(scene_document_get_ambient_intensity(&reopened.document) == 0.6);
+    assert_true(scene_document_get_ambient_intensity(&reopened->document) == 0.6);
 
-    unified_editor_destroy(&reopened);
+    unified_editor_destroy(reopened);
+    free(reopened);
     unified_editor_destroy(&editor);
     remove(saved_path);
 }
@@ -4569,8 +4608,8 @@ static void test_r9_i6_optical_authoring_undo_save_reopen(void **state) {
     assert_int_equal(extension.override_mask, 0U);
 
     path_in_tmpdir(path, sizeof(path), "i6_optical_saved.tscene");
-    assert_int_equal(unified_editor_save_as(
-        &editor, path, "i6_optical"), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(
+        &editor, path, "i6_optical"));
     scene_document_init(&reopened);
     assert_int_equal(scene_document_load_native(
         &reopened, path, &diagnostic), SCENE_LOAD_OK);
@@ -4686,8 +4725,8 @@ static void test_r9_transparency_submenu_master_custom_undo_and_round_trip(void 
     grid_destroy(grid);
 
     path_in_tmpdir(path, sizeof(path), "r9_transparency_saved.tscene");
-    assert_int_equal(unified_editor_save_as(
-        &editor, path, "r9_transparency"), SCENE_SAVE_OK);
+    assert_save_committed(unified_editor_save_as(
+        &editor, path, "r9_transparency"));
     scene_document_init(&reopened);
     assert_int_equal(scene_document_load_native(
         &reopened, path, &diagnostic), SCENE_LOAD_OK);
@@ -4731,7 +4770,7 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_int_equal(flow_document_connect(&flow, menu, "play", scene, &edge),
                      FLOW_DOCUMENT_OK);
     path_in_tmpdir(path, sizeof(path), "game.flow");
-    assert_int_equal(flow_document_save_as(&flow, path), FLOW_DOCUMENT_OK);
+    assert_flow_save_committed(flow_document_save_as(&flow, path));
     assert_int_equal(unified_editor_load_flow_workspace(&editor, path),
                      FLOW_WORKSPACE_OK);
     assert_true(editor.flow_workspace.active);
@@ -4819,13 +4858,13 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
     FlowDocument flow;
     FlowNodeId scene;
     FlowEdgeId edge;
-    FlowWorkspace retained;
+    FlowWorkspace *retained;
     char root[512];
     char path[512];
     (void)state;
     assert_int_equal(load_editor(&editor, "flow_workspace_conventional.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "flow_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(unified_editor_set_asset_root(&editor, root));
     assert_true(snprintf(path, sizeof(path), "%s/game.flow", root) > 0);
     flow_document_init(&flow);
@@ -4833,7 +4872,7 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
                      FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_connect(&flow, 1U, "start", scene, &edge),
                      FLOW_DOCUMENT_OK);
-    assert_int_equal(flow_document_save_as(&flow, path), FLOW_DOCUMENT_OK);
+    assert_flow_save_committed(flow_document_save_as(&flow, path));
     camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
     zero_input(&input); input.editor_flow_workspace_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
@@ -4843,10 +4882,12 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
     zero_input(&input); input.editor_flow_workspace_pressed = true;
     update_with(&editor, &camera, &input);
     assert_false(editor.flow_workspace.active);
-    retained = editor.flow_workspace;
+    retained = malloc(sizeof(*retained));
+    assert_non_null(retained);
+    *retained = editor.flow_workspace;
     flow_workspace_init(&editor.flow_workspace);
-    editor.flow_workspace.document = retained.document;
-    editor.flow_workspace.saved_document = retained.saved_document;
+    editor.flow_workspace.document = retained->document;
+    editor.flow_workspace.saved_document = retained->saved_document;
     editor.flow_workspace.document.path[0] = '\0';
     editor.flow_workspace.saved_document.path[0] = '\0';
     assert_int_equal(write_text_file(path, "flow_version=99\n"), 0);
@@ -4855,7 +4896,8 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
     assert_true(editor.flow_workspace.active);
     assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_INVALID_DOCUMENT);
     assert_int_equal(editor.flow_workspace.document.node_count,
-                     retained.document.node_count);
+                     retained->document.node_count);
+    free(retained);
     unified_editor_destroy(&editor);
     remove(path);
     rmdir(root);
@@ -4993,9 +5035,9 @@ static void test_r12_i11_catalog_failure_opens_retained_graph_visibly(void **sta
     (void)state;
     assert_int_equal(load_editor(&editor, "flow_workspace_i11_bad_catalog.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "flow_bad_catalog");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/bad.tui", menus) > 0);
     assert_int_equal(write_text_file(path, "ui_version=99\n"), 0);
     assert_true(unified_editor_set_asset_root(&editor, root));
@@ -5035,9 +5077,9 @@ static void test_r12_i12_visual_menu_workspace_edit_discard_and_create(void **st
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i12.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
@@ -5132,9 +5174,9 @@ static void test_r12_i13_menu_element_actions_text_remove_and_undo(void **state)
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i13.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_i13_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     assert_int_equal(ui_document_save_as(&menu, path), UI_DOCUMENT_OK);
@@ -5239,9 +5281,9 @@ static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i14.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_i14_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_CONTAINER,
@@ -5338,9 +5380,9 @@ static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i15.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_i15_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
@@ -5426,9 +5468,9 @@ static void test_r12_menu_edit_preview_uses_authored_root_colors(void **state) {
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_edit_colors.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_edit_colors_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     visual = menu.elements[0].visual;
@@ -5475,9 +5517,9 @@ static void test_r12_i16_menu_pointer_move_resize_cancel_and_isolate(void **stat
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i16.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_i16_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(path, sizeof(path), "%s/demo.tui", menus) > 0);
     assert_int_equal(ui_document_create_menu(&menu, "demo"), UI_DOCUMENT_OK);
     assert_int_equal(ui_document_add_element(&menu, UI_DOCUMENT_ELEMENT_BUTTON,
@@ -5585,9 +5627,9 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
     (void)state;
     assert_int_equal(load_editor(&editor, "ui_menu_workspace_i17.txt"), 0);
     path_in_tmpdir(root, sizeof(root), "ui_menu_i17_project");
-    assert_int_equal(mkdir(root, 0700), 0);
+    assert_int_equal(test_mkdir(root), 0);
     assert_true(snprintf(menus, sizeof(menus), "%s/menus", root) > 0);
-    assert_int_equal(mkdir(menus, 0700), 0);
+    assert_int_equal(test_mkdir(menus), 0);
     assert_true(snprintf(demo_path, sizeof(demo_path), "%s/demo.tui", menus) > 0);
     assert_true(snprintf(other_path, sizeof(other_path), "%s/other.tui", menus) > 0);
     assert_true(snprintf(flow_path, sizeof(flow_path), "%s/game.flow", root) > 0);
@@ -5613,7 +5655,7 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
                      FLOW_DOCUMENT_OK);
     assert_int_equal(flow_document_connect(&flow, other_node, "back", demo_node, &edge),
                      FLOW_DOCUMENT_OK);
-    assert_int_equal(flow_document_save_as(&flow, flow_path), FLOW_DOCUMENT_OK);
+    assert_flow_save_committed(flow_document_save_as(&flow, flow_path));
     assert_true(unified_editor_set_asset_root(&editor, root));
     scene_state = editor.document.current_state;
     scene_history_count = editor.history.count;

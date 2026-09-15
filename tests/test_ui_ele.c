@@ -399,14 +399,14 @@ static void test_ui_ele_color_override(void **state) {
 }
 
 static void test_ui_ele_rejects_invalid_color(void **state) {
-    char path[] = "/tmp/tsg_ui_ele_color_XXXXXX";
+    char path[] = "build/tsg_ui_ele_color_XXXXXX";
     int fd;
     FILE *file;
     (void)state;
 
     fd = mkstemp(path);
     assert_true(fd >= 0);
-    file = fdopen(fd, "w");
+    file = fdopen(fd, "wb");
     assert_non_null(file);
     assert_true(fputs("name=color\ntype=text\nfg=-1,2,3,4\nbg=1,2,3,4tail\n",
                       file) >= 0);
@@ -417,14 +417,14 @@ static void test_ui_ele_rejects_invalid_color(void **state) {
 }
 
 static void test_ui_ele_rejects_malformed_numeric_field(void **state) {
-    char path[] = "/tmp/tsg_ui_ele_number_XXXXXX";
+    char path[] = "build/tsg_ui_ele_number_XXXXXX";
     int fd;
     FILE *file;
     (void)state;
 
     fd = mkstemp(path);
     assert_true(fd >= 0);
-    file = fdopen(fd, "w");
+    file = fdopen(fd, "wb");
     assert_non_null(file);
     assert_true(fputs("name=bad\ntype=text\nx=12tail\n", file) >= 0);
     assert_int_equal(fclose(file), 0);

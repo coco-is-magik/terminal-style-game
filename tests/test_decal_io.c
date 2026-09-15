@@ -23,6 +23,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define test_mkdir(path) _mkdir(path)
+#define test_rmdir(path) _rmdir(path)
+#else
+#include <unistd.h>
+#define test_mkdir(path) mkdir(path, 0700)
+#define test_rmdir(path) rmdir(path)
+#endif
 
 #include "../src/decal.h"
 #include "../src/decal_io.h"
@@ -33,6 +43,36 @@
 
 /* Temporary file written and removed within each test */
 #define TMP_PATH "tests/tmp_decal_io_test.txt"
+
+static void create_compatibility_tree(void) {
+    static const char *const directories[] = {
+        "tests/tmp_decal_io_compat",
+        "tests/tmp_decal_io_compat/maps",
+        "tests/tmp_decal_io_compat/decals",
+        "tests/tmp_decal_io_compat/lights",
+        "tests/tmp_decal_io_compat/materials",
+        "tests/tmp_decal_io_compat/palettes",
+        "tests/tmp_decal_io_compat/sprites"
+    };
+    for (size_t i = 0U; i < sizeof(directories) / sizeof(directories[0]); i++)
+        assert_int_equal(test_mkdir(directories[i]), 0);
+}
+
+static void remove_compatibility_tree(void) {
+    static const char *const directories[] = {
+        "tests/tmp_decal_io_compat/sprites",
+        "tests/tmp_decal_io_compat/palettes",
+        "tests/tmp_decal_io_compat/materials",
+        "tests/tmp_decal_io_compat/lights",
+        "tests/tmp_decal_io_compat/decals",
+        "tests/tmp_decal_io_compat/maps",
+        "tests/tmp_decal_io_compat"
+    };
+    assert_int_equal(remove("tests/tmp_decal_io_compat/decals/1.txt"), 0);
+    assert_int_equal(remove("tests/tmp_decal_io_compat/maps/1.txt"), 0);
+    for (size_t i = 0U; i < sizeof(directories) / sizeof(directories[0]); i++)
+        assert_int_equal(test_rmdir(directories[i]), 0);
+}
 
 /* ===================================================================
  *  Helpers
@@ -506,18 +546,13 @@ static void test_engine_compatibility(void **state) {
 #define COMPAT_DIR "tests/tmp_decal_io_compat"
 
     /* Build the directory tree the engine loader expects */
-    assert_int_equal(system("mkdir -p " COMPAT_DIR "/maps "
-                       COMPAT_DIR "/decals "
-                       COMPAT_DIR "/lights "
-                       COMPAT_DIR "/materials "
-                       COMPAT_DIR "/palettes "
-                       COMPAT_DIR "/sprites"), 0);
+    create_compatibility_tree();
 
     /* Minimal map (3×3, all walls) */
-    FILE *fmap = fopen(COMPAT_DIR "/maps/1.txt", "w");
+    FILE *fmap = fopen(COMPAT_DIR "/maps/1.txt", "wb");
     assert_non_null(fmap);
-    fprintf(fmap, "width=3\nheight=3\ndata=\n###\n###\n###\n");
-    fclose(fmap);
+    assert_true(fputs("width=3\nheight=3\ndata=\n###\n###\n###\n", fmap) >= 0);
+    assert_int_equal(fclose(fmap), 0);
 
     /* Build a known decal and save it with decal_io */
     Decal *d = calloc(1, sizeof(Decal));
@@ -554,7 +589,7 @@ static void test_engine_compatibility(void **state) {
     decal_free(d);
     world_clear(&world);
     map_destroy(m);
-    assert_int_equal(system("rm -rf " COMPAT_DIR), 0);
+    remove_compatibility_tree();
 
 #undef COMPAT_DIR
 }

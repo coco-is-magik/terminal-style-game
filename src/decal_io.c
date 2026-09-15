@@ -253,7 +253,7 @@ fail:
 int decal_save_to_file(const char *path, const Decal *decal) {
     if (!path || !decal) return -1;
 
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
     if (!f) return -1;
 
     /* All fields in the same key=value format the engine parser expects */
