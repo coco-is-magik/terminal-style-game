@@ -3,8 +3,8 @@
 ## Status and authority
 
 **Active: B0/C1 evidence captured; W1 through W5, scoped native Windows verification,
-L1, P1/P2 opaque-surface performance work, and Clang diagnostic continuation complete;
-optical aggregate performance and final platform acceptance remain open.**
+L1, P1 through P3 performance work, and Clang diagnostic continuation complete; mirror
+disposition and final evidence reconciliation remain open.**
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -561,11 +561,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-P2 opaque prepared-heightfield optimization is complete. Proceed with a separate focused
-reproduction/optimization increment for the current `benchmark-optical-render` transparent
-and mirror paths: opaque parity is sub-budget, but transparent and mirror composition remain
-about 10.3–10.4 ms against 6 ms in benchmark and stability aggregates. Preserve optical
-checksums, one-bounce/cache semantics, zero timed-loop allocations, and the unchanged budget.
-Then complete mirror disposition and final V1-0 evidence reconciliation. The four-file
-owned-upstream SMC correction remains deferred to V1-20 and guarded by the strict
-informational Clang diagnostic sweep.
+P2/P3 surface and optical performance work is complete; both `benchmark-headless` and
+`stability-headless` pass. Proceed with M1 mirror-report disposition: either record that the
+known report is covered by the existing planar curvature, vertical-viewpoint, bilateral-edge,
+one-bounce/cache, opening, and second-mirror fixtures, or require a distinct reproducible
+failing scene before changing mirror source. Then perform final V1-0 evidence reconciliation.
+The four-file owned-upstream SMC correction remains deferred to V1-20 and guarded by the
+strict informational Clang diagnostic sweep.

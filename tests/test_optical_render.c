@@ -205,6 +205,35 @@ static void test_transparent_wall_composes_over_far_wall(void **state) {
     fixture_destroy(&f);
 }
 
+static void test_cell_render_override_uses_selective_path(void **state) {
+    Fixture f;
+    OpticalCellOverride override = {0};
+    OpticalRuntimeView view;
+    int row;
+    Cell opaque;
+    Cell transparent_cell;
+    (void)state;
+    fixture_init(&f);
+    fixture_wall(&f, 3, 10U);
+    fixture_wall(&f, 6, 20U);
+    row = find_row_with_material(&f, 10U);
+    assert_true(row >= 0);
+    raycast_render_height_optical(
+        f.reference, f.map, &f.camera, &f.assets, &f.world,
+        &f.surfaces, &f.heights, NULL, 0U);
+    opaque = f.reference->cells[(size_t)row * GRID_WIDTH + GRID_WIDTH / 2];
+    override.cell_index = (uint32_t)index_at(3, 2);
+    override.optical = transparent();
+    assert_true(optical_runtime_view_init(
+        &view, WIDTH * HEIGHT, NULL, 0U, &override, 1U, GENERATION));
+    raycast_render_height_optical(
+        f.grid, f.map, &f.camera, &f.assets, &f.world,
+        &f.surfaces, &f.heights, &view, GENERATION);
+    transparent_cell = f.grid->cells[(size_t)row * GRID_WIDTH + GRID_WIDTH / 2];
+    assert_memory_not_equal(&transparent_cell, &opaque, sizeof(opaque));
+    fixture_destroy(&f);
+}
+
 static void test_two_layers_are_deterministic(void **state) {
     Fixture f;
     OpticalExtension materials[21] = {0};
@@ -700,6 +729,7 @@ int main(void) {
         cmocka_unit_test(test_opaque_and_stale_views_preserve_complete_frame),
         cmocka_unit_test(test_nonvisual_custom_override_does_not_move_roof),
         cmocka_unit_test(test_transparent_wall_composes_over_far_wall),
+        cmocka_unit_test(test_cell_render_override_uses_selective_path),
         cmocka_unit_test(test_two_layers_are_deterministic),
         cmocka_unit_test(test_transparent_floor_over_opening_uses_darkness),
         cmocka_unit_test(test_production_compositor_exact_rules),

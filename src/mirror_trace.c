@@ -1,11 +1,11 @@
 #include "mirror_trace.h"
 
 #include <math.h>
-#include <string.h>
 
 void mirror_trace_column_cache_init(MirrorTraceColumnCache *cache) {
     if (!cache) return;
-    memset(cache, 0, sizeof(*cache));
+    cache->preparation_count = 0U;
+    cache->prepared = false;
 }
 
 bool mirror_trace_reflect_direction(

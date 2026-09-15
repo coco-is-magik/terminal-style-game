@@ -27,10 +27,9 @@ when it is off and never stops it. Windows VM benchmarks, stability workloads, s
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
 performance measurements are non-qualifying and are not Windows product failures. The VM was
-already running and remained running. L1 native Linux X11 display/input acceptance remains
-separate and unchanged; optical-composition performance, mirror disposition, and final
-evidence reconciliation remain independently open. Pinned-SMC newline maintenance is
-deferred to V1-20.
+already running and remained running. P1 through P3 performance work is complete; mirror
+report disposition and final evidence reconciliation remain open. Pinned-SMC newline
+maintenance is deferred to V1-20.
 The display procedure is defined in
 [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Its focused execution authority is
@@ -94,9 +93,22 @@ budget passed five benchmark trials (flat 2.403860–4.817409 ms; raised
 3.896334–4.656326 ms) and three 1,000-iteration stability trials (flat
 2.440316–3.378517 ms; raised 3.920074–4.968514 ms). All five canonical checksums remained
 exact and every trial was deterministic. Loaded/concurrent attempts that exceeded the budget
-are preserved as non-qualifying evidence rather than erased. The broader headless aggregates
-now pass the surface owner but remain nonzero in the separate optical transparent/mirror
-workload at about 10.3–10.4 ms; opaque optical parity remains below budget.
+are preserved as non-qualifying evidence rather than erased. At the P2 checkpoint, the broader
+headless aggregates passed the surface owner but remained nonzero in the separate optical
+transparent/mirror workload at about 10.3–10.4 ms; opaque optical parity was below budget.
+
+P3 closes that optical aggregate finding. The composition path now uses the P2-equivalent
+prepared nearest sampler, immediately emits legacy-equivalent samples with no render-affecting
+material/cell override, and avoids clearing unused reflected-column storage. Sparse cell
+overrides still use the validated runtime lookup and have a complete-frame rendering fixture.
+The accepted unchanged sequence passed three benchmark trials (transparent
+3.603454–3.818739 ms; mirror 3.586869–3.668715 ms) and three 1,000-frame stability trials
+(transparent 3.357268–4.061780 ms; mirror 3.424079–4.000891 ms). Exact opaque,
+transparent, and mirror checksums, one-bounce/cache behavior, and zero timed-loop allocations
+remain unchanged. Earlier isolated failures moved among opaque, transparent, and mirror
+scenarios under the loaded four-core host and are preserved; the accepted three-pass retry
+matches the established host-variance policy. Final `benchmark-headless` and
+`stability-headless` aggregates both pass.
 
 The platform harness passes, including daemon-failure classification and all Windows
 lifecycle/guest/dependency/product fixtures. A native Windows run completed without an

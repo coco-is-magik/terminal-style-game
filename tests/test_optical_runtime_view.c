@@ -178,6 +178,41 @@ static void test_resolve_rejects_invalid_without_output_mutation(void **state) {
     assert_memory_equal(&output, &sentinel, sizeof(output));
 }
 
+static void test_render_override_query_distinguishes_nonvisual_fields(void **state) {
+    OpticalExtension materials[3] = {0};
+    OpticalCellOverride overrides[2] = {0};
+    OpticalRuntimeView view;
+    bool has_override = true;
+    (void)state;
+    materials[1].override_mask = OPTICAL_OVERRIDE_PLAYER_BLOCKS;
+    materials[2].override_mask = OPTICAL_OVERRIDE_TRANSMISSION;
+    overrides[0].cell_index = 3U;
+    overrides[0].optical.override_mask = OPTICAL_OVERRIDE_LIGHT_BLOCKS;
+    overrides[1].cell_index = 5U;
+    overrides[1].optical.override_mask = OPTICAL_OVERRIDE_REFLECTIVITY;
+    assert_true(optical_runtime_view_init(
+        &view, 8U, materials, 3U, overrides, 2U, UINT32_C(9)));
+    assert_true(optical_runtime_view_has_render_override(&view, 0U, 1U,
+                                                         &has_override));
+    assert_false(has_override);
+    assert_true(optical_runtime_view_has_render_override(&view, 0U, 2U,
+                                                         &has_override));
+    assert_true(has_override);
+    assert_true(optical_runtime_view_has_render_override(&view, 3U, 1U,
+                                                         &has_override));
+    assert_false(has_override);
+    assert_true(optical_runtime_view_has_render_override(&view, 5U, 1U,
+                                                         &has_override));
+    assert_true(has_override);
+    has_override = true;
+    assert_false(optical_runtime_view_has_render_override(
+        &view, 8U, 1U, &has_override));
+    assert_true(has_override);
+    assert_false(optical_runtime_view_has_render_override(
+        NULL, 0U, 1U, &has_override));
+    assert_true(has_override);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_legacy_defaults_are_exact),
@@ -186,7 +221,8 @@ int main(void) {
         cmocka_unit_test(test_independent_fields_and_material_fallback),
         cmocka_unit_test(test_init_rejects_invalid_sparse_inputs_transactionally),
         cmocka_unit_test(test_init_rejects_invalid_extensions_and_pointer_pairs),
-        cmocka_unit_test(test_resolve_rejects_invalid_without_output_mutation)
+        cmocka_unit_test(test_resolve_rejects_invalid_without_output_mutation),
+        cmocka_unit_test(test_render_override_query_distinguishes_nonvisual_fields)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

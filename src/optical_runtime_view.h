@@ -18,6 +18,9 @@
 #define OPTICAL_OVERRIDE_TRANSMISSION UINT8_C(0x10)
 #define OPTICAL_OVERRIDE_REFLECTIVITY UINT8_C(0x20)
 #define OPTICAL_OVERRIDE_ALL UINT8_C(0x3F)
+#define OPTICAL_OVERRIDE_RENDER (OPTICAL_OVERRIDE_RAY_BLOCKS | \
+    OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION | \
+    OPTICAL_OVERRIDE_REFLECTIVITY)
 #define OPTICAL_MATERIAL_CAPACITY_MAX 65536U
 
 typedef struct {
@@ -81,6 +84,14 @@ bool optical_runtime_view_resolve(
     uint16_t material_id,
     bool legacy_blocks,
     OpticalResolved *out_resolved
+);
+
+/** Report whether material or cell data changes legacy render behavior. */
+bool optical_runtime_view_has_render_override(
+    const OpticalRuntimeView *view,
+    size_t cell_index,
+    uint16_t material_id,
+    bool *out_has_override
 );
 
 #endif /* OPTICAL_RUNTIME_VIEW_H */

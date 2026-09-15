@@ -15,15 +15,14 @@ static const Cell optical_darkness = {
 };
 
 static bool optical_view_requires_composition(const OpticalRuntimeView *view) {
-    const uint8_t render_mask = OPTICAL_OVERRIDE_RAY_BLOCKS |
-        OPTICAL_OVERRIDE_OPACITY | OPTICAL_OVERRIDE_TRANSMISSION |
-        OPTICAL_OVERRIDE_REFLECTIVITY;
     size_t i;
     for (i = 0U; i < view->material_capacity; i++)
-        if ((view->material_defaults[i].override_mask & render_mask) != 0U)
+        if ((view->material_defaults[i].override_mask &
+             OPTICAL_OVERRIDE_RENDER) != 0U)
             return true;
     for (i = 0U; i < view->cell_override_count; i++)
-        if ((view->cell_overrides[i].optical.override_mask & render_mask) != 0U)
+        if ((view->cell_overrides[i].optical.override_mask &
+             OPTICAL_OVERRIDE_RENDER) != 0U)
             return true;
     return false;
 }
@@ -56,7 +55,7 @@ static void render_optical_sample(Grid *grid, const Map *map,
                                   const OpticalRuntimeView *optical_view,
                                   uint32_t source_generation,
                                   int x, int y) {
-    HeightfieldHit nearest = heightfield_trace_prepared_sample(column, y);
+    HeightfieldHit nearest = heightfield_trace_prepared_opaque_sample(column, y);
     OpticalResolved nearest_optical;
     HeightfieldOpticalResult traced;
     size_t output_index = (size_t)y * (size_t)grid->width + (size_t)x;
@@ -71,9 +70,37 @@ static void render_optical_sample(Grid *grid, const Map *map,
         size_t cell_index = (size_t)nearest.map_y *
                             (size_t)column->heights->width +
                             (size_t)nearest.map_x;
+        bool has_render_override =
+            optical_view->cell_override_count == 0U &&
+            (size_t)nearest.material < optical_view->material_capacity
+                ? (optical_view->material_defaults[nearest.material].override_mask &
+                   OPTICAL_OVERRIDE_RENDER) != 0U
+                : false;
         if (nearest.map_x < 0 || nearest.map_y < 0 ||
             nearest.map_x >= column->heights->width ||
-            nearest.map_y >= column->heights->height ||
+            nearest.map_y >= column->heights->height) {
+            grid->cells[output_index] = output;
+            grid->world_depths[output_index] = DBL_MAX;
+            grid->world_hit_keys[output_index] = 0U;
+            return;
+        }
+        if (optical_view->cell_override_count > 0U &&
+            !optical_runtime_view_has_render_override(
+                optical_view, cell_index, nearest.material,
+                &has_render_override)) {
+            grid->cells[output_index] = output;
+            grid->world_depths[output_index] = DBL_MAX;
+            grid->world_hit_keys[output_index] = 0U;
+            return;
+        }
+        if (!has_render_override) {
+            grid->cells[output_index] =
+                raycast_sample_heightfield_hit(map, assets, &nearest);
+            grid->world_depths[output_index] = nearest.perpendicular_distance;
+            grid->world_hit_keys[output_index] = raycast_world_hit_key(&nearest);
+            return;
+        }
+        if (
             !optical_runtime_view_resolve(
                 optical_view, cell_index, nearest.material, true,
                 &nearest_optical)) {

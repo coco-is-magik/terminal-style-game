@@ -105,6 +105,27 @@ static const OpticalExtension *find_cell_override(
     return NULL;
 }
 
+bool optical_runtime_view_has_render_override(
+    const OpticalRuntimeView *view,
+    size_t cell_index,
+    uint16_t material_id,
+    bool *out_has_override
+) {
+    const OpticalExtension *cell_override;
+    bool has_override = false;
+    if (!view || !view->valid || !out_has_override || cell_index >= view->cell_count)
+        return false;
+    if ((size_t)material_id < view->material_capacity &&
+        (view->material_defaults[material_id].override_mask &
+         OPTICAL_OVERRIDE_RENDER) != 0U) has_override = true;
+    cell_override = find_cell_override(view, cell_index);
+    if (cell_override &&
+        (cell_override->override_mask & OPTICAL_OVERRIDE_RENDER) != 0U)
+        has_override = true;
+    *out_has_override = has_override;
+    return true;
+}
+
 bool optical_runtime_view_resolve(
     const OpticalRuntimeView *view,
     size_t cell_index,

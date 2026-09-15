@@ -300,7 +300,14 @@ uniform-height runs; the opaque sampler binary-searches horizontal ownership wit
 and evaluates only run-edge boundaries through the same interval evaluator as the generic
 reference path. Five isolated benchmark and three isolated 1,000-iteration stability trials
 all passed the unchanged 6 ms budget with exact checksums. Optical composition remains a
-separate path and its transparent/mirror aggregate finding remains actionable.
+separate path.
+
+**P3 optical optimization result (2026-09-15):** Complete. Selective optical rendering now
+uses the P2-equivalent prepared nearest sampler, bypasses full optical resolution for samples
+whose material/cell data cannot affect rendering, and initializes only mirror-cache guard
+metadata before a reflected column is needed. Accepted benchmark and 1,000-frame stability
+trials pass the unchanged 6 ms budget with exact transparent/mirror checksums and zero
+timed-loop allocations. Both complete headless performance aggregates now pass.
 
 **Clang/SMC disposition (2026-09-15):** Ubuntu Clang is informational. Its strict
 `-Werror` result remains nonzero for four known SMC final-newline diagnostics, while a

@@ -18,6 +18,7 @@ static void test_mirror_trace_column_cache_init(void **state) {
     mirror_trace_column_cache_init(&cache);
     assert_false(cache.prepared);
     assert_int_equal(cache.preparation_count, 0U);
+    assert_int_equal(((const unsigned char *)&cache.reflected_column)[0], 0x5a);
     mirror_trace_column_cache_init(NULL);
 }
 
