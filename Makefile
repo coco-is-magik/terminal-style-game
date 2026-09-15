@@ -1159,6 +1159,8 @@ test-leak-classifier:
 
 test-platform-harness:
 	@tools/platform-profiles/test-classify.sh
+	@tools/platform-profiles/test-clang-diagnostics.sh
+	@tools/platform-profiles/test-clang-sweep-integration.sh
 	@tools/platform-profiles/test-check.sh
 	@tools/platform-profiles/test-make-platform-libs.sh
 	@tools/platform-profiles/test-clean-preserves-acceptance.sh

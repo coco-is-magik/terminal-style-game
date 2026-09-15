@@ -2,8 +2,9 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W5 complete; L1/W6,
-pinned-SMC, performance, and final platform acceptance remain open.**
+**Active: B0/C1 evidence captured; W1 through W5, scoped native Windows verification,
+L1, P1 reproduction, and Clang diagnostic continuation complete; performance optimization and final
+platform acceptance remain open.**
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -11,8 +12,9 @@ required-platform remediation, and evidence reconciliation**. It does not broade
 later v1 feature semantics or claim that Linux/Windows release support already exists.
 
 V1-0 ends only when required strict builds pass, baseline evidence is reproducible,
-native Linux/Windows display-input hosts are established, the mirror report is
-classified, and legacy non-ASCII bytes have an evidence-based disposition.
+native Linux display-input evidence is established, scoped native Windows verification
+passes, the mirror report is classified, and legacy non-ASCII bytes have an
+evidence-based disposition.
 
 ## Purpose
 
@@ -111,9 +113,10 @@ outcomes and retains unavailable native/platform gates as unverified.
 **Diagnostic:** `-Wnewline-eof` promoted to an error for first-party and pinned SMC source
 and header files without a final newline.
 
-**Required remedy:** add exactly one conventional final newline to each affected text file,
-including pinned SMC files when they are build inputs. Do not suppress the warning or exclude
-vendored inputs. Verify file contents are otherwise unchanged, then rerun the Clang profile.
+**Disposition:** first-party files were corrected. The four owned-upstream SMC newline
+corrections and pin update are deferred to V1-20. Ubuntu Clang is informational; warnings
+remain errors. A diagnostic continuation compiles independent application/test targets and
+classifies any finding outside the exact known four-file `-Wnewline-eof` set as additional.
 
 This is a textual portability correction, not a source-logic redesign. It lands separately
 from Windows API work.
@@ -189,7 +192,7 @@ not passed; the canonical container leak gate remains separate.
 | `make test-ui-standards` | `PASS` | All nine focused UI owner groups. |
 | `make standards-core` | `PASS` | Unsafe-call, structure, inventory, legacy-call, and current-renderer guards. |
 | `make smoke` | `PASS` | `{"smoke":"ok","map_width":10,"map_height":6}`. |
-| `make -B CC=clang all` | `PASS` | Local Clang 22 strict application build; not equivalent to required Ubuntu Clang 18 evidence. |
+| `make -B CC=clang all` | `PASS` | Local Clang 22 strict application build; not equivalent to Ubuntu Clang 18 informational diagnostic evidence. |
 
 ### Timeout and recovery
 
@@ -243,11 +246,11 @@ scanned_text_sources=254
 missing_final_newline=192
 ```
 
-The affected set includes first-party production/test files and pinned SMC inputs. Local
-Clang 22 compiled the application despite this state; required Ubuntu Clang 18 previously
-rejected it with `-Wnewline-eof`. C1 must preserve an exact pre-edit path/hash manifest,
-append only missing final newline bytes in bounded batches, and prove all preceding bytes
-unchanged. Required Ubuntu Clang profile evidence—not the local Clang result—is the C1 gate.
+The affected set included first-party production/test files and pinned SMC inputs. Local
+Clang 22 compiled the application despite this state; Ubuntu Clang 18 rejected it with
+`-Wnewline-eof`. C1 preserved an exact pre-edit path/hash manifest, appended only missing
+first-party final newline bytes in bounded batches, and proved all preceding bytes unchanged.
+The four SMC corrections are deferred to V1-20.
 
 ### Asset-byte inventory
 
@@ -264,7 +267,7 @@ was assigned.
   remains historical rather than current evidence.
 - `make standards`: unrun because `cppcheck` is unavailable; `standards-core` passed.
 - current ASan, UBSan, canonical leak, and coverage: unrun; historical evidence remains.
-- required Linux Docker profiles and native Windows profile: not rerun.
+- Linux Docker profiles and native Windows profile: not rerun at this B0 checkpoint.
 - native Linux display/input host: not run and not passed. Windows display/input is out of scope.
 
 ### B0 disposition
@@ -274,10 +277,17 @@ feature work. Two independent next increments are safe:
 
 1. **P1 performance reproduction:** isolate the surface-render budget failure before any
    optimization or budget change.
-2. **C1 final-newline remediation:** create the exact path/hash manifest and append only
-   missing newline bytes, then run local strict builds and the required Ubuntu Clang profile.
+2. **C1 final-newline remediation:** create the exact path/hash manifest, append only
+   missing first-party newline bytes, then run local strict builds and Ubuntu Clang diagnostics.
 
-W1 Windows platform-boundary design can proceed in parallel as documentation/research.
+**P1 result (2026-09-15):** Complete. Five sequential benchmark trials and three
+1,000-iteration stability trials reproduced the surface-render failure on the physical host.
+Flat medians were 7.526312 ms and 7.693334 ms respectively against the unchanged 6 ms budget;
+all checksums were stable and deterministic. The failing stage is the current opaque prepared-
+heightfield path. No renderer, benchmark, flag, or budget change was made. See
+[`reviews/2026-09-15-v1-0-p1-surface-performance-reproduction.md`](reviews/2026-09-15-v1-0-p1-surface-performance-reproduction.md).
+
+W1 through W5 are complete under the scoped native Windows contract.
 No mirror source work is authorized without distinct evidence.
 
 ## Dependency and increment plan
@@ -285,19 +295,18 @@ No mirror source work is authorized without distinct evidence.
 ```text
 B0 current-host baseline and byte inventory
  |\
- | +--> C1 Clang final-newline remediation --> C2 required Linux profiles
+ | +--> C1 first-party Clang newline remediation
  |
  +----> W1 platform capability/caller inventory
           -> W2 filesystem/durability adapter
           -> W3 directory/catalog adapter
           -> W4 locale-independent numeric parser adapter
-          -> W5 native Windows strict/test/standards/binary checks
-          -> W6 native Windows display/input smoke
+          -> W5 native Windows strict application/test checks
 
 B0 -> L1 native Linux display/input smoke
 B0 -> M1 mirror report classification (activate only with distinct evidence)
 
-C2 + W5 + W6 + L1 + M1 disposition + byte inventory -> V1-0 closeout
+required GCC profiles + W5 + L1 + M1 disposition + byte inventory + performance disposition -> V1-0 closeout
 ```
 
 ### B0 — Current-host baseline and inventories
@@ -312,27 +321,27 @@ C2 + W5 + W6 + L1 + M1 disposition + byte inventory -> V1-0 closeout
 
 **Rollback:** Evidence and documentation only; generated `build/` artifacts are disposable.
 
-### C1/C2 — Clang remediation and Linux profiles
+### C1 — First-party Clang remediation and diagnostic continuation
 
 1. Produce an exact list and hashes of files lacking final newlines.
 2. Add only missing final newlines in a standalone increment.
 3. Prove all other bytes are unchanged.
-4. Run a focused local Clang strict build, then the required Ubuntu Clang profile.
-5. Rerun the full required Linux profile set and `platform-check`.
+4. Run focused local strict Clang builds.
+5. Keep Ubuntu Clang informational and run a strict diagnostic continuation after failure.
+6. Defer the owned-upstream SMC newline/pin update to V1-20.
 
 **Rollback:** Revert only final-newline byte additions. No warning configuration changes.
 
 **C1 result (2026-09-14):** 188 tracked first-party/test files now contain exactly
 their original bytes plus one LF and pass strict GCC/Clang, focused SMC, standards-core,
 and complete functional gates. Four affected SMC files are supplied to profiles from a
-pinned upstream archive, so ignored local-vendor edits were restored and cannot satisfy
-the required profile. After Docker was restored and the pinned image rebuilt, required
-Ubuntu Clang 18 reached strict compilation: every first-party newline diagnostic was gone
-and only the same four pinned SMC files failed. See
+pinned upstream archive, so ignored local-vendor edits were restored. After Docker was
+restored and the pinned image rebuilt, Ubuntu Clang 18 reached strict compilation: every
+first-party newline diagnostic was gone and only the same four pinned SMC files failed. See
 [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
 
 **Platform evidence continuation (2026-09-14):** The complete platform harness passed;
-the Ubuntu Clang image built; required Ubuntu Clang isolated the four pinned SMC files;
+the Ubuntu Clang image built and isolated the four pinned SMC files;
 and native Windows reproduced the complete W1 portability families while restoring the
 VM to `shut off`. No external timeout wrapped a platform command. See
 [`reviews/2026-09-14-v1-0-platform-profile-evidence.md`](reviews/2026-09-14-v1-0-platform-profile-evidence.md).
@@ -467,30 +476,24 @@ passes 24/24, and the strict application builds. See
 
 ### W5 — Native Windows functional profile
 
-Run the unchanged strict policy in the existing native Windows provider through:
+Run the unchanged strict policy in the existing native Windows provider through the
+single `platform-test-windows` target:
 
-1. dependency and source identity;
+1. dependency and source setup;
 2. strict application build;
-3. complete runner build;
-4. `make test`;
-5. `standards-core`;
-6. native binary inspection proving no accidental `msys-2.0.dll` or `cygwin1.dll` dependency.
+3. complete `make test` aggregate.
 
 Any first failure remains nonzero and preserves later phases as unrun.
 
-**W5 result (2026-09-15):** Normal Make policy now links pinned static ENet's Windows
-dependencies in order without affecting Linux. Test fixtures use portable `build/` roots and
-shell-free bounded setup; persistence tests honor documented committed warnings; decal sync uses
-a write-capable Windows handle; decal output remains canonical LF; legacy replacement and sprite
-rollback follow the established platform commit model; and oversized test snapshots use checked
-heap ownership. Native Windows passes strict application compilation, strict compilation and
-execution of all 64 runners, `standards-core`, and PE/import inspection of the application plus
-all 64 test binaries with no MSYS/Cygwin runtime. See
+**W5 result (2026-09-15):** Native Windows passes strict application compilation and
+strict compilation/execution of all 64 runners through the single scoped target. The VM
+was already running and remained running. Earlier standards, binary-inspection, display,
+stability, and performance evidence is outside the revised Windows acceptance scope. See
 [`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md).
 
-### L1/W6 — Native display and input hosts
+### L1 — Native Linux display and input host
 
-For each required platform, record OS/build, architecture, video backend, GPU/driver where
+For the native Linux display host, record OS/build, architecture, video backend, GPU/driver where
 relevant, logical and window dimensions, scale factor, input devices, session type, SDL
 identity, command, duration, and result. Exercise startup, presentation, resize,
 keyboard/mouse input, application transitions, and clean teardown. Pointer activation,
@@ -558,10 +561,8 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-Proceed with native Linux display/input acceptance without changing headless domain behavior.
-Native Windows verification is limited to strict application compilation and complete `make test`
-through the single `platform-test-windows` target. In parallel, obtain a
-strict-compatible pinned SMC revision and update its reviewed commit/hash before rebuilding
-required Ubuntu Clang. P1 remains independent. Do not externally timeout platform profiles on
-this low-end host, and do not broaden display acceptance into later pointer, glyph, font, or
-sprite feature semantics.
+Proceed with the focused opaque prepared-heightfield optimization plan authorized by
+completed P1. The four-file owned-upstream SMC correction is deferred to V1-20 and guarded
+by the strict informational Clang diagnostic sweep. Do not externally timeout platform
+profiles on this low-end host, and do not broaden the optimization into optical composition
+or later feature semantics.

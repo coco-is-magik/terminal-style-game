@@ -28,8 +28,8 @@ sanitizers, binary inspection, smoke, and SPICE/display automation are outside t
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
 performance measurements are non-qualifying and are not Windows product failures. The VM was
 already running and remained running. L1 native Linux X11 display/input acceptance remains
-separate and unchanged;
-pinned-SMC/newline, performance, mirror, and final evidence reconciliation remain independently open.
+separate and unchanged; performance, mirror, and final evidence reconciliation remain
+independently open. Pinned-SMC newline maintenance is deferred to V1-20.
 The display procedure is defined in
 [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Its focused execution authority is
@@ -51,26 +51,27 @@ no legacy code-page meaning has been assigned.
 The 2026-09-14 B0 local baseline passes the strict default GCC/SMC-stream application
 build, both focused mirror owners (4/4 and 19/19), the complete 62-runner build and
 functional aggregate, all nine UI standards owners, `standards-core`, and smoke. A local
-Clang 22 strict application build also passes, but does not replace required Ubuntu Clang
-18 profile evidence. The first full `make test` attempt timed out during compilation; the
+Clang 22 strict application build also passes, but does not replace Ubuntu Clang 18
+informational diagnostic evidence. The first full `make test` attempt timed out during compilation; the
 recorded narrower `test-build` then `test` recovery passed.
 
-`make benchmark-headless` is currently `FAIL-PRODUCT`: the deterministic surface-render
-workload measured `flat_height_avg_ms=6.188057` against its 6 ms budget. Later benchmark
-workloads and `stability-headless` remain unrun behind that blocker. The B0 scan found 192
+P1 reproduced the deterministic surface-render failure on the physical host without changing
+code, flags, methodology, or the 6 ms budget. Five benchmark trials all failed with flat-path
+median 7.526312 ms; three 1,000-iteration stability trials all failed with median 7.693334 ms.
+All checksums were identical and deterministic. The affected stage is the current opaque
+prepared-heightfield renderer, not optical composition. P1 reproduction is complete; a separate
+optimization increment is required. The B0 scan found 192
 of 254 scoped production/test/pinned-SMC C files lacked final newlines, matching the
-preserved Ubuntu Clang 18 failure class even though local Clang 22 accepted them. P1
-performance reproduction remains independent; Windows adapter work remains at the W1
-design gate.
+preserved Ubuntu Clang 18 failure class even though local Clang 22 accepted them.
 
-C1 is partially implemented and locally verified as of 2026-09-14. Exactly 188 tracked
+C1 first-party remediation is complete. Exactly 188 tracked
 first-party/test files are their original bytes plus one final LF; strict GCC and local
 Clang builds, focused SMC owners, `standards-core`, the complete runner build, and all 62
 functional runners pass. Four affected SMC files come from the image-owned pinned SMC
-archive, so local ignored-vendor corrections were restored and a reviewed pinned revision
-is still required. With Docker restored and the pinned Ubuntu image rebuilt, required
-Clang 18 now reaches strict compilation: every first-party newline failure is gone and
-only those four pinned SMC files remain. See
+archive. Their trivial correction is deferred to owned-upstream dependency reconciliation
+in V1-20. Ubuntu Clang is now informational but remains strict: `-Werror` is unchanged,
+and a diagnostic-only `make -k` sweep with `-ferror-limit=0` compiles application and test
+targets so the known four errors cannot mask additional findings. See
 [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md).
 
 That statement describes the C1 checkpoint. After later W2 work arrived, a fresh local
@@ -78,8 +79,9 @@ Clang application build found six newly added private first-party headers withou
 newlines (`flow_document_internal.h`, `flow_workspace_internal.h`,
 `sprite_document_internal.h`, `ui_document_internal.h`, `ui_menu_workspace_internal.h`,
 and `unified_editor_internal.h`) in addition to the four pinned SMC files. W2-C6's new
-private header was corrected immediately and the decal owner passes strict Clang 7/7. The
-remaining newline set stays in the independent C1/C2 remediation track.
+private header was corrected immediately and the decal owner passes strict Clang 7/7.
+Any additional Clang finding is immediate work; only the exact four known SMC newline
+errors are deferred.
 
 The platform harness passes, including daemon-failure classification and all Windows
 lifecycle/guest/dependency/product fixtures. A native Windows run completed without an

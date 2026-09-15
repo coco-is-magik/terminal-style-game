@@ -33,6 +33,18 @@ finish_failure() {
     exit "$classifier_status"
 }
 
+run_clang_diagnostic_sweep() {
+    sweep_log=/output/clang-diagnostic-sweep.log
+    sweep_result=/output/clang-diagnostic-sweep.env
+    sweep_status=0
+    rm -rf build
+    timeout 1800s make -k CC="$PROFILE_COMPILER" \
+      CFLAGS="-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -ferror-limit=0" \
+      all test-build >"$sweep_log" 2>&1 || sweep_status=$?
+    /usr/local/lib/platform-profile/classify-clang-diagnostics.sh \
+      "$sweep_log" "$sweep_result" "$sweep_status" || true
+}
+
 if test ! -r /source/Makefile || test ! -d /output || test ! -w /output; then
     write_result environment 'FAIL-TOOL|container-mount-contract|3'
     exit 3
@@ -97,7 +109,12 @@ test "$status" -eq 0 || finish_failure dependency-check "$status" "$dependency_l
 app_log=/output/strict-app-build.log
 status=0
 timeout 900s make CC="$PROFILE_COMPILER" all >"$app_log" 2>&1 || status=$?
-test "$status" -eq 0 || finish_failure strict-app-build "$status" "$app_log"
+if test "$status" -ne 0; then
+    if test "$PROFILE_COMPILER" = clang; then
+        run_clang_diagnostic_sweep
+    fi
+    finish_failure strict-app-build "$status" "$app_log"
+fi
 
 test_build_log=/output/strict-test-build.log
 status=0

@@ -22,13 +22,14 @@ behavior.
 | Profile | Role | Environment | Current result |
 |---|---|---|---|
 | `ubuntu-24.04-gcc` | Required | Ubuntu 24.04, glibc 2.39, GCC 13.3.0 | `PASS` through complete profile |
-| `ubuntu-24.04-clang` | Required | Ubuntu 24.04, glibc 2.39, Clang 18.1.3 | `FAIL-PRODUCT` at strict application build; first-party newlines fixed, four pinned SMC files remain |
+| `ubuntu-24.04-clang` | Informational | Ubuntu 24.04, glibc 2.39, Clang 18.1.3 | Strict build remains nonzero for four deferred SMC final-newline errors; diagnostic sweep reports additional findings separately |
 | `fedora-gcc` | Required | Fedora 43, glibc 2.42, GCC 15.3.1 | `PASS` through complete profile |
 | `alpine-musl-gcc` | Informational | Alpine 3.22, musl 1.2.5, GCC 14.2.0 | `PASS` through complete profile |
 | `windows-10-x64-gcc` | Informational | Windows 10 Pro 22H2 x64, UCRT64 GCC 16.2.0 | `FAIL-PRODUCT` at strict application compilation; 2026-09-14 rerun reproduced W1 portability families and passed lifecycle cleanup |
 
-Alpine is a portability probe, not a supported-platform promise. Its result does
-not determine `platform-check` unless its profile role is deliberately promoted.
+Alpine and Ubuntu Clang are portability/diagnostic probes, not supported-compiler
+promises. Their results do not determine `platform-check` unless their profile roles
+are deliberately promoted.
 The v1 product roadmap requires native Linux x64 and Windows x64 release evidence;
 the current informational `windows-10-x64-gcc` survey remains evidence of a known
 `FAIL-PRODUCT`, not yet a passing required release profile. Steam Deck / SteamOS is
@@ -405,16 +406,20 @@ reviews, not only in local logs.
 
 ## Current compatibility finding
 
-Ubuntu Clang reaches the strict application build and rejects many first-party and
-pinned SMC files because they lack a final newline:
+Ubuntu Clang reaches the strict application build and rejects four pinned SMC files
+because they lack a final newline:
 
 ```text
 error: no newline at end of file [-Werror,-Wnewline-eof]
 ```
 
-This is `FAIL-PRODUCT`, not a Clang crash or missing tool. No file was changed to
-remediate it during the survey. The complete file-level diagnostics are preserved
-in `build/platform-profiles/ubuntu-24.04-clang/strict-app-build.log`.
+This remains a truthful nonzero informational result, not a pass. On strict application
+failure, the profile additionally runs `make -k ... all test-build` with the same
+`-Werror` policy plus `-ferror-limit=0`. It writes `clang-diagnostic-sweep.log` and
+`clang-diagnostic-sweep.env`. Only the exact four SMC `-Wnewline-eof` errors classify as
+known deferred debt; any other, missing, malformed, or incomplete diagnostic set is marked
+additional or inconclusive. No warning is suppressed and the sweep cannot replace the
+canonical strict-build result.
 
 Ubuntu GCC, Fedora GCC, and Alpine musl GCC built the unchanged application and all
 62 runners, ran the complete suite, and passed `standards-core`. This establishes

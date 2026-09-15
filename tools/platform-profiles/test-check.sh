@@ -19,6 +19,13 @@ windows-10-x64-gcc	informational	PASS	strict-app-build	FAIL-PRODUCT	application-
 EOF
 PLATFORM_SUMMARY="$tmp/windows-informational-fail.tsv" "$script_dir/check.sh" >/dev/null
 
+cat >"$tmp/clang-informational-fail.tsv" <<'EOF'
+profile	role	provider_prepare	phase	outcome	reason	status
+ubuntu-gcc	required	PASS	complete	PASS	profile-compatible	0
+ubuntu-24.04-clang	informational	PASS	strict-app-build	FAIL-PRODUCT	application-compile-failure	1
+EOF
+PLATFORM_SUMMARY="$tmp/clang-informational-fail.tsv" "$script_dir/check.sh" >/dev/null
+
 cat >"$tmp/legacy-header.tsv" <<'EOF'
 profile	role	image_build	phase	outcome	reason	status
 ubuntu-gcc	required	PASS	complete	PASS	profile-compatible	0

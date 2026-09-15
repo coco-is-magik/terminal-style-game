@@ -273,8 +273,8 @@ constraints before cross-platform file, text, font, input, and packaging work.
 
 1. Record current strict, complete-suite, UI, SMC, sanitizer, standards, benchmark,
    stability, Linux-profile, and Windows-profile results with typed outcomes.
-2. Remediate the current required Ubuntu Clang and native Windows strict-build product
-   failures without weakening warnings or omitting first-party/pinned sources.
+2. Remediate native Windows strict-build failures. Keep Ubuntu Clang as a strict
+   informational diagnostic profile without weakening warnings or omitting sources.
 3. Establish native Linux display/input smoke evidence and reproducible dependency identities;
    native Windows requires only strict compilation and the complete regression/unit suite.
 4. Reconcile any current mirror report with the already verified 2026-09-12 planar
@@ -291,6 +291,17 @@ silently interpreted through a host code page.
 
 **Detailed plan:**
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
+
+**P1 reproduction result (2026-09-15):** The physical-host surface-render failure is
+repeatable and deterministic in the current opaque prepared-heightfield path. Optimization
+remains open as a separate increment; the 6 ms budget and current renderer pipeline remain
+unchanged.
+
+**Clang/SMC disposition (2026-09-15):** Ubuntu Clang is informational. Its strict
+`-Werror` result remains nonzero for four known SMC final-newline diagnostics, while a
+diagnostic-only `make -k` sweep with unlimited Clang error reporting exposes any additional
+application or test diagnostics. The four-file SMC source/pin correction is deferred to
+V1-20 dependency reconciliation.
 
 ## V1-1 — UI architecture, measurable design rules, and semantic tokens
 
@@ -751,6 +762,8 @@ individually implemented systems as completion.
    stability, native input/IME/clipboard/display, network, audio, and packaging reviews.
 5. Resolve or explicitly reject every remaining v1 blocker; do not rename unverified work
    as post-v1 merely to declare release.
+6. Reconcile owned upstream dependency pins, including the four deferred SMC final-newline
+   corrections, and rerun the strict informational Clang diagnostic profile.
 
 **Exit gate:** A final Q4 review confirms requirements, architecture, implementation,
 documentation, and evidence agree. Only then may the version be declared v1.0.

@@ -24,7 +24,7 @@ COPY build-dependencies.sh /usr/local/lib/platform-profile/build-dependencies.sh
 RUN chmod 0555 /usr/local/lib/platform-profile/build-dependencies.sh \
  && CC="${PROFILE_COMPILER}" /usr/local/lib/platform-profile/build-dependencies.sh
 
-COPY classify.sh run-profile.sh /usr/local/lib/platform-profile/
+COPY classify.sh classify-clang-diagnostics.sh run-profile.sh /usr/local/lib/platform-profile/
 RUN chmod 0555 /usr/local/lib/platform-profile/*.sh \
  && dpkg-query -W > /opt/platform-deps/packages.txt
 

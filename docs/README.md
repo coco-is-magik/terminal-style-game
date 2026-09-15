@@ -65,7 +65,7 @@ only a small set of documents should be treated as current authority.
   — POSIX/UCRT finite-double conversion, exact cross-platform corpus and scene bytes,
   strict/sanitizer/native evidence, failure corrections, and W5 Windows link handoff.
 - [`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md)
-  — complete native Windows strict/64-runner/standards/binary evidence, Make link policy,
+  — scoped native Windows strict application and complete 64-runner evidence, Make link policy,
   persistence and fixture corrections, stack-bound remediation, failures, and L1/W6 handoff.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
