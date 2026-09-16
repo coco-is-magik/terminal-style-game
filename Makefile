@@ -3,6 +3,8 @@ CFLAGS := -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
 VALGRIND ?= valgrind
 CPPCHECK ?= cppcheck
+CPPCHECK_FLAGS := --quiet --error-exitcode=100 --std=c11 \
+	--suppress=normalCheckLevelMaxBranches --suppress=toomanyconfigs
 GCOV ?= gcov
 DOCKER ?= docker
 VALGRIND_IMAGE ?= terminal-style-game-valgrind:ubuntu24.04-amd64
@@ -188,7 +190,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
 
 
 all: $(APP)
@@ -1117,7 +1119,7 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	./$(TEST_UI_MENU_WORKSPACE_RUNNER)
 check: all test standards
 
-standards: style standards-core
+standards: style check-static-analysis-policy standards-core
 
 standards-core: check-unsafe-calls check-project-structure check-test-inventory \
 	check-legacy-unused check-current-renderer
@@ -1239,7 +1241,7 @@ style:
 		echo "FAIL-MISSING-TOOL: $(CPPCHECK) was not found; static-analysis evidence was not produced"; \
 		exit 2; \
 	fi
-	@status=0; $(CPPCHECK) --quiet --error-exitcode=100 --std=c11 src || status=$$?; \
+	@status=0; $(CPPCHECK) $(CPPCHECK_FLAGS) src || status=$$?; \
 	if test $$status -eq 100; then \
 		echo "FAIL-PRODUCT: cppcheck reported source defects"; \
 		exit 1; \
@@ -1248,6 +1250,15 @@ style:
 		exit 3; \
 	fi
 	@echo "PASS: cppcheck static analysis passed"
+
+check-static-analysis-policy:
+	@echo "Checking cppcheck policy keeps defect diagnostics strict..."
+	@printf '%s\n' '$(CPPCHECK_FLAGS)' | grep -F -- '--error-exitcode=100' >/dev/null
+	@printf '%s\n' '$(CPPCHECK_FLAGS)' | grep -F -- '--std=c11' >/dev/null
+	@printf '%s\n' '$(CPPCHECK_FLAGS)' | grep -F -- '--suppress=normalCheckLevelMaxBranches' >/dev/null
+	@printf '%s\n' '$(CPPCHECK_FLAGS)' | grep -F -- '--suppress=toomanyconfigs' >/dev/null
+	@! printf '%s\n' '$(CPPCHECK_FLAGS)' | grep -E -- '--suppress=(\*|error|warning|style|performance|portability)([[:space:]]|$$)' >/dev/null
+	@echo "PASS: cppcheck suppressions are limited to analysis-scope information"
 
 check-unsafe-calls:
 	@echo "Checking handwritten production C for banned unsafe conversion and string calls..."

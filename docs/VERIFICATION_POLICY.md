@@ -11,7 +11,10 @@ It applies to local development, audits, closeouts, and automated environments.
 - `make test-ui-standards` runs the focused owners of currently accepted UI rules.
 - `make standards` runs required static analysis, the handwritten-production
   unsafe-call/project-structure/test-inventory guards, and repository-owned
-  legacy/current API guards. `make standards-core` runs the dependency-free subset.
+  legacy/current API guards. Cppcheck defect diagnostics retain error exit status;
+  only named tool-version analysis-scope information may be suppressed, and the
+  repository-owned policy guard rejects broad severity/category suppression.
+  `make standards-core` runs the dependency-free subset.
 - `make check` builds the application and runs the complete functional and standards
   gates.
 - `make asan`, `make ubsan`, and `make leak` provide separate runtime-safety evidence.

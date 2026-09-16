@@ -2365,11 +2365,11 @@ SceneFormatResult scene_format_serialize(const SceneFormatCandidate *candidate,
                                          SceneFormatBuffer *out,
                                          SceneDiagnostic *diagnostic) {
     TextWriter writer = {0};
-    const SceneLight *lights[SCENE_MAX_LIGHTS];
-    const SceneDecalInstance *decals[SCENE_MAX_DECALS];
-    const SceneSpriteInstance *sprites[SCENE_MAX_SPRITES];
-    const SceneTrigger *triggers[SCENE_MAX_TRIGGERS];
-    const SceneObjectInstance *objects[SCENE_MAX_OBJECTS];
+    const SceneLight *lights[SCENE_MAX_LIGHTS] = {0};
+    const SceneDecalInstance *decals[SCENE_MAX_DECALS] = {0};
+    const SceneSpriteInstance *sprites[SCENE_MAX_SPRITES] = {0};
+    const SceneTrigger *triggers[SCENE_MAX_TRIGGERS] = {0};
+    const SceneObjectInstance *objects[SCENE_MAX_OBJECTS] = {0};
     size_t i, x, y;
     SceneFormatResult result;
     unsigned int output_version;

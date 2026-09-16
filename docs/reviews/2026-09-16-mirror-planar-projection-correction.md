@@ -64,8 +64,10 @@ guard.
 - Strict C11 application build with `-Wall -Wextra -Wpedantic -Werror`: pass.
 - Complete functional aggregate: pass; optical rendering passes 21/21 and
   heightfield selective tracing passes 12/12.
-- `standards-core`: pass. Full `make check` reported `FAIL-MISSING-TOOL` because
-  `cppcheck` is not installed; no static-analysis result is claimed.
+- `standards-core`: pass. The initial full `make check` reported
+  `FAIL-MISSING-TOOL` because cppcheck was not installed. After cppcheck 2.18.2 became
+  available, the recovered real `make standards` and complete `make -j2 check` gates
+  passed as recorded in `2026-09-16-cppcheck-gate-recovery.md`.
 - Shipping optical benchmark: pass under the unchanged 6 ms budget; mirror path
   measured 3.518875 ms with zero timed-loop allocations.
 - Complete ASan/LeakSanitizer and UBSan functional aggregates: pass with no
