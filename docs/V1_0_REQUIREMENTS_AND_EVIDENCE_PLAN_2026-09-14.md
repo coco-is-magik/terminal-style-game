@@ -36,9 +36,10 @@ features.
 4. Native Windows 10 x64 UCRT64 reached strict application compilation and produced
    `FAIL-PRODUCT` for unavailable/incompatible POSIX filesystem, directory, `mkdir`, and
    locale APIs. Later phases correctly did not run.
-5. The known planar reflected-curvature defect was reproduced and corrected before this
-   phase: reflected-camera Z now remains the incoming camera Z, and bilateral geometry plus
-   vertical-viewpoint tests guard it.
+5. The earlier row-dependent reflected-curvature defect was corrected before this phase:
+   reflected-camera Z remains the incoming camera Z. A distinct general projection defect
+   was subsequently reproduced and corrected on 2026-09-16 by retaining camera-to-mirror
+   depth and source-column correction through the reflected continuation ray.
 
 Historical evidence is not silently upgraded to a current run. B0 records fresh local
 outcomes and retains unavailable native/platform gates as unverified.

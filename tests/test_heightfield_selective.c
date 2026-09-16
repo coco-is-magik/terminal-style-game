@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #include <cmocka.h>
 
@@ -369,6 +370,30 @@ static void test_invalid_inputs_preserve_output(void **state) {
     assert_memory_equal(&output, &sentinel, sizeof(output));
 }
 
+static void test_projection_path_validation_is_transactional(void **state) {
+    SelectiveFixture fixture;
+    HeightfieldTraceColumn column;
+    double offset;
+    double correction;
+    (void)state;
+    fixture_init(&fixture);
+    column = prepare_column(&fixture);
+    assert_float_equal(column.projection_distance_offset, 0.0, 0.0000001);
+    assert_float_equal(column.projection_correction, column.correction, 0.0000001);
+    assert_true(heightfield_trace_set_projection_path(&column, 2.5, 0.75));
+    assert_float_equal(column.projection_distance_offset, 2.5, 0.0000001);
+    assert_float_equal(column.projection_correction, 0.75, 0.0000001);
+    offset = column.projection_distance_offset;
+    correction = column.projection_correction;
+    assert_false(heightfield_trace_set_projection_path(NULL, 1.0, 1.0));
+    assert_false(heightfield_trace_set_projection_path(&column, -1.0, 1.0));
+    assert_false(heightfield_trace_set_projection_path(&column, INFINITY, 1.0));
+    assert_false(heightfield_trace_set_projection_path(&column, 1.0, 0.0));
+    assert_false(heightfield_trace_set_projection_path(&column, 1.0, NAN));
+    assert_float_equal(column.projection_distance_offset, offset, 0.0000001);
+    assert_float_equal(column.projection_correction, correction, 0.0000001);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_opaque_default_matches_nearest_fast_path),
@@ -380,7 +405,8 @@ int main(void) {
         cmocka_unit_test(test_natural_range_exhaustion_is_not_proven_opening),
         cmocka_unit_test(test_four_transparent_layers_exhaust_cap),
         cmocka_unit_test(test_sparse_owner_cell_override_beats_material),
-        cmocka_unit_test(test_invalid_inputs_preserve_output)
+        cmocka_unit_test(test_invalid_inputs_preserve_output),
+        cmocka_unit_test(test_projection_path_validation_is_transactional)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

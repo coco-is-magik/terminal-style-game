@@ -36,7 +36,9 @@ static bool optical_cursor_next(const HeightfieldTraceColumn *column,
             HeightfieldHit horizontal = heightfield_horizontal_hit(
                 camera, cell, column->interval_floor_z[i],
                 column->interval_ceiling_z[i], map_x, map_y,
-                viewport_height, cursor->row_delta, column->correction,
+                viewport_height, cursor->row_delta,
+                column->projection_distance_offset,
+                column->projection_correction,
                 column->direction_x, column->direction_y, enter, exit);
             cursor->phase = 1U;
             if (horizontal.hit) {
@@ -51,7 +53,9 @@ static bool optical_cursor_next(const HeightfieldTraceColumn *column,
             break;
         }
         {
-            double perpendicular = exit * column->correction;
+            double perpendicular =
+                (column->projection_distance_offset + exit) *
+                column->projection_correction;
             double z = camera->z -
                 cursor->row_delta * perpendicular / viewport_height;
             HeightfieldHitKind kind;

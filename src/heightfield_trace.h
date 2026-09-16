@@ -49,6 +49,8 @@ typedef struct {
     double direction_x;
     double direction_y;
     double correction;
+    double projection_distance_offset;
+    double projection_correction;
     double delta_x;
     double delta_y;
     double initial_side_x;
@@ -78,6 +80,15 @@ bool heightfield_trace_prepare_column(
     HeightfieldTraceColumn *column, const Camera *camera, const Map *map,
     const SceneHeightView *heights, int viewport_width, int viewport_height,
     int screen_x, double max_distance
+);
+
+/**
+ * Continue vertical projection from an earlier ray segment while retaining this
+ * column's local XY origin and intervals. The offset is an uncorrected ray
+ * distance and the correction belongs to the original viewport column.
+ */
+bool heightfield_trace_set_projection_path(
+    HeightfieldTraceColumn *column, double distance_offset, double correction
 );
 
 HeightfieldHit heightfield_trace_prepared_sample(

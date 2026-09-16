@@ -586,6 +586,72 @@ static void test_reflected_camera_preserves_vertical_viewpoint(void **state) {
         &cache, &incoming, &mirror_hit, &view, GENERATION, row,
         config_get()->raycast_max_distance, &result));
     assert_float_equal(cache.reflected_camera.z, f.camera.z, 0.0000001);
+    assert_float_equal(
+        cache.reflected_column.projection_distance_offset,
+        mirror_hit.distance + MIRROR_TRACE_ORIGIN_EPSILON, 0.0000001);
+    assert_float_equal(cache.reflected_column.projection_correction,
+                       incoming.correction, 0.0000001);
+    fixture_destroy(&f);
+}
+
+static void test_planar_mirror_distance_sweep_matches_projection(void **state) {
+    static const double camera_x[] = {1.25, 1.75, 2.25};
+    static const double camera_z[] = {0.65, 0.75, 0.85};
+    static const double camera_pitch[] = {-0.4, 0.0, 0.35};
+    static const double camera_angle[] = {-0.12, 0.0, 0.14};
+    Fixture f;
+    OpticalExtension materials[21] = {0};
+    OpticalRuntimeView view;
+    (void)state;
+    fixture_init(&f);
+    for (int y = 0; y < HEIGHT; y++) {
+        size_t mirror_index = index_at(3, y);
+        size_t wall_index = index_at(0, y);
+        f.cells[mirror_index].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+        f.cells[mirror_index].wall_material = 10U;
+        map_set(f.map, 3, y, 10U);
+        f.cells[wall_index].occupancy = SCENE_CELL_OCCUPANCY_WALL;
+        f.cells[wall_index].wall_material = 20U;
+        map_set(f.map, 0, y, 20U);
+    }
+    materials[10] = mirror(255U);
+    assert_true(optical_runtime_view_init(
+        &view, WIDTH * HEIGHT, materials, 21U, NULL, 0U, GENERATION));
+    for (size_t pose = 0U; pose < sizeof(camera_x) / sizeof(camera_x[0]); pose++) {
+        int reflected_rows = 0;
+        f.camera.transform.pos.x = camera_x[pose];
+        f.camera.z = camera_z[pose];
+        f.camera.pitch = camera_pitch[pose];
+        f.camera.transform.angle = camera_angle[pose];
+        raycast_render_height_optical(
+            f.grid, f.map, &f.camera, &f.assets, &f.world,
+            &f.surfaces, &f.heights, &view, GENERATION);
+        for (int x = GRID_WIDTH / 4; x <= 3 * GRID_WIDTH / 4; x++) {
+            double screen_x = 2.0 * (x + 0.5) / GRID_WIDTH - 1.0;
+            double ray_offset = atan(screen_x * tan(f.camera.fov / 2.0));
+            double ray_angle = f.camera.transform.angle + ray_offset;
+            double correction = cos(ray_offset);
+            double total_ray_distance =
+                (5.0 - camera_x[pose]) / cos(ray_angle);
+            for (int y = 0; y < GRID_HEIGHT; y++) {
+                double row_delta = y + 0.5 -
+                    camera_horizon_row(&f.camera, GRID_HEIGHT);
+                double world_z = f.camera.z - row_delta * correction *
+                    total_ray_distance / GRID_HEIGHT;
+                bool inside_wall = world_z > 0.0001 && world_z < 0.9999;
+                bool outside_wall = world_z < -0.0001 || world_z > 1.0001;
+                Cell actual;
+                assert_true(grid_get(f.grid, x, y, &actual));
+                if (inside_wall) {
+                    assert_int_equal(actual.glyph, 'W');
+                    reflected_rows++;
+                } else if (outside_wall) {
+                    assert_int_not_equal(actual.glyph, 'W');
+                }
+            }
+        }
+        assert_true(reflected_rows > 1);
+    }
     fixture_destroy(&f);
 }
 
@@ -743,6 +809,7 @@ int main(void) {
         cmocka_unit_test(test_full_mirror_renders_reflected_wall_and_keeps_frontier),
         cmocka_unit_test(test_parallel_wall_reflection_has_straight_horizontal_edges),
         cmocka_unit_test(test_reflected_camera_preserves_vertical_viewpoint),
+        cmocka_unit_test(test_planar_mirror_distance_sweep_matches_projection),
         cmocka_unit_test(test_partial_mirror_and_reflected_opening_darkness),
         cmocka_unit_test(test_mirror_cache_reuses_column_and_reflected_mirror_is_terminal),
         cmocka_unit_test(test_second_mirror_plane_in_column_is_bounded_darkness)

@@ -49,6 +49,10 @@ static bool prepare_reflected_column(
             &cache->reflected_column, &cache->reflected_camera,
             incoming->map, incoming->heights, 1, incoming->viewport_height,
             0, max_distance)) return false;
+    if (!heightfield_trace_set_projection_path(
+            &cache->reflected_column,
+            mirror_hit->distance + MIRROR_TRACE_ORIGIN_EPSILON,
+            incoming->correction)) return false;
     cache->mirror_world_x = mirror_hit->world_x;
     cache->mirror_world_y = mirror_hit->world_y;
     cache->mirror_side = mirror_hit->side;

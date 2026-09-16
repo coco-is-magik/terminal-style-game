@@ -345,7 +345,8 @@ and scaling tests pass.
 
 ## V1-2 — Mirror correction reconciliation
 
-**Status:** Evidence-blocked unless V1-0 proves a defect distinct from the verified fix.
+**Status:** Activated and corrected on 2026-09-16 after a distinct general projection
+defect was reproduced with an analytic distance-sweep fixture.
 
 **Purpose:** Correct only a still-reproducible planar-reflection defect; do not duplicate
 or destabilize the existing camera-Z correction.

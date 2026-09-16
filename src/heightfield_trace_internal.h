@@ -21,7 +21,8 @@ static double heightfield_upper_bound(const SceneAuthoredCell *cell) {
 static HeightfieldHit heightfield_horizontal_hit(
     const Camera *camera, const SceneAuthoredCell *cell,
     double floor_z, double ceiling_z, int map_x, int map_y,
-    int viewport_height, double row_delta, double correction,
+    int viewport_height, double row_delta, double distance_offset,
+    double correction,
     double dir_x, double dir_y, double enter, double exit
 ) {
     HeightfieldHit best = {0};
@@ -34,7 +35,7 @@ static HeightfieldHit heightfield_horizontal_hit(
     z = floor_surface ? floor_z : ceiling_z;
     perpendicular = (camera->z - z) * viewport_height / row_delta;
     if (perpendicular <= HEIGHTFIELD_TRACE_EPSILON) return best;
-    distance = perpendicular / correction;
+    distance = perpendicular / correction - distance_offset;
     if (distance + HEIGHTFIELD_TRACE_EPSILON < enter ||
         distance > exit + HEIGHTFIELD_TRACE_EPSILON) return best;
     best.hit = true;

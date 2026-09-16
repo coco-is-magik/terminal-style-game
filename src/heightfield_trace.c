@@ -68,6 +68,8 @@ bool heightfield_trace_prepare_column(
     column->step_y = dir_y < 0.0 ? -1 : 1;
     column->direction_x = dir_x;
     column->direction_y = dir_y;
+    column->projection_distance_offset = 0.0;
+    column->projection_correction = column->correction;
     column->delta_x = fabs(1.0 / (fabs(dir_x) <= HEIGHTFIELD_TRACE_EPSILON ? HEIGHTFIELD_TRACE_EPSILON : dir_x));
     column->delta_y = fabs(1.0 / (fabs(dir_y) <= HEIGHTFIELD_TRACE_EPSILON ? HEIGHTFIELD_TRACE_EPSILON : dir_y));
     column->initial_side_x = (dir_x < 0.0 ? camera->transform.pos.x - map_x
@@ -133,6 +135,17 @@ bool heightfield_trace_prepare_column(
     return true;
 }
 
+bool heightfield_trace_set_projection_path(
+    HeightfieldTraceColumn *column, double distance_offset, double correction
+) {
+    if (!column || !column->valid || !isfinite(distance_offset) ||
+        distance_offset < 0.0 || !isfinite(correction) ||
+        correction <= HEIGHTFIELD_TRACE_EPSILON) return false;
+    column->projection_distance_offset = distance_offset;
+    column->projection_correction = correction;
+    return true;
+}
+
 static bool heightfield_trace_sample_interval(
     const HeightfieldTraceColumn *column, double row_delta,
     size_t interval_index, HeightfieldHit *out_hit
@@ -144,12 +157,14 @@ static bool heightfield_trace_sample_interval(
     double dir_x;
     double dir_y;
     double correction;
+    double distance_offset;
     camera = column->camera;
     map = column->map;
     viewport_height = column->viewport_height;
     dir_x = column->direction_x;
     dir_y = column->direction_y;
-    correction = column->correction;
+    correction = column->projection_correction;
+    distance_offset = column->projection_distance_offset;
     {
         int map_x = column->interval_map_x[interval_index];
         int map_y = column->interval_map_y[interval_index];
@@ -172,7 +187,8 @@ static bool heightfield_trace_sample_interval(
         horizontal = heightfield_horizontal_hit(
             camera, cell, column->interval_floor_z[interval_index],
             column->interval_ceiling_z[interval_index], map_x, map_y,
-            viewport_height, row_delta, correction, dir_x, dir_y, enter, exit);
+            viewport_height, row_delta, distance_offset, correction,
+            dir_x, dir_y, enter, exit);
         if (horizontal.hit) {
             *out_hit = horizontal;
             return true;
@@ -182,7 +198,7 @@ static bool heightfield_trace_sample_interval(
             *out_hit = none;
             return true;
         }
-        perpendicular = exit * correction;
+        perpendicular = (distance_offset + exit) * correction;
         z = camera->z - row_delta * perpendicular / viewport_height;
         if (heightfield_boundary_span(cell, column->interval_next_cell[interval_index], z,
                           &kind, &material, &owner_is_to)) {
@@ -252,7 +268,8 @@ HeightfieldHit heightfield_trace_prepared_opaque_sample(
             double perpendicular =
                 (camera->z - z) * column->viewport_height / row_delta;
             if (perpendicular > HEIGHTFIELD_TRACE_EPSILON) {
-                double distance = perpendicular / column->correction;
+                double distance = perpendicular / column->projection_correction -
+                    column->projection_distance_offset;
                 size_t low = start;
                 size_t high = end + 1U;
                 while (low < high) {
@@ -333,7 +350,8 @@ bool heightfield_trace_collect(const HeightfieldTraceColumn *column, int screen_
         horizontal = heightfield_horizontal_hit(
             camera, cell, column->interval_floor_z[interval_index],
             column->interval_ceiling_z[interval_index], map_x, map_y,
-            viewport_height, row_delta, column->correction,
+            viewport_height, row_delta, column->projection_distance_offset,
+            column->projection_correction,
             column->direction_x, column->direction_y, enter, exit);
         if (horizontal.hit) {
             collect_hit(&result, capacity, &horizontal);
@@ -344,7 +362,8 @@ bool heightfield_trace_collect(const HeightfieldTraceColumn *column, int screen_
             result.terminal_opening = true;
             break;
         }
-        perpendicular = exit * column->correction;
+        perpendicular = (column->projection_distance_offset + exit) *
+            column->projection_correction;
         z = camera->z - row_delta * perpendicular / viewport_height;
         if (heightfield_boundary_span(cell, column->interval_next_cell[interval_index], z,
                           &kind, &material, &owner_is_to)) {
