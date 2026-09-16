@@ -394,6 +394,71 @@ static void test_projection_path_validation_is_transactional(void **state) {
     assert_float_equal(column.projection_correction, correction, 0.0000001);
 }
 
+static void assert_continuation_sample_matches(
+    HeightfieldTraceColumn *column, const OpticalRuntimeView *view,
+    int screen_y, HeightfieldHitKind kind, double expected_distance,
+    double expected_perpendicular, double expected_z
+) {
+    HeightfieldHit generic = heightfield_trace_prepared_sample(column, screen_y);
+    HeightfieldHit opaque =
+        heightfield_trace_prepared_opaque_sample(column, screen_y);
+    HeightfieldOpticalResult selective;
+    assert_true(generic.hit);
+    assert_int_equal(generic.kind, kind);
+    assert_float_equal(generic.distance, expected_distance, 0.0000001);
+    assert_float_equal(generic.perpendicular_distance,
+                       expected_perpendicular, 0.0000001);
+    assert_float_equal(generic.world_z, expected_z, 0.0000001);
+    assert_hit_equal(&opaque, &generic);
+    assert_true(heightfield_trace_selective(
+        column, view, GENERATION, screen_y, &selective));
+    assert_int_equal(selective.count, 1U);
+    assert_hit_equal(&selective.layers[0].hit, &generic);
+}
+
+static void test_projection_path_controls_wall_floor_and_ceiling_samples(void **state) {
+    SelectiveFixture fixture;
+    HeightfieldTraceColumn column;
+    OpticalRuntimeView view;
+    double row_delta;
+    double perpendicular;
+    double distance;
+    (void)state;
+    fixture_init(&fixture);
+    assert_true(optical_runtime_view_init(
+        &view, fixture.heights.cell_count, NULL, 0U, NULL, 0U, GENERATION));
+
+    fixture_wall(&fixture, 3, 10U);
+    column = prepare_column(&fixture);
+    assert_true(heightfield_trace_set_projection_path(&column, 2.5, 0.75));
+    row_delta = 24.5 - 20.0;
+    perpendicular = (2.5 + 1.5) * 0.75;
+    assert_continuation_sample_matches(
+        &column, &view, 24, HEIGHTFIELD_HIT_WALL, 1.5,
+        perpendicular,
+        fixture.camera.z - row_delta * perpendicular / VIEWPORT_HEIGHT);
+
+    fixture.cells[fixture_index(3, 2)].occupancy = SCENE_CELL_OCCUPANCY_EMPTY;
+    fixture.cells[fixture_index(3, 2)].wall_material = 0U;
+    fixture.map_cells[fixture_index(3, 2)].material_id = 0U;
+    column = prepare_column(&fixture);
+    assert_true(heightfield_trace_set_projection_path(&column, 0.5, 0.8));
+
+    row_delta = 30.5 - 20.0;
+    perpendicular = fixture.camera.z * VIEWPORT_HEIGHT / row_delta;
+    distance = perpendicular / 0.8 - 0.5;
+    assert_continuation_sample_matches(
+        &column, &view, 30, HEIGHTFIELD_HIT_FLOOR, distance,
+        perpendicular, 0.0);
+
+    row_delta = 10.5 - 20.0;
+    perpendicular = (fixture.camera.z - 1.0) * VIEWPORT_HEIGHT / row_delta;
+    distance = perpendicular / 0.8 - 0.5;
+    assert_continuation_sample_matches(
+        &column, &view, 10, HEIGHTFIELD_HIT_CEILING, distance,
+        perpendicular, 1.0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_opaque_default_matches_nearest_fast_path),
@@ -406,7 +471,8 @@ int main(void) {
         cmocka_unit_test(test_four_transparent_layers_exhaust_cap),
         cmocka_unit_test(test_sparse_owner_cell_override_beats_material),
         cmocka_unit_test(test_invalid_inputs_preserve_output),
-        cmocka_unit_test(test_projection_path_validation_is_transactional)
+        cmocka_unit_test(test_projection_path_validation_is_transactional),
+        cmocka_unit_test(test_projection_path_controls_wall_floor_and_ceiling_samples)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

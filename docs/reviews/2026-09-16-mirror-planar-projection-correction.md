@@ -44,18 +44,26 @@ using only the local reflected segment.
 ## Regression coverage
 
 `test-optical-render` contains a synthetic full planar mirror and reflected wall. It
-sweeps near, middle, and far camera positions with changing camera height, fractional
-pitch, yaw, and off-axis columns. Final grid cells are checked against an analytic
-complete-path projection oracle rather than bilateral symmetry or a checksum alone.
+independently sweeps near, middle, and far camera positions, negative and positive yaw,
+camera height, fractional pitch, and off-axis columns. Final grid cells are checked
+against an analytic complete-path projection oracle rather than bilateral symmetry or
+a checksum alone.
 
-`test-heightfield-selective` also protects normal projection defaults and
-transactional validation of explicit continuation projection state.
+`test-heightfield-selective` also protects normal projection defaults, transactional
+validation of explicit continuation projection state, and direct accumulated-depth
+oracles for wall, floor, and ceiling hits through generic, opaque, and selective
+samplers.
+
+Manual native-display verification confirmed that an ordinary reflective wall remains
+straight and perspective-correct while approaching, backing away, and viewing it
+obliquely. The issue is closed with the analytic regressions above as its permanent
+guard.
 
 ## Verification
 
 - Strict C11 application build with `-Wall -Wextra -Wpedantic -Werror`: pass.
 - Complete functional aggregate: pass; optical rendering passes 21/21 and
-  heightfield selective tracing passes 11/11.
+  heightfield selective tracing passes 12/12.
 - `standards-core`: pass. Full `make check` reported `FAIL-MISSING-TOOL` because
   `cppcheck` is not installed; no static-analysis result is claimed.
 - Shipping optical benchmark: pass under the unchanged 6 ms budget; mirror path

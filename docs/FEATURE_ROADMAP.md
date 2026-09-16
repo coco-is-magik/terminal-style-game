@@ -345,8 +345,8 @@ and scaling tests pass.
 
 ## V1-2 — Mirror correction reconciliation
 
-**Status:** Activated and corrected on 2026-09-16 after a distinct general projection
-defect was reproduced with an analytic distance-sweep fixture.
+**Status:** Closed on 2026-09-16 after the distinct general projection defect was
+reproduced, corrected, manually confirmed, and locked by analytic regression fixtures.
 
 **Purpose:** Correct only a still-reproducible planar-reflection defect; do not duplicate
 or destabilize the existing camera-Z correction.

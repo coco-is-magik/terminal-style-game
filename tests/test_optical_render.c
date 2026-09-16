@@ -595,10 +595,20 @@ static void test_reflected_camera_preserves_vertical_viewpoint(void **state) {
 }
 
 static void test_planar_mirror_distance_sweep_matches_projection(void **state) {
-    static const double camera_x[] = {1.25, 1.75, 2.25};
-    static const double camera_z[] = {0.65, 0.75, 0.85};
-    static const double camera_pitch[] = {-0.4, 0.0, 0.35};
-    static const double camera_angle[] = {-0.12, 0.0, 0.14};
+    static const struct {
+        double x;
+        double z;
+        double pitch;
+        double angle;
+    } poses[] = {
+        {1.25, 0.75, 0.0, 0.0},
+        {1.75, 0.75, 0.0, 0.0},
+        {2.25, 0.75, 0.0, 0.0},
+        {1.75, 0.75, 0.0, -0.14},
+        {1.75, 0.75, 0.0, 0.14},
+        {1.75, 0.65, -0.4, 0.0},
+        {1.75, 0.85, 0.35, 0.0}
+    };
     Fixture f;
     OpticalExtension materials[21] = {0};
     OpticalRuntimeView view;
@@ -617,12 +627,12 @@ static void test_planar_mirror_distance_sweep_matches_projection(void **state) {
     materials[10] = mirror(255U);
     assert_true(optical_runtime_view_init(
         &view, WIDTH * HEIGHT, materials, 21U, NULL, 0U, GENERATION));
-    for (size_t pose = 0U; pose < sizeof(camera_x) / sizeof(camera_x[0]); pose++) {
+    for (size_t pose = 0U; pose < sizeof(poses) / sizeof(poses[0]); pose++) {
         int reflected_rows = 0;
-        f.camera.transform.pos.x = camera_x[pose];
-        f.camera.z = camera_z[pose];
-        f.camera.pitch = camera_pitch[pose];
-        f.camera.transform.angle = camera_angle[pose];
+        f.camera.transform.pos.x = poses[pose].x;
+        f.camera.z = poses[pose].z;
+        f.camera.pitch = poses[pose].pitch;
+        f.camera.transform.angle = poses[pose].angle;
         raycast_render_height_optical(
             f.grid, f.map, &f.camera, &f.assets, &f.world,
             &f.surfaces, &f.heights, &view, GENERATION);
@@ -632,7 +642,7 @@ static void test_planar_mirror_distance_sweep_matches_projection(void **state) {
             double ray_angle = f.camera.transform.angle + ray_offset;
             double correction = cos(ray_offset);
             double total_ray_distance =
-                (5.0 - camera_x[pose]) / cos(ray_angle);
+                (5.0 - poses[pose].x) / cos(ray_angle);
             for (int y = 0; y < GRID_HEIGHT; y++) {
                 double row_delta = y + 0.5 -
                     camera_horizon_row(&f.camera, GRID_HEIGHT);

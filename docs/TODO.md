@@ -837,12 +837,14 @@ interaction with translucency/invisible geometry. Scoped as RQ4/P4 in
 [`archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md`](archive/r9/R9_OPTICAL_RESEARCH_PLAN_2026-08-21.md) (single bounded bounce first;
 mirror-facing-mirror stays out of the prototype).
 
-**Planar mirror projection corrected (2026-09-16):** The 2026-09-12 change preserved
+**Planar mirror projection — Closed (2026-09-16):** The 2026-09-12 change preserved
 incoming camera Z and removed a row-dependent asymmetric defect, but reflected
 projection still omitted camera-to-mirror depth and source-column correction. Reflected
 continuation columns now retain the complete optical-path projection. A deterministic
 near/mid/far fixture checks final cells against an analytic oracle across yaw, off-axis
-columns, camera height, and fractional pitch without broadening one-bounce scope.
+columns, camera height, and fractional pitch without broadening one-bounce scope. Direct
+wall/floor/ceiling continuation oracles and manual approach, retreat, and oblique-view
+confirmation complete the closure evidence.
 
 ### Complete mirror contents — **Deferred renderer/scene integration**
 
