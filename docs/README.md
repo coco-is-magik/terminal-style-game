@@ -67,6 +67,18 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-15-v1-0-w5-native-windows-functional.md`](reviews/2026-09-15-v1-0-w5-native-windows-functional.md)
   — scoped native Windows strict application and complete 64-runner evidence, Make link policy,
   persistence and fixture corrections, stack-bound remediation, failures, and L1/W6 handoff.
+- [`reviews/2026-09-16-v1-0-closeout.md`](reviews/2026-09-16-v1-0-closeout.md)
+  — final V1-0 exit-gate reconciliation, native Linux display/input result, residual
+  limitations, and V1-1 handoff.
+- [`reviews/2026-09-16-cppcheck-gate-recovery.md`](reviews/2026-09-16-cppcheck-gate-recovery.md)
+  — cppcheck 2.18.2 findings, narrow source/gate corrections, timeout classification,
+  and final real `make standards`/`make check` evidence.
+- [`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md)
+  — active V1-1 decision ledger, invariants, evidence requirements, incremental design,
+  and implementation stop boundary.
+- [`reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md`](reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md)
+  — current application/editor versus authored-Menu ownership, literal/token candidates,
+  scale/viewport assumptions, non-token content, and focused regression owners.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

@@ -264,7 +264,9 @@ parallel models.
 
 ## V1-0 — Baseline, required-platform remediation, and evidence reconciliation
 
-**Status:** Active — B0 baseline evidence and inventories.
+**Status:** Verified on 2026-09-16. Baseline/platform remediation, native Linux
+display/input acceptance, performance/stability, byte inventory, and the distinct mirror
+correction all passed their recorded exit gates.
 
 **Purpose:** Establish an unchanged baseline and make Linux/Windows first-class
 constraints before cross-platform file, text, font, input, and packaging work.
@@ -291,6 +293,7 @@ silently interpreted through a host code page.
 
 **Detailed plan:**
 [`V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md`](V1_0_REQUIREMENTS_AND_EVIDENCE_PLAN_2026-09-14.md).
+Closeout: [`reviews/2026-09-16-v1-0-closeout.md`](reviews/2026-09-16-v1-0-closeout.md).
 
 **P1 reproduction result (2026-09-15):** The physical-host surface-render failure is
 repeatable and deterministic in the current opaque prepared-heightfield path.
@@ -317,7 +320,8 @@ V1-20 dependency reconciliation.
 
 ## V1-1 — UI architecture, measurable design rules, and semantic tokens
 
-**Status:** Committed v1 outcome; Ready for Q1 after V1-0 baseline.
+**Status:** Ready for Q1; requirements/design work started on 2026-09-16. Implementation
+remains blocked until the measurable D1-D7 decisions pass.
 
 **Purpose:** Convert visual inspiration into reusable, enforceable UI rules without
 merging editor UI and authored game UI.
@@ -342,6 +346,9 @@ family at a time; retain the old view until its replacement passes.
 [`UI_DESIGN_AND_TEST_STANDARDS.md`](UI_DESIGN_AND_TEST_STANDARDS.md) with named focused
 runners. Existing UI ownership, parsing, persistence, traversal, clipping, painter order,
 and scaling tests pass.
+
+**Q1 plan:**
+[`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md).
 
 ## V1-2 — Mirror correction reconciliation
 

@@ -2,9 +2,10 @@
 
 ## Status and authority
 
-**Active: B0/C1 evidence captured; W1 through W5, scoped native Windows verification,
-L1, P1 through P3 performance work, and Clang diagnostic continuation complete; mirror
-disposition and final evidence reconciliation remain open.**
+**Verified and closed on 2026-09-16.** B0/C1, W1-W5, scoped native Windows
+verification, L1 native Linux display/input acceptance, P1-P3 performance work, byte
+inventory, Clang diagnostic continuation, and mirror disposition are complete. See
+[`reviews/2026-09-16-v1-0-closeout.md`](reviews/2026-09-16-v1-0-closeout.md).
 
 This is the focused execution plan for
 [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) phase **V1-0 — Baseline,
@@ -179,6 +180,15 @@ default tracker: USE_SMC_STREAM_STATE_TRACKER=1
 `cppcheck` and `valgrind` were not found on this host's command path. This is tool
 availability evidence only. `make standards` and native Valgrind were not run and are
 not passed; the canonical container leak gate remains separate.
+
+**Post-closeout cppcheck result (2026-09-16):** Cppcheck 2.18.2 later became available.
+Four serializer pointer-array findings were resolved with explicit initialization. The
+gate now narrowly suppresses only the tool's normal branch/configuration scope
+information while retaining defect exit status 100 and a repository-owned policy guard.
+Real `make standards` and complete `make -j2 check` pass. The first serial full-gate
+attempt timed out after all functional runners passed and is retained as
+`FAIL-TIMEOUT`. See
+[`reviews/2026-09-16-cppcheck-gate-recovery.md`](reviews/2026-09-16-cppcheck-gate-recovery.md).
 
 ### Passed gates
 
@@ -503,6 +513,12 @@ clipboard, and IME receive their complete semantic gates in later owning phases.
 **Rollback:** Harnesses remain adapters over normal application behavior; no display-only
 logic enters domains.
 
+**L1 result (2026-09-16):** `make display-acceptance-linux` passed on native X11 with
+the SDL X11/OpenGL path. Presentation, EWMH resize, keyboard, synthetic-host XTest
+pointer motion/down/up, application-state transition, and bounded teardown passed over
+12.042 seconds and 1,459 frames. The captured presentation was 1366x768. XTest is not
+claimed as physical-device input.
+
 ### M1 — Distinct mirror report only
 
 If new evidence exists, first add a failing deterministic fixture and identify the earliest
@@ -562,10 +578,10 @@ V1-0 may become Verified only when:
 
 ## Current handoff
 
-P2/P3 surface and optical performance work is complete; both `benchmark-headless` and
-`stability-headless` pass. Proceed with M1 mirror-report disposition: either record that the
-known report is covered by the existing planar curvature, vertical-viewpoint, bilateral-edge,
-one-bounce/cache, opening, and second-mirror fixtures, or require a distinct reproducible
-failing scene before changing mirror source. Then perform final V1-0 evidence reconciliation.
-The four-file owned-upstream SMC correction remains deferred to V1-20 and guarded by the
-strict informational Clang diagnostic sweep.
+V1-0 is Verified. The distinct mirror report was reproduced, corrected, manually
+confirmed, and regression-guarded; complete headless benchmark/stability aggregates and
+native Linux display/input acceptance pass. Proceed with V1-1 Q1 through
+`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`. Do not begin V1-3 pointer/motion
+implementation until V1-1 accepts measurable motion, reduced-motion, focus, scale, and
+viewport rules. The four-file owned-upstream SMC correction remains deferred to V1-20
+and guarded by the strict informational Clang diagnostic sweep.

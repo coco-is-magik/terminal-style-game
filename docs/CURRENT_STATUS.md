@@ -18,7 +18,9 @@ activation path.
 
 The dependency-aware roadmap from the verified R0-R12 foundation through v1.0 was
 accepted on 2026-09-14. **V1-0 — Baseline, required-platform remediation, and
-evidence reconciliation** is Active. B0/C1 evidence is captured and W1 through W5 are complete.
+evidence reconciliation** is Verified and closed as of 2026-09-16. B0/C1, W1-W5,
+native Linux display/input acceptance, P1-P3 performance work, byte inventory, and
+mirror disposition are complete.
 Native Windows verification is deliberately limited to two product checks under one command:
 strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
 `PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
@@ -27,9 +29,7 @@ when it is off and never stops it. Windows VM benchmarks, stability workloads, s
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
 performance measurements are non-qualifying and are not Windows product failures. The VM was
-already running and remained running. P1 through P3 performance work is complete; mirror
-report disposition and final evidence reconciliation remain open. Pinned-SMC newline
-maintenance is deferred to V1-20.
+already running and remained running. Pinned-SMC newline maintenance is deferred to V1-20.
 The display procedure is defined in
 [`DISPLAY_INPUT_ACCEPTANCE.md`](DISPLAY_INPUT_ACCEPTANCE.md).
 Its focused execution authority is
@@ -37,12 +37,22 @@ Its focused execution authority is
 Production portability changes are underway through isolated platform capabilities and
 owner-by-owner persistence migrations.
 
-V1-0 must also reconcile any current mirror report with the planar reflected-curvature
-defect already reproduced, corrected, and guarded on 2026-09-12. Mirror source changes
-remain evidence-blocked unless a distinct failing scene is captured. In parallel,
-documentation-only Q1 preparation may inventory measurable UI rules and Unicode/font
-research. Sprite-painter behavior characterization may proceed under a focused plan, but
-final glyph-aware workbench formats depend on the Unicode/glyph foundation.
+The distinct planar mirror projection defect was reproduced, corrected, manually
+confirmed, and locked by analytic final-frame and continuation-path regressions on
+2026-09-16. Native Linux X11 display/input acceptance also passed presentation, resize,
+keyboard, pointer motion/down/up, state transition, and bounded teardown. The closeout
+record is
+[`reviews/2026-09-16-v1-0-closeout.md`](reviews/2026-09-16-v1-0-closeout.md).
+
+The next safe action is **V1-1 Q1 requirements/design** under
+[`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md).
+The current UI literal/consumer inventory is complete in
+[`reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md`](reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md).
+Next, prepare concrete D1-D7 candidate values/formulas with cited accessibility sources
+and present them for product approval. Do not add token APIs, migrate components, or
+begin V1-3 pointer/motion implementation before those decisions are accepted. Sprite-painter behavior
+characterization may proceed only under its own focused plan; final glyph-aware formats
+still depend on the Unicode/glyph foundation.
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;
@@ -222,8 +232,9 @@ The W1 design selects isolated `platform_fs`, `platform_catalog`,
 serialization/history/dirty state; distinguishes commit state; keeps sprite-folder
 publication separate; rejects Windows reparse points in managed directories/catalogs; and
 requires strict UTF-8 wide APIs plus exact Linux/UCRT numeric parity. W4 has now proven that
-parity, and W5 has proven the complete headless native Windows functional profile. The next safe
-platform increment is L1/W6 display/input acceptance on native Linux and Windows hosts. See
+parity, and W5 has proven the complete headless native Windows functional profile. Native Linux
+L1 display/input acceptance passed on 2026-09-16; native Windows display automation is outside
+the accepted Windows profile. See
 [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md).
 
 The current future-work inventory is [`TODO.md`](TODO.md). Roadmap sequencing and
@@ -242,9 +253,12 @@ project-wide standards gates, and established typed tool-failure handling. The
 implementation and current Gentoo Valgrind `FAIL-TOOL` evidence are recorded in
 [`reviews/2026-09-12-verification-policy-and-tool-failure.md`](reviews/2026-09-12-verification-policy-and-tool-failure.md).
 At that pre-expansion checkpoint, the complete 60-runner suite and repository-owned
-standards guards passed. That historical run found cppcheck product findings in
-`src/scene_format.c`; the fresh 2026-09-14 B0 environment has no `cppcheck` on its
-command path, so current `make standards` evidence is unavailable and is not claimed.
+standards guards passed. The 2026-09-14 B0 environment had no cppcheck on its command
+path. Cppcheck 2.18.2 became available on 2026-09-16: its four serializer pointer-array
+findings were resolved through explicit bounded-array initialization, its two
+analysis-scope information IDs were narrowly classified, and real `make standards` plus
+complete `make -j2 check` now pass. See
+[`reviews/2026-09-16-cppcheck-gate-recovery.md`](reviews/2026-09-16-cppcheck-gate-recovery.md).
 Native Valgrind also remains unavailable on the current command path; the canonical
 pinned Ubuntu 24.04 amd64 container gate retains the recorded focused Memcheck evidence
 for `test-decal-io` and `test-core`.

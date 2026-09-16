@@ -82,6 +82,11 @@ The following need a focused design decision before tests can enforce them:
 - native pointer behavior after display coordinate conversion;
 - screenshot/pixel appearance across render backends and fonts.
 
+These decisions are now tracked as D1-D7 in
+[`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md).
+That plan is active requirements/design work, not an accepted rule set or implementation
+authorization.
+
 When a rule is accepted, add it here first as a measurable invariant, identify one
 focused runner, add normal/boundary/failure coverage, and only then include it in
 `make test-ui-standards`. Do not enforce subjective appearance through brittle
