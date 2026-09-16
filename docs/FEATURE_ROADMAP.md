@@ -379,8 +379,11 @@ one-bounce correctness and performance remain within the accepted envelope.
 
 ## V1-3 — Pointer model and major-context motion
 
-**Status:** Committed v1 outcome; ready for focused planning after D1/D6 approval. No
-real-context integration has begun, and pointer-coordinate requirements remain in scope.
+**Status:** I1 pause-context motion is implemented and passes automated gates: stable menu,
+separate decorative layer, explicit-time enter/exit, and session-only reduced motion. Native
+visual review is pending; no second context is authorized. Pointer-coordinate requirements
+remain in scope. See
+[`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md).
 
 **Purpose:** Supply coherent pointer and transition semantics before graph, canvas,
 timeline, and richer editor work.

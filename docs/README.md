@@ -97,6 +97,12 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
   — pure explicit-time registration/reassembly model, isolated motion specimen, automated
   evidence, failures, rollback, accepted D6 decision, and V1-3 integration boundary.
+- [`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md)
+  — first real-context motion plan: stable pause menu, separate decorative layer,
+  session-only reduced motion, deterministic tests, rollback, and one-context stop gate.
+- [`reviews/2026-09-16-v1-3-pause-context-motion-i1.md`](reviews/2026-09-16-v1-3-pause-context-motion-i1.md)
+  — implemented first pause-context consumer, preserved interaction invariants, automated
+  evidence, development corrections, rollback boundary, and pending native review.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

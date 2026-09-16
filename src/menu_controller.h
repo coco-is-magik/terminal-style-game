@@ -19,6 +19,7 @@ typedef enum {
     MENU_ACTION_UI_SCALE_DECREASE,
     MENU_ACTION_UI_SCALE_INCREASE,
     MENU_ACTION_UI_SCALE_RESET,
+    MENU_ACTION_TOGGLE_REDUCED_MOTION,
     MENU_ACTION_BACK
 } MenuAction;
 
@@ -26,6 +27,9 @@ MenuAction menu_controller_parse_action(const char *action);
 void menu_controller_consume_confirm(bool *confirm_pressed,
                                      bool *editor_confirm_pressed,
                                      bool action_handled);
+
+/** Toggles one session-only option; null is rejected without side effects. */
+bool menu_controller_toggle_session_option(bool *value);
 
 /** Resolve menu actions whose application-state transition is unconditional. */
 bool menu_controller_state_transition(MenuAction action, AppState current,

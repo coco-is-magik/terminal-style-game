@@ -15,6 +15,8 @@ static void test_menu_actions(void **state) {
     assert_int_equal(menu_controller_parse_action("ui_scale_decrease"), MENU_ACTION_UI_SCALE_DECREASE);
     assert_int_equal(menu_controller_parse_action("ui_scale_increase"), MENU_ACTION_UI_SCALE_INCREASE);
     assert_int_equal(menu_controller_parse_action("ui_scale_reset"), MENU_ACTION_UI_SCALE_RESET);
+    assert_int_equal(menu_controller_parse_action("toggle_reduced_motion"),
+                     MENU_ACTION_TOGGLE_REDUCED_MOTION);
     assert_int_equal(menu_controller_parse_action("back"), MENU_ACTION_BACK);
     assert_int_equal(menu_controller_parse_action(NULL), MENU_ACTION_UNKNOWN);
     assert_int_equal(menu_controller_parse_action("other"), MENU_ACTION_UNKNOWN);
@@ -38,6 +40,16 @@ static void test_handled_menu_action_consumes_confirm(void **state) {
     assert_true(editor_confirm_pressed);
 
     menu_controller_consume_confirm(NULL, NULL, true);
+}
+
+static void test_session_option_toggle_is_immediate_and_transactional(void **state) {
+    bool value = false;
+    (void)state;
+    assert_true(menu_controller_toggle_session_option(&value));
+    assert_true(value);
+    assert_true(menu_controller_toggle_session_option(&value));
+    assert_false(value);
+    assert_false(menu_controller_toggle_session_option(NULL));
 }
 
 static void test_application_state_transitions(void **state) {
@@ -83,6 +95,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_menu_actions),
         cmocka_unit_test(test_handled_menu_action_consumes_confirm),
+        cmocka_unit_test(test_session_option_toggle_is_immediate_and_transactional),
         cmocka_unit_test(test_application_state_transitions),
         cmocka_unit_test(test_scenario_dispatch),
     };

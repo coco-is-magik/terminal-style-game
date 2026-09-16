@@ -32,6 +32,7 @@
 #include "ui_preferences.h"
 #include "ui_app_theme_adapter.h"
 #include "ui_motion_demo_runtime.h"
+#include "ui_pause_motion.h"
 #include "ui_theme_demo_runtime.h"
 #include "menu_state.h"
 #include "unified_editor.h"
@@ -60,6 +61,7 @@
 
 enum {
     APP_UI_ROLE_MENU = 1,
+    APP_UI_ROLE_PAUSE_MOTION,
     APP_UI_ROLE_HUD,
     APP_UI_ROLE_EDITOR,
     APP_UI_ROLE_FOOTER,
@@ -75,6 +77,7 @@ typedef struct {
 typedef struct {
     Grid *staging;
     UiCanvas *menu;
+    UiCanvas *pause_motion;
     UiCanvas *hud;
     UiCanvas *editor;
     UiCanvas *footer;
@@ -89,6 +92,7 @@ static void app_ui_resources_destroy(AppUiResources *ui) {
     ui_canvas_destroy(ui->footer);
     ui_canvas_destroy(ui->editor);
     ui_canvas_destroy(ui->hud);
+    ui_canvas_destroy(ui->pause_motion);
     ui_canvas_destroy(ui->menu);
     grid_destroy(ui->staging);
     memset(ui, 0, sizeof(*ui));
@@ -103,12 +107,13 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
     memset(ui, 0, sizeof(*ui));
     ui->staging = grid_create(grid_width, grid_height);
     ui->menu = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
+    ui->pause_motion = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
     ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
     ui->editor = ui_canvas_create(APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
     ui->footer = ui_canvas_create(APP_UI_FOOTER_WIDTH, 2);
     ui->feedback = ui_canvas_create(APP_UI_FEEDBACK_WIDTH, 1);
     ui->crosshair = ui_canvas_create(1, 1);
-    if (!ui->staging || !ui->menu || !ui->hud || !ui->editor || !ui->footer ||
+    if (!ui->staging || !ui->menu || !ui->pause_motion || !ui->hud || !ui->editor || !ui->footer ||
         !ui->feedback || !ui->crosshair) {
         app_ui_resources_destroy(ui);
         return false;
@@ -225,7 +230,8 @@ static bool reserve_dynamic_ui_text(UiCache *cache) {
     static const char *const names[] = {
         "hud_grid", "hud_frame", "hud_mode", "hud_target_fps",
         "hud_actual_fps", "hud_avg_frame", "hud_worst_frame",
-        "hud_min_spare", "hud_status", "settings_ui_scale_value"
+        "hud_min_spare", "hud_status", "settings_ui_scale_value",
+        "settings_reduced_motion_value"
     };
     size_t i;
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
@@ -248,6 +254,40 @@ static void update_settings_scale_text(UiCache *cache,
     if (!cache || !preferences) return;
     snprintf(text, sizeof(text), "UI Scale: %d%%", ui_preferences_scale(preferences));
     set_ui_text(cache, "settings_ui_scale_value", text);
+}
+
+static void update_settings_reduced_motion_text(UiCache *cache,
+                                                bool reduced_motion) {
+    set_ui_text(cache, "settings_reduced_motion_value",
+                reduced_motion ? "Reduced Motion: ON" : "Reduced Motion: OFF");
+}
+
+static bool draw_pause_motion_decoration(UiCanvas *canvas,
+                                         const UiPauseMotionSample *sample) {
+    static const int base_x[] = {27, 30, 33, 36, 39, 42, 45, 48, 51, 54};
+    static const int base_y[] = {5, 5, 5, 5, 5, 24, 24, 24, 24, 24};
+    static const uint8_t glyphs[] = {'+', '-', ':', '+', '-', ':', '-', '+', ':', '-'};
+    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    SDL_Color background = {palette->canvas.red, palette->canvas.green,
+                            palette->canvas.blue, palette->canvas.alpha};
+    SDL_Color accent = {palette->accent.red, palette->accent.green,
+                        palette->accent.blue, palette->accent.alpha};
+    SDL_Color focus = {palette->focus.red, palette->focus.green,
+                       palette->focus.blue, palette->focus.alpha};
+    size_t i;
+    if (!canvas || !sample) return false;
+    ui_canvas_clear(canvas);
+    if (!sample->decoration_visible) return true;
+    for (i = 0U; i < sizeof(base_x) / sizeof(base_x[0]); i++) {
+        UiMotionOffset offset;
+        SDL_Color foreground = (i % 2U) == 0U ? accent : focus;
+        if (!ui_motion_glyph_offset(UI_PAUSE_MOTION_STABLE_ID, i,
+                                    sizeof(base_x) / sizeof(base_x[0]),
+                                    sample->registration, false, &offset) ||
+            !ui_canvas_set(canvas, base_x[i] + offset.x, base_y[i] + offset.y,
+                           glyphs[i], foreground, background)) return false;
+    }
+    return true;
 }
 
 static void draw_data_ui_overlay(Grid *grid, UiCache *cache, UiLayout *layout,
@@ -384,6 +424,7 @@ static bool dispatch_menu_action(const char *action,
                                  Camera *cam,
                                  AssetRegistry *assets,
                                  UiPreferences *preferences,
+                                 bool *reduced_motion,
                                  UiScaleFeedback *feedback,
                                  UiCache *ui_cache) {
     if (!action || !ms || !app_state) return false;
@@ -437,6 +478,10 @@ static bool dispatch_menu_action(const char *action,
         ui_scale_feedback_set(feedback, preferences,
                               ui_preferences_reset(preferences));
         update_settings_scale_text(ui_cache, preferences);
+        return true;
+    case MENU_ACTION_TOGGLE_REDUCED_MOTION:
+        if (!menu_controller_toggle_session_option(reduced_motion)) return false;
+        update_settings_reduced_motion_text(ui_cache, *reduced_motion);
         return true;
     case MENU_ACTION_BACK:
         return menu_stack_pop(ms);
@@ -711,6 +756,8 @@ int app_main(int argc, char* argv[]) {
         return 1;
     }
     UiPreferences preferences;
+    bool reduced_motion = false;
+    UiPauseMotionState pause_motion;
     UiScaleFeedback scale_feedback = {{0}, 0};
     AppUiResources ui_resources;
     ui_preferences_init(&preferences, "default_user.ini", "user.ini");
@@ -722,6 +769,7 @@ int app_main(int argc, char* argv[]) {
         fprintf(stderr, "UI preferences: user.ini invalid; using immutable default\n");
     }
     update_settings_scale_text(&menu_cache, &preferences);
+    update_settings_reduced_motion_text(&menu_cache, reduced_motion);
     if (!app_ui_resources_create(&ui_resources, cfg->grid_width, cfg->grid_height)) {
         fprintf(stderr, "Failed to initialize bounded UI resources.\n");
         for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
@@ -734,6 +782,15 @@ int app_main(int argc, char* argv[]) {
     uint64_t initial_time = SDL_GetPerformanceCounter();
     uint64_t last_time = initial_time;
     double target_time_ms = timing_target_ms(cfg->target_fps);
+    if (!ui_pause_motion_init(&pause_motion, false, 0.0, reduced_motion)) {
+        fprintf(stderr, "Failed to initialize pause motion state.\n");
+        for (int i = 0; i < MENU_ID_COUNT; i++) ui_layout_destroy(menu_layouts[i]);
+        ui_layout_destroy(hud_layout);
+        ui_cache_destroy(&menu_cache);
+        app_ui_resources_destroy(&ui_resources);
+        app_resources_cleanup(&resources);
+        return 1;
+    }
 
 #if PROFILE_FRAME
     frame_profile_init(&g_frame_profile);
@@ -857,7 +914,7 @@ int app_main(int argc, char* argv[]) {
                     if (action) {
                         bool action_handled = dispatch_menu_action(
                             action, &ms, &app_state, &input, &ued, &cam, &assets,
-                            &preferences, &scale_feedback, &menu_cache);
+                            &preferences, &reduced_motion, &scale_feedback, &menu_cache);
                         menu_controller_consume_confirm(
                             &input.confirm, &input.editor_confirm_pressed,
                             action_handled);
@@ -927,6 +984,21 @@ int app_main(int argc, char* argv[]) {
         double delta_time_sec = delta_time_ms / 1000.0;
         active_menu = menu_stack_peek(&ms);
 
+        UiPauseMotionSample pause_sample = {0};
+        {
+            double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
+                                   (double)SDL_GetPerformanceFrequency();
+            bool pause_visible = app_state == APP_STATE_PLAYING &&
+                                 menu_stack_contains(&ms, MENU_PAUSE);
+            bool effective_reduced_motion = reduced_motion ||
+                                            app_state != APP_STATE_PLAYING;
+            if (!ui_pause_motion_update(&pause_motion, pause_visible, motion_now_ms,
+                                        effective_reduced_motion, &pause_sample)) {
+                fprintf(stderr, "TSG-UI-BUG-0002: pause motion invariant failed\n");
+                input.quit = true;
+            }
+        }
+
 #if PROFILE_FRAME
         if (mode == RUN_MODE_BENCHMARK_SCENARIO &&
             frame_count == BENCHMARK_WARMUP_FRAMES) {
@@ -938,16 +1010,28 @@ int app_main(int argc, char* argv[]) {
         UiLayerList ui_layers;
         ui_layer_list_clear(&ui_layers);
         ui_canvas_clear(ui_resources.menu);
+        ui_canvas_clear(ui_resources.pause_motion);
         ui_canvas_clear(ui_resources.hud);
         ui_canvas_clear(ui_resources.editor);
         ui_canvas_clear(ui_resources.footer);
         ui_canvas_clear(ui_resources.feedback);
         ui_canvas_clear(ui_resources.crosshair);
+        if (!draw_pause_motion_decoration(ui_resources.pause_motion, &pause_sample)) {
+            fprintf(stderr, "TSG-UI-BUG-0002: pause motion decoration failed\n");
+            input.quit = true;
+        }
 
         if (layered_ui_benchmark) {
             prepare_layered_ui_benchmark(&ui_resources, &ui_layers,
                                          grid->width * 8, grid->height * 8,
                                          frame_count);
+        }
+
+        if (pause_sample.decoration_visible) {
+            (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_PAUSE_MOTION,
+                                   ui_resources.pause_motion, UI_ANCHOR_CENTER,
+                                   UI_SCALE_INHERIT_GLOBAL, 19,
+                                   grid->width * 8, grid->height * 8);
         }
 
         if (active_menu != MENU_NONE) {

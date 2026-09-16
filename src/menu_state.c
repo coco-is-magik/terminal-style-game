@@ -30,6 +30,14 @@ MenuId menu_stack_peek(const MenuStack *ms) {
     return ms->stack[ms->depth - 1];
 }
 
+bool menu_stack_contains(const MenuStack *ms, MenuId id) {
+    int i;
+    if (!ms || id <= MENU_NONE || id >= MENU_ID_COUNT) return false;
+    for (i = 0; i < ms->depth; i++)
+        if (ms->stack[i] == id) return true;
+    return false;
+}
+
 void menu_stack_clear(MenuStack *ms) {
     ms->depth = 0;
 }

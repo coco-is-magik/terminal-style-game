@@ -163,6 +163,24 @@ different meaning.
 - **Action:** treat as a product defect; inspect the focused demo regressions
 - **Verification:** focused invalid-argument, deterministic render, bounds, and native
   launch tests
+
+### TSG-UI-BUG-0002 — Pause-context motion invariant failed
+
+- **Status:** Active
+- **Category/severity:** BUG / terminates the current application session cleanly
+- **Owner/site:** `app.c` pause-context presentation adapter
+- **Detection:** the pure pause observer rejects an application-supplied timestamp/state, or
+  fixed decorative glyph placement violates its bounded 80x40 canvas
+- **Context:** current pause visibility, explicit monotonic milliseconds, reduced-motion
+  setting, and fixed accepted D6 paths
+- **Meaning:** application orchestration violated the tested deterministic motion contract
+- **Recovery:** set `input.quit`, complete normal bounded cleanup, and report the defect
+- **Preserved state:** menu actions and application state already resolve immediately;
+  motion owns no document, preference file, authored Menu, or persistent state
+- **Action:** treat as a product defect; inspect `test-ui-pause-motion` and fixed decorative
+  coordinates before relaunch
+- **Verification:** pure boundary tests, strict builds, sanitizer checks, and native pause
+  enter/exit review
 - **Introduced:** 2026-09-16
 
 ## Entry template

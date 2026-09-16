@@ -138,9 +138,9 @@ make ui-motion-demo
 Enter replays; Space pauses; Left/Right steps by 20 ms while paused; Tab toggles immediate,
 non-spatial reduced motion; Up/Down or Ctrl-/Ctrl+ cycles 100%, 125%, 150%, and 200%; Ctrl+0
 resets scale; Escape exits. The specimen compares palette-native accent/focus traces with one
-isolated literal-RGB sample. The current D6 timings and treatment are accepted; no real
-application context consumes this motion yet, and integration remains separately owned by
-V1-3.
+isolated literal-RGB sample. The current D6 timings and treatment are accepted. The gameplay
+pause overlay is the first bounded real-context consumer; no second context is authorized
+until its native visual review is accepted.
 
 make run
 make run-normal
@@ -334,6 +334,10 @@ If saving fails, the selected scale remains active for that run and the UI repor
 that the preference was not saved. These controls are disabled in benchmark,
 stability, smoke, and other headless modes. World scale, editor highlights, and
 the fixed-size center crosshair are unaffected.
+
+Settings also exposes **Reduced Motion: ON/OFF** for the current application session. It
+immediately removes pause-context displacement and does not write `user.ini`; persistent
+reduced-motion ownership requires a separately approved preference-format migration.
 
 ## Asset system
 

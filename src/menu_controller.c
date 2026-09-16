@@ -15,6 +15,8 @@ MenuAction menu_controller_parse_action(const char *action) {
     if (strcmp(action, "ui_scale_decrease") == 0) return MENU_ACTION_UI_SCALE_DECREASE;
     if (strcmp(action, "ui_scale_increase") == 0) return MENU_ACTION_UI_SCALE_INCREASE;
     if (strcmp(action, "ui_scale_reset") == 0) return MENU_ACTION_UI_SCALE_RESET;
+    if (strcmp(action, "toggle_reduced_motion") == 0)
+        return MENU_ACTION_TOGGLE_REDUCED_MOTION;
     if (strcmp(action, "back") == 0) return MENU_ACTION_BACK;
     return MENU_ACTION_UNKNOWN;
 }
@@ -25,6 +27,12 @@ void menu_controller_consume_confirm(bool *confirm_pressed,
     if (!action_handled) return;
     if (confirm_pressed) *confirm_pressed = false;
     if (editor_confirm_pressed) *editor_confirm_pressed = false;
+}
+
+bool menu_controller_toggle_session_option(bool *value) {
+    if (!value) return false;
+    *value = !*value;
+    return true;
 }
 
 bool menu_controller_state_transition(MenuAction action, AppState current,

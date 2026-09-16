@@ -51,20 +51,23 @@ The current UI literal/consumer inventory is complete in
 Concrete D1-D7 recommendations with WCAG 2.2 sources are recorded in
 [`reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md`](reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md).
 The current static palette values and D6 motion vocabulary are manually approved. The pure
-`ui_theme`/`ui_motion` seams, bounded application-menu
-adapter, static palette specimen, and isolated motion specimen now pass all fourteen UI
-standards owners, the complete functional aggregate, real cppcheck/policy standards,
-focused sanitizers, and strict default/no-state-tracker application builds. See
+`ui_theme`/`ui_motion` seams, bounded application-menu adapter, static palette specimen,
+isolated motion specimen, and first pause-context adapter now pass all fifteen UI standards
+owners, the complete functional aggregate, real cppcheck/policy standards, focused
+sanitizers, and strict default/no-state-tracker application builds. See
 [`reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md`](reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md).
 Q2 selected only the application menu focus/selection palette as the first reversible
 consumer; it is now implemented as recorded in
 [`reviews/2026-09-16-v1-1-application-menu-palette-adapter.md`](reviews/2026-09-16-v1-1-application-menu-palette-adapter.md).
 The architecture decision remains in
 [`reviews/2026-09-16-v1-1-q2-policy-architecture-review.md`](reviews/2026-09-16-v1-1-q2-policy-architecture-review.md).
-The static and animated specimens were approved on 2026-09-16. The next safe motion action
-is a focused V1-3 plan for one bounded real context; preserve stable interaction, semantic
-color authority, deterministic explicit time, and immediate non-spatial reduced motion. No
-broad integration or motion persistence is authorized by the approval alone.
+The static and animated specimens were approved on 2026-09-16. V1-3 I1 now implements pause
+as the first bounded major context: immediate menu-stack behavior, an unchanged interactive
+menu, a separate decorative layer, explicit deterministic time, and a session-only
+reduced-motion toggle. All fifteen UI standards owners, the complete functional aggregate,
+standards, focused sanitizers, and strict tracker/no-tracker builds pass. Native visual review
+is pending. No second context, pointer redesign, or motion persistence is authorized. See
+[`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md).
 Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.

@@ -261,15 +261,11 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
 static void assert_layout_actions(UiCache *cache,
                                   const char *layout_path,
                                   int expected_count,
-                                  const char *a0,
-                                  const char *a1,
-                                  const char *a2,
-                                  const char *a3) {
+                                  const char *const *actions) {
     UiLayout *layout = ui_layout_load(layout_path, cache);
     assert_non_null(layout);
     assert_int_equal(ui_layout_focusable_count(layout), expected_count);
 
-    const char *actions[] = {a0, a1, a2, a3};
     for (int i = 0; i < expected_count; i++) {
         UiElement *focused = ui_layout_get_focused(layout, i);
         assert_non_null(focused);
@@ -280,6 +276,14 @@ static void assert_layout_actions(UiCache *cache,
 }
 
 static void test_ui_layout_remaining_menu_focus_actions(void **state) {
+    static const char *const pause_actions[] = {
+        "resume", "return_to_main_menu", "open_settings", "quit"
+    };
+    static const char *const confirm_actions[] = {"confirm_quit", "cancel"};
+    static const char *const settings_actions[] = {
+        "ui_scale_decrease", "ui_scale_increase", "toggle_reduced_motion",
+        "ui_scale_reset", "back"
+    };
     (void)state;
 
     UiCache cache;
@@ -288,13 +292,11 @@ static void test_ui_layout_remaining_menu_focus_actions(void **state) {
     ui_cache_tick(&cache, "confirm_quit", "assets/ui_elements");
     ui_cache_tick(&cache, "settings", "assets/ui_elements");
 
-    assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 4,
-                          "resume", "return_to_main_menu", "open_settings", "quit");
+    assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 4, pause_actions);
     assert_layout_actions(&cache, "assets/ui_layouts/confirm_quit.txt", 2,
-                          "confirm_quit", "cancel", NULL, NULL);
-    assert_layout_actions(&cache, "assets/ui_layouts/settings.txt", 4,
-                          "ui_scale_decrease", "ui_scale_increase",
-                          "ui_scale_reset", "back");
+                          confirm_actions);
+    assert_layout_actions(&cache, "assets/ui_layouts/settings.txt", 5,
+                          settings_actions);
 
     ui_cache_destroy(&cache);
 }

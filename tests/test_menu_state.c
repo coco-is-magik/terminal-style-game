@@ -25,6 +25,9 @@ static void test_stack_push_pop(void **state) {
     assert_true(menu_stack_push(&ms, MENU_PAUSE));
     assert_int_equal(ms.depth, 2);
     assert_int_equal(menu_stack_peek(&ms), MENU_PAUSE);
+    assert_true(menu_stack_contains(&ms, MENU_MAIN));
+    assert_true(menu_stack_contains(&ms, MENU_PAUSE));
+    assert_false(menu_stack_contains(&ms, MENU_SETTINGS));
 
     assert_true(menu_stack_pop(&ms));
     assert_int_equal(ms.depth, 1);
@@ -33,6 +36,15 @@ static void test_stack_push_pop(void **state) {
     assert_true(menu_stack_pop(&ms));
     assert_int_equal(ms.depth, 0);
     assert_int_equal(menu_stack_peek(&ms), MENU_NONE);
+}
+
+static void test_stack_contains_rejects_invalid_inputs(void **state) {
+    MenuStack ms;
+    (void)state;
+    menu_stack_init(&ms);
+    assert_false(menu_stack_contains(NULL, MENU_PAUSE));
+    assert_false(menu_stack_contains(&ms, MENU_NONE));
+    assert_false(menu_stack_contains(&ms, MENU_ID_COUNT));
 }
 
 /* peek on empty returns MENU_NONE */
@@ -219,6 +231,7 @@ static void test_confirm_no_pops(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_stack_push_pop),
+        cmocka_unit_test(test_stack_contains_rejects_invalid_inputs),
         cmocka_unit_test(test_stack_peek_empty),
         cmocka_unit_test(test_stack_pop_empty),
         cmocka_unit_test(test_stack_clear),

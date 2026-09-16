@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the fourteen focused UI rule owners:
+`make test-ui-standards` runs the fifteen focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -19,6 +19,9 @@ theme-token decisions that still require product review.
 - `test-ui-motion` — pure stable-ID motion sampling, exact phase boundaries,
   deterministic glyph paths, interruption/reversal, endpoints, invalid time, and
   immediate non-spatial reduced motion;
+- `test-ui-pause-motion` — first real-context enter/exit boundaries, deterministic replay,
+  reversal continuity, invalid/backward time, stable endpoints, and decoration-free reduced
+  motion without menu ownership;
 - `test-ui-app-theme-adapter` — exact provisional application-menu role mapping, alpha
   preservation, stable repeated resolution, and invalid-output handling;
 - `test-ui-theme-demo` — complete provisional role/state specimen, session-only scale
@@ -90,6 +93,9 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - Prefer cell/glyph/layer composition. A framebuffer-level RGB split is not approved.
 - These are accepted presentation constraints. They do not by themselves integrate motion
   into an application or authored-game context; V1-3 owns that separate implementation.
+- The first bounded V1-3 consumer is pause-context decoration beneath an unchanged menu.
+  Settings/confirmation remain immediate, and reduced motion is session-only until a
+  preference-format migration is separately approved.
 
 ### Parsing and persistence
 

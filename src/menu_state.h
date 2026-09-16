@@ -86,6 +86,9 @@ bool menu_stack_pop(MenuStack *ms);
  */
 MenuId menu_stack_peek(const MenuStack *ms);
 
+/** Returns true when the bounded stack contains the requested real menu ID. */
+bool menu_stack_contains(const MenuStack *ms, MenuId id);
+
 /**
  * menu_stack_clear() — Remove all entries from the stack (depth → 0)
  * @param ms  Stack to clear

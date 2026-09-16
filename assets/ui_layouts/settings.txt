@@ -1,3 +1,3 @@
 name=settings
 type=layout
-elements=settings_title,settings_ui_scale_value,settings_scale_decrease,settings_scale_increase,settings_reset,settings_back
+elements=settings_title,settings_ui_scale_value,settings_scale_decrease,settings_scale_increase,settings_reduced_motion_value,settings_reduced_motion_toggle,settings_reset,settings_back
