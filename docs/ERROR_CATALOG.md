@@ -94,6 +94,77 @@ different meaning.
 | `TSG-SCENE-BUG-0004` | Runtime adapter mutates authoritative authored scene state | Loud ownership-invariant failure |
 | `TSG-SCENE-BUG-0005` | A retired ID is reassigned to a different logical instance | Loud identity-invariant failure |
 
+## UI diagnostic environment failures
+
+### TSG-UI-ENV-0001 — UI-diagnostic state tracker initialization failed
+
+- **Status:** Active
+- **Category/severity:** ENV / fatal to diagnostic mode only
+- **Owner/site:** `app.c` / `app_main`
+- **Detection:** the selected renderer dirty-state tracker cannot initialize before the
+  provisional UI theme or motion demo starts
+- **Context:** diagnostic mode and selected build-time tracker
+- **Meaning:** the renderer cannot safely execute its configured layer path
+- **Recovery:** terminate the diagnostic mode and release renderer/grid resources
+- **Preserved state:** no assets, maps, world, preferences, editor state, or authored
+  documents were loaded or changed
+- **Action:** inspect resource/tool initialization and retry
+- **Verification:** strict alternate tracker builds plus native demo launch
+- **Introduced:** 2026-09-16
+
+### TSG-UI-ENV-0002 — UI-diagnostic specimen allocation failed
+
+- **Status:** Active
+- **Category/severity:** ENV / fatal to diagnostic mode only
+- **Owner/site:** `app.c` / `app_main`
+- **Detection:** a UI diagnostic runtime returns its typed out-of-memory result
+- **Context:** bounded numeric result
+- **Meaning:** the diagnostic specimen canvas or transactional render candidate could not
+  be allocated
+- **Recovery:** terminate the diagnostic mode and release all bounded resources
+- **Preserved state:** no assets, maps, world, preferences, editor state, or authored
+  documents were loaded or changed
+- **Action:** free memory or reduce environmental pressure and retry
+- **Verification:** typed render/runtime result coverage and sanitizer cleanup evidence
+- **Introduced:** 2026-09-16
+
+### TSG-UI-ENV-0003 — UI-diagnostic display or base grid initialization failed
+
+- **Status:** Active
+- **Category/severity:** ENV / fatal to diagnostic mode only
+- **Owner/site:** `app.c` / `app_main`
+- **Detection:** renderer creation or base grid creation fails while
+  `RUN_MODE_UI_THEME_DEMO` or `RUN_MODE_UI_MOTION_DEMO` is active
+- **Context:** fixed diagnostic run mode
+- **Meaning:** no trustworthy native specimen can be presented
+- **Recovery:** terminate with failure and release any renderer/grid resource already made
+- **Preserved state:** no assets, maps, world, preferences, editor state, or authored
+  documents were loaded or changed
+- **Action:** provide a working display/backend and sufficient memory, then retry
+- **Verification:** strict application build, mode-specific branch review, and native X11
+  demo launch
+- **Introduced:** 2026-09-16
+
+## UI diagnostic internal invariant failures
+
+### TSG-UI-BUG-0001 — UI-diagnostic fixed specimen or runtime invariant failed
+
+- **Status:** Active
+- **Category/severity:** BUG / fatal to diagnostic mode only
+- **Owner/site:** `app.c` / `app_main`
+- **Detection:** a UI diagnostic runtime returns invalid-argument or render-failed after
+  `app_main` supplied validated renderer/grid resources
+- **Context:** bounded typed `UiThemeDemoRuntimeResult` or `UiMotionDemoRuntimeResult`
+- **Meaning:** fixed specimen coordinates, layer construction, or an internal runtime
+  precondition violated the tested diagnostic contract
+- **Recovery:** terminate the diagnostic mode and release all bounded resources
+- **Preserved state:** no assets, maps, world, preferences, editor state, or authored
+  documents were loaded or changed
+- **Action:** treat as a product defect; inspect the focused demo regressions
+- **Verification:** focused invalid-argument, deterministic render, bounds, and native
+  launch tests
+- **Introduced:** 2026-09-16
+
 ## Entry template
 
 ```markdown

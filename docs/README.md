@@ -79,6 +79,24 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md`](reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md)
   — current application/editor versus authored-Menu ownership, literal/token candidates,
   scale/viewport assumptions, non-token content, and focused regression owners.
+- [`reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md`](reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md)
+  — D1–D7 candidate formulas, geometry, state, viewport/depth, motion, ownership rules,
+  accessibility sources, alternatives, and the later accepted D1/D6 amendments.
+- [`reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md`](reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md)
+  — isolated pure policy implementation, focused regression coverage, development
+  failures, full automated evidence, and the subsequently closed manual evaluation gate.
+- [`reviews/2026-09-16-v1-1-q2-policy-architecture-review.md`](reviews/2026-09-16-v1-1-q2-policy-architecture-review.md)
+  — Q2 seam review, bounded policy corrections, consumer comparison, selected
+  application-menu palette migration, rollback, and the historical manual stop gate.
+- [`reviews/2026-09-16-v1-1-application-menu-palette-adapter.md`](reviews/2026-09-16-v1-1-application-menu-palette-adapter.md)
+  — first bounded production consumer, preserved ownership/behavior, automated and native
+  display evidence, rollback, and subsequently approved palette mapping.
+- [`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md)
+  — complete diagnostic specimen, session-only scale controls, semantic/state coverage,
+  verification evidence, failures, rollback, and per-role manual review procedure.
+- [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
+  — pure explicit-time registration/reassembly model, isolated motion specimen, automated
+  evidence, failures, rollback, accepted D6 decision, and V1-3 integration boundary.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

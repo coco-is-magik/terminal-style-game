@@ -320,8 +320,11 @@ V1-20 dependency reconciliation.
 
 ## V1-1 — UI architecture, measurable design rules, and semantic tokens
 
-**Status:** Ready for Q1; requirements/design work started on 2026-09-16. Implementation
-remains blocked until the measurable D1-D7 decisions pass.
+**Status:** D1 palette and D6 motion decisions accepted on 2026-09-16. The current static
+palette values and demonstrated 80/160/120/120 ms controlled-registration/reassembly
+vocabulary are manually approved. Application-menu focus/selection colors consume the first
+adapter, and the pure D6 model plus `make ui-motion-demo` are verified. Remaining V1-1
+decisions retain their own gates; no real-context motion integration has begun.
 
 **Purpose:** Convert visual inspiration into reusable, enforceable UI rules without
 merging editor UI and authored game UI.
@@ -376,7 +379,8 @@ one-bounce correctness and performance remain within the accepted envelope.
 
 ## V1-3 — Pointer model and major-context motion
 
-**Status:** Committed v1 outcome; Decision-blocked on the V1-1 measurable rules.
+**Status:** Committed v1 outcome; ready for focused planning after D1/D6 approval. No
+real-context integration has begun, and pointer-coordinate requirements remain in scope.
 
 **Purpose:** Supply coherent pointer and transition semantics before graph, canvas,
 timeline, and richer editor work.

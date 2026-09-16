@@ -44,13 +44,28 @@ keyboard, pointer motion/down/up, state transition, and bounded teardown. The cl
 record is
 [`reviews/2026-09-16-v1-0-closeout.md`](reviews/2026-09-16-v1-0-closeout.md).
 
-The next safe action is **V1-1 Q1 requirements/design** under
+The current design authority is **V1-1 Q1 requirements/design** under
 [`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md).
 The current UI literal/consumer inventory is complete in
 [`reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md`](reviews/2026-09-16-v1-1-ui-literal-consumer-inventory.md).
-Next, prepare concrete D1-D7 candidate values/formulas with cited accessibility sources
-and present them for product approval. Do not add token APIs, migrate components, or
-begin V1-3 pointer/motion implementation before those decisions are accepted. Sprite-painter behavior
+Concrete D1-D7 recommendations with WCAG 2.2 sources are recorded in
+[`reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md`](reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md).
+The current static palette values and D6 motion vocabulary are manually approved. The pure
+`ui_theme`/`ui_motion` seams, bounded application-menu
+adapter, static palette specimen, and isolated motion specimen now pass all fourteen UI
+standards owners, the complete functional aggregate, real cppcheck/policy standards,
+focused sanitizers, and strict default/no-state-tracker application builds. See
+[`reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md`](reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md).
+Q2 selected only the application menu focus/selection palette as the first reversible
+consumer; it is now implemented as recorded in
+[`reviews/2026-09-16-v1-1-application-menu-palette-adapter.md`](reviews/2026-09-16-v1-1-application-menu-palette-adapter.md).
+The architecture decision remains in
+[`reviews/2026-09-16-v1-1-q2-policy-architecture-review.md`](reviews/2026-09-16-v1-1-q2-policy-architecture-review.md).
+The static and animated specimens were approved on 2026-09-16. The next safe motion action
+is a focused V1-3 plan for one bounded real context; preserve stable interaction, semantic
+color authority, deterministic explicit time, and immediate non-spatial reduced motion. No
+broad integration or motion persistence is authorized by the approval alone.
+Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.
 

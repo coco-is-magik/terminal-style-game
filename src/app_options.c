@@ -81,6 +81,7 @@ static AppOptionsResult select_run_mode(AppOptions *options, RunMode mode,
 AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out) {
     AppOptions candidate;
     bool frames_seen = false;
+    bool visual_mode_seen = false;
 
     if (!out || argc < 0 || (argc > 0 && !argv)) {
         return APP_OPTIONS_INVALID_ARGUMENTS;
@@ -109,6 +110,12 @@ AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out
                 return APP_OPTIONS_INVALID_VALUE;
             }
             result = select_run_mode(&candidate, RUN_MODE_DISPLAY_ACCEPTANCE, VISUAL_RAYCAST);
+            if (result != APP_OPTIONS_OK) return result;
+        } else if (strcmp(option, "--ui-theme-demo") == 0) {
+            result = select_run_mode(&candidate, RUN_MODE_UI_THEME_DEMO, VISUAL_RAYCAST);
+            if (result != APP_OPTIONS_OK) return result;
+        } else if (strcmp(option, "--ui-motion-demo") == 0) {
+            result = select_run_mode(&candidate, RUN_MODE_UI_MOTION_DEMO, VISUAL_RAYCAST);
             if (result != APP_OPTIONS_OK) return result;
         } else if (strcmp(option, "--frames") == 0) {
             if (++i >= argc) return APP_OPTIONS_MISSING_VALUE;
@@ -140,16 +147,22 @@ AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out
             if (result != APP_OPTIONS_OK) return result;
         } else if (strcmp(option, "--mode") == 0) {
             if (++i >= argc) return APP_OPTIONS_MISSING_VALUE;
+            if (visual_mode_seen) return APP_OPTIONS_CONFLICT;
             if (strcmp(argv[i], "normal") == 0) candidate.visual_mode = VISUAL_NORMAL;
             else if (strcmp(argv[i], "stress") == 0) candidate.visual_mode = VISUAL_STRESS;
             else if (strcmp(argv[i], "raycast") == 0) candidate.visual_mode = VISUAL_RAYCAST;
             else return APP_OPTIONS_INVALID_VALUE;
+            visual_mode_seen = true;
         } else {
             return APP_OPTIONS_UNKNOWN_OPTION;
         }
     }
 
     if (frames_seen && candidate.mode != RUN_MODE_BENCHMARK_SCENARIO) {
+        return APP_OPTIONS_CONFLICT;
+    }
+    if (visual_mode_seen && (candidate.mode == RUN_MODE_UI_THEME_DEMO ||
+                             candidate.mode == RUN_MODE_UI_MOTION_DEMO)) {
         return APP_OPTIONS_CONFLICT;
     }
     *out = candidate;

@@ -64,6 +64,41 @@ static void test_display_acceptance_mode(void **state) {
     assert_int_equal(app_options_parse(4, conflict, &options), APP_OPTIONS_CONFLICT);
 }
 
+static void test_ui_theme_demo_mode_and_conflicts(void **state) {
+    AppOptions options;
+    AppOptions before;
+    char *valid[] = {"app", "--ui-theme-demo"};
+    char *mode_conflict[] = {"app", "--ui-theme-demo", "--mode", "normal"};
+    char *frames_conflict[] = {"app", "--ui-theme-demo", "--frames", "2"};
+    char *other_conflict[] = {"app", "--ui-theme-demo", "--smoke-test"};
+    (void)state;
+    assert_int_equal(app_options_parse(2, valid, &options), APP_OPTIONS_OK);
+    assert_int_equal(options.mode, RUN_MODE_UI_THEME_DEMO);
+    before = options;
+    assert_int_equal(app_options_parse(4, mode_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+    assert_int_equal(app_options_parse(4, frames_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+    assert_int_equal(app_options_parse(3, other_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+}
+
+static void test_ui_motion_demo_mode_and_conflicts(void **state) {
+    AppOptions options;
+    AppOptions before;
+    char *valid[] = {"app", "--ui-motion-demo"};
+    char *mode_conflict[] = {"app", "--ui-motion-demo", "--mode", "normal"};
+    char *other_conflict[] = {"app", "--ui-motion-demo", "--ui-theme-demo"};
+    (void)state;
+    assert_int_equal(app_options_parse(2, valid, &options), APP_OPTIONS_OK);
+    assert_int_equal(options.mode, RUN_MODE_UI_MOTION_DEMO);
+    before = options;
+    assert_int_equal(app_options_parse(4, mode_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+    assert_int_equal(app_options_parse(3, other_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+}
+
 static void test_display_acceptance_requires_all_observations(void **state) {
     DisplayAcceptance acceptance = {0};
     InputState input = {0};
@@ -137,6 +172,8 @@ int main(void) {
         cmocka_unit_test(test_benchmark_forms),
         cmocka_unit_test(test_smoke_mode),
         cmocka_unit_test(test_display_acceptance_mode),
+        cmocka_unit_test(test_ui_theme_demo_mode_and_conflicts),
+        cmocka_unit_test(test_ui_motion_demo_mode_and_conflicts),
         cmocka_unit_test(test_display_acceptance_requires_all_observations),
         cmocka_unit_test(test_display_acceptance_json_text_is_bounded),
         cmocka_unit_test(test_rejects_missing_unknown_and_invalid),

@@ -174,8 +174,9 @@ menu depth.
 - `test-unified-editor`: integrated editor workspace rendering/input behavior and
   authored Menu preview/test composition.
 
-All nine focused UI owners are already in `make test-ui-standards`; all are in the
-canonical `make test` inventory.
+The original nine focused UI owners, provisional `test-ui-theme`, bounded
+`test-ui-app-theme-adapter`, and diagnostic `test-ui-theme-demo` are in
+`make test-ui-standards`; all twelve are in the canonical `make test` inventory.
 
 ## Risks and non-token content
 

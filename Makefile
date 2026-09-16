@@ -148,6 +148,11 @@ TEST_DECAL_PROJECTION_RUNNER := $(BUILD_DIR)/test-decal-projection
 TEST_MAP_CATALOG_RUNNER      := $(BUILD_DIR)/test-map-catalog
 TEST_UI_PREFERENCES_RUNNER   := $(BUILD_DIR)/test-ui-preferences
 TEST_UI_COMPOSITOR_RUNNER    := $(BUILD_DIR)/test-ui-compositor
+TEST_UI_THEME_RUNNER         := $(BUILD_DIR)/test-ui-theme
+TEST_UI_MOTION_RUNNER        := $(BUILD_DIR)/test-ui-motion
+TEST_UI_APP_THEME_ADAPTER_RUNNER := $(BUILD_DIR)/test-ui-app-theme-adapter
+TEST_UI_THEME_DEMO_RUNNER    := $(BUILD_DIR)/test-ui-theme-demo
+TEST_UI_MOTION_DEMO_RUNNER   := $(BUILD_DIR)/test-ui-motion-demo
 TEST_CAMERA_RUNNER           := $(BUILD_DIR)/test-camera
 TEST_VERTICAL_PHYSICS_RUNNER := $(BUILD_DIR)/test-vertical-physics
 TEST_MATERIAL_DOCUMENT_RUNNER := $(BUILD_DIR)/test-material-document
@@ -190,7 +195,8 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: ui-motion-demo
 
 
 all: $(APP)
@@ -225,6 +231,11 @@ SRC_DECAL_IO      := src/decal_io.c src/number_parse.c
 SRC_DECAL_PAINTER := src/decal_painter.c
 SRC_UI_ELE        := src/ui_ele.c src/number_parse.c
 SRC_RGBA_PARSE    := src/rgba_parse.c
+SRC_UI_THEME      := src/ui_theme.c
+SRC_UI_MOTION     := src/ui_motion.c
+SRC_UI_APP_THEME_ADAPTER := src/ui_app_theme_adapter.c
+SRC_UI_THEME_DEMO := src/ui_theme_demo.c
+SRC_UI_MOTION_DEMO := src/ui_motion_demo.c
 SRC_MENU_STATE    := src/menu_state.c
 SRC_SCALE         := src/scale.c
 SRC_TIMING        := src/timing.c
@@ -763,6 +774,33 @@ $(TEST_UI_COMPOSITOR_RUNNER): tests/test_ui_compositor.c tests/font8x8_test_data
 		tests/font8x8_test_data.c $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) \
 		-o $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_UI_THEME_RUNNER): tests/test_ui_theme.c $(SRC_UI_THEME) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_theme.c $(SRC_UI_THEME) \
+		-o $(TEST_UI_THEME_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_MOTION_RUNNER): tests/test_ui_motion.c $(SRC_UI_MOTION) $(SRC_UI_THEME) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_motion.c $(SRC_UI_MOTION) $(SRC_UI_THEME) \
+		-o $(TEST_UI_MOTION_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_APP_THEME_ADAPTER_RUNNER): tests/test_ui_app_theme_adapter.c $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_THEME) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_app_theme_adapter.c \
+		$(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_THEME) \
+		-o $(TEST_UI_APP_THEME_ADAPTER_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_THEME_DEMO_RUNNER): tests/test_ui_theme_demo.c $(SRC_UI_THEME_DEMO) src/ui_theme_demo_runtime.c $(SRC_UI_THEME) $(SRC_UI_CANVAS) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_theme_demo.c $(SRC_UI_THEME_DEMO) \
+		src/ui_theme_demo_runtime.c $(SRC_UI_THEME) $(SRC_UI_CANVAS) $(SRC_CHECKED_SIZE) \
+		$(SRC_INPUT) $(SRC_TIMING) $(SRC_UI_COMPOSITOR) \
+		$(SRC_UI_PREFERENCES) $(SRC_GRID) src/renderer.c src/glyph_atlas.c \
+		-o $(TEST_UI_THEME_DEMO_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_MOTION_DEMO_RUNNER): tests/test_ui_motion_demo.c $(SRC_UI_MOTION_DEMO) src/ui_motion_demo_runtime.c $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_CANVAS) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_motion_demo.c $(SRC_UI_MOTION_DEMO) \
+		src/ui_motion_demo_runtime.c $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_CANVAS) \
+		$(SRC_CHECKED_SIZE) $(SRC_INPUT) $(SRC_TIMING) $(SRC_UI_COMPOSITOR) \
+		$(SRC_UI_PREFERENCES) $(SRC_GRID) src/renderer.c src/glyph_atlas.c \
+		-o $(TEST_UI_MOTION_DEMO_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_MATERIAL_DOCUMENT_RUNNER): tests/test_material_document.c $(SRC_ASSET_DOCUMENT) $(SRC_MATERIAL_DOCUMENT) $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_material_document.c $(SRC_ASSET_DOCUMENT) \
 		$(SRC_MATERIAL_DOCUMENT) $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) \
@@ -1000,6 +1038,12 @@ run: $(APP)
 run-normal: $(APP)
 	./$(APP) --mode normal
 
+ui-theme-demo: $(APP)
+	./$(APP) --ui-theme-demo
+
+ui-motion-demo: $(APP)
+	./$(APP) --ui-motion-demo
+
 run-stress: $(APP)
 	./$(APP) --mode stress
 
@@ -1018,7 +1062,11 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) \
 	$(TEST_CONFIG_RUNNER) $(TEST_ASSET_LOADER_RUNNER) \
 	$(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
-	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_MATERIAL_DOCUMENT_RUNNER) \
+	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_UI_THEME_RUNNER) \
+	$(TEST_UI_MOTION_RUNNER) \
+	$(TEST_UI_APP_THEME_ADAPTER_RUNNER) $(TEST_UI_THEME_DEMO_RUNNER) \
+	$(TEST_UI_MOTION_DEMO_RUNNER) \
+	$(TEST_MATERIAL_DOCUMENT_RUNNER) \
 	$(TEST_DECAL_DOCUMENT_RUNNER) $(TEST_SPRITE_DOCUMENT_RUNNER) \
 	$(TEST_SPRITE_ANIMATION_PLAYER_RUNNER) $(TEST_OBJECT_DOCUMENT_RUNNER) \
 	$(TEST_FLOW_DOCUMENT_RUNNER) $(TEST_FLOW_REFERENCE_RUNNER) \
@@ -1074,6 +1122,11 @@ test: $(TEST_RUNNERS)
 	./$(TEST_DECAL_PROJECTION_RUNNER)
 	./$(TEST_UI_PREFERENCES_RUNNER)
 	./$(TEST_UI_COMPOSITOR_RUNNER)
+	./$(TEST_UI_THEME_RUNNER)
+	./$(TEST_UI_MOTION_RUNNER)
+	./$(TEST_UI_APP_THEME_ADAPTER_RUNNER)
+	./$(TEST_UI_THEME_DEMO_RUNNER)
+	./$(TEST_UI_MOTION_DEMO_RUNNER)
 	./$(TEST_MATERIAL_DOCUMENT_RUNNER)
 	./$(TEST_DECAL_DOCUMENT_RUNNER)
 	./$(TEST_SPRITE_DOCUMENT_RUNNER)
@@ -1104,13 +1157,22 @@ test: $(TEST_RUNNERS)
 	@echo "Note: benchmark and stability require a video environment to fully run."
 
 test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
-	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_UI_DOCUMENT_RUNNER) \
+	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_UI_THEME_RUNNER) \
+	$(TEST_UI_MOTION_RUNNER) \
+	$(TEST_UI_APP_THEME_ADAPTER_RUNNER) $(TEST_UI_THEME_DEMO_RUNNER) \
+	$(TEST_UI_MOTION_DEMO_RUNNER) \
+	$(TEST_UI_DOCUMENT_RUNNER) \
 	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
 	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
 	$(TEST_UI_MENU_WORKSPACE_RUNNER)
 	./$(TEST_UI_ELE_RUNNER)
 	./$(TEST_UI_PREFERENCES_RUNNER)
 	./$(TEST_UI_COMPOSITOR_RUNNER)
+	./$(TEST_UI_THEME_RUNNER)
+	./$(TEST_UI_MOTION_RUNNER)
+	./$(TEST_UI_APP_THEME_ADAPTER_RUNNER)
+	./$(TEST_UI_THEME_DEMO_RUNNER)
+	./$(TEST_UI_MOTION_DEMO_RUNNER)
 	./$(TEST_UI_DOCUMENT_RUNNER)
 	./$(TEST_UI_LAYOUT_RESOLVER_RUNNER)
 	./$(TEST_UI_RENDER_ADAPTER_RUNNER)

@@ -17,11 +17,12 @@
  * Initialises the renderer, grid, assets, map, camera, and input
  * subsystems, then runs the main frame loop until quit is requested.
  *
- * Supports three run modes (configurable via CLI arguments):
+ * Supports interactive, diagnostic, benchmark, and stability run modes, including:
  *   - Normal interactive mode (default, or --mode normal)
  *   - Raycast world mode     (--mode raycast, the default for `make run`)
  *   - Stress benchmark mode  (--benchmark-stress <sec>)
  *   - Stability test mode    (--stability-test <sec>)
+ *   - Provisional UI specimen (--ui-theme-demo)
  *
  * @param argc  Argument count (from main())
  * @param argv  Argument vector (from main())

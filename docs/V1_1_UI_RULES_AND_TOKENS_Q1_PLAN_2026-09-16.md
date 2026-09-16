@@ -2,12 +2,16 @@
 
 ## Status and authority
 
-**Active requirements/design work; implementation is not yet authorized.**
+**D1 palette and D6 motion decisions accepted on 2026-09-16.** The current semantic palette
+values and demonstrated controlled-registration/glyph-reassembly vocabulary have manual
+approval. D6 remains implemented only as a pure model and isolated diagnostic specimen;
+real-context motion integration is separate V1-3 work. Unrelated D2–D5/D7 decisions retain
+their own status and are not approved by this motion review.
 
 This is the focused Q1 plan for roadmap phase **V1-1 — UI architecture, measurable
 design rules, and semantic tokens**. It translates the accepted product direction into
 objective contracts. It must not merge application/editor UI with authored-game UI,
-change persisted documents, or begin V1-3 pointer/motion implementation.
+change persisted documents, or itself implement V1-3 pointer/motion integration.
 
 ## Accepted constraints
 
@@ -140,6 +144,29 @@ editor palettes and transient state colors are token candidates, while authored 
 colors/geometry remain content-owned. Item 6 remains part of the D1/D4/D6 candidate
 decision record.
 
+**Candidate decision result (2026-09-16):** Concrete D1-D7 recommendations and WCAG 2.2
+sources are recorded in
+[`reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md`](reviews/2026-09-16-v1-1-d1-d7-candidate-decision.md).
+They were initially approved for isolated implementation and automated evaluation. D1's
+current palette and D6's current motion vocabulary have since passed manual evaluation and
+are now accepted in `UI_DESIGN_AND_TEST_STANDARDS.md`; unrelated decisions retain their
+separate status.
+
+**Provisional policy increment (2026-09-16):** The pure `ui_theme` seam and focused
+runner are implemented and verified as recorded in
+[`reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md`](reviews/2026-09-16-v1-1-provisional-ui-theme-policy.md).
+No production adapter consumes it and no visible behavior changed.
+
+**Motion vocabulary increment (2026-09-16):** `ui_motion` now provides pure explicit-time
+phase/value sampling, stable-ID deterministic glyph paths, interruption/reversal, and
+immediate non-spatial reduced motion. `make ui-motion-demo` presents major enter/exit,
+feedback, relationship, palette-native versus isolated literal-RGB traces, reduced motion,
+all scales, and replay/pause/step controls without loading product data. The implementation
+and automated evidence are recorded in
+[`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md).
+The vocabulary subsequently received manual approval; no application context consumes
+motion yet.
+
 ## Recommended incremental implementation after Q1 approval
 
 1. Add a pure immutable token/value module with validation and no SDL, document, I/O,
@@ -184,10 +211,18 @@ Q1 passes only when:
    viewport conversion assumptions, focus visibility, and major-context policy—are
    sufficiently defined without implementing V1-3.
 
-Until then, V1-1 remains requirements/design work and V1-3 remains decision-blocked.
+The D1/D6 dependencies are now accepted. Remaining V1-1 decisions continue under their own
+gates; V1-3 motion integration may proceed only through a separate focused plan.
 
 ## Next action
 
-Prepare D1-D7 as a reviewable decision record with concrete candidate values/formulas
-and cited accessibility sources. Stop for product approval before creating token APIs or
-migrating UI.
+Q2 architecture review passed and selected the application menu focus/selection palette
+as the first bounded reversible consumer. That adapter and four-literal call-site
+replacement are implemented as recorded in
+[`reviews/2026-09-16-v1-1-application-menu-palette-adapter.md`](reviews/2026-09-16-v1-1-application-menu-palette-adapter.md).
+The boundary was defined in
+[`reviews/2026-09-16-v1-1-q2-policy-architecture-review.md`](reviews/2026-09-16-v1-1-q2-policy-architecture-review.md),
+and the current palette and D6 motion vocabulary have since been manually approved. The next
+safe motion action is a separately scoped V1-3 integration plan that selects one bounded
+real context, preserves immediate interaction and reduced motion, and retains rollback. No
+broad migration or persistence is authorized by this approval alone.

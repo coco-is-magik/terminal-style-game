@@ -118,6 +118,30 @@ make clean && make USE_SMC_STREAM_STATE_TRACKER=1 PROFILE_FRAME=1
 
 ## Run
 
+To inspect the accepted UI palette without loading or changing project data:
+
+```sh
+make ui-theme-demo
+```
+
+Use Left/Right or Ctrl-/Ctrl+ to cycle 100%, 125%, 150%, and 200%; Ctrl+0 resets to
+100%, and Escape exits. The specimen is diagnostic-only, uses session-local scale, and
+does not write UI preferences.
+
+To inspect the accepted controlled-registration and glyph-reassembly vocabulary without
+integrating motion into application UI:
+
+```sh
+make ui-motion-demo
+```
+
+Enter replays; Space pauses; Left/Right steps by 20 ms while paused; Tab toggles immediate,
+non-spatial reduced motion; Up/Down or Ctrl-/Ctrl+ cycles 100%, 125%, 150%, and 200%; Ctrl+0
+resets scale; Escape exits. The specimen compares palette-native accent/focus traces with one
+isolated literal-RGB sample. The current D6 timings and treatment are accepted; no real
+application context consumes this motion yet, and integration remains separately owned by
+V1-3.
+
 make run
 make run-normal
 make run-stress
