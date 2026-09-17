@@ -74,7 +74,11 @@ pause, settings, and quit confirmation with immediate canonical atomic writes an
 supports parent, x/y, class-compatible style, transition, and focus/effect presets; and keeps
 authored `.tui` menus, game/world/editor initialization, custom themes, click selection,
 creation/deletion, and history outside its ownership. Transition/effect execution remains a
-workbench preview only. The preview loads and persists the same `default_user.ini` / `user.ini`
+workbench preview only except for the visual `focus_pulse` and `focus_glitch` presets, which now
+render on the focused button in normal application menus without changing stable markers,
+bounds, focus, or activation; reduced motion suppresses their animation. Transition presets and
+`input_hold_short` remain non-production. The preview loads and persists the same
+`default_user.ini` / `user.ini`
 100%, 125%, 150%, and 200% scale preference as normal run. Only the application UI preview is
 scaled; workbench instructions remain fixed and visible. Seventeen UI standards owners, the
 complete functional aggregate,

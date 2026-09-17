@@ -233,7 +233,7 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     const char *next;
     char old_value[UI_ELE_PRESET_MAX];
     UiWorkbenchResult result;
-    if (!workbench || !element || !workbench->editing || direction == 0)
+    if (!workbench || !element || direction == 0)
         return UI_WORKBENCH_NO_CHANGE;
     if (workbench->property == UI_WORKBENCH_PROPERTY_PARENT)
         return cycle_parent(workbench, element, direction);

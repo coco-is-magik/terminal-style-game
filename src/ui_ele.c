@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 
 static char *ui_strdup(const char *text) {
     size_t len;
@@ -826,6 +827,40 @@ void ui_layout_render(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg) 
     for (int i = 0; i < layout->slot_count; i++) {
         ui_ele_render(layout->slot_elements[i], grid, 0, 0, fg, bg);
     }
+}
+
+bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,
+                                   double now_ms, bool reduced_motion,
+                                   SDL_Color pulse, SDL_Color glitch,
+                                   SDL_Color bg) {
+    UiElement *element;
+    int x;
+    int y;
+    int width;
+    int height;
+    if (!layout || !grid || !isfinite(now_ms) || now_ms < 0.0) return false;
+    element = ui_layout_get_focused(layout, focus_index);
+    if (!element || !element->focused || reduced_motion ||
+        strcmp(element->focus_effect, "none") == 0 ||
+        strcmp(element->focus_effect, "input_hold_short") == 0) return true;
+    if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
+        width < 2 || height < 1) return false;
+    if (strcmp(element->focus_effect, "focus_pulse") == 0) {
+        if (((uint64_t)(now_ms / 160.0) % 2U) != 0U) {
+            (void)grid_set(grid, x - 1, y, '*', pulse, bg);
+            (void)grid_set(grid, x + width, y, '*', pulse, bg);
+        }
+        return true;
+    }
+    if (strcmp(element->focus_effect, "focus_glitch") == 0) {
+        int offset = (int)((uint64_t)(now_ms / 80.0) % 3U) - 1;
+        if (offset != 0) {
+            (void)grid_set(grid, x - 1, y + offset, '>', glitch, bg);
+            (void)grid_set(grid, x + width, y - offset, '<', glitch, bg);
+        }
+        return true;
+    }
+    return false;
 }
 
 void ui_layout_destroy(UiLayout *layout) {

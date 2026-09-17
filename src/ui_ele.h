@@ -287,6 +287,12 @@ int ui_layout_focusable_count(UiLayout *layout);
  */
 void ui_layout_render(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg);
 
+/** Adds presentation-only decoration for the focused button's saved effect preset. */
+bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,
+                                   double now_ms, bool reduced_motion,
+                                   SDL_Color pulse, SDL_Color glitch,
+                                   SDL_Color bg);
+
 /**
  * ui_layout_destroy() — Free a layout and its element references
  *

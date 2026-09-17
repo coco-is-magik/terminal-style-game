@@ -353,12 +353,21 @@ static void menu_sync_button_colors(UiLayout *layout, int selected) {
     }
 }
 
-static void draw_data_menu(Grid *grid, UiLayout *layout, int selected) {
+static bool draw_data_menu(Grid *grid, UiLayout *layout, int selected,
+                           double now_ms, bool reduced_motion) {
     SDL_Color fg = {255, 255, 255, 255};
     SDL_Color bg = {0, 0, 0, 255};
-    if (!grid || !layout) return;
+    UiThemeColor pulse_token = ui_theme_provisional_tokens()->palette.focus;
+    UiThemeColor glitch_token = ui_theme_provisional_tokens()->palette.accent;
+    SDL_Color pulse = {pulse_token.red, pulse_token.green,
+                       pulse_token.blue, pulse_token.alpha};
+    SDL_Color glitch = {glitch_token.red, glitch_token.green,
+                        glitch_token.blue, glitch_token.alpha};
+    if (!grid || !layout) return false;
     menu_sync_button_colors(layout, selected);
     ui_layout_render(layout, grid, fg, bg);
+    return ui_layout_render_focus_effect(layout, selected, grid, now_ms,
+                                         reduced_motion, pulse, glitch, bg);
 }
 
 static bool enter_unified_editor(UnifiedEditorState *ued,
@@ -995,9 +1004,9 @@ int app_main(int argc, char* argv[]) {
         active_menu = menu_stack_peek(&ms);
 
         UiPauseMotionSample pause_sample = {0};
+        double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
+                               (double)SDL_GetPerformanceFrequency();
         {
-            double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
-                                   (double)SDL_GetPerformanceFrequency();
             bool pause_visible = app_state == APP_STATE_PLAYING &&
                                  menu_stack_contains(&ms, MENU_PAUSE);
             bool effective_reduced_motion = reduced_motion ||
@@ -1054,8 +1063,12 @@ int app_main(int argc, char* argv[]) {
                 (grid->width - APP_UI_MENU_WIDTH) / 2,
                 (grid->height - APP_UI_MENU_HEIGHT) / 2,
                 APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
-            draw_data_menu(ui_resources.staging, active_layout,
-                           menu_selected[(int)active_menu]);
+            if (!draw_data_menu(ui_resources.staging, active_layout,
+                                menu_selected[(int)active_menu], motion_now_ms,
+                                reduced_motion)) {
+                fprintf(stderr, "TSG-UI-BUG-0003: menu focus effect failed\n");
+                input.quit = true;
+            }
             ui_canvas_copy_grid_region(
                 ui_resources.menu, ui_resources.staging,
                 (grid->width - APP_UI_MENU_WIDTH) / 2,

@@ -4,6 +4,7 @@
 
 #include <cmocka.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #include "../src/ui_workbench.h"
@@ -62,11 +63,40 @@ static void test_invalid_operations_are_nonmutating(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
+static void test_value_cycle_is_not_move_mode_gated(void **state) {
+    UiWorkbench workbench;
+    UiLayout layout = {0};
+    UiElement element = {0};
+    (void)state;
+    ui_workbench_init(&workbench);
+    (void)snprintf(element.name, sizeof(element.name),
+                   "test_ui_workbench_missing_destination");
+    element.type = UI_ELE_BUTTON;
+    element.visible = 1;
+    element.layout.width = 10;
+    element.layout.height = 1;
+    (void)snprintf(element.style, sizeof(element.style), "plain");
+    (void)snprintf(element.transition, sizeof(element.transition), "none");
+    (void)snprintf(element.focus_effect, sizeof(element.focus_effect), "none");
+    layout.element_count = 1;
+    layout.elements[0] = &element;
+    workbench.layout = &layout;
+    workbench.elements[0] = &element;
+    workbench.element_count = 1;
+    workbench.editing = false;
+    workbench.property = UI_WORKBENCH_PROPERTY_STYLE;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1),
+                     UI_WORKBENCH_SAVE_FAILED);
+    assert_string_equal(element.style, "plain");
+    workbench.layout = NULL;
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_open_cycle_select_and_properties),
         cmocka_unit_test(test_safe_navigation_and_unavailable_actions),
-        cmocka_unit_test(test_invalid_operations_are_nonmutating)
+        cmocka_unit_test(test_invalid_operations_are_nonmutating),
+        cmocka_unit_test(test_value_cycle_is_not_move_mode_gated)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

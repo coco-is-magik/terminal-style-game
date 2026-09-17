@@ -107,9 +107,12 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - The first bounded V1-3 consumer is pause-context decoration beneath an unchanged menu.
   Settings/confirmation remain immediate, and reduced motion is session-only until a
   preference-format migration is separately approved.
-- Workbench transition/focus-effect presets are bounded preview metadata and do not expand the
-  approved production-motion contexts. `input_hold_short` has no production execution
-  semantics until a separate non-blocking input design is approved.
+- `focus_pulse` and `focus_glitch` are presentation-only normal-menu focus decorations driven
+  by explicit runtime time. Stable `>`/`<` markers, content, bounds, focus, and activation stay
+  unchanged; reduced motion suppresses animated decoration immediately.
+- Transition presets remain bounded workbench preview metadata and do not expand the approved
+  production-motion contexts. `input_hold_short` has no production execution semantics until a
+  separate non-blocking input design is approved.
 
 ### Parsing and persistence
 

@@ -10,8 +10,9 @@ still a manual follow-up.
 - The application branches before world, map, game-flow, or unified-editor initialization and
   owns only renderer/grid resources plus application UI assets.
 - The bounded contexts are main menu, pause, settings, and quit confirmation.
-- Up/Down browses the active element set, including its ancestor container; Enter toggles edit
-  selection; arrows move one cell; Tab cycles property; `[`/`]` cycles compatible values;
+- Up/Down browses the active element set, including its ancestor container; Enter toggles move
+  mode; arrows move one cell while in move mode; Tab cycles property; the literal `[` and `]`
+  keys cycle compatible values directly on the highlighted element without entering move mode;
   Ctrl+Left/Right cycles contexts; Ctrl+Enter invokes safe application-menu navigation; Escape
   exits.
 - Scale uses the same `default_user.ini` / `user.ini` precedence and persistence as normal run.
@@ -34,8 +35,11 @@ Implemented styles:
 
 Recognized transitions are `none`, `center_out`, `perimeter_burst`, and `local_glitch`.
 Recognized effects are `none`, `focus_pulse`, `focus_glitch`, and `input_hold_short`.
-Transitions/effects are persisted and previewed only in the workbench. They do not expand the
-approved production-motion contexts. `input_hold_short` is explicitly metadata-only.
+Transitions are persisted and previewed only in the workbench. `focus_pulse` and
+`focus_glitch` are also consumed by normal application-menu rendering as presentation-only
+decoration around the focused button. Stable `>`/`<` markers, content, bounds, focus, and
+activation remain unchanged, and reduced motion removes the animated decoration immediately.
+`input_hold_short` is explicitly metadata-only.
 
 Ancestor containers omitted from legacy layout element lists are rendered once in a
 non-recursive decoration prepass, making a saved `frame` visible without duplicating child
@@ -68,8 +72,14 @@ Passed after the final hierarchy/render corrections:
 
 - strict default SMC-stream application build;
 - strict `USE_NO_STATE_TRACKER=1` application build;
-- focused UI element suite: 18/18;
-- workbench controller suite: 3/3;
+- UI element runner: 18/19 with the new focus-effect regression passing; the remaining fixed
+  checked-in-layout assertion expects quit-title `y=1`, while the live workbench-authored asset
+  is intentionally preserved at `y=0`;
+- focused production focus-effect regression: 1/1, covering pulse/glitch deterministic phases,
+  stable focus markers, reduced-motion suppression, metadata-only input hold, and invalid-time
+  nonmutation;
+- workbench controller suite: 4/4, including the regression that preset value cycling is not
+  incorrectly gated by move mode and preserves the prior value when saving fails;
 - shared UI-preferences suite: 6/6, covering default/user precedence, 100/125/150/200%
   transitions and endpoints, reset-to-default, atomic persistence, and save failures;
 - workbench parser/store suite: 4/4;

@@ -520,6 +520,73 @@ static void test_ui_ele_z_index_child_order(void **state) {
     release_stack_element(&high);
 }
 
+static void test_production_focus_effects_are_deterministic_and_nonstructural(void **state) {
+    UiElement button = make_text_element("focus", "GO", 3, 3, 8, 0);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(16, 10);
+    SDL_Color fg = {220, 220, 220, 255};
+    SDL_Color pulse = {10, 240, 120, 255};
+    SDL_Color glitch = {30, 120, 240, 255};
+    SDL_Color bg = {0, 0, 0, 255};
+    Cell value;
+    Cell before;
+    (void)state;
+    assert_non_null(grid);
+    button.type = UI_ELE_BUTTON;
+    button.layout.height = 1;
+    button.visible = 1;
+    (void)snprintf(button.style, sizeof(button.style), "plain");
+    (void)snprintf(button.transition, sizeof(button.transition), "none");
+    (void)snprintf(button.focus_effect, sizeof(button.focus_effect), "focus_pulse");
+    layout.element_count = 1;
+    layout.elements[0] = &button;
+    ui_layout_set_focus(&layout, 0);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 160.0, false,
+                                              pulse, glitch, bg));
+    assert_true(grid_get(grid, 2, 3, &value));
+    assert_int_equal(value.glyph, '*');
+    assert_int_equal(value.fg.g, pulse.g);
+    assert_true(grid_get(grid, 3, 3, &value));
+    assert_int_equal(value.glyph, '>');
+    assert_true(grid_get(grid, 10, 3, &value));
+    assert_int_equal(value.glyph, '<');
+    assert_true(grid_get(grid, 11, 3, &value));
+    assert_int_equal(value.glyph, '*');
+
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 160.0, true,
+                                              pulse, glitch, bg));
+    assert_true(grid_get(grid, 2, 3, &value));
+    assert_int_equal(value.glyph, ' ');
+
+    (void)snprintf(button.focus_effect, sizeof(button.focus_effect), "focus_glitch");
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 80.0, false,
+                                              pulse, glitch, bg));
+    assert_true(grid_get(grid, 2, 3, &value));
+    assert_int_equal(value.glyph, ' ');
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 160.0, false,
+                                              pulse, glitch, bg));
+    assert_true(grid_get(grid, 2, 4, &value));
+    assert_int_equal(value.glyph, '>');
+    assert_int_equal(value.fg.b, glitch.b);
+
+    (void)snprintf(button.focus_effect, sizeof(button.focus_effect), "input_hold_short");
+    assert_true(grid_get(grid, 0, 0, &before));
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 320.0, false,
+                                              pulse, glitch, bg));
+    assert_true(grid_get(grid, 0, 0, &value));
+    assert_memory_equal(&value, &before, sizeof(value));
+    assert_false(ui_layout_render_focus_effect(&layout, 0, grid, -1.0, false,
+                                               pulse, glitch, bg));
+    assert_true(grid_get(grid, 0, 0, &value));
+    assert_memory_equal(&value, &before, sizeof(value));
+    grid_destroy(grid);
+    release_stack_element(&button);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ui_ele_load_text),
@@ -539,6 +606,7 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_rejects_malformed_numeric_field),
         cmocka_unit_test(test_ui_ele_button_action),
         cmocka_unit_test(test_ui_ele_z_index_child_order),
+        cmocka_unit_test(test_production_focus_effects_are_deterministic_and_nonstructural),
         cmocka_unit_test(test_ui_ele_reserved_content_updates_in_place),
     };
 

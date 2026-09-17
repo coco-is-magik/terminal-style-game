@@ -150,8 +150,9 @@ make ui-workbench
 ```
 
 Up/Down browses elements (including the active context container); Enter enters or leaves
-edit mode; arrows move a selected element one cell and save immediately; Tab cycles parent,
-style, transition, and focus/effect metadata; `[`/`]` cycles compatible presets;
+move mode; arrows move a move-selected element one cell and save immediately; Tab cycles
+parent, style, transition, and focus/effect metadata; the literal `[` and `]` keys cycle
+compatible values directly on the highlighted element without entering move mode;
 Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;
 Ctrl+`-`/Ctrl+`+` changes the shared 100%, 125%, 150%, and 200% UI preference; Ctrl+`0`
 resets to the immutable default, exactly as in `make run`; Escape exits. The application UI
@@ -161,8 +162,10 @@ accepted edit canonically rewrites the affected
 through a synced same-directory temporary file and atomic replacement, then reloads the active
 layout. There is no undo, draft, creation/deletion, click selection, authored `.tui` editing,
 or custom-theme editing in this mode. Scale changes use the normal `default_user.ini` /
-`user.ini` precedence and persistence. Transition/effect visuals are workbench previews;
-`input_hold_short` is metadata-only and has no production execution semantics yet.
+`user.ini` precedence and persistence. `focus_pulse` and `focus_glitch` are rendered for the
+focused button in normal application menus as well as the workbench; transition presets remain
+workbench previews. `input_hold_short` is metadata-only and has no production execution
+semantics yet.
 
 make run
 make run-normal

@@ -52,7 +52,7 @@ static void draw_help(Grid *grid, const UiWorkbench *workbench,
         ui_workbench_current_value(workbench), scale_percent);
     grid_print(grid, 1, grid->height - 3, line, palette->primary_text, palette->canvas);
     grid_print(grid, 1, grid->height - 2,
-        "Up/Down element | Enter edit | arrows move | Tab property | [/] value | Ctrl+Left/Right layout | Ctrl+Enter action | Ctrl+-/+ scale | Esc exit",
+        "Up/Down element | Enter move mode | arrows move | Tab property | [ or ] value | Ctrl+Left/Right layout | Ctrl+Enter action | Ctrl+-/+ scale | Esc exit",
         palette->secondary_text, palette->canvas);
     if (element && strcmp(element->focus_effect, "input_hold_short") == 0)
         grid_print(grid, 1, grid->height - 1,
