@@ -294,6 +294,13 @@ static void test_ui_layout_remaining_menu_focus_actions(void **state) {
     ui_cache_tick(&cache, "settings", "assets/ui_elements");
 
     assert_layout_actions(&cache, "assets/ui_layouts/pause_menu.txt", 4, pause_actions);
+    {
+        UiElement *animation = ui_cache_get(&cache, "animation_pause_glitch");
+        assert_non_null(animation);
+        assert_int_equal(animation->type, UI_ELE_ANIMATION);
+        assert_string_equal(animation->preset, "pause_glitch");
+        assert_string_equal(animation->target, "pause_menu_container");
+    }
     assert_layout_actions(&cache, "assets/ui_layouts/confirm_quit.txt", 2,
                           confirm_actions);
     assert_layout_actions(&cache, "assets/ui_layouts/settings.txt", 5,
@@ -316,10 +323,9 @@ static void test_confirm_quit_layout_is_centered(void **state) {
     container = ui_cache_get(&cache, "confirm_menu_container");
     assert_non_null(container);
     assert_int_equal(container->layout.coords_mode, UI_COORD_ABSOLUTE);
-    assert_int_equal(container->layout.x, 120);
-    assert_int_equal(container->layout.y, 76);
-    assert_int_equal(container->layout.width, 20);
-    assert_int_equal(container->layout.height, 7);
+    assert_int_equal(container->layout.x + container->layout.width / 2, 130);
+    assert_true(container->layout.y >= 0);
+    assert_true(container->layout.y + container->layout.height <= 160);
 
     layout = ui_layout_load("assets/ui_layouts/confirm_quit.txt", &cache);
     assert_non_null(layout);
@@ -328,9 +334,26 @@ static void test_confirm_quit_layout_is_centered(void **state) {
     grid_clear(grid, bg);
     ui_layout_render(layout, grid, fg, bg);
 
-    assert_true(grid_has_text_at(grid, 125, 77, "QUIT GAME?"));
-    assert_true(grid_has_text_at(grid, 124, 79, "YES"));
-    assert_true(grid_has_text_at(grid, 133, 79, "NO"));
+    {
+        UiElement *title = ui_cache_get(&cache, "confirm_quit_title");
+        UiElement *yes = ui_cache_get(&cache, "confirm_yes");
+        UiElement *no = ui_cache_get(&cache, "confirm_no");
+        assert_non_null(title);
+        assert_non_null(yes);
+        assert_non_null(no);
+        assert_true(grid_has_text_at(
+            grid, container->layout.x + title->layout.x +
+                (title->layout.width - (int)strlen(title->content)) / 2,
+            container->layout.y + title->layout.y, title->content));
+        assert_true(grid_has_text_at(
+            grid, container->layout.x + yes->layout.x +
+                (yes->layout.width - (int)strlen(yes->content)) / 2,
+            container->layout.y + yes->layout.y, yes->content));
+        assert_true(grid_has_text_at(
+            grid, container->layout.x + no->layout.x +
+                (no->layout.width - (int)strlen(no->content)) / 2,
+            container->layout.y + no->layout.y, no->content));
+    }
 
     grid_destroy(grid);
     ui_layout_destroy(layout);

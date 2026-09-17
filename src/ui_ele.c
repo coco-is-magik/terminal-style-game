@@ -84,6 +84,7 @@ static int split_csv(char value[][UI_ELE_NAME_MAX], int max_count, const char *t
 
 static UiElementType parse_type(const char *text) {
     if (text && strcmp(text, "button") == 0) return UI_ELE_BUTTON;
+    if (text && strcmp(text, "animation") == 0) return UI_ELE_ANIMATION;
     if (text && strcmp(text, "text") == 0) return UI_ELE_TEXT;
     return UI_ELE_CONTAINER;
 }
@@ -121,6 +122,25 @@ bool ui_ele_focus_effect_is_valid(const char *effect) {
         strcmp(effect, "focus_pulse") == 0 ||
         strcmp(effect, "focus_glitch") == 0 ||
         strcmp(effect, "input_hold_short") == 0);
+}
+
+bool ui_ele_animation_is_valid(const UiElement *element) {
+    if (!element) return false;
+    if (element->type != UI_ELE_ANIMATION) return true;
+    return (strcmp(element->preset, "pause_glitch") == 0 ||
+            strcmp(element->preset, "center_out") == 0 ||
+            strcmp(element->preset, "perimeter_burst") == 0 ||
+            strcmp(element->preset, "local_glitch") == 0) &&
+        (strcmp(element->trigger, "context_enter") == 0 ||
+         strcmp(element->trigger, "context_exit") == 0 ||
+         strcmp(element->trigger, "focus") == 0 ||
+         strcmp(element->trigger, "activate") == 0 ||
+         strcmp(element->trigger, "while_visible") == 0) &&
+        (strcmp(element->orientation, "horizontal") == 0 ||
+         strcmp(element->orientation, "vertical") == 0 ||
+         strcmp(element->orientation, "radial") == 0) &&
+        element->target[0] != '\0' && element->loop >= 0 && element->loop <= 1 &&
+        element->randomize >= 0 && element->randomize <= 1;
 }
 
 static bool parse_color(const char *text, SDL_Color *out_color) {
@@ -221,6 +241,9 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
     (void)snprintf(element->style, sizeof(element->style), "plain");
     (void)snprintf(element->transition, sizeof(element->transition), "none");
     (void)snprintf(element->focus_effect, sizeof(element->focus_effect), "none");
+    (void)snprintf(element->preset, sizeof(element->preset), "pause_glitch");
+    (void)snprintf(element->trigger, sizeof(element->trigger), "context_enter");
+    (void)snprintf(element->orientation, sizeof(element->orientation), "horizontal");
 
     while (fgets(line, sizeof(line), f)) {
         char *eq;
@@ -280,6 +303,22 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
         } else if (strcmp(key, "focus_effect") == 0) {
             if (strlen(val) >= sizeof(element->focus_effect)) valid = false;
             else (void)snprintf(element->focus_effect, sizeof(element->focus_effect), "%s", val);
+        } else if (strcmp(key, "preset") == 0) {
+            if (strlen(val) >= sizeof(element->preset)) valid = false;
+            else (void)snprintf(element->preset, sizeof(element->preset), "%s", val);
+        } else if (strcmp(key, "target") == 0) {
+            if (strlen(val) >= sizeof(element->target)) valid = false;
+            else (void)snprintf(element->target, sizeof(element->target), "%s", val);
+        } else if (strcmp(key, "trigger") == 0) {
+            if (strlen(val) >= sizeof(element->trigger)) valid = false;
+            else (void)snprintf(element->trigger, sizeof(element->trigger), "%s", val);
+        } else if (strcmp(key, "orientation") == 0) {
+            if (strlen(val) >= sizeof(element->orientation)) valid = false;
+            else (void)snprintf(element->orientation, sizeof(element->orientation), "%s", val);
+        } else if (strcmp(key, "loop") == 0) {
+            valid = number_parse_int(val, 0, 1, &element->loop);
+        } else if (strcmp(key, "randomize") == 0) {
+            valid = number_parse_int(val, 0, 1, &element->randomize);
         }
         if (!valid) break;
     }
@@ -289,7 +328,8 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
     if (read_failed || close_failed || !valid ||
         !ui_ele_style_is_valid(element->type, element->style) ||
         !ui_ele_transition_is_valid(element->transition) ||
-        !ui_ele_focus_effect_is_valid(element->focus_effect)) {
+        !ui_ele_focus_effect_is_valid(element->focus_effect) ||
+        !ui_ele_animation_is_valid(element)) {
         ui_ele_destroy(element);
         return NULL;
     }
@@ -480,6 +520,7 @@ static void render_element_self(UiElement *element, Grid *grid, int parent_x,
 
     effective_colors(element, fg, bg, &draw_fg, &draw_bg);
 
+    if (element->type == UI_ELE_ANIMATION) return;
     if (element->type == UI_ELE_TEXT || element->type == UI_ELE_BUTTON) {
         emit_word_wrapped(grid, abs_x, abs_y,
                           element->layout.width, element->layout.height,

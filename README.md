@@ -153,6 +153,9 @@ Up/Down browses elements (including the active context container); Enter enters 
 move mode; arrows move a move-selected element one cell and save immediately; Tab cycles
 parent, style, transition, and focus/effect metadata; the literal `[` and `]` keys cycle
 compatible values directly on the highlighted element without entering move mode;
+Ctrl+N opens a list of existing reusable elements/animations to clone into the active layout;
+Backspace removes the highlighted direct member from that layout after confirmation while
+preserving its reusable source file;
 Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;
 Ctrl+`-`/Ctrl+`+` changes the shared 100%, 125%, 150%, and 200% UI preference; Ctrl+`0`
 resets to the immutable default, exactly as in `make run`; Escape exits. The application UI
@@ -160,12 +163,13 @@ preview inherits that scale while workbench instructions remain fixed and visibl
 accepted edit canonically rewrites the affected
 `assets/ui_elements/*.txt` file
 through a synced same-directory temporary file and atomic replacement, then reloads the active
-layout. There is no undo, draft, creation/deletion, click selection, authored `.tui` editing,
+layout. There is no undo, draft, free-form creation, click selection, authored `.tui` editing,
 or custom-theme editing in this mode. Scale changes use the normal `default_user.ini` /
 `user.ini` precedence and persistence. `focus_pulse` and `focus_glitch` are rendered for the
-focused button in normal application menus as well as the workbench; transition presets remain
-workbench previews. `input_hold_short` is metadata-only and has no production execution
-semantics yet.
+focused button in normal application menus as well as the workbench. Reusable animation units
+and element transition presets use the same production/workbench evaluator for pause glitch,
+center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
+See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
 
 make run
 make run-normal

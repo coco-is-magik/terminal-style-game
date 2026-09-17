@@ -15,5 +15,12 @@ typedef enum {
 bool ui_workbench_element_is_valid(const UiElement *element);
 UiWorkbenchStoreResult ui_workbench_store_element(const UiElement *element,
                                                    const char *path);
+UiWorkbenchStoreResult ui_workbench_create_element(const UiElement *element,
+                                                    const char *path);
+UiWorkbenchStoreResult ui_workbench_store_membership(const char *layout_path,
+                                                      const char *master_path,
+                                                      const char *layout_name,
+                                                      const char *element_name,
+                                                      bool add);
 
 #endif

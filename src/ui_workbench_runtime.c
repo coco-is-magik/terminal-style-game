@@ -3,6 +3,7 @@
 #include "input.h"
 #include "timing.h"
 #include "ui_app_theme_adapter.h"
+#include "ui_animation.h"
 #include "ui_canvas.h"
 #include "ui_compositor.h"
 #include "ui_preferences.h"
@@ -12,8 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static void draw_selection(Grid *grid, UiElement *element, SDL_Color color,
-                           uint64_t ticks) {
+static void draw_selection(Grid *grid, UiElement *element, SDL_Color color) {
     int x;
     int y;
     int width;
@@ -21,29 +21,37 @@ static void draw_selection(Grid *grid, UiElement *element, SDL_Color color,
     SDL_Color bg = {0, 0, 0, 255};
     if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
         width <= 0 || height <= 0) return;
-    if (strcmp(element->focus_effect, "focus_pulse") == 0 &&
-        ((ticks / 180U) % 2U) != 0U) color = (SDL_Color){255, 255, 255, 255};
-    if (strcmp(element->focus_effect, "focus_glitch") == 0)
-        y += (int)((ticks / 90U) % 3U) - 1;
-    if (strcmp(element->transition, "center_out") == 0) {
-        int center = x + width / 2;
-        (void)grid_set(grid, center - 1, y - 1, '<', color, bg);
-        (void)grid_set(grid, center + 1, y - 1, '>', color, bg);
-    } else if (strcmp(element->transition, "perimeter_burst") == 0) {
-        int offset = (int)((ticks / 100U) % 3U);
-        (void)grid_set(grid, x - 1 - offset, y, '*', color, bg);
-        (void)grid_set(grid, x + width + offset, y, '*', color, bg);
-    } else if (strcmp(element->transition, "local_glitch") == 0) {
-        x += (int)((ticks / 75U) % 3U) - 1;
-    }
     (void)grid_set(grid, x - 1, y, '>', color, bg);
     (void)grid_set(grid, x + width, y, '<', color, bg);
+}
+
+static int selected_focus_index(UiWorkbench *workbench) {
+    int i;
+    int count;
+    UiElement *selected;
+    if (!workbench || !workbench->layout) return -1;
+    selected = ui_workbench_current_element(workbench);
+    count = ui_layout_focusable_count(workbench->layout);
+    for (i = 0; i < count; i++)
+        if (ui_layout_get_focused(workbench->layout, i) == selected) return i;
+    return -1;
 }
 
 static void draw_help(Grid *grid, const UiWorkbench *workbench,
                       const UiAppWorkbenchPalette *palette, int scale_percent) {
     char line[256];
     UiElement *element = ui_workbench_current_element((UiWorkbench *)workbench);
+    const char *add_source = ui_workbench_add_source_name(workbench);
+    if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
+        (void)snprintf(line, sizeof(line), "ADD EXISTING UNIT | %s",
+                       add_source ? add_source : "none");
+        grid_print(grid, 1, grid->height - 3, line,
+                   palette->primary_text, palette->canvas);
+        grid_print(grid, 1, grid->height - 2,
+                   "Up/Down choose | Enter clone/add | Esc cancel",
+                   palette->secondary_text, palette->canvas);
+        return;
+    }
     (void)snprintf(line, sizeof(line),
         "UI WORKBENCH | %s | %s | %s=%s | scale=%d%%",
         workbench->layout ? workbench->layout->name : "none",
@@ -52,7 +60,7 @@ static void draw_help(Grid *grid, const UiWorkbench *workbench,
         ui_workbench_current_value(workbench), scale_percent);
     grid_print(grid, 1, grid->height - 3, line, palette->primary_text, palette->canvas);
     grid_print(grid, 1, grid->height - 2,
-        "Up/Down element | Enter move mode | arrows move | Tab property | [ or ] value | Ctrl+Left/Right layout | Ctrl+Enter action | Ctrl+-/+ scale | Esc exit",
+        "Up/Down element | Enter move | arrows move | Tab property | [ or ] value | Ctrl+N add | Backspace remove | Ctrl+Left/Right layout | Esc exit",
         palette->secondary_text, palette->canvas);
     if (element && strcmp(element->focus_effect, "input_hold_short") == 0)
         grid_print(grid, 1, grid->height - 1,
@@ -105,6 +113,7 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
     }
     (void)SDL_SetWindowTitle(renderer->window, "ASCII FPS - UI Workbench (Live Writes)");
     target_ms = timing_target_ms(target_fps);
+    uint64_t preview_start = SDL_GetTicks();
     while (!should_exit) {
         uint64_t start = SDL_GetPerformanceCounter();
         UiElement *element;
@@ -113,7 +122,21 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         UiLayerList layers;
         UiLayer layer;
         input_process(&input, false);
-        if (input.esc || input.quit) should_exit = true;
+        if (input.esc && workbench.mode != UI_WORKBENCH_MODE_BROWSE)
+            ui_workbench_cancel_mode(&workbench);
+        else if (input.esc || input.quit) should_exit = true;
+        else if (workbench.mode == UI_WORKBENCH_MODE_ADD) {
+            if (input.up || input.down)
+                (void)ui_workbench_cycle_add_source(&workbench, input.down ? 1 : -1);
+            else if (input.confirm) (void)ui_workbench_confirm_add(&workbench);
+        } else if (workbench.mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM) {
+            if (input.confirm) (void)ui_workbench_confirm_remove(&workbench);
+        }
+        else if (input.editor_new_pressed) {
+            (void)ui_workbench_begin_add(&workbench);
+        } else if (input.erase) {
+            (void)ui_workbench_request_remove(&workbench);
+        }
         else if (input.ui_scale_reset_pressed) {
             set_scale_status(&workbench, &preferences,
                              ui_preferences_reset(&preferences));
@@ -145,9 +168,17 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
             (void)ui_workbench_cycle_element(&workbench, input.down ? 1 : -1);
         }
         (void)grid_clear_region_zero(grid, 0, 0, grid->width, grid->height);
+        ui_layout_set_focus(workbench.layout, selected_focus_index(&workbench));
         ui_layout_render(workbench.layout, grid, palette.secondary_text, palette.canvas);
+        (void)ui_animation_render_layout(workbench.layout, grid,
+                                         (double)(SDL_GetTicks() - preview_start),
+                                         false, true, UI_ANIMATION_EVENT_PREVIEW);
+        (void)ui_layout_render_focus_effect(
+            workbench.layout, selected_focus_index(&workbench),
+            grid, (double)(SDL_GetTicks() - preview_start), false,
+            palette.primary_text, palette.border, palette.canvas);
         element = ui_workbench_current_element(&workbench);
-        draw_selection(grid, element, palette.border, SDL_GetTicks());
+        draw_selection(grid, element, palette.border);
         ui_canvas_copy_grid_region(canvas, grid, 0, 0);
         grid_clear(grid, palette.canvas);
         draw_help(grid, &workbench, &palette, ui_preferences_scale(&preferences));

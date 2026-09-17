@@ -73,17 +73,23 @@ The bounded application UI workbench is implemented as a dedicated `make ui-work
 pause, settings, and quit confirmation with immediate canonical atomic writes and reloads;
 supports parent, x/y, class-compatible style, transition, and focus/effect presets; and keeps
 authored `.tui` menus, game/world/editor initialization, custom themes, click selection,
-creation/deletion, and history outside its ownership. Transition/effect execution remains a
-workbench preview only except for the visual `focus_pulse` and `focus_glitch` presets, which now
+free-form creation, and history outside its ownership. Ctrl+N clones an existing reusable
+element or fixed animation unit into the active layout; Backspace detaches a direct member while
+preserving its reusable source. The pause glitch is now an ordinary selectable/removable
+animation unit. `focus_pulse` and `focus_glitch`
 render on the focused button in normal application menus without changing stable markers,
-bounds, focus, or activation; reduced motion suppresses their animation. Transition presets and
-`input_hold_short` remain non-production. The preview loads and persists the same
+bounds, focus, or activation. Pause glitch, center-out glyph evacuation, perimeter burst, and
+local glitch use one shared normal/workbench evaluator with context/focus/activate/visible
+triggers, orientation, loop, deterministic bounded random placement, and Reduced Motion.
+`input_hold_short` remains non-production. The preview loads and persists the same
 `default_user.ini` / `user.ini`
 100%, 125%, 150%, and 200% scale preference as normal run. Only the application UI preview is
-scaled; workbench instructions remain fixed and visible. Seventeen UI standards owners, the
+scaled; workbench instructions remain fixed and visible. Eighteen UI standards owners, the
 complete functional aggregate,
 cppcheck/inventory/structure checks, strict default/no-tracker builds, ASan, and UBSan pass.
 See [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).
+The copyable prompt-oriented asset reference is
+[`UI_WORKBENCH_ASSET_REFERENCE.md`](UI_WORKBENCH_ASSET_REFERENCE.md).
 Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.

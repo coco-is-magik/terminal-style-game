@@ -386,8 +386,10 @@ remain in scope. See
 [`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md).
 The separate application UI asset workbench increment is implemented and verified: dedicated
 launch, four bounded contexts, immediate atomic element writes, compatible style presets, and
-preview-only transition/effect metadata. It does not authorize another production motion
-context or resolve the deferred pointer model. See
+reusable fixed animation units. Existing units can be cloned into or detached from layouts;
+pause glitch, center-out, perimeter burst, and local glitch share one production/workbench
+evaluator with bounded triggers/configuration. It does not resolve the deferred pointer model or
+add free-form scripting/timeline authoring. See
 [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).
 
 **Purpose:** Supply coherent pointer and transition semantics before graph, canvas,

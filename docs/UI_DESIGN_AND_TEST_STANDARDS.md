@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the seventeen focused UI rule owners:
+`make test-ui-standards` runs the eighteen focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -22,6 +22,9 @@ theme-token decisions that still require product review.
 - `test-ui-pause-motion` — first real-context enter/exit boundaries, deterministic replay,
   reversal continuity, invalid/backward time, stable endpoints, and decoration-free reduced
   motion without menu ownership;
+- `test-ui-animation` — exact pause-glitch destination parity, actual-glyph center-out,
+  production/workbench trigger filtering, deterministic bounded random placement, looping,
+  and Reduced Motion;
 - `test-ui-workbench-store` — backward-compatible preset defaults, strict class compatibility,
   canonical atomic round trips, destination preservation, and self-parent rejection;
 - `test-ui-workbench` — bounded application-context loading, ancestor-container inclusion,
@@ -60,9 +63,10 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   mutate unrelated application state.
 - Runtime adapters borrow authored data and preserve caller-owned output on invalid
   input where their API promises transactional behavior.
-- The dedicated application UI workbench edits only existing `assets/ui_elements/*.txt`
-  assets used by main, pause, settings, and quit-confirmation layouts. It does not edit
-  authored `.tui` menus, create/delete elements, own a draft/history model, or persist themes.
+- The dedicated application UI workbench edits existing `assets/ui_elements/*.txt` assets and
+  can clone an existing reusable element/animation into, or detach a direct member from, main,
+  pause, settings, and quit-confirmation layouts. Detach preserves the source asset. It does not
+  edit authored `.tui` menus, provide free-form creation, own history/drafts, or persist themes.
 - Accepted workbench edits save immediately through validated same-directory temporary files,
   file sync, atomic replacement, and active-layout reload. Failed pre-commit writes preserve
   both the destination and the in-memory edit value.
@@ -107,12 +111,17 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - The first bounded V1-3 consumer is pause-context decoration beneath an unchanged menu.
   Settings/confirmation remain immediate, and reduced motion is session-only until a
   preference-format migration is separately approved.
+- The pure `ui_pause_motion` owner remains the accepted enter/exit regression model; production
+  pause rendering is now the selectable `animation_pause_glitch` unit through the shared fixed
+  animation evaluator.
 - `focus_pulse` and `focus_glitch` are presentation-only normal-menu focus decorations driven
   by explicit runtime time. Stable `>`/`<` markers, content, bounds, focus, and activation stay
   unchanged; reduced motion suppresses animated decoration immediately.
-- Transition presets remain bounded workbench preview metadata and do not expand the approved
-  production-motion contexts. `input_hold_short` has no production execution semantics until a
-  separate non-blocking input design is approved.
+- Reusable animation units and ordinary element transition presets use the same fixed production
+  evaluator in normal run and workbench preview. Supported presets are pause glitch, center-out,
+  perimeter burst, and local glitch; triggers are context enter/exit, focus, activate, and while
+  visible. Reduced Motion suppresses spatial treatment. `input_hold_short` has no production
+  execution semantics until a separate non-blocking input design is approved.
 
 ### Parsing and persistence
 

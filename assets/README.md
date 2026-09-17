@@ -154,12 +154,12 @@ is_god_ray=0
 
 ## UI elements (`assets/ui_elements/<name>.txt`)
 
-A single data-driven UI widget.  Supported types are `container`, `text`, and
-`button`.
+A single data-driven UI unit. Supported types are `container`, `text`, `button`, and
+`animation`.
 
 ```
 name=<unique name>
-type=<container|text|button>
+type=<container|text|button|animation>
 parent=<parent element name>  # omit for root containers
 coords=<absolute|relative>
 x=<integer>
@@ -181,6 +181,10 @@ Recognized style presets are `plain` for every class, `bracket`/`inverse` for bu
 `center_out`, `perimeter_burst`, and `local_glitch`. Recognized focus/effect presets are
 `none`, `focus_pulse`, `focus_glitch`, and `input_hold_short`. Unknown and class-incompatible
 presets reject the element; `input_hold_short` is currently preview metadata only.
+
+Animation units add `preset`, `target`, `trigger`, `orientation`, `loop`, and `randomize`.
+Their complete bounded schema and copyable examples are in
+`docs/UI_WORKBENCH_ASSET_REFERENCE.md`.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

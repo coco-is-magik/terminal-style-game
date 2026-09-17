@@ -26,7 +26,8 @@
 typedef enum {
     UI_ELE_CONTAINER = 0,
     UI_ELE_TEXT,
-    UI_ELE_BUTTON
+    UI_ELE_BUTTON,
+    UI_ELE_ANIMATION
 } UiElementType;
 
 typedef enum {
@@ -72,12 +73,19 @@ struct UiElement {
     char style[UI_ELE_PRESET_MAX];
     char transition[UI_ELE_PRESET_MAX];
     char focus_effect[UI_ELE_PRESET_MAX];
+    char preset[UI_ELE_PRESET_MAX];
+    char target[UI_ELE_NAME_MAX];
+    char trigger[UI_ELE_PRESET_MAX];
+    char orientation[UI_ELE_PRESET_MAX];
+    int loop;
+    int randomize;
     bool focused;
 };
 
 bool ui_ele_style_is_valid(UiElementType type, const char *style);
 bool ui_ele_transition_is_valid(const char *transition);
 bool ui_ele_focus_effect_is_valid(const char *effect);
+bool ui_ele_animation_is_valid(const UiElement *element);
 
 typedef struct {
     char layout[UI_ELE_NAME_MAX];
