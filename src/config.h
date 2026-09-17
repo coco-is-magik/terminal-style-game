@@ -114,7 +114,8 @@ typedef enum {
     RUN_MODE_SMOKE,               /* Headless startup/assets validation */
     RUN_MODE_DISPLAY_ACCEPTANCE,  /* Bounded native display/input evidence */
     RUN_MODE_UI_THEME_DEMO,       /* Interactive accepted-palette specimen */
-    RUN_MODE_UI_MOTION_DEMO       /* Interactive accepted-motion specimen */
+    RUN_MODE_UI_MOTION_DEMO,      /* Interactive accepted-motion specimen */
+    RUN_MODE_UI_WORKBENCH         /* Dedicated live application-UI tweak mode */
 } RunMode;
 
 /* ---- Visual mode enum ---- */

@@ -11,6 +11,7 @@
 #include <cmocka.h>
 
 #include "../src/ui_ele.h"
+#include "../src/ui_theme.h"
 #include "../src/grid.h"
 
 static int grid_has_text_at(Grid *grid, int x, int y, const char *text) {
@@ -400,6 +401,51 @@ static void test_ui_ele_color_override(void **state) {
     release_stack_element(&e);
 }
 
+static void test_ui_ele_preset_styles_render_locally(void **state) {
+    UiElement button = make_text_element("button", "GO", 1, 1, 6, 0);
+    UiElement container = make_text_element("container", "", 0, 0, 8, 0);
+    Grid *grid = grid_create(12, 8);
+    SDL_Color fg = {200, 210, 220, 255};
+    SDL_Color bg = {10, 20, 30, 255};
+    Cell value;
+    (void)state;
+    assert_non_null(grid);
+    button.type = UI_ELE_BUTTON;
+    (void)snprintf(button.style, sizeof(button.style), "bracket");
+    container.type = UI_ELE_CONTAINER;
+    container.layout.height = 4;
+    (void)snprintf(container.style, sizeof(container.style), "frame");
+    grid_clear(grid, bg);
+    ui_ele_render(&button, grid, 0, 0, fg, bg);
+    assert_true(grid_get(grid, 1, 1, &value));
+    assert_int_equal(value.glyph, '[');
+    assert_true(grid_get(grid, 6, 1, &value));
+    assert_int_equal(value.glyph, ']');
+    (void)snprintf(button.style, sizeof(button.style), "inverse");
+    ui_ele_render(&button, grid, 0, 0, fg, bg);
+    assert_true(grid_get(grid, 2, 1, &value));
+    assert_int_equal(value.fg.r, bg.r);
+    assert_int_equal(value.bg.r, fg.r);
+    ui_ele_render(&container, grid, 0, 0, fg, bg);
+    assert_true(grid_get(grid, 0, 0, &value));
+    assert_int_equal(value.glyph, '+');
+    assert_true(grid_get(grid, 7, 3, &value));
+    assert_int_equal(value.glyph, '+');
+    button.type = UI_ELE_TEXT;
+    (void)snprintf(button.style, sizeof(button.style), "bright");
+    ui_ele_render(&button, grid, 0, 0, fg, bg);
+    assert_true(grid_get(grid, 1, 1, &value));
+    assert_int_equal(value.fg.r,
+                     ui_theme_provisional_tokens()->palette.text_primary.red);
+    assert_int_equal(value.fg.g,
+                     ui_theme_provisional_tokens()->palette.text_primary.green);
+    assert_int_equal(value.fg.b,
+                     ui_theme_provisional_tokens()->palette.text_primary.blue);
+    grid_destroy(grid);
+    release_stack_element(&container);
+    release_stack_element(&button);
+}
+
 static void test_ui_ele_rejects_invalid_color(void **state) {
     char path[] = "build/tsg_ui_ele_color_XXXXXX";
     int fd;
@@ -488,6 +534,7 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_hidden_not_rendered),
         cmocka_unit_test(test_ui_ele_center_align),
         cmocka_unit_test(test_ui_ele_color_override),
+        cmocka_unit_test(test_ui_ele_preset_styles_render_locally),
         cmocka_unit_test(test_ui_ele_rejects_invalid_color),
         cmocka_unit_test(test_ui_ele_rejects_malformed_numeric_field),
         cmocka_unit_test(test_ui_ele_button_action),

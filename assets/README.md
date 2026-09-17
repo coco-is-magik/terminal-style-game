@@ -170,8 +170,17 @@ align=<left|center|right>     # text/button only
 fg=R,G,B,A                    # optional
 bg=R,G,B,A                    # optional
 action=<action name>           # button only
+style=<preset>                 # optional; defaults to plain
+transition=<preset>            # optional; defaults to none
+focus_effect=<preset>          # optional; defaults to none
 content=<text>                 # optional; may be empty
 ```
+
+Recognized style presets are `plain` for every class, `bracket`/`inverse` for buttons,
+`frame` for containers, and `bright` for text. Recognized transition presets are `none`,
+`center_out`, `perimeter_burst`, and `local_glitch`. Recognized focus/effect presets are
+`none`, `focus_pulse`, `focus_glitch`, and `input_hold_short`. Unknown and class-incompatible
+presets reject the element; `input_hold_short` is currently preview metadata only.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

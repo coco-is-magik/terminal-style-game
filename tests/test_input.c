@@ -72,6 +72,13 @@ static void test_key_and_editor_shortcuts(void **state) {
     input_apply_event(&input, &event, false);
     assert_true(input.confirm);
     assert_true(input.editor_confirm_pressed);
+    input_begin_frame(&input);
+    event.ctrl = true;
+    input_apply_event(&input, &event, false);
+    assert_true(input.ctrl_confirm);
+    assert_false(input.confirm);
+    assert_false(input.editor_confirm_pressed);
+    event.ctrl = false;
     event.key = INPUT_KEY_SPACE;
     input_apply_event(&input, &event, false);
     assert_true(input.place);

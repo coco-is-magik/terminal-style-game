@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the fifteen focused UI rule owners:
+`make test-ui-standards` runs the seventeen focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -22,6 +22,11 @@ theme-token decisions that still require product review.
 - `test-ui-pause-motion` — first real-context enter/exit boundaries, deterministic replay,
   reversal continuity, invalid/backward time, stable endpoints, and decoration-free reduced
   motion without menu ownership;
+- `test-ui-workbench-store` — backward-compatible preset defaults, strict class compatibility,
+  canonical atomic round trips, destination preservation, and self-parent rejection;
+- `test-ui-workbench` — bounded application-context loading, ancestor-container inclusion,
+  deterministic element/property navigation, safe action routing, and invalid-operation
+  nonmutation;
 - `test-ui-app-theme-adapter` — exact provisional application-menu role mapping, alpha
   preservation, stable repeated resolution, and invalid-output handling;
 - `test-ui-theme-demo` — complete provisional role/state specimen, session-only scale
@@ -55,6 +60,12 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   mutate unrelated application state.
 - Runtime adapters borrow authored data and preserve caller-owned output on invalid
   input where their API promises transactional behavior.
+- The dedicated application UI workbench edits only existing `assets/ui_elements/*.txt`
+  assets used by main, pause, settings, and quit-confirmation layouts. It does not edit
+  authored `.tui` menus, create/delete elements, own a draft/history model, or persist themes.
+- Accepted workbench edits save immediately through validated same-directory temporary files,
+  file sync, atomic replacement, and active-layout reload. Failed pre-commit writes preserve
+  both the destination and the in-memory edit value.
 
 ### Layout and composition
 
@@ -96,6 +107,9 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - The first bounded V1-3 consumer is pause-context decoration beneath an unchanged menu.
   Settings/confirmation remain immediate, and reduced motion is session-only until a
   preference-format migration is separately approved.
+- Workbench transition/focus-effect presets are bounded preview metadata and do not expand the
+  approved production-motion contexts. `input_hold_short` has no production execution
+  semantics until a separate non-blocking input design is approved.
 
 ### Parsing and persistence
 

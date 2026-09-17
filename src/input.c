@@ -37,7 +37,8 @@ void input_begin_frame(InputState *input) {
     input->mouse_left_released = false;
     input->mouse_grid_valid = false;
 #define RESET_FIELD(field) input->field = false
-    RESET_FIELD(up); RESET_FIELD(down); RESET_FIELD(confirm); RESET_FIELD(esc);
+    RESET_FIELD(up); RESET_FIELD(down); RESET_FIELD(confirm); RESET_FIELD(ctrl_confirm);
+    RESET_FIELD(esc);
     RESET_FIELD(arrow_left); RESET_FIELD(arrow_right); RESET_FIELD(place);
     RESET_FIELD(erase); RESET_FIELD(save); RESET_FIELD(load); RESET_FIELD(prev_glyph);
     RESET_FIELD(next_glyph); RESET_FIELD(save_as); RESET_FIELD(tab);
@@ -131,7 +132,10 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
             if (event->ctrl) input->ctrl_down = true;
             else { input->down = true; input->editor_next_pressed = true; }
             break;
-        case INPUT_KEY_RETURN: input->confirm = true; input->editor_confirm_pressed = true; break;
+        case INPUT_KEY_RETURN:
+            if (event->ctrl) input->ctrl_confirm = true;
+            else { input->confirm = true; input->editor_confirm_pressed = true; }
+            break;
         case INPUT_KEY_LEFT:
             if (event->ctrl) input->ctrl_left = true;
             else {

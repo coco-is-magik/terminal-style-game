@@ -21,6 +21,7 @@
 #define UI_LAYOUT_MAX_ELEMS  32
 #define UI_LAYOUT_MAX_SLOTS  16
 #define UI_MASTER_MAX        16
+#define UI_ELE_PRESET_MAX     32
 
 typedef enum {
     UI_ELE_CONTAINER = 0,
@@ -68,8 +69,15 @@ struct UiElement {
     SDL_Color fg;
     SDL_Color bg;
     char action[UI_ELE_NAME_MAX];
+    char style[UI_ELE_PRESET_MAX];
+    char transition[UI_ELE_PRESET_MAX];
+    char focus_effect[UI_ELE_PRESET_MAX];
     bool focused;
 };
+
+bool ui_ele_style_is_valid(UiElementType type, const char *style);
+bool ui_ele_transition_is_valid(const char *transition);
+bool ui_ele_focus_effect_is_valid(const char *effect);
 
 typedef struct {
     char layout[UI_ELE_NAME_MAX];
@@ -136,6 +144,8 @@ void ui_ele_set_content(UiElement *element, const char *content);
 bool ui_ele_reserve_content(UiElement *element, size_t capacity);
 bool ui_ele_set_content_bounded(UiElement *element, const char *content);
 void ui_ele_set_colors(UiElement *element, SDL_Color fg, SDL_Color bg);
+bool ui_ele_absolute_bounds(const UiElement *element, int *out_x, int *out_y,
+                            int *out_width, int *out_height);
 const char *ui_ele_get_action(const UiElement *element);
 
 /**
@@ -154,6 +164,8 @@ const char *ui_ele_get_action(const UiElement *element);
  */
 void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
                    SDL_Color fg, SDL_Color bg);
+void ui_ele_render_self(UiElement *element, Grid *grid, int parent_x, int parent_y,
+                        SDL_Color fg, SDL_Color bg);
 
 /* ---- Cache API ---- */
 

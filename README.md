@@ -142,6 +142,28 @@ isolated literal-RGB sample. The current D6 timings and treatment are accepted. 
 pause overlay is the first bounded real-context consumer; no second context is authorized
 until its native visual review is accepted.
 
+To live-tweak the existing application-owned main, pause, settings, and quit-confirmation
+UI assets without loading a world or the unified editor:
+
+```sh
+make ui-workbench
+```
+
+Up/Down browses elements (including the active context container); Enter enters or leaves
+edit mode; arrows move a selected element one cell and save immediately; Tab cycles parent,
+style, transition, and focus/effect metadata; `[`/`]` cycles compatible presets;
+Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;
+Ctrl+`-`/Ctrl+`+` changes the shared 100%, 125%, 150%, and 200% UI preference; Ctrl+`0`
+resets to the immutable default, exactly as in `make run`; Escape exits. The application UI
+preview inherits that scale while workbench instructions remain fixed and visible. Every
+accepted edit canonically rewrites the affected
+`assets/ui_elements/*.txt` file
+through a synced same-directory temporary file and atomic replacement, then reloads the active
+layout. There is no undo, draft, creation/deletion, click selection, authored `.tui` editing,
+or custom-theme editing in this mode. Scale changes use the normal `default_user.ini` /
+`user.ini` precedence and persistence. Transition/effect visuals are workbench previews;
+`input_hold_short` is metadata-only and has no production execution semantics yet.
+
 make run
 make run-normal
 make run-stress

@@ -1,7 +1,14 @@
 name=main_menu_container
 type=container
 x=120
-y=68
+y=71
 coords=absolute
 width=24
 height=16
+visible=1
+z_index=0
+align=left
+style=plain
+transition=none
+focus_effect=none
+content=

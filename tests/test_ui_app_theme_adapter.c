@@ -6,6 +6,7 @@
 #include <cmocka.h>
 
 #include "../src/ui_app_theme_adapter.h"
+#include "../src/ui_theme.h"
 
 static void assert_color(SDL_Color color, uint8_t red, uint8_t green,
                          uint8_t blue, uint8_t alpha) {
@@ -43,11 +44,30 @@ static void test_menu_palette_rejects_null_output(void **state) {
     assert_false(ui_app_theme_menu_palette(NULL));
 }
 
+static void test_workbench_palette_maps_exact_roles(void **state) {
+    UiAppWorkbenchPalette palette;
+    const UiThemePalette *tokens = &ui_theme_provisional_tokens()->palette;
+    (void)state;
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_color(palette.primary_text, tokens->text_primary.red,
+                 tokens->text_primary.green, tokens->text_primary.blue,
+                 tokens->text_primary.alpha);
+    assert_color(palette.secondary_text, tokens->text_secondary.red,
+                 tokens->text_secondary.green, tokens->text_secondary.blue,
+                 tokens->text_secondary.alpha);
+    assert_color(palette.canvas, tokens->canvas.red, tokens->canvas.green,
+                 tokens->canvas.blue, tokens->canvas.alpha);
+    assert_color(palette.border, tokens->border.red, tokens->border.green,
+                 tokens->border.blue, tokens->border.alpha);
+    assert_false(ui_app_theme_workbench_palette(NULL));
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_menu_palette_maps_exact_provisional_roles),
         cmocka_unit_test(test_menu_palette_is_stable_and_preserves_alpha),
-        cmocka_unit_test(test_menu_palette_rejects_null_output)
+        cmocka_unit_test(test_menu_palette_rejects_null_output),
+        cmocka_unit_test(test_workbench_palette_maps_exact_roles)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

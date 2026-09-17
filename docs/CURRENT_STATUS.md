@@ -68,6 +68,18 @@ reduced-motion toggle. All fifteen UI standards owners, the complete functional 
 standards, focused sanitizers, and strict tracker/no-tracker builds pass. Native visual review
 is pending. No second context, pointer redesign, or motion persistence is authorized. See
 [`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md).
+The bounded application UI workbench is implemented as a dedicated `make ui-workbench` /
+`--ui-workbench` early branch. It live-edits existing application element assets across main,
+pause, settings, and quit confirmation with immediate canonical atomic writes and reloads;
+supports parent, x/y, class-compatible style, transition, and focus/effect presets; and keeps
+authored `.tui` menus, game/world/editor initialization, custom themes, click selection,
+creation/deletion, and history outside its ownership. Transition/effect execution remains a
+workbench preview only. The preview loads and persists the same `default_user.ini` / `user.ini`
+100%, 125%, 150%, and 200% scale preference as normal run. Only the application UI preview is
+scaled; workbench instructions remain fixed and visible. Seventeen UI standards owners, the
+complete functional aggregate,
+cppcheck/inventory/structure checks, strict default/no-tracker builds, ASan, and UBSan pass.
+See [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).
 Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.

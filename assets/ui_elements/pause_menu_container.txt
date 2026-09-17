@@ -1,7 +1,14 @@
 name=pause_menu_container
 type=container
 x=120
-y=66
+y=69
 coords=absolute
 width=24
 height=18
+visible=1
+z_index=0
+align=left
+style=plain
+transition=none
+focus_effect=none
+content=

@@ -18,3 +18,16 @@ bool ui_app_theme_menu_palette(UiAppMenuPalette *out_palette) {
     *out_palette = palette;
     return true;
 }
+
+bool ui_app_theme_workbench_palette(UiAppWorkbenchPalette *out_palette) {
+    const UiThemePalette *theme;
+    UiAppWorkbenchPalette palette;
+    if (!out_palette) return false;
+    theme = &ui_theme_provisional_tokens()->palette;
+    palette.primary_text = to_sdl_color(theme->text_primary);
+    palette.secondary_text = to_sdl_color(theme->text_secondary);
+    palette.canvas = to_sdl_color(theme->canvas);
+    palette.border = to_sdl_color(theme->border);
+    *out_palette = palette;
+    return true;
+}

@@ -103,6 +103,9 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-16-v1-3-pause-context-motion-i1.md`](reviews/2026-09-16-v1-3-pause-context-motion-i1.md)
   — implemented first pause-context consumer, preserved interaction invariants, automated
   evidence, development corrections, rollback boundary, and pending native review.
+- [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md)
+  — dedicated application-UI asset workbench, validated preset metadata, canonical atomic
+  writes/reloads, bounded previews, regression evidence, and explicit deferred boundaries.
 - [`TODO.md`](TODO.md) — unordered future-feature ideas, deferred work, and design
   questions. This is not a roadmap or priority order.
 - [`V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md`](V1_PRODUCT_AND_AUTHORED_MODEL_FOUNDATION.md)

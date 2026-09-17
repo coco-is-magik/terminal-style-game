@@ -117,6 +117,9 @@ AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out
         } else if (strcmp(option, "--ui-motion-demo") == 0) {
             result = select_run_mode(&candidate, RUN_MODE_UI_MOTION_DEMO, VISUAL_RAYCAST);
             if (result != APP_OPTIONS_OK) return result;
+        } else if (strcmp(option, "--ui-workbench") == 0) {
+            result = select_run_mode(&candidate, RUN_MODE_UI_WORKBENCH, VISUAL_RAYCAST);
+            if (result != APP_OPTIONS_OK) return result;
         } else if (strcmp(option, "--frames") == 0) {
             if (++i >= argc) return APP_OPTIONS_MISSING_VALUE;
             if (frames_seen || !parse_positive_int(argv[i], &candidate.benchmark_frames)) {
@@ -162,7 +165,8 @@ AppOptionsResult app_options_parse(int argc, char *const argv[], AppOptions *out
         return APP_OPTIONS_CONFLICT;
     }
     if (visual_mode_seen && (candidate.mode == RUN_MODE_UI_THEME_DEMO ||
-                             candidate.mode == RUN_MODE_UI_MOTION_DEMO)) {
+                             candidate.mode == RUN_MODE_UI_MOTION_DEMO ||
+                             candidate.mode == RUN_MODE_UI_WORKBENCH)) {
         return APP_OPTIONS_CONFLICT;
     }
     *out = candidate;

@@ -5,6 +5,7 @@
 #include "ui_ele.h"
 #include "number_parse.h"
 #include "rgba_parse.h"
+#include "ui_theme.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,6 +98,30 @@ static UiAlign parse_align(const char *text) {
     return UI_ALIGN_LEFT;
 }
 
+bool ui_ele_style_is_valid(UiElementType type, const char *style) {
+    if (!style) return false;
+    if (strcmp(style, "plain") == 0) return true;
+    if (type == UI_ELE_BUTTON)
+        return strcmp(style, "bracket") == 0 || strcmp(style, "inverse") == 0;
+    if (type == UI_ELE_CONTAINER) return strcmp(style, "frame") == 0;
+    if (type == UI_ELE_TEXT) return strcmp(style, "bright") == 0;
+    return false;
+}
+
+bool ui_ele_transition_is_valid(const char *transition) {
+    return transition && (strcmp(transition, "none") == 0 ||
+        strcmp(transition, "center_out") == 0 ||
+        strcmp(transition, "perimeter_burst") == 0 ||
+        strcmp(transition, "local_glitch") == 0);
+}
+
+bool ui_ele_focus_effect_is_valid(const char *effect) {
+    return effect && (strcmp(effect, "none") == 0 ||
+        strcmp(effect, "focus_pulse") == 0 ||
+        strcmp(effect, "focus_glitch") == 0 ||
+        strcmp(effect, "input_hold_short") == 0);
+}
+
 static bool parse_color(const char *text, SDL_Color *out_color) {
     uint8_t channels[4];
     if (!out_color || !rgba_parse(text, channels)) return false;
@@ -155,6 +180,19 @@ static void element_absolute_position(const UiElement *element, int parent_x, in
     if (out_y) *out_y = y;
 }
 
+bool ui_ele_absolute_bounds(const UiElement *element, int *out_x, int *out_y,
+                            int *out_width, int *out_height) {
+    int x;
+    int y;
+    if (!element || !out_x || !out_y || !out_width || !out_height) return false;
+    element_absolute_position(element, 0, 0, &x, &y);
+    *out_x = x;
+    *out_y = y;
+    *out_width = element->layout.width;
+    *out_height = element->layout.height;
+    return true;
+}
+
 UiElement *ui_ele_load(const char *path, UiCache *cache) {
     FILE *f;
     UiElement *element;
@@ -179,6 +217,9 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
     element->align = UI_ALIGN_LEFT;
     element->fg = (SDL_Color){255, 255, 255, 255};
     element->bg = (SDL_Color){0, 0, 0, 255};
+    (void)snprintf(element->style, sizeof(element->style), "plain");
+    (void)snprintf(element->transition, sizeof(element->transition), "none");
+    (void)snprintf(element->focus_effect, sizeof(element->focus_effect), "none");
 
     while (fgets(line, sizeof(line), f)) {
         char *eq;
@@ -229,13 +270,25 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
             valid = element->has_bg;
         } else if (strcmp(key, "action") == 0) {
             strncpy(element->action, val, sizeof(element->action) - 1);
+        } else if (strcmp(key, "style") == 0) {
+            if (strlen(val) >= sizeof(element->style)) valid = false;
+            else (void)snprintf(element->style, sizeof(element->style), "%s", val);
+        } else if (strcmp(key, "transition") == 0) {
+            if (strlen(val) >= sizeof(element->transition)) valid = false;
+            else (void)snprintf(element->transition, sizeof(element->transition), "%s", val);
+        } else if (strcmp(key, "focus_effect") == 0) {
+            if (strlen(val) >= sizeof(element->focus_effect)) valid = false;
+            else (void)snprintf(element->focus_effect, sizeof(element->focus_effect), "%s", val);
         }
         if (!valid) break;
     }
 
     read_failed = ferror(f) != 0;
     close_failed = fclose(f) != 0;
-    if (read_failed || close_failed || !valid) {
+    if (read_failed || close_failed || !valid ||
+        !ui_ele_style_is_valid(element->type, element->style) ||
+        !ui_ele_transition_is_valid(element->transition) ||
+        !ui_ele_focus_effect_is_valid(element->focus_effect)) {
         ui_ele_destroy(element);
         return NULL;
     }
@@ -396,8 +449,25 @@ static int emit_word_wrapped(Grid *grid, int x, int y, int width, int height,
     return row;
 }
 
-void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
-                   SDL_Color fg, SDL_Color bg) {
+static void effective_colors(const UiElement *element, SDL_Color fg, SDL_Color bg,
+                             SDL_Color *out_fg, SDL_Color *out_bg) {
+    SDL_Color draw_fg = element->has_fg ? element->fg : fg;
+    SDL_Color draw_bg = element->has_bg ? element->bg : bg;
+    if (element->type == UI_ELE_TEXT && strcmp(element->style, "bright") == 0) {
+        UiThemeColor token = ui_theme_provisional_tokens()->palette.text_primary;
+        draw_fg = (SDL_Color){token.red, token.green, token.blue, token.alpha};
+    }
+    if (strcmp(element->style, "inverse") == 0) {
+        SDL_Color swap = draw_fg;
+        draw_fg = draw_bg;
+        draw_bg = swap;
+    }
+    *out_fg = draw_fg;
+    *out_bg = draw_bg;
+}
+
+static void render_element_self(UiElement *element, Grid *grid, int parent_x,
+                                int parent_y, SDL_Color fg, SDL_Color bg) {
     int abs_x;
     int abs_y;
     SDL_Color draw_fg;
@@ -407,8 +477,7 @@ void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
     if (!element->visible) return;
     element_absolute_position(element, parent_x, parent_y, &abs_x, &abs_y);
 
-    draw_fg = element->has_fg ? element->fg : fg;
-    draw_bg = element->has_bg ? element->bg : bg;
+    effective_colors(element, fg, bg, &draw_fg, &draw_bg);
 
     if (element->type == UI_ELE_TEXT || element->type == UI_ELE_BUTTON) {
         emit_word_wrapped(grid, abs_x, abs_y,
@@ -419,10 +488,54 @@ void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
             grid_set(grid, abs_x, abs_y, '>', draw_fg, draw_bg);
             grid_set(grid, abs_x + element->layout.width - 1, abs_y,
                      '<', draw_fg, draw_bg);
+        } else if (element->type == UI_ELE_BUTTON &&
+                   strcmp(element->style, "bracket") == 0 &&
+                   element->layout.width >= 2) {
+            grid_set(grid, abs_x, abs_y, '[', draw_fg, draw_bg);
+            grid_set(grid, abs_x + element->layout.width - 1, abs_y,
+                     ']', draw_fg, draw_bg);
         }
         return;
     }
 
+    if (strcmp(element->style, "frame") == 0 && element->layout.width >= 2 &&
+        element->layout.height >= 2) {
+        int x;
+        int y;
+        for (x = 0; x < element->layout.width; x++) {
+            grid_set(grid, abs_x + x, abs_y, '-', draw_fg, draw_bg);
+            grid_set(grid, abs_x + x, abs_y + element->layout.height - 1,
+                     '-', draw_fg, draw_bg);
+        }
+        for (y = 0; y < element->layout.height; y++) {
+            grid_set(grid, abs_x, abs_y + y, '|', draw_fg, draw_bg);
+            grid_set(grid, abs_x + element->layout.width - 1, abs_y + y,
+                     '|', draw_fg, draw_bg);
+        }
+        grid_set(grid, abs_x, abs_y, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x + element->layout.width - 1, abs_y, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x, abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x + element->layout.width - 1,
+                 abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
+    }
+
+}
+
+void ui_ele_render_self(UiElement *element, Grid *grid, int parent_x, int parent_y,
+                        SDL_Color fg, SDL_Color bg) {
+    render_element_self(element, grid, parent_x, parent_y, fg, bg);
+}
+
+void ui_ele_render(UiElement *element, Grid *grid, int parent_x, int parent_y,
+                   SDL_Color fg, SDL_Color bg) {
+    int abs_x;
+    int abs_y;
+    SDL_Color draw_fg;
+    SDL_Color draw_bg;
+    if (!element || !element->visible || !grid) return;
+    element_absolute_position(element, parent_x, parent_y, &abs_x, &abs_y);
+    effective_colors(element, fg, bg, &draw_fg, &draw_bg);
+    render_element_self(element, grid, parent_x, parent_y, fg, bg);
     for (int pass = 0; pass < element->child_count; pass++) {
         int best = -1;
         for (int i = 0; i < element->child_count; i++) {
@@ -669,7 +782,28 @@ int ui_layout_focusable_count(UiLayout *layout) {
 }
 
 void ui_layout_render(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg) {
+    UiElement *rendered_parents[UI_LAYOUT_MAX_ELEMS];
+    int rendered_parent_count = 0;
     if (!layout || !grid) return;
+    for (int i = 0; i < layout->element_count; i++) {
+        UiElement *ancestors[UI_LAYOUT_MAX_ELEMS];
+        int ancestor_count = 0;
+        UiElement *parent = layout->elements[i] ? layout->elements[i]->parent : NULL;
+        while (parent && ancestor_count < UI_LAYOUT_MAX_ELEMS) {
+            ancestors[ancestor_count++] = parent;
+            parent = parent->parent;
+        }
+        for (int ancestor = ancestor_count - 1; ancestor >= 0; ancestor--) {
+            parent = ancestors[ancestor];
+            bool already_rendered = false;
+            for (int j = 0; j < rendered_parent_count; j++)
+                if (rendered_parents[j] == parent) already_rendered = true;
+            if (!already_rendered && rendered_parent_count < UI_LAYOUT_MAX_ELEMS) {
+                ui_ele_render_self(parent, grid, 0, 0, fg, bg);
+                rendered_parents[rendered_parent_count++] = parent;
+            }
+        }
+    }
     for (int pass = 0; pass < layout->element_count; pass++) {
         int best = -1;
         for (int i = 0; i < layout->element_count; i++) {

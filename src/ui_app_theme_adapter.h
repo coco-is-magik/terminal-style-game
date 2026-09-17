@@ -12,7 +12,15 @@ typedef struct {
     SDL_Color unselected_background;
 } UiAppMenuPalette;
 
+typedef struct {
+    SDL_Color primary_text;
+    SDL_Color secondary_text;
+    SDL_Color canvas;
+    SDL_Color border;
+} UiAppWorkbenchPalette;
+
 /** Resolves provisional application-menu colors; output is unchanged on failure. */
 bool ui_app_theme_menu_palette(UiAppMenuPalette *out_palette);
+bool ui_app_theme_workbench_palette(UiAppWorkbenchPalette *out_palette);
 
 #endif

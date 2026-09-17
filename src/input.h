@@ -75,6 +75,7 @@ typedef struct {
     bool up;                /* Up arrow key — edge-triggered: true for one frame on press */
     bool down;              /* Down arrow key — edge-triggered */
     bool confirm;           /* Enter key — edge-triggered */
+    bool ctrl_confirm;      /* Ctrl+Enter — explicit alternate activation */
     bool esc;               /* ESC key — edge-triggered: true for one frame on press (non-repeat) */
     bool ui_scale_increase_pressed; /* Ctrl+= — global UI scale increase */
     bool ui_scale_decrease_pressed; /* Ctrl+- — global UI scale decrease */
