@@ -367,6 +367,37 @@ static void test_deterministic_replay_and_invalid_input(void **state) {
     fixture_destroy(&f);
 }
 
+static void test_runtime_render_matches_direct_production_render(void **state) {
+    Fixture f;
+    UiMenuRuntime runtime;
+    UiCanvas *runtime_canvas;
+    UiCanvas *direct_canvas;
+    UiRenderElementState states[3];
+    size_t cell_count = 12U * 6U;
+    (void)state;
+    fixture_init(&f);
+    runtime = active_runtime(&f);
+    runtime_canvas = ui_canvas_create(12, 6);
+    direct_canvas = ui_canvas_create(12, 6);
+    assert_non_null(runtime_canvas);
+    assert_non_null(direct_canvas);
+    states[0] = (UiRenderElementState){1U, false, false, false, true, false};
+    states[1] = (UiRenderElementState){
+        f.play, true, false, false, true, false};
+    states[2] = (UiRenderElementState){
+        f.back, false, false, false, true, false};
+    assert_int_equal(ui_menu_runtime_render(&runtime, runtime_canvas), UI_MENU_RUNTIME_OK);
+    assert_int_equal(ui_render_document(&f.menu, &f.assets, states, 3U,
+                                        &theme, direct_canvas), UI_RENDER_OK);
+    assert_memory_equal(runtime_canvas->cells, direct_canvas->cells,
+                        cell_count * sizeof(Cell));
+    assert_memory_equal(runtime_canvas->touched, direct_canvas->touched,
+                        cell_count * sizeof(*runtime_canvas->touched));
+    ui_canvas_destroy(runtime_canvas);
+    ui_canvas_destroy(direct_canvas);
+    fixture_destroy(&f);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_activation_render_and_confirm_target),
@@ -374,7 +405,8 @@ int main(void) {
         cmocka_unit_test(test_state_eligibility_and_no_action),
         cmocka_unit_test(test_activation_reset_is_transactional),
         cmocka_unit_test(test_render_and_flow_failures_preserve_external_outputs),
-        cmocka_unit_test(test_deterministic_replay_and_invalid_input)
+        cmocka_unit_test(test_deterministic_replay_and_invalid_input),
+        cmocka_unit_test(test_runtime_render_matches_direct_production_render)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

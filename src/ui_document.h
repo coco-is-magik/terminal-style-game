@@ -9,19 +9,32 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define UI_DOCUMENT_VERSION 3U
+#define UI_DOCUMENT_VERSION 4U
+#define UI_DOCUMENT_VERSION_V3 3U
 #define UI_DOCUMENT_VERSION_V2 2U
 #define UI_DOCUMENT_VERSION_V1 1U
 #define UI_DOCUMENT_MAX_ELEMENTS 64U
 #define UI_DOCUMENT_NAME_CAPACITY FLOW_NAME_CAPACITY
 #define UI_DOCUMENT_CONTENT_CAPACITY 256U
 #define UI_DOCUMENT_PATH_CAPACITY 1024U
+#define UI_DOCUMENT_EFFECT_CAPACITY 32U
 
 typedef uint32_t UiElementId;
 
 typedef enum {
     UI_DOCUMENT_KIND_MENU = 0
 } UiDocumentKind;
+
+typedef enum {
+    UI_DOCUMENT_ROLE_SCREEN = 0,
+    UI_DOCUMENT_ROLE_OVERLAY
+} UiDocumentRole;
+
+typedef enum {
+    UI_DOCUMENT_BINDING_NONE = 0,
+    UI_DOCUMENT_BINDING_FLOW,
+    UI_DOCUMENT_BINDING_SYSTEM
+} UiDocumentBinding;
 
 typedef enum {
     UI_DOCUMENT_ELEMENT_CONTAINER = 0,
@@ -83,13 +96,20 @@ typedef struct {
     UiDocumentElementType type;
     char name[UI_DOCUMENT_NAME_CAPACITY];
     char content[UI_DOCUMENT_CONTENT_CAPACITY];
+    UiDocumentBinding binding;
     char flow_port[UI_DOCUMENT_NAME_CAPACITY];
+    char system_action[UI_DOCUMENT_NAME_CAPACITY];
+    char entry_effect[UI_DOCUMENT_EFFECT_CAPACITY];
+    char exit_effect[UI_DOCUMENT_EFFECT_CAPACITY];
+    char focus_effect[UI_DOCUMENT_EFFECT_CAPACITY];
+    char activate_effect[UI_DOCUMENT_EFFECT_CAPACITY];
     UiDocumentLayout layout;
     UiDocumentVisual visual;
 } UiDocumentElement;
 
 typedef struct {
     UiDocumentKind kind;
+    UiDocumentRole role;
     char name[UI_DOCUMENT_NAME_CAPACITY];
     int design_width;
     int design_height;
@@ -124,6 +144,8 @@ typedef enum {
     UI_DOCUMENT_TOO_MANY_PORTS,
     UI_DOCUMENT_INVALID_LAYOUT,
     UI_DOCUMENT_INVALID_VISUAL,
+    UI_DOCUMENT_INVALID_BINDING,
+    UI_DOCUMENT_INVALID_EFFECT,
     UI_DOCUMENT_PARSE_ERROR,
     UI_DOCUMENT_UNSUPPORTED_VERSION,
     UI_DOCUMENT_NO_PATH,

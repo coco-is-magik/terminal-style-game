@@ -37,8 +37,9 @@ theme-token decisions that still require product review.
 - `test-ui-motion-demo` — isolated registration/reassembly specimen, replay/pause/step
   controls, chromatic-channel comparison, stable controls, reduced motion, supported
   scales, deterministic cells, and runtime preconditions;
-- `test-ui-document` — authored hierarchy, stable IDs, ports, validation,
-  migration, round trip, and transactional failure;
+- `test-ui-document` — authored hierarchy, stable IDs, v1-v3 to v4 migration, explicit roles,
+  Button flow/system/none bindings, effect metadata, flow-port export, canonical round trip,
+  validation, and transactional failure;
 - `test-ui-layout-resolver` — responsive anchors, sizing, clipping, and invalid
   input behavior;
 - `test-ui-render-adapter` — authored visuals, scaling, clipping, selection markers,

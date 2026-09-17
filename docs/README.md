@@ -18,6 +18,13 @@ only a small set of documents should be treated as current authority.
 - [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md)
   — accepted filesystem, catalog, locale-number, UTF-8 path, commit-state, fault,
   migration, and native Windows verification boundaries for W2-W4.
+- [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md)
+  — approved authority for converging protected application UI and editable project UI on one
+  versioned UI Scene system and one reusable standalone/embedded editor core; migration is not yet
+  implemented.
+- [`reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md`](reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md)
+  — Phase 0 legacy migration inventory, v4 schema decisions, reusable renderer/runtime/workspace
+  baseline tests, failures, and Phase 1 entry boundary.
 - [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md)
   — byte-exact first-party newline correction, pinned-SMC boundary, local verification,
   Docker/classifier failure, and required-profile handoff.

@@ -12,6 +12,8 @@
 #include <string.h>
 #include <unistd.h>
 
+static bool copy_string(char *destination, size_t capacity, const char *source);
+
 static bool valid_name(const char *name) {
     size_t i;
     size_t length;
@@ -35,6 +37,69 @@ static bool valid_content(const char *content) {
         unsigned char c = (unsigned char)content[i];
         if (c < 32U || c > 126U || c == '\\') return false;
     }
+    return true;
+}
+
+static bool valid_system_action(const char *action) {
+    static const char *const actions[] = {
+        "start_project", "open_editor", "open_settings", "quit",
+        "confirm_quit", "cancel", "back", "ui_scale_decrease",
+        "ui_scale_increase", "ui_scale_reset", "toggle_reduced_motion",
+        "resume", "return_to_bootstrap"
+    };
+    size_t i;
+    if (!action || action[0] == '\0') return false;
+    for (i = 0U; i < sizeof(actions) / sizeof(actions[0]); i++)
+        if (strcmp(action, actions[i]) == 0) return true;
+    return false;
+}
+
+static bool valid_effect(const char *effect) {
+    static const char *const effects[] = {
+        "none", "center_out", "perimeter_burst", "local_glitch",
+        "focus_pulse", "focus_glitch", "input_hold_short"
+    };
+    size_t i;
+    if (!effect) return false;
+    for (i = 0U; i < sizeof(effects) / sizeof(effects[0]); i++)
+        if (strcmp(effect, effects[i]) == 0) return true;
+    return false;
+}
+
+static void initialize_v4_element_fields(UiDocumentElement *element) {
+    if (!element) return;
+    element->binding = UI_DOCUMENT_BINDING_NONE;
+    (void)copy_string(element->entry_effect, sizeof(element->entry_effect), "none");
+    (void)copy_string(element->exit_effect, sizeof(element->exit_effect), "none");
+    (void)copy_string(element->focus_effect, sizeof(element->focus_effect), "none");
+    (void)copy_string(element->activate_effect, sizeof(element->activate_effect), "none");
+}
+
+static const char *role_name(UiDocumentRole role) {
+    return role == UI_DOCUMENT_ROLE_SCREEN ? "screen" :
+           role == UI_DOCUMENT_ROLE_OVERLAY ? "overlay" : NULL;
+}
+
+static bool parse_role(const char *text, UiDocumentRole *out) {
+    if (!text || !out) return false;
+    if (strcmp(text, "screen") == 0) *out = UI_DOCUMENT_ROLE_SCREEN;
+    else if (strcmp(text, "overlay") == 0) *out = UI_DOCUMENT_ROLE_OVERLAY;
+    else return false;
+    return true;
+}
+
+static const char *binding_name(UiDocumentBinding binding) {
+    return binding == UI_DOCUMENT_BINDING_NONE ? "none" :
+           binding == UI_DOCUMENT_BINDING_FLOW ? "flow" :
+           binding == UI_DOCUMENT_BINDING_SYSTEM ? "system" : NULL;
+}
+
+static bool parse_binding(const char *text, UiDocumentBinding *out) {
+    if (!text || !out) return false;
+    if (strcmp(text, "none") == 0) *out = UI_DOCUMENT_BINDING_NONE;
+    else if (strcmp(text, "flow") == 0) *out = UI_DOCUMENT_BINDING_FLOW;
+    else if (strcmp(text, "system") == 0) *out = UI_DOCUMENT_BINDING_SYSTEM;
+    else return false;
     return true;
 }
 
@@ -220,23 +285,27 @@ static bool element_fields_complete(
     uint32_t version,
     bool structural,
     bool layout,
-    bool visual
+    bool visual,
+    bool behavior
 ) {
     if (!structural) return false;
     if (version == UI_DOCUMENT_VERSION_V1) return true;
     if (!layout) return false;
     if (version == UI_DOCUMENT_VERSION_V2) return true;
-    return version == UI_DOCUMENT_VERSION && visual;
+    if (version == UI_DOCUMENT_VERSION_V3) return visual;
+    return version == UI_DOCUMENT_VERSION && visual && behavior;
 }
 
 void ui_document_init(UiDocument *document) {
     if (!document) return;
     memset(document, 0, sizeof(*document));
     document->kind = UI_DOCUMENT_KIND_MENU;
+    document->role = UI_DOCUMENT_ROLE_SCREEN;
     document->design_width = 80;
     document->design_height = 25;
     document->elements[0].id = 1U;
     document->elements[0].type = UI_DOCUMENT_ELEMENT_CONTAINER;
+    initialize_v4_element_fields(&document->elements[0]);
     (void)copy_string(document->elements[0].name,
                       sizeof(document->elements[0].name), "root");
     document->elements[0].layout = (UiDocumentLayout){
@@ -334,10 +403,13 @@ UiDocumentResult ui_document_add_element(UiDocument *document,
     element->id = document->next_element_id;
     element->parent_id = parent_id;
     element->type = type;
+    initialize_v4_element_fields(element);
     (void)copy_string(element->name, sizeof(element->name), name);
     (void)copy_string(element->content, sizeof(element->content), content);
-    if (type == UI_DOCUMENT_ELEMENT_BUTTON)
+    if (type == UI_DOCUMENT_ELEMENT_BUTTON) {
+        element->binding = UI_DOCUMENT_BINDING_FLOW;
         (void)copy_string(element->flow_port, sizeof(element->flow_port), flow_port);
+    }
     element->layout = default_element_layout();
     element->visual = default_visual(type);
     document->element_count++;
@@ -449,7 +521,10 @@ UiDocumentResult ui_document_set_flow_port(UiDocument *document,
         if (element->id != element_id) continue;
         if (element->type != UI_DOCUMENT_ELEMENT_BUTTON)
             return UI_DOCUMENT_INVALID_PORT;
-        if (strcmp(element->flow_port, flow_port) == 0) return UI_DOCUMENT_OK;
+        if (element->binding == UI_DOCUMENT_BINDING_FLOW &&
+            strcmp(element->flow_port, flow_port) == 0) return UI_DOCUMENT_OK;
+        element->binding = UI_DOCUMENT_BINDING_FLOW;
+        element->system_action[0] = '\0';
         (void)copy_string(element->flow_port, sizeof(element->flow_port), flow_port);
         {
             UiDocumentResult validation = ui_document_validate(&candidate);
@@ -664,6 +739,8 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
     size_t root_count = 0U;
     size_t button_count = 0U;
     if (!document || document->kind != UI_DOCUMENT_KIND_MENU ||
+        document->role < UI_DOCUMENT_ROLE_SCREEN ||
+        document->role > UI_DOCUMENT_ROLE_OVERLAY ||
         !valid_name(document->name) || document->element_count == 0U ||
         document->element_count > UI_DOCUMENT_MAX_ELEMENTS ||
         document->design_width <= 0 || document->design_height <= 0)
@@ -678,13 +755,24 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
             element->type > UI_DOCUMENT_ELEMENT_BUTTON) return UI_DOCUMENT_INVALID_TYPE;
         if (!layout_valid(element->layout)) return UI_DOCUMENT_INVALID_LAYOUT;
         if (!visual_valid(element->visual)) return UI_DOCUMENT_INVALID_VISUAL;
+        if (!valid_effect(element->entry_effect) || !valid_effect(element->exit_effect) ||
+            !valid_effect(element->focus_effect) || !valid_effect(element->activate_effect))
+            return UI_DOCUMENT_INVALID_EFFECT;
+        if (element->type != UI_DOCUMENT_ELEMENT_BUTTON &&
+            (element->binding != UI_DOCUMENT_BINDING_NONE || element->flow_port[0] != '\0' ||
+             element->system_action[0] != '\0' ||
+             strcmp(element->focus_effect, "none") != 0 ||
+             strcmp(element->activate_effect, "none") != 0))
+            return UI_DOCUMENT_INVALID_BINDING;
         for (j = 0U; j < i; j++) {
             if (document->elements[j].id == element->id)
                 return UI_DOCUMENT_DUPLICATE_ID;
             if (strcmp(document->elements[j].name, element->name) == 0)
                 return UI_DOCUMENT_DUPLICATE_NAME;
             if (element->type == UI_DOCUMENT_ELEMENT_BUTTON &&
+                element->binding == UI_DOCUMENT_BINDING_FLOW &&
                 document->elements[j].type == UI_DOCUMENT_ELEMENT_BUTTON &&
+                document->elements[j].binding == UI_DOCUMENT_BINDING_FLOW &&
                 strcmp(document->elements[j].flow_port, element->flow_port) == 0)
                 return UI_DOCUMENT_DUPLICATE_PORT;
         }
@@ -717,9 +805,18 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
                 return UI_DOCUMENT_INVALID_ROOT;
         }
         if (element->type == UI_DOCUMENT_ELEMENT_BUTTON) {
-            if (!valid_name(element->flow_port)) return UI_DOCUMENT_INVALID_PORT;
-            if (++button_count > FLOW_REFERENCE_MAX_PORTS)
-                return UI_DOCUMENT_TOO_MANY_PORTS;
+            if (element->binding == UI_DOCUMENT_BINDING_FLOW) {
+                if (!valid_name(element->flow_port) || element->system_action[0] != '\0')
+                    return UI_DOCUMENT_INVALID_BINDING;
+                if (++button_count > FLOW_REFERENCE_MAX_PORTS)
+                    return UI_DOCUMENT_TOO_MANY_PORTS;
+            } else if (element->binding == UI_DOCUMENT_BINDING_SYSTEM) {
+                if (element->flow_port[0] != '\0' ||
+                    !valid_system_action(element->system_action))
+                    return UI_DOCUMENT_INVALID_BINDING;
+            } else if (element->binding != UI_DOCUMENT_BINDING_NONE ||
+                       element->flow_port[0] != '\0' || element->system_action[0] != '\0')
+                return UI_DOCUMENT_INVALID_BINDING;
         } else if (element->flow_port[0] != '\0') return UI_DOCUMENT_INVALID_PORT;
     }
     return root_count == 1U ? UI_DOCUMENT_OK : UI_DOCUMENT_INVALID_ROOT;
@@ -736,7 +833,8 @@ UiDocumentResult ui_document_build_flow_reference(
     if (validation != UI_DOCUMENT_OK) return validation;
     memset(out_view, 0, sizeof(*out_view));
     for (i = 0U; i < document->element_count; i++) {
-        if (document->elements[i].type != UI_DOCUMENT_ELEMENT_BUTTON) continue;
+        if (document->elements[i].type != UI_DOCUMENT_ELEMENT_BUTTON ||
+            document->elements[i].binding != UI_DOCUMENT_BINDING_FLOW) continue;
         if (out_view->entry.port_count >= FLOW_REFERENCE_MAX_PORTS)
             return UI_DOCUMENT_TOO_MANY_PORTS;
         out_view->ports[out_view->entry.port_count++] = document->elements[i].flow_port;
@@ -749,22 +847,26 @@ UiDocumentResult ui_document_build_flow_reference(
 
 static bool write_document(FILE *file, const UiDocument *document) {
     size_t i;
-    if (fprintf(file, "ui_version=%u\nkind=menu\nname=%s\n"
+    if (fprintf(file, "ui_version=%u\nkind=ui_scene\nrole=%s\nname=%s\n"
                 "design_width=%d\ndesign_height=%d\nnext_element_id=%u\n",
-                UI_DOCUMENT_VERSION, document->name,
+                UI_DOCUMENT_VERSION, role_name(document->role), document->name,
                 document->design_width, document->design_height,
                 document->next_element_id) < 0) return false;
     for (i = 0U; i < document->element_count; i++) {
         const UiDocumentElement *element = &document->elements[i];
         const char *type = type_name(element->type);
         if (!type || fprintf(file,
-            "[element]\nid=%u\nparent=%u\ntype=%s\nname=%s\ncontent=%s\nport=%s\n"
+            "[element]\nid=%u\nparent=%u\ntype=%s\nname=%s\ncontent=%s\n"
+            "binding=%s\nport=%s\naction=%s\nentry_effect=%s\nexit_effect=%s\n"
+            "focus_effect=%s\nactivate_effect=%s\n"
             "x=%d\ny=%d\nwidth=%d\nheight=%d\nh_anchor=%s\nv_anchor=%s\nscale=%d\n"
             "visual=%s\nfg=%u,%u,%u,%u\nbg=%u,%u,%u,%u\nfill_enabled=%u\n"
             "fill_glyph=%u\nborder_enabled=%u\nborder_glyph=%u\nsprite_id=%u\n"
             "align=%s\nvisible=%u\n",
             element->id, element->parent_id, type, element->name,
-            element->content, element->flow_port, element->layout.x,
+            element->content, binding_name(element->binding), element->flow_port,
+            element->system_action, element->entry_effect, element->exit_effect,
+            element->focus_effect, element->activate_effect, element->layout.x,
             element->layout.y, element->layout.width, element->layout.height,
             anchor_name(element->layout.horizontal_anchor),
             anchor_name(element->layout.vertical_anchor),
@@ -865,6 +967,8 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
     char line[512];
     uint32_t version = 0U;
     bool have_version = false, have_kind = false, have_name = false, have_next = false;
+    bool have_role = false;
+    bool kind_is_ui_scene = false;
     bool have_design_width = false, have_design_height = false;
     bool have_id = false, have_parent = false, have_type = false;
     bool have_element_name = false, have_content = false, have_port = false;
@@ -876,6 +980,10 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
     bool have_border_enabled = false, have_border_glyph = false;
     bool have_sprite_id = false, have_align = false, have_visible = false;
     bool saw_v3_only_field = false;
+    bool have_binding = false, have_action = false;
+    bool have_entry_effect = false, have_exit_effect = false;
+    bool have_focus_effect = false, have_activate_effect = false;
+    bool saw_v4_only_field = false;
     memset(candidate, 0, sizeof(*candidate));
     while (fgets(line, sizeof(line), file)) {
         char *separator;
@@ -891,7 +999,9 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                     have_v_anchor && have_scale,
                 have_visual && have_fg && have_bg && have_fill_enabled &&
                     have_fill_glyph && have_border_enabled && have_border_glyph &&
-                    have_sprite_id && have_align && have_visible))
+                    have_sprite_id && have_align && have_visible,
+                have_binding && have_action && have_entry_effect && have_exit_effect &&
+                    have_focus_effect && have_activate_effect))
                 return UI_DOCUMENT_PARSE_ERROR;
             if (candidate->element_count >= UI_DOCUMENT_MAX_ELEMENTS)
                 return UI_DOCUMENT_FULL;
@@ -904,6 +1014,9 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             have_fill_enabled = have_fill_glyph = false;
             have_border_enabled = have_border_glyph = false;
             have_sprite_id = have_align = have_visible = false;
+            have_binding = have_action = false;
+            have_entry_effect = have_exit_effect = false;
+            have_focus_effect = have_activate_effect = false;
             memset(&candidate->elements[candidate->element_count++], 0,
                    sizeof(UiDocumentElement));
             continue;
@@ -915,8 +1028,12 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             if (strcmp(key, "ui_version") == 0 && !have_version)
                 have_version = parse_u32(value, &version, false);
             else if (strcmp(key, "kind") == 0 && !have_kind) {
-                have_kind = strcmp(value, "menu") == 0;
+                have_kind = strcmp(value, "menu") == 0 || strcmp(value, "ui_scene") == 0;
+                kind_is_ui_scene = strcmp(value, "ui_scene") == 0;
                 candidate->kind = UI_DOCUMENT_KIND_MENU;
+            } else if (strcmp(key, "role") == 0 && !have_role) {
+                have_role = parse_role(value, &candidate->role);
+                saw_v4_only_field = true;
             } else if (strcmp(key, "name") == 0 && !have_name)
                 have_name = copy_string(candidate->name, sizeof(candidate->name), value);
             else if (strcmp(key, "design_width") == 0 && !have_design_width)
@@ -930,6 +1047,7 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             else return UI_DOCUMENT_PARSE_ERROR;
             if ((strcmp(key, "ui_version") == 0 && !have_version) ||
                 (strcmp(key, "kind") == 0 && !have_kind) ||
+                (strcmp(key, "role") == 0 && !have_role) ||
                 (strcmp(key, "name") == 0 && !have_name) ||
                 (strcmp(key, "design_width") == 0 && !have_design_width) ||
                 (strcmp(key, "design_height") == 0 && !have_design_height) ||
@@ -950,6 +1068,24 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 have_content = copy_string(element->content, sizeof(element->content), value);
             else if (strcmp(key, "port") == 0 && !have_port)
                 have_port = copy_string(element->flow_port, sizeof(element->flow_port), value);
+            else if (strcmp(key, "binding") == 0 && !have_binding)
+                have_binding = parse_binding(value, &element->binding),
+                saw_v4_only_field = true;
+            else if (strcmp(key, "action") == 0 && !have_action)
+                have_action = copy_string(element->system_action,
+                    sizeof(element->system_action), value), saw_v4_only_field = true;
+            else if (strcmp(key, "entry_effect") == 0 && !have_entry_effect)
+                have_entry_effect = copy_string(element->entry_effect,
+                    sizeof(element->entry_effect), value), saw_v4_only_field = true;
+            else if (strcmp(key, "exit_effect") == 0 && !have_exit_effect)
+                have_exit_effect = copy_string(element->exit_effect,
+                    sizeof(element->exit_effect), value), saw_v4_only_field = true;
+            else if (strcmp(key, "focus_effect") == 0 && !have_focus_effect)
+                have_focus_effect = copy_string(element->focus_effect,
+                    sizeof(element->focus_effect), value), saw_v4_only_field = true;
+            else if (strcmp(key, "activate_effect") == 0 && !have_activate_effect)
+                have_activate_effect = copy_string(element->activate_effect,
+                    sizeof(element->activate_effect), value), saw_v4_only_field = true;
             else if (strcmp(key, "x") == 0 && !have_x)
                 have_x = parse_int(value, &element->layout.x), saw_v2_only_field = true;
             else if (strcmp(key, "y") == 0 && !have_y)
@@ -1004,6 +1140,12 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 (strcmp(key, "name") == 0 && !have_element_name) ||
                 (strcmp(key, "content") == 0 && !have_content) ||
                 (strcmp(key, "port") == 0 && !have_port) ||
+                (strcmp(key, "binding") == 0 && !have_binding) ||
+                (strcmp(key, "action") == 0 && !have_action) ||
+                (strcmp(key, "entry_effect") == 0 && !have_entry_effect) ||
+                (strcmp(key, "exit_effect") == 0 && !have_exit_effect) ||
+                (strcmp(key, "focus_effect") == 0 && !have_focus_effect) ||
+                (strcmp(key, "activate_effect") == 0 && !have_activate_effect) ||
                 (strcmp(key, "x") == 0 && !have_x) ||
                 (strcmp(key, "y") == 0 && !have_y) ||
                 (strcmp(key, "width") == 0 && !have_width) ||
@@ -1033,11 +1175,18 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             have_v_anchor && have_scale,
         have_visual && have_fg && have_bg && have_fill_enabled && have_fill_glyph &&
             have_border_enabled && have_border_glyph && have_sprite_id && have_align &&
-            have_visible))
+            have_visible,
+        have_binding && have_action && have_entry_effect && have_exit_effect &&
+            have_focus_effect && have_activate_effect))
         return UI_DOCUMENT_PARSE_ERROR;
-    if (version != UI_DOCUMENT_VERSION && version != UI_DOCUMENT_VERSION_V2 &&
-        version != UI_DOCUMENT_VERSION_V1)
+    if (version != UI_DOCUMENT_VERSION && version != UI_DOCUMENT_VERSION_V3 &&
+        version != UI_DOCUMENT_VERSION_V2 && version != UI_DOCUMENT_VERSION_V1)
         return UI_DOCUMENT_UNSUPPORTED_VERSION;
+    if (version == UI_DOCUMENT_VERSION && (!kind_is_ui_scene || !have_role ||
+                                           saw_v4_only_field == false))
+        return UI_DOCUMENT_PARSE_ERROR;
+    if (version < UI_DOCUMENT_VERSION && (kind_is_ui_scene || saw_v4_only_field))
+        return UI_DOCUMENT_PARSE_ERROR;
     if (version >= UI_DOCUMENT_VERSION_V2 &&
         (!have_design_width || !have_design_height)) return UI_DOCUMENT_PARSE_ERROR;
     if (version == UI_DOCUMENT_VERSION_V1) {
@@ -1053,11 +1202,21 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 0, 0, 80, 25, UI_DOCUMENT_ANCHOR_STRETCH,
                 UI_DOCUMENT_ANCHOR_STRETCH, 100};
     }
-    if (version < UI_DOCUMENT_VERSION) {
+    if (version < UI_DOCUMENT_VERSION_V3) {
         size_t i;
         if (saw_v3_only_field) return UI_DOCUMENT_PARSE_ERROR;
         for (i = 0U; i < candidate->element_count; i++)
             candidate->elements[i].visual = default_visual(candidate->elements[i].type);
+    }
+    if (version < UI_DOCUMENT_VERSION) {
+        size_t i;
+        candidate->role = UI_DOCUMENT_ROLE_SCREEN;
+        for (i = 0U; i < candidate->element_count; i++) {
+            UiDocumentElement *element = &candidate->elements[i];
+            initialize_v4_element_fields(element);
+            if (element->type == UI_DOCUMENT_ELEMENT_BUTTON && element->flow_port[0] != '\0')
+                element->binding = UI_DOCUMENT_BINDING_FLOW;
+        }
     }
     asset_document_state_init(&candidate->state);
     return ui_document_validate(candidate);

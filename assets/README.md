@@ -361,9 +361,28 @@ and safely removes edges/nodes with Backspace, Ctrl+Z/Y, and Ctrl+S.
 `Ctrl+U` opens the visual authored-Menu workspace. It lists only direct regular
 `menus/*.tui` files, can create `<name>.tui`, renders the staged document responsively
 through the canonical layout/render adapters, and edits non-root x/y/width/height/scale
-with Ctrl+Z/Y and atomic Ctrl+S. `menus/main_menu.tui` is canonical v3 and provides the
-checked-in centered Start Button preview. Application-owned `ui_layouts` and `ui_elements`
-remain separate and are never edited by this workspace.
+with Ctrl+Z/Y and atomic Ctrl+S. Existing v1-v3 files remain readable and migrate in memory;
+canonical Save now writes v4. The checked-in `menus/main_menu.tui` remains a v3 compatibility
+fixture and provides the centered Start Button preview. Application-owned `ui_layouts` and
+`ui_elements` remain separate and are never edited by this workspace during the migration.
+
+Canonical v4 identifies `kind=ui_scene` and requires `role=screen|overlay`. Every element writes
+explicit `binding`, `port`, `action`, `entry_effect`, `exit_effect`, `focus_effect`, and
+`activate_effect` fields. Container/Text elements require `binding=none` and cannot own focus or
+activation effects. Buttons support `binding=none`, `binding=flow` with one unique port, or
+`binding=system` with one strictly recognized system action. Only flow-bound Buttons export project
+flow ports. V1-v3 Buttons with a non-empty port migrate to `binding=flow`; all other old elements
+migrate to `binding=none`, `role=screen`, and `none` effects.
+
+Recognized v4 system-action values are `start_project`, `open_editor`, `open_settings`, `quit`,
+`confirm_quit`, `cancel`, `back`, `ui_scale_decrease`, `ui_scale_increase`, `ui_scale_reset`,
+`toggle_reduced_motion`, `resume`, and `return_to_bootstrap`. Recognition is data validation only;
+runtime context policy and dispatch are not yet implemented by this format increment.
+
+Recognized effect values are `none`, `center_out`, `perimeter_burst`, `local_glitch`,
+`focus_pulse`, `focus_glitch`, and `input_hold_short`. V4 currently stores and validates these
+fields; production execution remains unchanged until the shared UI Scene runtime phase. Animation
+elements are also not yet part of the implemented v4 slice.
 
 Inside an open authored Menu, `E` opens context actions. A selected Container can create
 Container/Text/Button children with deterministic unique names; Text/Button content and
@@ -380,7 +399,7 @@ The history retains the newest 32 commands and evicts the oldest when full; reac
 does not disable further property, hierarchy, or pointer edits. `Reparent (none)` means the
 selected element has no alternate valid Container destination.
 
-The property workspace exposes all persisted v3 authored layout/visual fields: anchors,
+The property workspace currently exposes the established authored layout/visual fields: anchors,
 Native/Sprite mode and Sprite ID, Text/Button alignment, foreground/background RGBA channels,
 fill/border toggles and printable glyphs, and default visibility. Up/Down skips fields that do
 not apply to the selected type/mode; Left/Right records one typed undoable adjustment.

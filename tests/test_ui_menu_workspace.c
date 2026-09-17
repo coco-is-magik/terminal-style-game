@@ -843,6 +843,55 @@ static void test_committed_warning_updates_heap_history_identity(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+
+static void apply_host_parity_trace(UiMenuWorkspace *workspace) {
+    assert_int_equal(ui_menu_workspace_next(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace->mode, UI_MENU_WORKSPACE_PROPERTIES);
+    assert_int_equal(ui_menu_workspace_adjust(workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_next(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust(workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_undo(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_redo(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_escape(workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace->mode, UI_MENU_WORKSPACE_HIERARCHY);
+}
+
+static void test_same_workspace_trace_is_host_independent(void **state) {
+    UiMenuWorkspace standalone;
+    UiMenuWorkspace embedded;
+    char root[64], menus[96], path[128];
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    ui_menu_workspace_init(&standalone);
+    ui_menu_workspace_init(&embedded);
+    assert_int_equal(ui_menu_workspace_open(&standalone, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_open(&embedded, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&standalone), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&embedded), UI_MENU_WORKSPACE_OK);
+    apply_host_parity_trace(&standalone);
+    apply_host_parity_trace(&embedded);
+    assert_memory_equal(&standalone.document, &embedded.document,
+                        sizeof(standalone.document));
+    assert_int_equal(standalone.mode, embedded.mode);
+    assert_int_equal(standalone.element_index, embedded.element_index);
+    assert_int_equal(standalone.property, embedded.property);
+    assert_int_equal(standalone.change_count, embedded.change_count);
+    assert_int_equal(standalone.change_cursor, embedded.change_cursor);
+    assert_int_equal(standalone.nested_cursor.depth, embedded.nested_cursor.depth);
+    assert_memory_equal(standalone.changes[0].before, embedded.changes[0].before,
+                        sizeof(UiDocument));
+    assert_memory_equal(standalone.changes[0].after, embedded.changes[0].after,
+                        sizeof(UiDocument));
+    ui_menu_workspace_clear(&standalone);
+    ui_menu_workspace_clear(&embedded);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
@@ -859,6 +908,7 @@ int main(void) {
         ,cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits)
         ,cmocka_unit_test(test_created_hierarchy_exposes_valid_reparent_destination)
         ,cmocka_unit_test(test_committed_warning_updates_heap_history_identity)
+        ,cmocka_unit_test(test_same_workspace_trace_is_host_independent)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -216,7 +216,9 @@ static void test_save_commit_boundaries_preserve_bytes_and_identity(void **state
     build_menu(&baseline, &panel, &button);
     assert_ui_save_committed(ui_document_save_as(&baseline, baseline_path));
     expected = read_file_bytes(baseline_path);
-    assert_true(strncmp(expected, "ui_version=3\n", strlen("ui_version=3\n")) == 0);
+    assert_true(strncmp(expected,
+        "ui_version=4\nkind=ui_scene\nrole=screen\n",
+        strlen("ui_version=4\nkind=ui_scene\nrole=screen\n")) == 0);
     assert_true(expected[strlen(expected) - 1U] == '\n');
     for (size_t i = 0U; i < sizeof(failures) / sizeof(failures[0]); i++) {
         UiDocument document;
@@ -390,6 +392,12 @@ static void test_content_port_and_subtree_mutations_are_transactional(void **sta
     assert_string_equal(ui_document_find_element(&document, button)->content, "BEGIN");
     assert_int_equal(ui_document_set_flow_port(&document, button, "begin"), UI_DOCUMENT_OK);
     assert_string_equal(ui_document_find_element(&document, button)->flow_port, "begin");
+    document.elements[3].binding = UI_DOCUMENT_BINDING_NONE;
+    document.elements[3].flow_port[0] = '\0';
+    assert_int_equal(ui_document_set_flow_port(&document, button, "restored"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_find_element(&document, button)->binding,
+                     UI_DOCUMENT_BINDING_FLOW);
+    assert_string_equal(ui_document_find_element(&document, button)->flow_port, "restored");
     before = document;
     assert_int_equal(ui_document_set_content(&document, panel, "BAD"),
                      UI_DOCUMENT_INVALID_CONTENT);
@@ -476,6 +484,87 @@ static void test_hierarchy_mutations_are_transactional_and_preserve_subtrees(voi
     assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_OK);
 }
 
+static void test_v3_migrates_binding_role_and_effect_defaults(void **state) {
+    UiDocument document;
+    const UiDocumentElement *button;
+    (void)state;
+    ui_document_init(&document);
+    assert_int_equal(ui_document_load(&document, "assets/menus/main_menu.tui"),
+                     UI_DOCUMENT_OK);
+    assert_int_equal(document.role, UI_DOCUMENT_ROLE_SCREEN);
+    button = ui_document_find_element(&document, 2U);
+    assert_non_null(button);
+    assert_int_equal(button->binding, UI_DOCUMENT_BINDING_FLOW);
+    assert_string_equal(button->flow_port, "start_game");
+    assert_string_equal(button->system_action, "");
+    assert_string_equal(button->entry_effect, "none");
+    assert_string_equal(button->exit_effect, "none");
+    assert_string_equal(button->focus_effect, "none");
+    assert_string_equal(button->activate_effect, "none");
+}
+
+static void test_v4_system_binding_effects_round_trip_and_do_not_export(void **state) {
+    UiDocument document;
+    UiDocument loaded;
+    UiElementId panel;
+    UiElementId button;
+    UiDocumentElement *element;
+    UiFlowReferenceView view;
+    char path[] = "build/tsg_ui_document_v4_XXXXXX";
+    int fd = mkstemp(path);
+    char *bytes;
+    (void)state;
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    build_menu(&document, &panel, &button);
+    document.role = UI_DOCUMENT_ROLE_OVERLAY;
+    element = &document.elements[3];
+    element->binding = UI_DOCUMENT_BINDING_SYSTEM;
+    element->flow_port[0] = '\0';
+    memcpy(element->system_action, "open_editor", sizeof("open_editor"));
+    memcpy(element->entry_effect, "center_out", sizeof("center_out"));
+    memcpy(element->exit_effect, "local_glitch", sizeof("local_glitch"));
+    memcpy(element->focus_effect, "focus_pulse", sizeof("focus_pulse"));
+    memcpy(element->activate_effect, "perimeter_burst", sizeof("perimeter_burst"));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_build_flow_reference(&document, &view), UI_DOCUMENT_OK);
+    assert_int_equal(view.entry.port_count, 0U);
+    assert_ui_save_committed(ui_document_save_as(&document, path));
+    bytes = read_file_bytes(path);
+    assert_non_null(strstr(bytes, "ui_version=4\nkind=ui_scene\nrole=overlay\n"));
+    assert_non_null(strstr(bytes, "binding=system\nport=\naction=open_editor\n"));
+    assert_non_null(strstr(bytes, "entry_effect=center_out\nexit_effect=local_glitch\n"));
+    free(bytes);
+    ui_document_init(&loaded);
+    assert_int_equal(ui_document_load(&loaded, path), UI_DOCUMENT_OK);
+    element = &loaded.elements[3];
+    assert_int_equal(loaded.role, UI_DOCUMENT_ROLE_OVERLAY);
+    assert_int_equal(element->binding, UI_DOCUMENT_BINDING_SYSTEM);
+    assert_string_equal(element->system_action, "open_editor");
+    assert_string_equal(element->focus_effect, "focus_pulse");
+    assert_string_equal(element->activate_effect, "perimeter_burst");
+    assert_int_equal(unlink(path), 0);
+}
+
+static void test_v4_invalid_binding_and_effect_reject(void **state) {
+    UiDocument document;
+    UiDocument before;
+    UiElementId panel;
+    UiElementId button;
+    (void)state;
+    build_menu(&document, &panel, &button);
+    before = document;
+    document.elements[3].binding = UI_DOCUMENT_BINDING_SYSTEM;
+    memcpy(document.elements[3].system_action, "unknown", sizeof("unknown"));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_BINDING);
+    document = before;
+    memcpy(document.elements[1].focus_effect, "focus_pulse", sizeof("focus_pulse"));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_BINDING);
+    document = before;
+    memcpy(document.elements[3].entry_effect, "unknown", sizeof("unknown"));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_EFFECT);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_create_tree_dirty_and_stable_ids),
@@ -492,6 +581,9 @@ int main(void) {
         ,cmocka_unit_test(test_v3_rejects_invalid_color_transactionally)
         ,cmocka_unit_test(test_content_port_and_subtree_mutations_are_transactional)
         ,cmocka_unit_test(test_hierarchy_mutations_are_transactional_and_preserve_subtrees)
+        ,cmocka_unit_test(test_v3_migrates_binding_role_and_effect_defaults)
+        ,cmocka_unit_test(test_v4_system_binding_effects_round_trip_and_do_not_export)
+        ,cmocka_unit_test(test_v4_invalid_binding_and_effect_reject)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

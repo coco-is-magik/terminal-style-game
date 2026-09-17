@@ -224,6 +224,43 @@ static void test_large_clipped_border_is_bounded(void **state) {
     asset_registry_clear(&assets);
 }
 
+static void test_production_80x40_preview_is_deterministic(void **state) {
+    AssetRegistry assets;
+    UiDocument document;
+    UiElementId button;
+    UiCanvas *first = ui_canvas_create(80, 40);
+    UiCanvas *second = ui_canvas_create(80, 40);
+    UiRenderElementState focused;
+    size_t cell_count = 80U * 40U;
+    (void)state;
+    assert_true(asset_registry_init(&assets));
+    assert_non_null(first);
+    assert_non_null(second);
+    assert_int_equal(ui_document_create_menu(&document, "production_preview"),
+                     UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_design_size(&document, 80, 40), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "start", "START", "start", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&document, button,
+        (UiDocumentLayout){0, 0, 20, 3, UI_DOCUMENT_ANCHOR_CENTER,
+                           UI_DOCUMENT_ANCHOR_CENTER, 100}), UI_DOCUMENT_OK);
+    focused = (UiRenderElementState){button, true, false, false, true, false};
+    assert_int_equal(ui_render_document(&document, &assets, &focused, 1U,
+                                        &theme, first), UI_RENDER_OK);
+    assert_int_equal(ui_render_document(&document, &assets, &focused, 1U,
+                                        &theme, second), UI_RENDER_OK);
+    assert_memory_equal(first->cells, second->cells, cell_count * sizeof(Cell));
+    assert_memory_equal(first->touched, second->touched,
+                        cell_count * sizeof(*first->touched));
+    assert_int_equal(canvas_cell(first, 30, 18).glyph, '>');
+    assert_int_equal(canvas_cell(first, 49, 18).glyph, '<');
+    assert_int_equal(canvas_cell(first, 31, 18).glyph, 'T');
+    assert_int_equal(canvas_cell(first, 34, 18).glyph, 'T');
+    ui_canvas_destroy(first);
+    ui_canvas_destroy(second);
+    asset_registry_clear(&assets);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_native_fill_border_text_and_state_precedence),
@@ -231,7 +268,8 @@ int main(void) {
         cmocka_unit_test(test_missing_dependency_and_invalid_state_preserve_canvas),
         cmocka_unit_test(test_missing_material_preserves_canvas),
         cmocka_unit_test(test_document_order_and_visibility_override),
-        cmocka_unit_test(test_large_clipped_border_is_bounded)
+        cmocka_unit_test(test_large_clipped_border_is_bounded),
+        cmocka_unit_test(test_production_80x40_preview_is_deterministic)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
