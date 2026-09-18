@@ -156,6 +156,9 @@ TEST_UI_ANIMATION_PLAYBACK_RUNNER := $(BUILD_DIR)/test-ui-animation-playback
 TEST_UI_SYSTEM_ACTION_POLICY_RUNNER := $(BUILD_DIR)/test-ui-system-action-policy
 TEST_UI_WORKBENCH_STORE_RUNNER := $(BUILD_DIR)/test-ui-workbench-store
 TEST_UI_WORKBENCH_RUNNER     := $(BUILD_DIR)/test-ui-workbench
+TEST_UI_WORKBENCH_FRAME_RUNNER := $(BUILD_DIR)/test-ui-workbench-frame
+TEST_UI_WORKBENCH_CHROME_RUNNER := $(BUILD_DIR)/test-ui-workbench-chrome
+UI_WORKBENCH_FRAME_TOOL      := $(BUILD_DIR)/ui-workbench-frame
 TEST_UI_APP_THEME_ADAPTER_RUNNER := $(BUILD_DIR)/test-ui-app-theme-adapter
 TEST_UI_THEME_DEMO_RUNNER    := $(BUILD_DIR)/test-ui-theme-demo
 TEST_UI_MOTION_DEMO_RUNNER   := $(BUILD_DIR)/test-ui-motion-demo
@@ -203,7 +206,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
+.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke
 .PHONY: ui-motion-demo ui-workbench ui-editor
 
 
@@ -300,6 +303,8 @@ SRC_UI_MENU_WORKSPACE := src/ui_menu_workspace.c
 SRC_UI_EDITOR_ACTION := src/ui_editor_action.c
 SRC_UI_EDITOR_PRESENTATION := src/ui_editor_presentation.c
 SRC_UI_EDITOR_HOST := src/ui_editor_host.c
+SRC_UI_WORKBENCH_FRAME := src/ui_workbench_frame.c
+SRC_UI_WORKBENCH_CHROME := src/ui_workbench_chrome.c
 SRC_UI_NESTED_INSPECTOR := src/ui_nested_inspector.c
 SRC_SCENE_FLOW_ADAPTER := src/scene_flow_adapter.c
 SRC_ENTITY_TRIGGER_SESSION := src/entity_trigger_session.c
@@ -840,6 +845,49 @@ $(TEST_UI_WORKBENCH_RUNNER): tests/test_ui_workbench.c $(SRC_UI_WORKBENCH) $(SRC
 		$(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) $(SRC_MAP_CATALOG) \
 		-o $(TEST_UI_WORKBENCH_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_UI_WORKBENCH_FRAME_RUNNER): tests/test_ui_workbench_frame.c tests/fixtures/ui_workbench_frame_fixtures.h $(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_MAP_CATALOG) $(SRC_UI_PREFERENCES) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) -Itests/fixtures tests/test_ui_workbench_frame.c \
+		$(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) \
+		$(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) \
+		$(SRC_UI_APP_THEME_ADAPTER) \
+		$(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) \
+		$(SRC_MAP_CATALOG) \
+		$(SRC_UI_PREFERENCES) \
+		-o $(TEST_UI_WORKBENCH_FRAME_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_WORKBENCH_CHROME_RUNNER): tests/test_ui_workbench_chrome.c $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_MAP_CATALOG) $(SRC_UI_PREFERENCES) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_workbench_chrome.c \
+		$(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) \
+		$(TEST_UI_ELE_SRC) $(SRC_UI_APP_THEME_ADAPTER) \
+		$(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) \
+		$(SRC_MAP_CATALOG) \
+		$(SRC_UI_PREFERENCES) \
+		-o $(TEST_UI_WORKBENCH_CHROME_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(UI_WORKBENCH_FRAME_TOOL): tools/ui-workbench-frame.c tests/fixtures/ui_workbench_frame_fixtures.h $(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) $(SRC_MAP_CATALOG) $(SRC_UI_PREFERENCES) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) -Itests/fixtures tools/ui-workbench-frame.c \
+		$(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) \
+		$(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) \
+		$(SRC_UI_APP_THEME_ADAPTER) \
+		$(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) \
+		$(SRC_MAP_CATALOG) \
+		$(SRC_UI_PREFERENCES) \
+		-o $(UI_WORKBENCH_FRAME_TOOL) $(TEST_LIBS) $(RPATH)
+
+check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
+	@echo "Checking recorded application UI workbench frame checksums..."
+	@set -e; for context in main pause settings confirm; do \
+		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
+		case " $$context " in \
+			*" main "*) expected=15106231313638485604 ;; \
+			*" pause "*) expected=16767408351412020113 ;; \
+			*" settings "*) expected=8577113895234228389 ;; \
+			*" confirm "*) expected=8315436846210167558 ;; \
+		esac; \
+		if [ "$$actual" != "$$expected" ]; then echo "FAIL-PRODUCT: ui-workbench-frame $$context checksum=$$actual expected=$$expected"; exit 1; fi; \
+	done
+	@echo "PASS: recorded workbench frame checksums match"
+
 $(TEST_UI_APP_THEME_ADAPTER_RUNNER): tests/test_ui_app_theme_adapter.c $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_THEME) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_app_theme_adapter.c \
 		$(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_THEME) \
@@ -1159,6 +1207,8 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_SYSTEM_ACTION_POLICY_RUNNER) \
 	$(TEST_UI_WORKBENCH_STORE_RUNNER) \
 	$(TEST_UI_WORKBENCH_RUNNER) \
+	$(TEST_UI_WORKBENCH_FRAME_RUNNER) \
+	$(TEST_UI_WORKBENCH_CHROME_RUNNER) \
 	$(TEST_UI_APP_THEME_ADAPTER_RUNNER) $(TEST_UI_THEME_DEMO_RUNNER) \
 	$(TEST_UI_MOTION_DEMO_RUNNER) \
 	$(TEST_MATERIAL_DOCUMENT_RUNNER) \
@@ -1267,9 +1317,15 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	$(TEST_UI_ANIMATION_RUNNER) \
 	$(TEST_UI_WORKBENCH_STORE_RUNNER) \
 	$(TEST_UI_WORKBENCH_RUNNER) \
+	$(TEST_UI_WORKBENCH_FRAME_RUNNER) \
+	$(TEST_UI_WORKBENCH_CHROME_RUNNER) \
 	$(TEST_UI_APP_THEME_ADAPTER_RUNNER) $(TEST_UI_THEME_DEMO_RUNNER) \
 	$(TEST_UI_MOTION_DEMO_RUNNER) \
 	$(TEST_UI_DOCUMENT_RUNNER) \
+	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
+	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
+	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
+	$(TEST_UI_EDITOR_HOST_RUNNER)
 	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
 	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
 	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
@@ -1283,6 +1339,8 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	./$(TEST_UI_ANIMATION_RUNNER)
 	./$(TEST_UI_WORKBENCH_STORE_RUNNER)
 	./$(TEST_UI_WORKBENCH_RUNNER)
+	./$(TEST_UI_WORKBENCH_FRAME_RUNNER)
+	./$(TEST_UI_WORKBENCH_CHROME_RUNNER)
 	./$(TEST_UI_APP_THEME_ADAPTER_RUNNER)
 	./$(TEST_UI_THEME_DEMO_RUNNER)
 	./$(TEST_UI_MOTION_DEMO_RUNNER)

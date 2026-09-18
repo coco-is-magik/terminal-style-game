@@ -150,6 +150,35 @@ a non-author completes the §3 workflow from in-editor guidance alone (recorded 
 Frozen in Phase A1 as a **literal rendered frame** at the 260×160 editor baseline. Until that
 artifact exists, the following is the contract in prose.
 
+### Contract artifact
+
+Recorded 2026-09-18 from `make check-ui-workbench-frame` at elapsed 0 ms with the accepted
+provisional palette, `ui_preferences`-valid scales, explicit `draw_selection` bounds, and the
+three-row `draw_help` footer. **Phase A2 refreshed these checksums with explicit review**: selection
+markers and their edge now use the `accent` token on `canvas` instead of the provisional
+`border`-on-black, so every overlay colour is token-derived and outside authored bounds.
+The oracle (`src/ui_workbench_frame.c`) reproduces today's display
+composition before the chrome re-base: same preview, focus-effect, selection, and help text, with
+`SDL_GetTicks()` replaced by explicit `elapsed_ms`.
+
+```text
+editor_baseline 260 columns x 160 rows.
+checksum main@100/0ms    = 15106231313638485604
+checksum main@150/0ms    = 7566924062443564644
+checksum pause@100/0ms   = 16767408351412020113
+checksum settings@100/0ms= 8577113895234228389
+checksum confirm@100/0ms = 8315436846210167558
+footer rows              = status | controls | diagnostics (distinct, never overwritten)
+controls row             = "Up/Down element | Enter move | arrows move | Tab property | [ or ] value | Ctrl+N add | Backspace remove | Ctrl+Left/Right layout | Esc exit"
+selection markers        = '>' and '<' outside authored bounds
+chrome                   = UiAppWorkbenchPalette (primary_text, secondary_text, canvas, border)
+```
+
+The preview uses the same `ui_layout_render` + `ui_animation_render_layout` +
+`ui_layout_render_focus_effect` path as the live `ui-workbench` host, on `palette.canvas`, with
+focus effects driven by explicit time. A1 freezes this geometry. Any later chrome change (panes,
+roles, footer content) must refresh these checksums only with an explicit review, never silently.
+
 ### 5.1 Composition
 
 - **Default view is the full-fidelity preview** (reference of record §4.1, §4.3). It is the primary

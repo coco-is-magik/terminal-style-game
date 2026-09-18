@@ -17,6 +17,17 @@ typedef struct {
     SDL_Color secondary_text;
     SDL_Color canvas;
     SDL_Color border;
+    SDL_Color panel;
+    SDL_Color elevated;
+    SDL_Color accent;
+    SDL_Color focus;
+    SDL_Color selection_background;
+    SDL_Color disabled_text;
+    SDL_Color disabled_background;
+    SDL_Color warning;
+    SDL_Color error;
+    SDL_Color success;
+    SDL_Color destructive;
 } UiAppWorkbenchPalette;
 
 /** Resolves provisional application-menu colors; output is unchanged on failure. */

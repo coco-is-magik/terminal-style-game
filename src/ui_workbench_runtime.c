@@ -8,17 +8,23 @@
 #include "ui_compositor.h"
 #include "ui_preferences.h"
 #include "ui_workbench.h"
+#include "ui_workbench_chrome.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
 
-static void draw_selection(Grid *grid, UiElement *element, SDL_Color color) {
+static void draw_selection(Grid *grid, const UiAppWorkbenchPalette *palette,
+                           UiElement *element) {
     int x;
     int y;
     int width;
     int height;
-    SDL_Color bg = {0, 0, 0, 255};
+    SDL_Color bg;
+    SDL_Color color;
+    if (!palette) return;
+    bg = palette->canvas;
+    color = palette->accent;
     if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
         width <= 0 || height <= 0) return;
     (void)grid_set(grid, x - 1, y, '>', color, bg);
@@ -39,36 +45,9 @@ static int selected_focus_index(UiWorkbench *workbench) {
 
 static void draw_help(Grid *grid, const UiWorkbench *workbench,
                       const UiAppWorkbenchPalette *palette, int scale_percent) {
-    char line[256];
-    UiElement *element = ui_workbench_current_element((UiWorkbench *)workbench);
-    const char *add_source = ui_workbench_add_source_name(workbench);
-    if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
-        (void)snprintf(line, sizeof(line), "ADD EXISTING UNIT | %s",
-                       add_source ? add_source : "none");
-        grid_print(grid, 1, grid->height - 3, line,
-                   palette->primary_text, palette->canvas);
-        grid_print(grid, 1, grid->height - 2,
-                   "Up/Down choose | Enter clone/add | Esc cancel",
-                   palette->secondary_text, palette->canvas);
-        return;
-    }
-    (void)snprintf(line, sizeof(line),
-        "UI WORKBENCH | %s | %s | %s=%s | scale=%d%%",
-        workbench->layout ? workbench->layout->name : "none",
-        element ? element->name : "none",
-        ui_workbench_property_name(workbench->property),
-        ui_workbench_current_value(workbench), scale_percent);
-    grid_print(grid, 1, grid->height - 3, line, palette->primary_text, palette->canvas);
-    grid_print(grid, 1, grid->height - 2,
-        "Up/Down element | Enter move | arrows move | Tab property | [ or ] value | Ctrl+N add | Backspace remove | Ctrl+Left/Right layout | Esc exit",
-        palette->secondary_text, palette->canvas);
-    if (element && strcmp(element->focus_effect, "input_hold_short") == 0)
-        grid_print(grid, 1, grid->height - 1,
-                   "Preview metadata only: input_hold_short has no production execution",
-                   palette->secondary_text, palette->canvas);
-    else
-        grid_print(grid, 1, grid->height - 1, workbench->status,
-                   palette->secondary_text, palette->canvas);
+    if (!grid || !workbench || !palette) return;
+    (void)ui_workbench_chrome_footer_rows(grid, palette, workbench,
+                                          scale_percent, false);
 }
 
 static void set_scale_status(UiWorkbench *workbench,
@@ -178,7 +157,7 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
             grid, (double)(SDL_GetTicks() - preview_start), false,
             palette.primary_text, palette.border, palette.canvas);
         element = ui_workbench_current_element(&workbench);
-        draw_selection(grid, element, palette.border);
+        draw_selection(grid, &palette, element);
         ui_canvas_copy_grid_region(canvas, grid, 0, 0);
         grid_clear(grid, palette.canvas);
         draw_help(grid, &workbench, &palette, ui_preferences_scale(&preferences));

@@ -121,6 +121,29 @@ is withdrawn and retained as reference. Its Phase 0-2 additive seams and the `ui
 `ui_menu_workspace` code remain in the tree, marked unratified; no interface claim from Phases 3-4
 stands.
 
+**Step 1 A1 close-out (2026-09-18).** Phase A1's code deliverables are implemented and verified
+(see [`reviews/2026-09-18-application-ui-editor-a1-frame-oracle.md`](reviews/2026-09-18-application-ui-editor-a1-frame-oracle.md)):
+the headless `ui_workbench_frame` oracle reproduces today's 260x160 workbench composition
+byte-for-byte before any behaviour change, with five recorded contract checksums. Broad gates pass:
+complete `make test` with no failures, `make test-ui-standards` with all nineteen UI rule owners
+(including the new `test-ui-workbench-frame`), `make standards`, the existing
+`test-ui-workbench` 6/6, `test-ui-workbench-store` 6/6, and `test-ui-app-theme-adapter` 4/4,
+focused ASan/UBSan on the new runner, and the strict default application build. The only
+remaining A1 items are native Valgrind, the native 1920x1080 display confirmation, and confirming
+the frozen contract frame artifact is accepted — after which A2 may begin.
+
+**Step 1 A2 close-out (2026-09-18).** Phase A2's code deliverables are implemented and verified
+(see [`reviews/2026-09-18-application-ui-editor-a2-chrome-rebase.md`](reviews/2026-09-18-application-ui-editor-a2-chrome-rebase.md)):
+`UiAppWorkbenchPalette` now carries the full chrome role set additively; `ui_workbench_chrome`
+is the single owner of chrome geometry and token roles; both the live runtime and the headless
+oracle compose footer and selection through it with all overlays token-derived and outside authored
+bounds. Five contract checksums were refreshed with explicit review. Broad gates pass: complete
+`make test` with no failures, `make test-ui-standards` with all twenty UI rule owners (including
+the new `test-ui-workbench-chrome`), `make standards`, focused ASan/UBSan on the chrome and
+adapter runners, and the strict default application build. Gates G3-G5 are enforced by
+`test-ui-workbench-chrome` plus the refreshed contract artifact. The only remaining A2 items are
+native Valgrind and the native 1920x1080 display confirmation — after which A3 may begin.
+
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;
 no legacy code-page meaning has been assigned.

@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the eighteen focused UI rule owners:
+`make test-ui-standards` runs the twenty focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -30,6 +30,13 @@ theme-token decisions that still require product review.
 - `test-ui-workbench` — bounded application-context loading, ancestor-container inclusion,
   deterministic element/property navigation, safe action routing, and invalid-operation
   nonmutation;
+- `test-ui-workbench-frame` — display-free 260x160 composed-frame contract: explicit-time
+  determinism through recorded checksums, three-row footer distinctness across all four contexts,
+  help-footer stability across supported scales, selection overlays outside authored cells, and
+  invalid-input rejection;
+- `test-ui-workbench-chrome` — single-owner chrome geometry and token roles: all role colours
+  from provisional tokens, token borders plus non-colour pane focus, identity/controls/diagnostics
+  footer rows, and invalid-input rejection;
 - `test-ui-app-theme-adapter` — exact provisional application-menu role mapping, alpha
   preservation, stable repeated resolution, and invalid-output handling;
 - `test-ui-theme-demo` — complete provisional role/state specimen, session-only scale

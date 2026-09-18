@@ -28,6 +28,17 @@ bool ui_app_theme_workbench_palette(UiAppWorkbenchPalette *out_palette) {
     palette.secondary_text = to_sdl_color(theme->text_secondary);
     palette.canvas = to_sdl_color(theme->canvas);
     palette.border = to_sdl_color(theme->border);
+    palette.panel = to_sdl_color(theme->panel);
+    palette.elevated = to_sdl_color(theme->elevated);
+    palette.accent = to_sdl_color(theme->accent);
+    palette.focus = to_sdl_color(theme->focus);
+    palette.selection_background = to_sdl_color(theme->selection_background);
+    palette.disabled_text = to_sdl_color(theme->disabled_text);
+    palette.disabled_background = to_sdl_color(theme->disabled_background);
+    palette.warning = to_sdl_color(theme->warning);
+    palette.error = to_sdl_color(theme->error);
+    palette.success = to_sdl_color(theme->success);
+    palette.destructive = to_sdl_color(theme->destructive);
     *out_palette = palette;
     return true;
 }

@@ -44,7 +44,7 @@ static void test_menu_palette_rejects_null_output(void **state) {
     assert_false(ui_app_theme_menu_palette(NULL));
 }
 
-static void test_workbench_palette_maps_exact_roles(void **state) {
+static void test_workbench_palette_maps_all_chrome_roles(void **state) {
     UiAppWorkbenchPalette palette;
     const UiThemePalette *tokens = &ui_theme_provisional_tokens()->palette;
     (void)state;
@@ -59,6 +59,37 @@ static void test_workbench_palette_maps_exact_roles(void **state) {
                  tokens->canvas.blue, tokens->canvas.alpha);
     assert_color(palette.border, tokens->border.red, tokens->border.green,
                  tokens->border.blue, tokens->border.alpha);
+    assert_color(palette.panel, tokens->panel.red, tokens->panel.green,
+                 tokens->panel.blue, tokens->panel.alpha);
+    assert_color(palette.elevated, tokens->elevated.red,
+                 tokens->elevated.green, tokens->elevated.blue,
+                 tokens->elevated.alpha);
+    assert_color(palette.accent, tokens->accent.red, tokens->accent.green,
+                 tokens->accent.blue, tokens->accent.alpha);
+    assert_color(palette.focus, tokens->focus.red, tokens->focus.green,
+                 tokens->focus.blue, tokens->focus.alpha);
+    assert_color(palette.selection_background,
+                 tokens->selection_background.red,
+                 tokens->selection_background.green,
+                 tokens->selection_background.blue,
+                 tokens->selection_background.alpha);
+    assert_color(palette.disabled_text, tokens->disabled_text.red,
+                 tokens->disabled_text.green, tokens->disabled_text.blue,
+                 tokens->disabled_text.alpha);
+    assert_color(palette.disabled_background,
+                 tokens->disabled_background.red,
+                 tokens->disabled_background.green,
+                 tokens->disabled_background.blue,
+                 tokens->disabled_background.alpha);
+    assert_color(palette.warning, tokens->warning.red, tokens->warning.green,
+                 tokens->warning.blue, tokens->warning.alpha);
+    assert_color(palette.error, tokens->error.red, tokens->error.green,
+                 tokens->error.blue, tokens->error.alpha);
+    assert_color(palette.success, tokens->success.red, tokens->success.green,
+                 tokens->success.blue, tokens->success.alpha);
+    assert_color(palette.destructive, tokens->destructive.red,
+                 tokens->destructive.green, tokens->destructive.blue,
+                 tokens->destructive.alpha);
     assert_false(ui_app_theme_workbench_palette(NULL));
 }
 
@@ -67,7 +98,7 @@ int main(void) {
         cmocka_unit_test(test_menu_palette_maps_exact_provisional_roles),
         cmocka_unit_test(test_menu_palette_is_stable_and_preserves_alpha),
         cmocka_unit_test(test_menu_palette_rejects_null_output),
-        cmocka_unit_test(test_workbench_palette_maps_exact_roles)
+        cmocka_unit_test(test_workbench_palette_maps_all_chrome_roles)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
