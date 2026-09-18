@@ -9,6 +9,7 @@
 #include "unified_editor_internal.h"
 #include "unified_editor_test.h"
 #include "ui_nested_inspector.h"
+#include "ui_editor_action.h"
 #include "asset_refresh.h"
 #include "editor_domain.h"
 #include "editor_highlight.h"
@@ -247,6 +248,8 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     int viewport_rows,
     bool *handled
 ) {
+    UiEditorAction action = {0};
+    bool have_action = false;
     int preview_x = 40;
     int preview_y = 3;
     int available_width = viewport_columns - preview_x - 1;
@@ -277,13 +280,21 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
         return UI_MENU_WORKSPACE_OK;
     }
     if (text_mode) {
-        if (input->editor_confirm_pressed) return ui_menu_workspace_confirm(workspace);
+        if (input->editor_confirm_pressed) {
+            action.type = UI_EDITOR_ACTION_CONFIRM;
+            return ui_editor_action_apply(workspace, &action);
+        }
         if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
-            return ui_menu_workspace_escape(workspace);
-        if (input->editor_text_backspace_pressed)
-            return ui_menu_workspace_backspace(workspace);
-        if (input->text_input_len > 0)
-            return ui_menu_workspace_append_text(workspace, input->text_input);
+            action.type = UI_EDITOR_ACTION_CANCEL, have_action = true;
+        else if (input->editor_text_backspace_pressed)
+            action.type = UI_EDITOR_ACTION_BACKSPACE, have_action = true;
+        else if (input->text_input_len > 0) {
+            action.type = UI_EDITOR_ACTION_APPEND_TEXT;
+            action.text = input->text_input;
+            have_action = true;
+        }
+        if (have_action)
+            return ui_editor_action_apply(workspace, &action);
         *handled = false;
         return UI_MENU_WORKSPACE_NO_ACTION;
     }
@@ -296,19 +307,30 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
             return ui_menu_workspace_pointer_release(workspace);
         return result;
     }
-    if (input->editor_previous_pressed) return ui_menu_workspace_previous(workspace);
-    if (input->editor_next_pressed) return ui_menu_workspace_next(workspace);
-    if (input->editor_confirm_pressed) return ui_menu_workspace_confirm(workspace);
+    if (input->editor_previous_pressed)
+        action.type = UI_EDITOR_ACTION_PREVIOUS, have_action = true;
+    else if (input->editor_next_pressed)
+        action.type = UI_EDITOR_ACTION_NEXT, have_action = true;
+    else if (input->editor_confirm_pressed)
+        action.type = UI_EDITOR_ACTION_CONFIRM, have_action = true;
     if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
-        return ui_menu_workspace_escape(workspace);
-    if (input->editor_save_pressed) return ui_menu_workspace_save(workspace);
-    if (input->editor_undo_pressed) return ui_menu_workspace_undo(workspace);
-    if (input->editor_redo_pressed) return ui_menu_workspace_redo(workspace);
-    if (input->editor_decrease_pressed) return ui_menu_workspace_adjust(workspace, -1);
-    if (input->editor_increase_pressed) return ui_menu_workspace_adjust(workspace, 1);
-    if (input->editor_select_pressed) return ui_menu_workspace_open_actions(workspace);
+        action.type = UI_EDITOR_ACTION_CANCEL, have_action = true;
+    else if (input->editor_save_pressed)
+        action.type = UI_EDITOR_ACTION_SAVE, have_action = true;
+    else if (input->editor_undo_pressed)
+        action.type = UI_EDITOR_ACTION_UNDO, have_action = true;
+    else if (input->editor_redo_pressed)
+        action.type = UI_EDITOR_ACTION_REDO, have_action = true;
+    else if (input->editor_decrease_pressed)
+        action.type = UI_EDITOR_ACTION_DECREASE, have_action = true;
+    else if (input->editor_increase_pressed)
+        action.type = UI_EDITOR_ACTION_INCREASE, have_action = true;
+    else if (input->editor_select_pressed)
+        action.type = UI_EDITOR_ACTION_OPEN_ACTIONS, have_action = true;
     if (input->editor_text_backspace_pressed)
-        return ui_menu_workspace_request_remove(workspace);
+        action.type = UI_EDITOR_ACTION_REMOVE, have_action = true;
+    if (have_action)
+        return ui_editor_action_apply(workspace, &action);
     *handled = false;
     return UI_MENU_WORKSPACE_NO_ACTION;
 }
@@ -5627,7 +5649,7 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
             static const char *action_names[] = {
                 "Properties", "Add Container", "Add Text", "Add Button",
                 "Edit content", "Edit flow port", "Remove", "Rename", "Reparent",
-                "Move Earlier", "Move Later", "Preview Settings"
+                "Move Earlier", "Move Later", "Preview Settings", "Add Animation"
             };
             int action_row = 3;
             int action_x = 20;

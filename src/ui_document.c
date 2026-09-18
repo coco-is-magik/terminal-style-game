@@ -684,13 +684,16 @@ UiDocumentResult ui_document_set_layout(UiDocument *document,
     if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
     if (ui_document_validate(document) != UI_DOCUMENT_OK)
         return UI_DOCUMENT_INVALID_ARGUMENT;
-    if (element_id == 1U || !layout_valid(layout)) return UI_DOCUMENT_INVALID_LAYOUT;
+    if (element_id == 1U) return UI_DOCUMENT_INVALID_LAYOUT;
     for (i = 0U; i < document->element_count; i++)
         if (document->elements[i].id == element_id) {
             element = &document->elements[i];
             break;
         }
     if (!element) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if ((element->type == UI_DOCUMENT_ELEMENT_ANIMATION
+             ? !animation_layout_valid(layout) : !layout_valid(layout)))
+        return UI_DOCUMENT_INVALID_LAYOUT;
     if (memcmp(&element->layout, &layout, sizeof(layout)) == 0) return UI_DOCUMENT_OK;
     previous = element->layout;
     element->layout = layout;

@@ -18,6 +18,7 @@
 
 #include "../src/ui_menu_workspace.h"
 #include "../src/ui_menu_workspace_internal.h"
+#include "../src/ui_editor_action.h"
 
 static void assert_menu_save_committed(UiMenuWorkspaceResult result) {
     assert_true(result == UI_MENU_WORKSPACE_OK ||
@@ -892,6 +893,151 @@ static void test_same_workspace_trace_is_host_independent(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+static void open_workspace_document(UiMenuWorkspace *workspace,
+                                    const char *root) {
+    ui_menu_workspace_init(workspace);
+    assert_int_equal(ui_menu_workspace_open(workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(workspace), UI_MENU_WORKSPACE_OK);
+}
+
+static void test_phase3_animation_action_is_one_undoable_edit(void **state) {
+    UiMenuWorkspace workspace;
+    const UiDocumentElement *animation;
+    char root[64], menus[96], path[128];
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    open_workspace_document(&workspace, root);
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_ADD_ANIMATION;
+    assert_true(ui_menu_workspace_action_available(
+        &workspace, UI_MENU_ACTION_ADD_ANIMATION));
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    animation = ui_menu_workspace_selected_element(&workspace);
+    assert_non_null(animation);
+    assert_int_equal(animation->type, UI_DOCUMENT_ELEMENT_ANIMATION);
+    assert_int_equal(animation->parent_id, 0U);
+    assert_int_equal(animation->animation.target_id, 1U);
+    assert_int_equal(workspace.change_count, 1U);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.property = UI_MENU_PROPERTY_X;
+    assert_int_equal(ui_menu_workspace_adjust(&workspace, 1), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(&workspace)->layout.x, 1);
+    assert_int_equal(workspace.change_count, 2U);
+    assert_int_equal(ui_menu_workspace_escape(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_action_available(
+        &workspace, UI_MENU_ACTION_REPARENT));
+    assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_selected_element(&workspace)->layout.x, 0);
+    assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.document.element_count, 2U);
+    assert_int_equal(ui_menu_workspace_redo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.document.element_count, 3U);
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_phase3_candidate_preview_is_nonhistorical_until_accept(void **state) {
+    UiMenuWorkspace workspace;
+    const UiDocumentElement *preview;
+    DocumentStateId original_state;
+    char root[64], menus[96], path[128];
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    open_workspace_document(&workspace, root);
+    assert_int_equal(ui_menu_workspace_next(&workspace), UI_MENU_WORKSPACE_OK);
+    original_state = workspace.document.state.current_state;
+    assert_int_equal(ui_menu_workspace_begin_candidate(
+        &workspace, UI_MENU_PROPERTY_FOCUS_EFFECT), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust_candidate(&workspace, 1),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust_candidate(&workspace, 1),
+                     UI_MENU_WORKSPACE_OK);
+    preview = &ui_menu_workspace_preview_document(&workspace)->elements[1];
+    assert_string_not_equal(preview->focus_effect,
+                            workspace.document.elements[1].focus_effect);
+    assert_int_equal(workspace.document.state.current_state, original_state);
+    assert_int_equal(workspace.change_count, 0U);
+    assert_false(ui_menu_workspace_is_dirty(&workspace));
+    assert_int_equal(ui_menu_workspace_cancel_candidate(&workspace),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.change_count, 0U);
+    assert_int_equal(ui_menu_workspace_begin_candidate(
+        &workspace, UI_MENU_PROPERTY_FOCUS_EFFECT), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust_candidate(&workspace, 1),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_accept_candidate(&workspace),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.change_count, 1U);
+    assert_int_equal(workspace.change_cursor, 1U);
+    assert_true(ui_menu_workspace_is_dirty(&workspace));
+    assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.document.elements[1].focus_effect, "none");
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+static void test_phase3_action_vocabulary_and_playback_are_host_independent(void **state) {
+    UiMenuWorkspace direct;
+    UiMenuWorkspace adapted;
+    UiEditorAction action = {0};
+    char root[64], menus[96], path[128];
+    (void)state;
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    save_menu(path, "menu");
+    open_workspace_document(&direct, root);
+    open_workspace_document(&adapted, root);
+    assert_int_equal(ui_menu_workspace_next(&direct), UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_NEXT;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_begin_candidate(
+        &direct, UI_MENU_PROPERTY_ACTIVATE_EFFECT), UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_CANDIDATE_BEGIN;
+    action.property = UI_MENU_PROPERTY_ACTIVATE_EFFECT;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_adjust_candidate(&direct, 1),
+                     UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_INCREASE;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_accept_candidate(&direct), UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_CANDIDATE_ACCEPT;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_memory_equal(&direct.document, &adapted.document, sizeof(direct.document));
+    assert_int_equal(direct.change_count, adapted.change_count);
+    assert_int_equal(ui_menu_workspace_playback_start(&direct, 10.0),
+                     UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_PLAYBACK_START;
+    action.now_ms = 10.0;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_PLAYBACK_EVENT;
+    action.playback_event = UI_ANIMATION_EVENT_CONTEXT_ENTER;
+    action.target_id = 0U;
+    action.now_ms = 20.0;
+    assert_int_equal(ui_menu_workspace_playback_event(
+        &direct, action.playback_event, action.target_id, action.now_ms),
+        UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_memory_equal(&direct.playback, &adapted.playback, sizeof(direct.playback));
+    assert_int_equal(direct.playback_status, UI_MENU_PLAYBACK_PLAYING);
+    assert_int_equal(ui_menu_workspace_playback_stop(&direct), UI_MENU_WORKSPACE_OK);
+    action.type = UI_EDITOR_ACTION_PLAYBACK_STOP;
+    assert_int_equal(ui_editor_action_apply(&adapted, &action), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(adapted.playback_status, UI_MENU_PLAYBACK_STOPPED);
+    ui_menu_workspace_clear(&direct);
+    ui_menu_workspace_clear(&adapted);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
@@ -909,6 +1055,9 @@ int main(void) {
         ,cmocka_unit_test(test_created_hierarchy_exposes_valid_reparent_destination)
         ,cmocka_unit_test(test_committed_warning_updates_heap_history_identity)
         ,cmocka_unit_test(test_same_workspace_trace_is_host_independent)
+        ,cmocka_unit_test(test_phase3_animation_action_is_one_undoable_edit)
+        ,cmocka_unit_test(test_phase3_candidate_preview_is_nonhistorical_until_accept)
+        ,cmocka_unit_test(test_phase3_action_vocabulary_and_playback_are_host_independent)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

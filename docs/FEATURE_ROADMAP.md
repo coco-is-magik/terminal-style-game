@@ -838,7 +838,7 @@ Production mirror changes remain conditional on a distinct failing reproduction.
 workbench formats remain blocked on the glyph model, although behavior characterization and
 headless painter-session extraction may proceed earlier under their own Q1 plan.
 
-The active UI Scene migration is in Phase 1 (document model). Phase 1 slice A (v4 roles,
-bindings, system actions, effect slots) is complete; slice B (Animation element document data) is
-the next safe action under
+The active UI Scene migration has verified Phases 0-3: versioned document data, deterministic
+runtime/playback, and the reusable editor core are complete at their stated gates. Phase 4's
+standalone host and exact standalone/embedded parity are the next safe work under
 [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).

@@ -635,6 +635,14 @@ Rollback: leave the new schema loadable but unused by production application com
 
 ### Phase 3 — reusable UI Scene editor core
 
+Status: **complete at the reusable-core exit gate.** The existing workspace now owns Animation and
+effect candidates, explicit playback state, and shared typed actions. The shared presentation module
+renders directly from workspace state without unified-editor internals. Exact replacement of the
+accepted embedded-host frame remains part of Phase 4 host parity; the legacy embedded drawing path
+is retained until that replacement preserves its characterized labels, diagnostics, and pointer
+geometry. Evidence is recorded in
+`reviews/2026-09-18-ui-scene-phase3-editor-core.md`.
+
 Required work:
 
 1. Evolve `UiMenuWorkspace` into a UI Scene workspace without duplicating a second workspace.
@@ -878,14 +886,16 @@ These are narrow phase-entry decisions, not permission to reopen the one-system 
 
 ## Next safe implementation step
 
-**Phase 2 is complete and verified.** Proceed to Phase 3 without migrating application screens:
+**Phase 3 is complete and verified at the reusable-core boundary.** Proceed to Phase 4 without
+migrating application screens:
 
-1. evolve the existing UI Scene workspace rather than creating a second editor core;
-2. consume the additive playback-aware renderer/runtime APIs in preview only;
-3. preserve report-only typed requests so preview cannot load flow targets or execute system
+1. add the standalone UI Scene editor host around the shared workspace, actions, and presentation;
+2. route embedded authoring through the shared presentation while preserving its characterized
+   labels, diagnostics, pointer geometry, and preview cells;
+3. prove standalone/embedded parity for document, history, candidate, playback, and preview state;
+4. preserve report-only typed requests so preview cannot load flow targets or execute system
    actions;
-4. keep protected host policy outside document/runtime core;
-5. retain the legacy application path until the later migration and rollback gates authorize its
+5. retain the legacy application path until later migration and rollback gates authorize its
    replacement.
 
 ## Documentation lifecycle

@@ -36,7 +36,9 @@ static void clear_history(UiMenuWorkspace *workspace) {
 
 static void reset_document(UiMenuWorkspace *workspace) {
     free(workspace->pointer_before);
+    free(workspace->candidate_document);
     workspace->pointer_before = NULL;
+    workspace->candidate_document = NULL;
     workspace->pointer_mode = UI_MENU_POINTER_NONE;
     ui_document_init(&workspace->document);
     workspace->saved_document = workspace->document;
@@ -48,6 +50,8 @@ static void reset_document(UiMenuWorkspace *workspace) {
     workspace->preview_scale = UI_MENU_PREVIEW_SCALE_100;
     workspace->preview_field = UI_MENU_PREVIEW_FIELD_RESOLUTION;
     workspace->has_document = false;
+    workspace->playback_status = UI_MENU_PLAYBACK_STOPPED;
+    memset(&workspace->playback, 0, sizeof(workspace->playback));
 }
 
 void ui_menu_workspace_init(UiMenuWorkspace *workspace) {
@@ -60,7 +64,9 @@ void ui_menu_workspace_init(UiMenuWorkspace *workspace) {
 void ui_menu_workspace_clear(UiMenuWorkspace *workspace) {
     if (!workspace) return;
     free(workspace->pointer_before);
+    free(workspace->candidate_document);
     workspace->pointer_before = NULL;
+    workspace->candidate_document = NULL;
     clear_history(workspace);
     map_catalog_clear(&workspace->catalog);
     ui_menu_workspace_init(workspace);
@@ -255,6 +261,8 @@ UiMenuWorkspaceResult ui_menu_workspace_open(UiMenuWorkspace *workspace,
     if (result != UI_MENU_WORKSPACE_OK) return result;
     candidate.active = true;
     candidate.mode = UI_MENU_WORKSPACE_CHOOSER;
+    free(workspace->pointer_before);
+    free(workspace->candidate_document);
     clear_history(workspace);
     map_catalog_clear(&workspace->catalog);
     *workspace = candidate;
@@ -378,7 +386,8 @@ bool ui_menu_workspace_reparent_target_available(const UiMenuWorkspace *workspac
     const UiDocumentElement *candidate;
     if (!selected || element_index >= workspace->document.element_count) return false;
     candidate = &workspace->document.elements[element_index];
-    return selected->id != 1U && candidate->type == UI_DOCUMENT_ELEMENT_CONTAINER &&
+    return selected->id != 1U && selected->type != UI_DOCUMENT_ELEMENT_ANIMATION &&
+           candidate->type == UI_DOCUMENT_ELEMENT_CONTAINER &&
            candidate->id != selected->id && candidate->id != selected->parent_id &&
            !workspace_element_descends_from(
                &workspace->document, candidate, selected->id);
@@ -391,6 +400,8 @@ bool ui_menu_workspace_action_available(const UiMenuWorkspace *workspace,
         return false;
     if (action == UI_MENU_ACTION_PROPERTIES) return true;
     if (action == UI_MENU_ACTION_PREVIEW_SETTINGS) return true;
+    if (action == UI_MENU_ACTION_ADD_ANIMATION)
+        return element->type != UI_DOCUMENT_ELEMENT_ANIMATION;
     if (action == UI_MENU_ACTION_ADD_CONTAINER || action == UI_MENU_ACTION_ADD_TEXT ||
         action == UI_MENU_ACTION_ADD_BUTTON)
         return element->type == UI_DOCUMENT_ELEMENT_CONTAINER;
@@ -419,6 +430,19 @@ bool ui_menu_workspace_property_available(const UiMenuWorkspace *workspace,
     const UiDocumentElement *element = ui_menu_workspace_selected_element(workspace);
     if (!element || property < UI_MENU_PROPERTY_X || property >= UI_MENU_PROPERTY_COUNT)
         return false;
+    if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) {
+        if (property == UI_MENU_PROPERTY_X || property == UI_MENU_PROPERTY_Y ||
+            property == UI_MENU_PROPERTY_WIDTH || property == UI_MENU_PROPERTY_HEIGHT)
+            return true;
+        return property >= UI_MENU_PROPERTY_ANIMATION_TARGET &&
+               property <= UI_MENU_PROPERTY_ANIMATION_RANDOMIZE;
+    }
+    if (property >= UI_MENU_PROPERTY_ANIMATION_TARGET) return false;
+    if (property == UI_MENU_PROPERTY_ENTRY_EFFECT ||
+        property == UI_MENU_PROPERTY_EXIT_EFFECT) return true;
+    if (property == UI_MENU_PROPERTY_FOCUS_EFFECT ||
+        property == UI_MENU_PROPERTY_ACTIVATE_EFFECT)
+        return element->type == UI_DOCUMENT_ELEMENT_BUTTON;
     if (property <= UI_MENU_PROPERTY_VERTICAL_ANCHOR) return element->id != 1U;
     if (property == UI_MENU_PROPERTY_VISUAL_MODE ||
         property == UI_MENU_PROPERTY_VISIBLE) return true;
@@ -629,7 +653,8 @@ static bool generate_element_identity(const UiDocument *document,
                                       char name[UI_DOCUMENT_NAME_CAPACITY],
                                       char port[UI_DOCUMENT_NAME_CAPACITY]) {
     const char *prefix = type == UI_DOCUMENT_ELEMENT_CONTAINER ? "container" :
-                         type == UI_DOCUMENT_ELEMENT_TEXT ? "text" : "button";
+                         type == UI_DOCUMENT_ELEMENT_TEXT ? "text" :
+                         type == UI_DOCUMENT_ELEMENT_BUTTON ? "button" : "animation";
     size_t suffix;
     port[0] = '\0';
     for (suffix = 1U; suffix <= UI_DOCUMENT_MAX_ELEMENTS; suffix++) {
@@ -645,6 +670,30 @@ static bool generate_element_identity(const UiDocument *document,
         return true;
     }
     return false;
+}
+
+static UiMenuWorkspaceResult add_animation(UiMenuWorkspace *workspace) {
+    const UiDocumentElement *target = ui_menu_workspace_selected_element(workspace);
+    UiDocument before;
+    UiDocument candidate;
+    UiElementId id;
+    char name[UI_DOCUMENT_NAME_CAPACITY];
+    char unused_port[UI_DOCUMENT_NAME_CAPACITY];
+    if (!target || target->type == UI_DOCUMENT_ELEMENT_ANIMATION)
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    before = workspace->document;
+    candidate = before;
+    if (!generate_element_identity(&candidate, UI_DOCUMENT_ELEMENT_ANIMATION,
+                                   name, unused_port) ||
+        ui_document_add_animation(&candidate, target->id, name, &id) != UI_DOCUMENT_OK)
+        return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    {
+        UiMenuWorkspaceResult result = record_change(
+            workspace, &before, &candidate, target->id, id);
+        if (result == UI_MENU_WORKSPACE_OK)
+            return_from_actions_to_hierarchy(workspace, id);
+        return result;
+    }
 }
 
 static UiMenuWorkspaceResult add_child(UiMenuWorkspace *workspace,
@@ -921,6 +970,8 @@ UiMenuWorkspaceResult ui_menu_workspace_internal_confirm(
             return add_child(workspace, UI_DOCUMENT_ELEMENT_TEXT);
         if (action == UI_MENU_ACTION_ADD_BUTTON)
             return add_child(workspace, UI_DOCUMENT_ELEMENT_BUTTON);
+        if (action == UI_MENU_ACTION_ADD_ANIMATION)
+            return add_animation(workspace);
         if (action == UI_MENU_ACTION_EDIT_CONTENT) {
             begin_element_text_edit(workspace, false);
             return UI_MENU_WORKSPACE_OK;
@@ -1193,6 +1244,7 @@ UiMenuWorkspaceResult ui_menu_workspace_adjust(UiMenuWorkspace *workspace,
     if (!workspace || (direction != -1 && direction != 1))
         return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
     if (workspace->mode == UI_MENU_WORKSPACE_PREVIEW_SETTINGS) {
         if (workspace->preview_field == UI_MENU_PREVIEW_FIELD_RESOLUTION) {
             size_t value = (size_t)workspace->preview_resolution;
@@ -1218,13 +1270,13 @@ UiMenuWorkspaceResult ui_menu_workspace_adjust(UiMenuWorkspace *workspace,
             return UI_MENU_WORKSPACE_NO_ACTION;
         if (ui_document_set_layout(&candidate, element->id, layout) != UI_DOCUMENT_OK)
             return UI_MENU_WORKSPACE_MUTATION_FAILED;
-    } else {
+    } else if (workspace->property <= UI_MENU_PROPERTY_VISIBLE) {
         UiDocumentVisual visual = element->visual;
         if (!adjust_visual_property(&visual, workspace->property, direction))
             return UI_MENU_WORKSPACE_NO_ACTION;
         if (ui_document_set_visual(&candidate, element->id, visual) != UI_DOCUMENT_OK)
             return UI_MENU_WORKSPACE_MUTATION_FAILED;
-    }
+    } else return UI_MENU_WORKSPACE_NO_ACTION;
     return record_change(workspace, &before, &candidate, element->id, element->id);
 }
 
@@ -1300,6 +1352,7 @@ UiMenuWorkspaceResult ui_menu_workspace_undo(UiMenuWorkspace *workspace) {
     DocumentStateId next_state;
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
     if (!workspace->has_document || workspace->change_cursor == 0U)
         return UI_MENU_WORKSPACE_NO_ACTION;
     change = &workspace->changes[workspace->change_cursor - 1U];
@@ -1317,6 +1370,7 @@ UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace) {
     DocumentStateId next_state;
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
     if (!workspace->has_document || workspace->change_cursor >= workspace->change_count)
         return UI_MENU_WORKSPACE_NO_ACTION;
     change = &workspace->changes[workspace->change_cursor];
@@ -1326,5 +1380,188 @@ UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace) {
         workspace->document.state.next_state = next_state;
     select_id(workspace, change->after_selected_id);
     workspace->change_cursor++;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+static int wrapped_value(int value, int minimum, int maximum, int direction) {
+    value += direction;
+    if (value < minimum) return maximum;
+    if (value > maximum) return minimum;
+    return value;
+}
+
+static const char *cycle_effect(const char *current, int direction) {
+    static const char *const effects[] = {
+        "none", "center_out", "perimeter_burst", "local_glitch",
+        "focus_pulse", "focus_glitch", "input_hold_short"
+    };
+    size_t i;
+    for (i = 0U; i < sizeof(effects) / sizeof(effects[0]); i++)
+        if (strcmp(current, effects[i]) == 0) {
+            size_t next = i;
+            step(&next, sizeof(effects) / sizeof(effects[0]), direction < 0);
+            return effects[next];
+        }
+    return effects[0];
+}
+
+static bool candidate_target(UiDocument *document, UiDocumentElement *animation,
+                             int direction) {
+    size_t i;
+    size_t current = document->element_count;
+    for (i = 0U; i < document->element_count; i++)
+        if (document->elements[i].id == animation->animation.target_id) current = i;
+    for (i = 0U; i < document->element_count; i++) {
+        if (direction < 0) current = current == 0U
+            ? document->element_count - 1U : current - 1U;
+        else current = (current + 1U) % document->element_count;
+        if (document->elements[current].type != UI_DOCUMENT_ELEMENT_ANIMATION) {
+            animation->animation.target_id = document->elements[current].id;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool adjust_candidate_document(UiDocument *document, UiElementId element_id,
+                                      UiMenuProperty property, int direction) {
+    UiDocumentElement *element = NULL;
+    char *effect = NULL;
+    size_t i;
+    for (i = 0U; i < document->element_count; i++)
+        if (document->elements[i].id == element_id) {
+            element = &document->elements[i];
+            break;
+        }
+    if (!element) return false;
+    if (property == UI_MENU_PROPERTY_ENTRY_EFFECT) effect = element->entry_effect;
+    else if (property == UI_MENU_PROPERTY_EXIT_EFFECT) effect = element->exit_effect;
+    else if (property == UI_MENU_PROPERTY_FOCUS_EFFECT) effect = element->focus_effect;
+    else if (property == UI_MENU_PROPERTY_ACTIVATE_EFFECT) effect = element->activate_effect;
+    if (effect) {
+        const char *next = cycle_effect(effect, direction);
+        memcpy(effect, next, strlen(next) + 1U);
+    } else if (property == UI_MENU_PROPERTY_ANIMATION_TARGET)
+        return candidate_target(document, element, direction);
+    else if (property == UI_MENU_PROPERTY_ANIMATION_PRESET)
+        element->animation.preset = (UiDocumentAnimationPreset)wrapped_value(
+            element->animation.preset, UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH,
+            UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH, direction);
+    else if (property == UI_MENU_PROPERTY_ANIMATION_TRIGGER)
+        element->animation.trigger = (UiDocumentAnimationTrigger)wrapped_value(
+            element->animation.trigger, UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER,
+            UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE, direction);
+    else if (property == UI_MENU_PROPERTY_ANIMATION_ORIENTATION)
+        element->animation.orientation = (UiDocumentAnimationOrientation)wrapped_value(
+            element->animation.orientation, UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL,
+            UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL, direction);
+    else if (property == UI_MENU_PROPERTY_ANIMATION_LOOP)
+        element->animation.loop = !element->animation.loop;
+    else if (property == UI_MENU_PROPERTY_ANIMATION_RANDOMIZE)
+        element->animation.randomize = !element->animation.randomize;
+    else return false;
+    return ui_document_validate(document) == UI_DOCUMENT_OK &&
+           asset_document_state_advance(&document->state);
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_begin_candidate(
+    UiMenuWorkspace *workspace, UiMenuProperty property
+) {
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->candidate_document ||
+        !ui_menu_workspace_property_available(workspace, property) ||
+        property < UI_MENU_PROPERTY_ENTRY_EFFECT)
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    workspace->candidate_document = malloc(sizeof(*workspace->candidate_document));
+    if (!workspace->candidate_document) return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    *workspace->candidate_document = workspace->document;
+    workspace->candidate_property = property;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_adjust_candidate(
+    UiMenuWorkspace *workspace, int direction
+) {
+    UiDocument candidate;
+    const UiDocumentElement *selected;
+    if (!workspace || (direction != -1 && direction != 1))
+        return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
+    selected = ui_menu_workspace_selected_element(workspace);
+    if (!selected) return UI_MENU_WORKSPACE_NO_ACTION;
+    candidate = *workspace->candidate_document;
+    if (!adjust_candidate_document(&candidate, selected->id,
+                                   workspace->candidate_property, direction))
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    *workspace->candidate_document = candidate;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_accept_candidate(UiMenuWorkspace *workspace) {
+    UiDocument candidate;
+    UiElementId selected_id;
+    UiMenuWorkspaceResult result;
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
+    selected_id = ui_menu_workspace_selected_element(workspace)->id;
+    candidate = *workspace->candidate_document;
+    free(workspace->candidate_document);
+    workspace->candidate_document = NULL;
+    if (candidate.state.current_state == workspace->document.state.current_state)
+        return UI_MENU_WORKSPACE_OK;
+    result = record_change(workspace, &workspace->document, &candidate,
+                           selected_id, selected_id);
+    if (result == UI_MENU_WORKSPACE_OK) select_id(workspace, selected_id);
+    return result;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_cancel_candidate(UiMenuWorkspace *workspace) {
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!workspace->candidate_document) return UI_MENU_WORKSPACE_NO_ACTION;
+    free(workspace->candidate_document);
+    workspace->candidate_document = NULL;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+const UiDocument *ui_menu_workspace_preview_document(const UiMenuWorkspace *workspace) {
+    if (!workspace || !workspace->active || !workspace->has_document) return NULL;
+    return workspace->candidate_document ? workspace->candidate_document : &workspace->document;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_playback_start(
+    UiMenuWorkspace *workspace, double now_ms
+) {
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!workspace->has_document ||
+        !ui_animation_playback_init(&workspace->playback, now_ms))
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    workspace->playback_status = UI_MENU_PLAYBACK_PLAYING;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_playback_event(
+    UiMenuWorkspace *workspace, UiAnimationEvent event,
+    UiElementId target_id, double now_ms
+) {
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->playback_status != UI_MENU_PLAYBACK_PLAYING ||
+        !ui_animation_playback_event(&workspace->playback, event, target_id, now_ms))
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_playback_stop(UiMenuWorkspace *workspace) {
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (workspace->playback_status == UI_MENU_PLAYBACK_STOPPED)
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    memset(&workspace->playback, 0, sizeof(workspace->playback));
+    workspace->playback_status = UI_MENU_PLAYBACK_STOPPED;
     return UI_MENU_WORKSPACE_OK;
 }

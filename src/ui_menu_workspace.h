@@ -1,9 +1,10 @@
-/** ui_menu_workspace.h — Headless staged authored-Menu workspace. */
+/** ui_menu_workspace.h — Headless staged UI Scene workspace. */
 #ifndef UI_MENU_WORKSPACE_H
 #define UI_MENU_WORKSPACE_H
 
 #include "map_catalog.h"
 #include "ui_document.h"
+#include "ui_animation_playback.h"
 #include "ui_nested_inspector.h"
 
 #define UI_MENU_WORKSPACE_HISTORY_CAPACITY 32U
@@ -36,6 +37,7 @@ typedef enum {
     UI_MENU_ACTION_MOVE_EARLIER,
     UI_MENU_ACTION_MOVE_LATER,
     UI_MENU_ACTION_PREVIEW_SETTINGS,
+    UI_MENU_ACTION_ADD_ANIMATION,
     UI_MENU_ACTION_COUNT
 } UiMenuAction;
 
@@ -63,8 +65,23 @@ typedef enum {
     UI_MENU_PROPERTY_BORDER_ENABLED,
     UI_MENU_PROPERTY_BORDER_GLYPH,
     UI_MENU_PROPERTY_VISIBLE,
+    UI_MENU_PROPERTY_ENTRY_EFFECT,
+    UI_MENU_PROPERTY_EXIT_EFFECT,
+    UI_MENU_PROPERTY_FOCUS_EFFECT,
+    UI_MENU_PROPERTY_ACTIVATE_EFFECT,
+    UI_MENU_PROPERTY_ANIMATION_TARGET,
+    UI_MENU_PROPERTY_ANIMATION_PRESET,
+    UI_MENU_PROPERTY_ANIMATION_TRIGGER,
+    UI_MENU_PROPERTY_ANIMATION_ORIENTATION,
+    UI_MENU_PROPERTY_ANIMATION_LOOP,
+    UI_MENU_PROPERTY_ANIMATION_RANDOMIZE,
     UI_MENU_PROPERTY_COUNT
 } UiMenuProperty;
+
+typedef enum {
+    UI_MENU_PLAYBACK_STOPPED = 0,
+    UI_MENU_PLAYBACK_PLAYING
+} UiMenuPlaybackStatus;
 
 typedef enum {
     UI_MENU_CLOSE_SAVE = 0,
@@ -138,6 +155,7 @@ typedef struct {
     UiMenuWorkspaceMode close_return_mode;
     UiMenuCloseChoice close_choice;
     UiDocument *pointer_before;
+    UiDocument *candidate_document;
     UiElementId pointer_element_id;
     UiMenuPointerMode pointer_mode;
     UiMenuPreviewResolution preview_resolution;
@@ -152,6 +170,10 @@ typedef struct {
     size_t edit_text_length;
     bool has_document;
     bool active;
+    UiMenuProperty candidate_property;
+    UiAnimationPlayback playback;
+    UiMenuPlaybackStatus playback_status;
+    bool reduced_motion;
 } UiMenuWorkspace;
 
 void ui_menu_workspace_init(UiMenuWorkspace *workspace);
@@ -188,6 +210,19 @@ UiMenuWorkspaceResult ui_menu_workspace_backspace(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_undo(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace);
+UiMenuWorkspaceResult ui_menu_workspace_begin_candidate(
+    UiMenuWorkspace *workspace, UiMenuProperty property);
+UiMenuWorkspaceResult ui_menu_workspace_adjust_candidate(
+    UiMenuWorkspace *workspace, int direction);
+UiMenuWorkspaceResult ui_menu_workspace_accept_candidate(UiMenuWorkspace *workspace);
+UiMenuWorkspaceResult ui_menu_workspace_cancel_candidate(UiMenuWorkspace *workspace);
+const UiDocument *ui_menu_workspace_preview_document(const UiMenuWorkspace *workspace);
+UiMenuWorkspaceResult ui_menu_workspace_playback_start(
+    UiMenuWorkspace *workspace, double now_ms);
+UiMenuWorkspaceResult ui_menu_workspace_playback_event(
+    UiMenuWorkspace *workspace, UiAnimationEvent event,
+    UiElementId target_id, double now_ms);
+UiMenuWorkspaceResult ui_menu_workspace_playback_stop(UiMenuWorkspace *workspace);
 bool ui_menu_workspace_is_dirty(const UiMenuWorkspace *workspace);
 bool ui_menu_workspace_result_is_committed(UiMenuWorkspaceResult result);
 bool ui_menu_workspace_build_hierarchy(

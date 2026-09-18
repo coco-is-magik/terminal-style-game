@@ -109,8 +109,12 @@ still depend on the Unicode/glyph foundation.
 
 The active UI Scene migration plan is
 [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
-Phase 0 and Phase 1 slice A (v4 document roles, bindings, system actions, and effect slots) are
-verified; the next safe action is Phase 1 slice B (Animation element document data).
+Phases 0-3 are verified. The existing workspace now provides Animation/effect candidate editing,
+one-entry acceptance, explicit playback status, shared typed editor actions, and a host-independent
+presentation module. The embedded host still uses its characterized legacy drawing function until
+Phase 4 establishes exact standalone/embedded frame parity. The next safe action is the Phase 4
+standalone host and host-parity work. See
+[`reviews/2026-09-18-ui-scene-phase3-editor-core.md`](reviews/2026-09-18-ui-scene-phase3-editor-core.md).
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;
