@@ -1,0 +1,26 @@
+/** ui_system_action_policy.h — Host-owned UI system-action permission matrix. */
+#ifndef UI_SYSTEM_ACTION_POLICY_H
+#define UI_SYSTEM_ACTION_POLICY_H
+
+typedef enum {
+    UI_SYSTEM_ACTION_CONTEXT_PROTECTED_BOOTSTRAP = 0,
+    UI_SYSTEM_ACTION_CONTEXT_PROTECTED_SETTINGS,
+    UI_SYSTEM_ACTION_CONTEXT_PROTECTED_CONFIRMATION,
+    UI_SYSTEM_ACTION_CONTEXT_EDITABLE_PAUSE_OVERLAY,
+    UI_SYSTEM_ACTION_CONTEXT_ORDINARY_PROJECT_SCREEN,
+    UI_SYSTEM_ACTION_CONTEXT_EMERGENCY_STARTUP,
+    UI_SYSTEM_ACTION_CONTEXT_EMERGENCY_PAUSE
+} UiSystemActionContext;
+
+typedef enum {
+    UI_SYSTEM_ACTION_POLICY_ALLOWED = 0,
+    UI_SYSTEM_ACTION_POLICY_DISALLOWED,
+    UI_SYSTEM_ACTION_POLICY_INVALID_ARGUMENT
+} UiSystemActionPolicyResult;
+
+UiSystemActionPolicyResult ui_system_action_policy_check(
+    UiSystemActionContext context,
+    const char *action
+);
+
+#endif /* UI_SYSTEM_ACTION_POLICY_H */

@@ -39,8 +39,39 @@ typedef enum {
 typedef enum {
     UI_DOCUMENT_ELEMENT_CONTAINER = 0,
     UI_DOCUMENT_ELEMENT_TEXT,
-    UI_DOCUMENT_ELEMENT_BUTTON
+    UI_DOCUMENT_ELEMENT_BUTTON,
+    UI_DOCUMENT_ELEMENT_ANIMATION
 } UiDocumentElementType;
+
+typedef enum {
+    UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH = 0,
+    UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT,
+    UI_DOCUMENT_ANIMATION_PRESET_PERIMETER_BURST,
+    UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH
+} UiDocumentAnimationPreset;
+
+typedef enum {
+    UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER = 0,
+    UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_EXIT,
+    UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS,
+    UI_DOCUMENT_ANIMATION_TRIGGER_ACTIVATE,
+    UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE
+} UiDocumentAnimationTrigger;
+
+typedef enum {
+    UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL = 0,
+    UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL,
+    UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL
+} UiDocumentAnimationOrientation;
+
+typedef struct {
+    UiDocumentAnimationPreset preset;
+    UiElementId target_id;
+    UiDocumentAnimationTrigger trigger;
+    UiDocumentAnimationOrientation orientation;
+    bool loop;
+    bool randomize;
+} UiDocumentAnimation;
 
 typedef enum {
     UI_DOCUMENT_ANCHOR_START = 0,
@@ -105,6 +136,7 @@ typedef struct {
     char activate_effect[UI_DOCUMENT_EFFECT_CAPACITY];
     UiDocumentLayout layout;
     UiDocumentVisual visual;
+    UiDocumentAnimation animation;
 } UiDocumentElement;
 
 typedef struct {
@@ -168,6 +200,22 @@ UiDocumentResult ui_document_add_element(UiDocument *document,
                                          const char *content,
                                          const char *flow_port,
                                          UiElementId *out_id);
+UiDocumentResult ui_document_add_animation(UiDocument *document,
+                                          UiElementId target_id,
+                                          const char *name,
+                                          UiElementId *out_id);
+UiDocumentResult ui_document_set_animation_target(UiDocument *document,
+                                                  UiElementId element_id,
+                                                  UiElementId target_id);
+UiDocumentResult ui_document_set_animation_fields(
+    UiDocument *document,
+    UiElementId element_id,
+    UiDocumentAnimationPreset preset,
+    UiDocumentAnimationTrigger trigger,
+    UiDocumentAnimationOrientation orientation,
+    bool loop,
+    bool randomize
+);
 UiDocumentResult ui_document_set_layout(UiDocument *document,
                                         UiElementId element_id,
                                         UiDocumentLayout layout);

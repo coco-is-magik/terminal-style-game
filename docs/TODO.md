@@ -1258,6 +1258,9 @@ inclusion rules, output tests, and documented spike interpretation.
       behavior changes.
 - [ ] Preserve completed ideas or archive their decision/history; do not silently
       erase why they existed.
+- [ ] Track the UI Scene migration under
+      [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md);
+      promote slices to `FEATURE_ROADMAP.md` when they enter Active status.
 
 ## Adding an idea
 

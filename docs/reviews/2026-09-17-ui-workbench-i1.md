@@ -114,3 +114,11 @@ complete suite passed serially with no source change for that test.
 The mode is isolated behind one run-mode branch. Removing `ui_workbench*`, its Make targets and
 tests, the three optional element metadata fields, and the local preset render cases restores
 the prior application behavior without touching authored Menu documents or saved game data.
+
+## Lineage
+
+This workbench is a **legacy application UI editing path**; it is superseded as the project's
+authoring foundation by the UI Scene system in
+[`../UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](../UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
+It remains functional and verified until Phase 8 of that plan removes the legacy application UI
+model.

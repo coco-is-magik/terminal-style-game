@@ -29,6 +29,17 @@ typedef struct {
     int pointer_y;
 } UiMenuRuntimeInput;
 
+typedef enum {
+    UI_MENU_RUNTIME_REQUEST_FLOW_PORT = 0,
+    UI_MENU_RUNTIME_REQUEST_SYSTEM_ACTION
+} UiMenuRuntimeRequestType;
+
+typedef struct {
+    UiMenuRuntimeRequestType type;
+    UiElementId element_id;
+    const char *value;
+} UiMenuRuntimeRequest;
+
 typedef struct {
     const UiDocument *document;
     const AssetRegistry *assets;
@@ -37,10 +48,15 @@ typedef struct {
     FlowRuntimeSession *flow_session;
     UiInteractionSession interaction;
     UiMenuRuntimeElementState element_states[UI_DOCUMENT_MAX_ELEMENTS];
+    UiRenderElementState context_snapshot[UI_DOCUMENT_MAX_ELEMENTS];
+    UiAnimationPlayback playback;
     size_t element_count;
+    size_t context_snapshot_count;
     UiElementId pressed_element_id;
     int viewport_width;
     int viewport_height;
+    bool playback_enabled;
+    bool exiting;
     bool active;
 } UiMenuRuntime;
 
@@ -69,6 +85,17 @@ UiMenuRuntimeResult ui_menu_runtime_activate(
     int viewport_width,
     int viewport_height
 );
+UiMenuRuntimeResult ui_menu_runtime_activate_playback(
+    UiMenuRuntime *runtime,
+    const UiDocument *document,
+    const AssetRegistry *assets,
+    const UiRenderTheme *theme,
+    const FlowDocument *flow_document,
+    FlowRuntimeSession *flow_session,
+    int viewport_width,
+    int viewport_height,
+    double now_ms
+);
 UiMenuRuntimeResult ui_menu_runtime_set_element_state(
     UiMenuRuntime *runtime,
     UiElementId element_id,
@@ -79,10 +106,31 @@ UiMenuRuntimeResult ui_menu_runtime_render(
     const UiMenuRuntime *runtime,
     UiCanvas *canvas
 );
+UiMenuRuntimeResult ui_menu_runtime_render_playback(
+    const UiMenuRuntime *runtime,
+    double now_ms,
+    bool reduced_motion,
+    UiCanvas *canvas
+);
+UiMenuRuntimeResult ui_menu_runtime_begin_exit(
+    UiMenuRuntime *runtime,
+    double now_ms
+);
 UiMenuRuntimeResult ui_menu_runtime_handle_input(
     UiMenuRuntime *runtime,
     const UiMenuRuntimeInput *input,
     FlowBindingTargetRequest *out_request
+);
+UiMenuRuntimeResult ui_menu_runtime_handle_input_request(
+    UiMenuRuntime *runtime,
+    const UiMenuRuntimeInput *input,
+    UiMenuRuntimeRequest *out_request
+);
+UiMenuRuntimeResult ui_menu_runtime_handle_input_request_at(
+    UiMenuRuntime *runtime,
+    const UiMenuRuntimeInput *input,
+    double now_ms,
+    UiMenuRuntimeRequest *out_request
 );
 
 #endif /* UI_MENU_RUNTIME_H */

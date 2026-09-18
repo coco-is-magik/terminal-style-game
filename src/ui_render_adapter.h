@@ -4,6 +4,7 @@
 
 #include "assets.h"
 #include "ui_canvas.h"
+#include "ui_animation_playback.h"
 #include "ui_layout_resolver.h"
 
 #include <stdbool.h>
@@ -32,6 +33,7 @@ typedef enum {
     UI_RENDER_INVALID_ARGUMENT,
     UI_RENDER_INVALID_DOCUMENT,
     UI_RENDER_INVALID_STATE,
+    UI_RENDER_INVALID_PLAYBACK,
     UI_RENDER_LAYOUT_ERROR,
     UI_RENDER_MISSING_SPRITE,
     UI_RENDER_MISSING_MATERIAL
@@ -43,6 +45,18 @@ UiRenderResult ui_render_document(
     const UiRenderElementState *states,
     size_t state_count,
     const UiRenderTheme *theme,
+    UiCanvas *canvas
+);
+
+UiRenderResult ui_render_document_playback(
+    const UiDocument *document,
+    const AssetRegistry *assets,
+    const UiRenderElementState *states,
+    size_t state_count,
+    const UiRenderTheme *theme,
+    const UiAnimationPlayback *playback,
+    double now_ms,
+    bool reduced_motion,
     UiCanvas *canvas
 );
 

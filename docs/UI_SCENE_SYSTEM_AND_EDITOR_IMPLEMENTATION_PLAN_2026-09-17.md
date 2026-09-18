@@ -74,16 +74,17 @@ No migration described below is implemented merely because this plan exists.
 
 ### Attempt
 
-Extend the lightweight application UI workbench with reusable Animation units, transition and
-effect editing, add/remove operations, shared runtime rendering, and preview hotkeys.
+An uncommitted expansion of the lightweight application UI workbench added a full 260x160
+grid-sized canvas, continuous preview replay, preview hotkeys, and a flat filename chooser
+for reusable Animation units. That expansion was abandoned because its composed editor frame
+was not usable enough to serve as the project's UI authoring foundation.
 
-### Result
+The committed workbench (`make ui-workbench` / `--ui-workbench`) and reusable Animation
+support from `e9f839b` remain implemented, verified, and functional as a **legacy application
+UI editing path**; they are not themselves the rejected attempt. They will be retired only in
+Phase 8 after the new UI Scene editor and runtime have passed all migration gates.
 
-Automated parser, evaluator, controller, build, sanitizer, and timeout-smoke checks passed, but the
-interactive workbench was not usable enough to serve as the project's UI authoring foundation.
-The work was reset to the prior implementation.
-
-### Failure modes
+### Failure modes of the abandoned expansion
 
 1. The workbench scaled a full 260x160 grid-sized canvas rather than the bounded production menu
    canvas, so the visual result did not establish normal-runtime parity or readable authoring.
@@ -100,7 +101,7 @@ The work was reset to the prior implementation.
 8. A narrow preview-control request expanded into simultaneous changes to ownership, asset
    membership, input, trigger filtering, and documentation.
 
-### Reason rejected
+### Reason the abandoned expansion was rejected
 
 Continuing to expand the workbench would create a second robust editor beside the existing staged
 `.tui` workspace and would require a later migration anyway. It violates the project's reuse and
@@ -556,9 +557,12 @@ previous phase's automated gate passes and any named manual acceptance is record
 
 ### Phase 0 — specification and baseline protection
 
-Status after writing this document: **plan recorded; implementation not started.**
+Status: **complete per `reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md`**. The
+migration inventory, v4 schema decisions, and baseline tests are frozen and verified. Phase 1
+slice A (v4 document bindings/effects/roles) is also implemented and verified in the same
+record.
 
-Required work:
+Required work (all done):
 
 1. Treat this document as the sole current migration plan.
 2. Add baseline composed-frame tests for current `.tui` rendering and workspace behavior before
@@ -579,6 +583,10 @@ Exit gate:
 Rollback: documentation and baseline tests only.
 
 ### Phase 1 — extend the versioned UI Scene document
+
+Status: **complete.** The v4 schema, strict compatibility validation, deterministic v1-v3
+migration, canonical serialization, Animation references/defaults, and flow-only reference export
+are implemented and verified.
 
 Required work:
 
@@ -602,6 +610,9 @@ Exit gate:
 Rollback: remove the new version path while retaining untouched v1-v3 behavior and fixtures.
 
 ### Phase 2 — shared production runtime and playback
+
+Status: **complete as an additive production seam.** Explicit-time playback-aware renderer/runtime
+APIs are implemented and verified while the old application UI remains the active product path.
 
 Required work:
 
@@ -867,17 +878,15 @@ These are narrow phase-entry decisions, not permission to reopen the one-system 
 
 ## Next safe implementation step
 
-Perform **Phase 0 only**:
+**Phase 2 is complete and verified.** Proceed to Phase 3 without migrating application screens:
 
-1. create a complete legacy application-UI migration inventory;
-2. add composed-frame baseline tests for the current UI Scene renderer and embedded workspace;
-3. define host-parity action traces;
-4. write and review the next-version schema table, migration defaults, action policy, and Animation
-   coordinate semantics;
-5. stop before production format or runtime changes if any required decision remains ambiguous.
-
-No new standalone editor shell, protected asset migration, pause migration, or legacy removal should
-begin before that Phase 0 review passes.
+1. evolve the existing UI Scene workspace rather than creating a second editor core;
+2. consume the additive playback-aware renderer/runtime APIs in preview only;
+3. preserve report-only typed requests so preview cannot load flow targets or execute system
+   actions;
+4. keep protected host policy outside document/runtime core;
+5. retain the legacy application path until the later migration and rollback gates authorize its
+   replacement.
 
 ## Documentation lifecycle
 

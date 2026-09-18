@@ -546,6 +546,135 @@ static void test_v4_system_binding_effects_round_trip_and_do_not_export(void **s
     assert_int_equal(unlink(path), 0);
 }
 
+static void test_animation_add_target_mutations_and_round_trip(void **state) {
+    UiDocument document;
+    UiDocument loaded;
+    UiElementId panel;
+    UiElementId button;
+    UiElementId anim;
+    const UiDocumentElement *element;
+    UiDocumentResult result;
+    char path[] = "build/tsg_ui_document_anim_XXXXXX";
+    int fd = mkstemp(path);
+    char *bytes;
+    (void)state;
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    build_menu(&document, &panel, &button);
+
+    assert_int_equal(ui_document_add_animation(&document, 0U, "bad_anim", &anim),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(ui_document_add_animation(&document, 999U, "bad_anim", &anim),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(ui_document_add_animation(&document, panel, "bad name", &anim),
+                     UI_DOCUMENT_INVALID_NAME);
+
+    assert_int_equal(ui_document_add_animation(&document, panel, "panel_intro", &anim),
+                     UI_DOCUMENT_OK);
+    element = ui_document_find_element(&document, anim);
+    assert_non_null(element);
+    assert_int_equal(element->parent_id, 0U);
+    assert_int_equal(element->layout.width, 0);
+    assert_int_equal(element->layout.height, 0);
+    assert_int_equal(element->animation.preset,
+                     UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT);
+    assert_int_equal(element->animation.orientation,
+                     UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL);
+    assert_int_equal(anim, 5U);
+    element = ui_document_find_element(&document, anim);
+    assert_non_null(element);
+    assert_int_equal(element->type, UI_DOCUMENT_ELEMENT_ANIMATION);
+    assert_int_equal(element->animation.target_id, panel);
+    assert_int_equal(element->animation.trigger, UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER);
+    assert_false(element->animation.loop);
+    assert_false(element->animation.randomize);
+
+    result = ui_document_set_animation_target(&document, anim, button);
+    assert_int_equal(result, UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_find_element(&document, anim)->animation.target_id, button);
+
+    assert_int_equal(ui_document_set_animation_target(&document, anim, 0U),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(ui_document_set_animation_target(&document, anim, 999U),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(ui_document_set_animation_target(&document, panel, button),
+                     UI_DOCUMENT_INVALID_ARGUMENT);
+
+    assert_int_equal(ui_document_set_animation_fields(
+        &document, anim,
+        UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT,
+        UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS,
+        UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL,
+        true, true), UI_DOCUMENT_OK);
+    element = ui_document_find_element(&document, anim);
+    assert_int_equal(element->animation.preset, UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT);
+    assert_int_equal(element->animation.trigger, UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS);
+    assert_int_equal(element->animation.orientation, UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL);
+    assert_true(element->animation.loop);
+    assert_true(element->animation.randomize);
+
+    assert_int_equal(ui_document_set_animation_fields(
+        &document, anim,
+        (UiDocumentAnimationPreset)99,
+        UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS,
+        UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL,
+        true, true), UI_DOCUMENT_INVALID_ARGUMENT);
+    assert_int_equal(ui_document_set_animation_fields(
+        &document, 999U,
+        UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT,
+        UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS,
+        UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL,
+        true, true), UI_DOCUMENT_INVALID_ARGUMENT);
+
+    assert_ui_save_committed(ui_document_save_as(&document, path));
+    bytes = read_file_bytes(path);
+    assert_non_null(strstr(bytes, "type=animation\n"));
+    assert_non_null(strstr(bytes, "animation_preset=center_out\n"));
+    assert_non_null(strstr(bytes, "animation_target=4\n"));
+    assert_non_null(strstr(bytes, "animation_trigger=focus\n"));
+    assert_non_null(strstr(bytes, "animation_orientation=vertical\n"));
+    assert_non_null(strstr(bytes, "animation_loop=1\n"));
+    assert_non_null(strstr(bytes, "animation_randomize=1\n"));
+    free(bytes);
+
+    ui_document_init(&loaded);
+    assert_int_equal(ui_document_load(&loaded, path), UI_DOCUMENT_OK);
+    element = ui_document_find_element(&loaded, anim);
+    assert_non_null(element);
+    assert_int_equal(element->type, UI_DOCUMENT_ELEMENT_ANIMATION);
+    assert_int_equal(element->animation.target_id, button);
+    assert_int_equal(element->animation.preset, UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT);
+    assert_int_equal(element->animation.trigger, UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS);
+    assert_int_equal(element->animation.orientation, UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL);
+    assert_true(element->animation.loop);
+    assert_true(element->animation.randomize);
+    assert_int_equal(unlink(path), 0);
+}
+
+static void test_animation_validation_rejects_bad_target_and_layout(void **state) {
+    UiDocument document;
+    UiDocument before;
+    UiElementId panel;
+    UiElementId button;
+    UiElementId anim;
+    (void)state;
+    build_menu(&document, &panel, &button);
+    assert_int_equal(ui_document_add_animation(&document, panel, "panel_intro", &anim),
+                     UI_DOCUMENT_OK);
+
+    before = document;
+    document.elements[4].animation.target_id = anim;
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_ARGUMENT);
+    document = before;
+
+    document.elements[4].layout.horizontal_anchor = UI_DOCUMENT_ANCHOR_STRETCH;
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_LAYOUT);
+    document = before;
+
+    document.elements[1].animation.target_id = button;
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_ARGUMENT);
+}
+
 static void test_v4_invalid_binding_and_effect_reject(void **state) {
     UiDocument document;
     UiDocument before;
@@ -584,6 +713,8 @@ int main(void) {
         ,cmocka_unit_test(test_v3_migrates_binding_role_and_effect_defaults)
         ,cmocka_unit_test(test_v4_system_binding_effects_round_trip_and_do_not_export)
         ,cmocka_unit_test(test_v4_invalid_binding_and_effect_reject)
+        ,cmocka_unit_test(test_animation_add_target_mutations_and_round_trip)
+        ,cmocka_unit_test(test_animation_validation_rejects_bad_target_and_layout)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

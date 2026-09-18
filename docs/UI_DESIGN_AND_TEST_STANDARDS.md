@@ -43,11 +43,17 @@ theme-token decisions that still require product review.
 - `test-ui-layout-resolver` — responsive anchors, sizing, clipping, and invalid
   input behavior;
 - `test-ui-render-adapter` — authored visuals, scaling, clipping, selection markers,
-  visibility, missing dependencies, and painter order;
+  visibility, missing dependencies, painter order, effect slots, bounded Animation elements,
+  deterministic explicit-time composition, and Reduced Motion;
+- `test-ui-animation-playback` — explicit event/time sampling, loop and endpoint behavior,
+  interruption, deterministic replay, invalid/backward time, and immediate Reduced Motion;
+- `test-ui-system-action-policy` — frozen host-context permission matrix, typed denial, and
+  invalid-input handling;
 - `test-ui-interaction` — topmost pointer hit testing, keyboard traversal,
   eligibility, deterministic replay, and nonmutation on invalid input;
 - `test-ui-menu-runtime` — focus/press/activation semantics, typed target requests,
-  deterministic replay, and external-output preservation on failure;
+  report-only flow/system requests, context enter/exit snapshots, deterministic playback,
+  Reduced Motion, and external-output preservation on failure;
 - `test-ui-menu-workspace` — staged authoring, hierarchy commands, exact bounded
   history, pointer move/resize transactions, preview settings, and persistence.
 

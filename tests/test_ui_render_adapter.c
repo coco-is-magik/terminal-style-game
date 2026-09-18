@@ -18,6 +18,14 @@ static Cell canvas_cell(const UiCanvas *canvas, int x, int y) {
     return canvas->cells[y * canvas->width + x];
 }
 
+static size_t touched_count(const UiCanvas *canvas) {
+    size_t count = 0U;
+    size_t cells = (size_t)canvas->width * (size_t)canvas->height;
+    size_t i;
+    for (i = 0U; i < cells; i++) if (canvas->touched[i]) count++;
+    return count;
+}
+
 static UiDocument build_menu(UiElementId *panel, UiElementId *button) {
     UiDocument document;
     UiDocumentVisual visual;
@@ -261,6 +269,106 @@ static void test_production_80x40_preview_is_deterministic(void **state) {
     asset_registry_clear(&assets);
 }
 
+static void test_animation_is_deterministic_clipped_and_reduced_motion_safe(void **state) {
+    AssetRegistry assets;
+    UiElementId panel;
+    UiElementId button;
+    UiElementId animation_id;
+    UiDocument document = build_menu(&panel, &button);
+    UiCanvas *first = ui_canvas_create(12, 6);
+    UiCanvas *second = ui_canvas_create(12, 6);
+    UiCanvas *reduced = ui_canvas_create(12, 6);
+    UiAnimationPlayback playback;
+    size_t stable_count;
+    int y;
+    int x;
+    (void)state;
+    assert_true(asset_registry_init(&assets));
+    assert_non_null(first);
+    assert_non_null(second);
+    assert_non_null(reduced);
+    assert_int_equal(ui_document_add_animation(&document, panel,
+        "panel_glitch", &animation_id), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_animation_fields(&document, animation_id,
+        UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH,
+        UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER,
+        UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL,
+        false, true), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&document, animation_id,
+        (UiDocumentLayout){1, 1, 4, 1, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    assert_true(ui_animation_playback_init(&playback, 0.0));
+    assert_true(ui_animation_playback_event(&playback,
+        UI_ANIMATION_EVENT_CONTEXT_ENTER, 0U, 10.0));
+    assert_int_equal(ui_render_document_playback(&document, &assets, NULL, 0U,
+        &theme, &playback, 40.0, false, first), UI_RENDER_OK);
+    assert_int_equal(ui_render_document_playback(&document, &assets, NULL, 0U,
+        &theme, &playback, 40.0, false, second), UI_RENDER_OK);
+    assert_memory_equal(first->cells, second->cells, 72U * sizeof(Cell));
+    assert_memory_equal(first->touched, second->touched, 72U);
+    for (y = 0; y < first->height; y++)
+        for (x = 0; x < first->width; x++)
+            if ((x < 2 || x >= 6 || y != 2) &&
+                canvas_cell(first, x, y).glyph == ':' &&
+                ui_canvas_is_touched(first, x, y))
+                fail_msg("animation escaped target-relative clip at %d,%d", x, y);
+    assert_int_equal(ui_render_document(&document, &assets, NULL, 0U,
+                                        &theme, reduced), UI_RENDER_OK);
+    stable_count = touched_count(reduced);
+    assert_int_equal(ui_render_document_playback(&document, &assets, NULL, 0U,
+        &theme, &playback, 40.0, true, reduced), UI_RENDER_OK);
+    assert_int_equal(touched_count(reduced), stable_count);
+    assert_int_equal(ui_render_document_playback(&document, &assets, NULL, 0U,
+        &theme, &playback, 9.0, false, reduced), UI_RENDER_INVALID_PLAYBACK);
+    ui_canvas_destroy(reduced);
+    ui_canvas_destroy(second);
+    ui_canvas_destroy(first);
+    asset_registry_clear(&assets);
+}
+
+static void test_effect_slots_follow_focus_and_activation_events(void **state) {
+    AssetRegistry assets;
+    UiElementId panel;
+    UiElementId button;
+    UiDocument document = build_menu(&panel, &button);
+    UiDocumentElement *button_element;
+    UiRenderElementState runtime;
+    UiCanvas *stable = ui_canvas_create(12, 6);
+    UiCanvas *animated = ui_canvas_create(12, 6);
+    UiAnimationPlayback playback;
+    (void)state;
+    assert_true(asset_registry_init(&assets));
+    assert_non_null(stable);
+    assert_non_null(animated);
+    button_element = (UiDocumentElement *)ui_document_find_element(&document, button);
+    assert_non_null(button_element);
+    memcpy(button_element->focus_effect, "focus_glitch", sizeof("focus_glitch"));
+    memcpy(button_element->activate_effect, "perimeter_burst",
+           sizeof("perimeter_burst"));
+    assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_OK);
+    runtime = (UiRenderElementState){button, true, false, false, true, false};
+    assert_true(ui_animation_playback_init(&playback, 0.0));
+    assert_int_equal(ui_render_document(&document, &assets, &runtime, 1U,
+                                        &theme, stable), UI_RENDER_OK);
+    assert_int_equal(ui_render_document_playback(&document, &assets, &runtime, 1U,
+        &theme, &playback, 0.0, false, animated), UI_RENDER_OK);
+    assert_memory_equal(stable->cells, animated->cells, 72U * sizeof(Cell));
+    assert_memory_equal(stable->touched, animated->touched, 72U);
+    assert_true(ui_animation_playback_event(&playback,
+        UI_ANIMATION_EVENT_FOCUS, button, 10.0));
+    assert_int_equal(ui_render_document_playback(&document, &assets, &runtime, 1U,
+        &theme, &playback, 90.0, false, animated), UI_RENDER_OK);
+    assert_int_equal(canvas_cell(animated, 5, 2).glyph, ':');
+    assert_true(ui_animation_playback_event(&playback,
+        UI_ANIMATION_EVENT_ACTIVATE, button, 100.0));
+    assert_int_equal(ui_render_document_playback(&document, &assets, &runtime, 1U,
+        &theme, &playback, 100.0, false, animated), UI_RENDER_OK);
+    assert_int_equal(canvas_cell(animated, 2, 2).glyph, '*');
+    ui_canvas_destroy(animated);
+    ui_canvas_destroy(stable);
+    asset_registry_clear(&assets);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_native_fill_border_text_and_state_precedence),
@@ -269,7 +377,9 @@ int main(void) {
         cmocka_unit_test(test_missing_material_preserves_canvas),
         cmocka_unit_test(test_document_order_and_visibility_override),
         cmocka_unit_test(test_large_clipped_border_is_bounded),
-        cmocka_unit_test(test_production_80x40_preview_is_deterministic)
+        cmocka_unit_test(test_production_80x40_preview_is_deterministic),
+        cmocka_unit_test(test_animation_is_deterministic_clipped_and_reduced_motion_safe),
+        cmocka_unit_test(test_effect_slots_follow_focus_and_activation_events)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

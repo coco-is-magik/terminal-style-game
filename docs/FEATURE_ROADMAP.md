@@ -828,6 +828,7 @@ documentation, and evidence agree. Only then may the version be declared v1.0.
 - Update stable user documentation only after implementation and verification.
 - Preserve failed attempts, benchmarks, and superseded plans under `docs/archive/`.
 - Reorder phases when evidence demands it, but record the dependency or assumption that changed.
+- The UI Scene migration is governed by [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md); progress there is referenced from `CURRENT_STATUS.md` and from this section once the phase enters Active status.
 
 ## Next safe action
 
@@ -836,3 +837,8 @@ Q1 preparation may inventory V1-1 UI rules and V1-4 Unicode/font research questi
 Production mirror changes remain conditional on a distinct failing reproduction. Final sprite
 workbench formats remain blocked on the glyph model, although behavior characterization and
 headless painter-session extraction may proceed earlier under their own Q1 plan.
+
+The active UI Scene migration is in Phase 1 (document model). Phase 1 slice A (v4 roles,
+bindings, system actions, effect slots) is complete; slice B (Animation element document data) is
+the next safe action under
+[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).

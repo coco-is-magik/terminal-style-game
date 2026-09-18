@@ -112,10 +112,43 @@ static bool copy_string(char *destination, size_t capacity, const char *source) 
     return true;
 }
 
+static bool valid_animation_target(const UiDocument *document, UiElementId target_id) {
+    const UiDocumentElement *element;
+    if (!document || target_id == 0U) return false;
+    element = ui_document_find_element(document, target_id);
+    if (!element) return false;
+    if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) return false;
+    return true;
+}
+
+static bool animation_fields_valid(const UiDocumentElement *element) {
+    if (!element || element->type != UI_DOCUMENT_ELEMENT_ANIMATION) return false;
+    if (element->animation.preset < UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH ||
+        element->animation.preset > UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH) return false;
+    if (element->animation.trigger < UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER ||
+        element->animation.trigger > UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE) return false;
+    if (element->animation.orientation < UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL ||
+        element->animation.orientation > UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL) return false;
+    return true;
+}
+
+static bool animation_layout_valid(UiDocumentLayout layout) {
+    if (layout.horizontal_anchor != UI_DOCUMENT_ANCHOR_START ||
+        layout.vertical_anchor != UI_DOCUMENT_ANCHOR_START ||
+        layout.scale_percent != 100) return false;
+    if (layout.width < 0 || layout.height < 0) return false;
+    return true;
+}
+
+static bool element_is_root(const UiDocumentElement *element) {
+    return element && element->parent_id == 0U;
+}
+
 static const char *type_name(UiDocumentElementType type) {
     if (type == UI_DOCUMENT_ELEMENT_CONTAINER) return "container";
     if (type == UI_DOCUMENT_ELEMENT_TEXT) return "text";
     if (type == UI_DOCUMENT_ELEMENT_BUTTON) return "button";
+    if (type == UI_DOCUMENT_ELEMENT_ANIMATION) return "animation";
     return NULL;
 }
 
@@ -124,6 +157,7 @@ static bool parse_type(const char *text, UiDocumentElementType *out_type) {
     if (strcmp(text, "container") == 0) *out_type = UI_DOCUMENT_ELEMENT_CONTAINER;
     else if (strcmp(text, "text") == 0) *out_type = UI_DOCUMENT_ELEMENT_TEXT;
     else if (strcmp(text, "button") == 0) *out_type = UI_DOCUMENT_ELEMENT_BUTTON;
+    else if (strcmp(text, "animation") == 0) *out_type = UI_DOCUMENT_ELEMENT_ANIMATION;
     else return false;
     return true;
 }
@@ -228,6 +262,74 @@ static bool parse_visual_mode(const char *text, UiDocumentVisualMode *out_mode) 
     return true;
 }
 
+static const char *animation_preset_name(UiDocumentAnimationPreset preset) {
+    return preset == UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH ? "pause_glitch" :
+           preset == UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT ? "center_out" :
+           preset == UI_DOCUMENT_ANIMATION_PRESET_PERIMETER_BURST ? "perimeter_burst" :
+           preset == UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH ? "local_glitch" : NULL;
+}
+
+static bool parse_animation_preset(const char *text,
+                                    UiDocumentAnimationPreset *out_preset) {
+    if (!text || !out_preset) return false;
+    if (strcmp(text, "pause_glitch") == 0)
+        *out_preset = UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH;
+    else if (strcmp(text, "center_out") == 0)
+        *out_preset = UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT;
+    else if (strcmp(text, "perimeter_burst") == 0)
+        *out_preset = UI_DOCUMENT_ANIMATION_PRESET_PERIMETER_BURST;
+    else if (strcmp(text, "local_glitch") == 0)
+        *out_preset = UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH;
+    else return false;
+    return true;
+}
+
+static const char *animation_trigger_name(UiDocumentAnimationTrigger trigger) {
+    return trigger == UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER ? "context_enter" :
+           trigger == UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_EXIT ? "context_exit" :
+           trigger == UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS ? "focus" :
+           trigger == UI_DOCUMENT_ANIMATION_TRIGGER_ACTIVATE ? "activate" :
+           trigger == UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE ? "while_visible" : NULL;
+}
+
+static bool parse_animation_trigger(const char *text,
+                                    UiDocumentAnimationTrigger *out_trigger) {
+    if (!text || !out_trigger) return false;
+    if (strcmp(text, "context_enter") == 0)
+        *out_trigger = UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER;
+    else if (strcmp(text, "context_exit") == 0)
+        *out_trigger = UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_EXIT;
+    else if (strcmp(text, "focus") == 0)
+        *out_trigger = UI_DOCUMENT_ANIMATION_TRIGGER_FOCUS;
+    else if (strcmp(text, "activate") == 0)
+        *out_trigger = UI_DOCUMENT_ANIMATION_TRIGGER_ACTIVATE;
+    else if (strcmp(text, "while_visible") == 0)
+        *out_trigger = UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE;
+    else return false;
+    return true;
+}
+
+static const char *animation_orientation_name(
+    UiDocumentAnimationOrientation orientation
+) {
+    return orientation == UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL ? "horizontal" :
+           orientation == UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL ? "vertical" :
+           orientation == UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL ? "radial" : NULL;
+}
+
+static bool parse_animation_orientation(const char *text,
+                                         UiDocumentAnimationOrientation *out_orientation) {
+    if (!text || !out_orientation) return false;
+    if (strcmp(text, "horizontal") == 0)
+        *out_orientation = UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL;
+    else if (strcmp(text, "vertical") == 0)
+        *out_orientation = UI_DOCUMENT_ANIMATION_ORIENTATION_VERTICAL;
+    else if (strcmp(text, "radial") == 0)
+        *out_orientation = UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL;
+    else return false;
+    return true;
+}
+
 static const char *align_name(UiDocumentAlign align) {
     return align == UI_DOCUMENT_ALIGN_LEFT ? "left" :
            align == UI_DOCUMENT_ALIGN_CENTER ? "center" :
@@ -294,6 +396,22 @@ static bool element_fields_complete(
     if (version == UI_DOCUMENT_VERSION_V2) return true;
     if (version == UI_DOCUMENT_VERSION_V3) return visual;
     return version == UI_DOCUMENT_VERSION && visual && behavior;
+}
+
+static bool animation_fields_complete_for_element(
+    const UiDocumentElement *element,
+    bool have_preset,
+    bool have_target,
+    bool have_trigger,
+    bool have_orientation,
+    bool have_loop,
+    bool have_randomize
+) {
+    bool complete = have_preset && have_target && have_trigger &&
+                    have_orientation && have_loop && have_randomize;
+    if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) return complete;
+    return !have_preset && !have_target && !have_trigger &&
+           !have_orientation && !have_loop && !have_randomize;
 }
 
 void ui_document_init(UiDocument *document) {
@@ -424,6 +542,138 @@ UiDocumentResult ui_document_add_element(UiDocument *document,
     *out_id = element->id;
     return UI_DOCUMENT_OK;
 }
+UiDocumentResult ui_document_add_animation(UiDocument *document,
+                                           UiElementId target_id,
+                                           const char *name,
+                                           UiElementId *out_id) {
+    UiDocumentElement *element;
+    const UiDocumentElement *root;
+    UiDocumentResult validation;
+    if (out_id) *out_id = 0U;
+    if (!document || !out_id) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_name(name)) return UI_DOCUMENT_INVALID_NAME;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_animation_target(document, target_id))
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (document->element_count >= UI_DOCUMENT_MAX_ELEMENTS) return UI_DOCUMENT_FULL;
+    if (document->next_element_id == 0U || document->next_element_id == UINT32_MAX)
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    root = ui_document_find_element(document, 1U);
+    if (!root) return UI_DOCUMENT_MISSING_PARENT;
+    if (root->type != UI_DOCUMENT_ELEMENT_CONTAINER)
+        return UI_DOCUMENT_PARENT_NOT_CONTAINER;
+    element = &document->elements[document->element_count];
+    memset(element, 0, sizeof(*element));
+    element->id = document->next_element_id;
+    element->parent_id = 0U;
+    element->type = UI_DOCUMENT_ELEMENT_ANIMATION;
+    initialize_v4_element_fields(element);
+    (void)copy_string(element->name, sizeof(element->name), name);
+    (void)copy_string(element->content, sizeof(element->content), "");
+    element->animation.target_id = target_id;
+    element->animation.preset = UI_DOCUMENT_ANIMATION_PRESET_CENTER_OUT;
+    element->animation.trigger = UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER;
+    element->animation.orientation = UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL;
+    element->animation.loop = false;
+    element->animation.randomize = false;
+    element->layout = (UiDocumentLayout){
+        0, 0, 0, 0, UI_DOCUMENT_ANCHOR_START,
+        UI_DOCUMENT_ANCHOR_START, 100
+    };
+    element->visual = default_visual(UI_DOCUMENT_ELEMENT_ANIMATION);
+    document->element_count++;
+    document->next_element_id++;
+    validation = ui_document_validate(document);
+    if (validation != UI_DOCUMENT_OK || !asset_document_state_advance(&document->state)) {
+        document->element_count--;
+        document->next_element_id--;
+        memset(element, 0, sizeof(*element));
+        return validation != UI_DOCUMENT_OK ? validation : UI_DOCUMENT_ID_EXHAUSTED;
+    }
+    *out_id = element->id;
+    return UI_DOCUMENT_OK;
+}
+
+UiDocumentResult ui_document_set_animation_target(UiDocument *document,
+                                                  UiElementId element_id,
+                                                  UiElementId target_id) {
+    UiDocumentElement *element = NULL;
+    UiElementId previous;
+    size_t i;
+    if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (!valid_animation_target(document, target_id))
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    for (i = 0U; i < document->element_count; i++)
+        if (document->elements[i].id == element_id) {
+            element = &document->elements[i];
+            break;
+        }
+    if (!element || element->type != UI_DOCUMENT_ELEMENT_ANIMATION)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (element->animation.target_id == target_id) return UI_DOCUMENT_OK;
+    previous = element->animation.target_id;
+    element->animation.target_id = target_id;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK ||
+        !asset_document_state_advance(&document->state)) {
+        element->animation.target_id = previous;
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    }
+    return UI_DOCUMENT_OK;
+}
+
+UiDocumentResult ui_document_set_animation_fields(
+    UiDocument *document,
+    UiElementId element_id,
+    UiDocumentAnimationPreset preset,
+    UiDocumentAnimationTrigger trigger,
+    UiDocumentAnimationOrientation orientation,
+    bool loop,
+    bool randomize
+) {
+    UiDocumentElement *element = NULL;
+    UiDocumentAnimation previous;
+    size_t i;
+    if (!document) return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (preset < UI_DOCUMENT_ANIMATION_PRESET_PAUSE_GLITCH ||
+        preset > UI_DOCUMENT_ANIMATION_PRESET_LOCAL_GLITCH ||
+        trigger < UI_DOCUMENT_ANIMATION_TRIGGER_CONTEXT_ENTER ||
+        trigger > UI_DOCUMENT_ANIMATION_TRIGGER_WHILE_VISIBLE ||
+        orientation < UI_DOCUMENT_ANIMATION_ORIENTATION_HORIZONTAL ||
+        orientation > UI_DOCUMENT_ANIMATION_ORIENTATION_RADIAL)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    for (i = 0U; i < document->element_count; i++)
+        if (document->elements[i].id == element_id) {
+            element = &document->elements[i];
+            break;
+        }
+    if (!element || element->type != UI_DOCUMENT_ELEMENT_ANIMATION)
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    if (element->animation.preset == preset &&
+        element->animation.trigger == trigger &&
+        element->animation.orientation == orientation &&
+        element->animation.loop == loop &&
+        element->animation.randomize == randomize)
+        return UI_DOCUMENT_OK;
+    previous = element->animation;
+    element->animation.preset = preset;
+    element->animation.trigger = trigger;
+    element->animation.orientation = orientation;
+    element->animation.loop = loop;
+    element->animation.randomize = randomize;
+    if (ui_document_validate(document) != UI_DOCUMENT_OK ||
+        !asset_document_state_advance(&document->state)) {
+        element->animation = previous;
+        return UI_DOCUMENT_ID_EXHAUSTED;
+    }
+    return UI_DOCUMENT_OK;
+}
+
+
 
 UiDocumentResult ui_document_set_layout(UiDocument *document,
                                         UiElementId element_id,
@@ -752,13 +1002,24 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
         if (!valid_name(element->name)) return UI_DOCUMENT_INVALID_NAME;
         if (!valid_content(element->content)) return UI_DOCUMENT_INVALID_CONTENT;
         if (element->type < UI_DOCUMENT_ELEMENT_CONTAINER ||
-            element->type > UI_DOCUMENT_ELEMENT_BUTTON) return UI_DOCUMENT_INVALID_TYPE;
-        if (!layout_valid(element->layout)) return UI_DOCUMENT_INVALID_LAYOUT;
+            element->type > UI_DOCUMENT_ELEMENT_ANIMATION) return UI_DOCUMENT_INVALID_TYPE;
+        if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) {
+            if (!animation_fields_valid(element)) return UI_DOCUMENT_INVALID_ARGUMENT;
+            if (!animation_layout_valid(element->layout)) return UI_DOCUMENT_INVALID_LAYOUT;
+            if (!valid_animation_target(document, element->animation.target_id))
+                return UI_DOCUMENT_INVALID_ARGUMENT;
+        } else {
+            static const UiDocumentAnimation zero_animation = {0};
+            if (memcmp(&element->animation, &zero_animation, sizeof(zero_animation)) != 0)
+                return UI_DOCUMENT_INVALID_ARGUMENT;
+            if (!layout_valid(element->layout)) return UI_DOCUMENT_INVALID_LAYOUT;
+        }
         if (!visual_valid(element->visual)) return UI_DOCUMENT_INVALID_VISUAL;
         if (!valid_effect(element->entry_effect) || !valid_effect(element->exit_effect) ||
             !valid_effect(element->focus_effect) || !valid_effect(element->activate_effect))
             return UI_DOCUMENT_INVALID_EFFECT;
         if (element->type != UI_DOCUMENT_ELEMENT_BUTTON &&
+            element->type != UI_DOCUMENT_ELEMENT_ANIMATION &&
             (element->binding != UI_DOCUMENT_BINDING_NONE || element->flow_port[0] != '\0' ||
              element->system_action[0] != '\0' ||
              strcmp(element->focus_effect, "none") != 0 ||
@@ -776,7 +1037,11 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
                 strcmp(document->elements[j].flow_port, element->flow_port) == 0)
                 return UI_DOCUMENT_DUPLICATE_PORT;
         }
-        if (element->parent_id == 0U) {
+        if (element_is_root(element)) {
+            if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) {
+                root_count++;
+                continue;
+            }
             if (element->id != 1U ||
                 element->type != UI_DOCUMENT_ELEMENT_CONTAINER ||
                 strcmp(element->name, "root") != 0 || element->layout.x != 0 ||
@@ -817,9 +1082,10 @@ UiDocumentResult ui_document_validate(const UiDocument *document) {
             } else if (element->binding != UI_DOCUMENT_BINDING_NONE ||
                        element->flow_port[0] != '\0' || element->system_action[0] != '\0')
                 return UI_DOCUMENT_INVALID_BINDING;
-        } else if (element->flow_port[0] != '\0') return UI_DOCUMENT_INVALID_PORT;
+        } else if (element->type != UI_DOCUMENT_ELEMENT_ANIMATION &&
+                   element->flow_port[0] != '\0') return UI_DOCUMENT_INVALID_PORT;
     }
-    return root_count == 1U ? UI_DOCUMENT_OK : UI_DOCUMENT_INVALID_ROOT;
+    return root_count >= 1U ? UI_DOCUMENT_OK : UI_DOCUMENT_INVALID_ROOT;
 }
 
 UiDocumentResult ui_document_build_flow_reference(
@@ -879,6 +1145,18 @@ static bool write_document(FILE *file, const UiDocument *document) {
             element->visual.border_enabled ? 1U : 0U, element->visual.border_glyph,
             element->visual.sprite_id, align_name(element->visual.align),
             element->visual.visible_by_default ? 1U : 0U) < 0) return false;
+        if (element->type == UI_DOCUMENT_ELEMENT_ANIMATION) {
+            if (fprintf(file,
+                "animation_preset=%s\nanimation_target=%u\n"
+                "animation_trigger=%s\nanimation_orientation=%s\n"
+                "animation_loop=%u\nanimation_randomize=%u\n",
+                animation_preset_name(element->animation.preset),
+                element->animation.target_id,
+                animation_trigger_name(element->animation.trigger),
+                animation_orientation_name(element->animation.orientation),
+                element->animation.loop ? 1U : 0U,
+                element->animation.randomize ? 1U : 0U) < 0) return false;
+        }
     }
     return true;
 }
@@ -984,6 +1262,9 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
     bool have_entry_effect = false, have_exit_effect = false;
     bool have_focus_effect = false, have_activate_effect = false;
     bool saw_v4_only_field = false;
+    bool have_animation_preset = false, have_animation_target = false;
+    bool have_animation_trigger = false, have_animation_orientation = false;
+    bool have_animation_loop = false, have_animation_randomize = false;
     memset(candidate, 0, sizeof(*candidate));
     while (fgets(line, sizeof(line), file)) {
         char *separator;
@@ -1003,6 +1284,13 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 have_binding && have_action && have_entry_effect && have_exit_effect &&
                     have_focus_effect && have_activate_effect))
                 return UI_DOCUMENT_PARSE_ERROR;
+            if (section == ELEMENT &&
+                !animation_fields_complete_for_element(
+                    &candidate->elements[candidate->element_count - 1U],
+                    have_animation_preset, have_animation_target,
+                    have_animation_trigger, have_animation_orientation,
+                    have_animation_loop, have_animation_randomize))
+                return UI_DOCUMENT_PARSE_ERROR;
             if (candidate->element_count >= UI_DOCUMENT_MAX_ELEMENTS)
                 return UI_DOCUMENT_FULL;
             section = ELEMENT;
@@ -1017,6 +1305,9 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             have_binding = have_action = false;
             have_entry_effect = have_exit_effect = false;
             have_focus_effect = have_activate_effect = false;
+            have_animation_preset = have_animation_target = false;
+            have_animation_trigger = have_animation_orientation = false;
+            have_animation_loop = have_animation_randomize = false;
             memset(&candidate->elements[candidate->element_count++], 0,
                    sizeof(UiDocumentElement));
             continue;
@@ -1133,6 +1424,24 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             else if (strcmp(key, "visible") == 0 && !have_visible)
                 have_visible = parse_bool(value, &element->visual.visible_by_default),
                 saw_v3_only_field = true;
+            else if (strcmp(key, "animation_preset") == 0 && !have_animation_preset)
+                have_animation_preset = parse_animation_preset(value, &element->animation.preset),
+                saw_v4_only_field = true;
+            else if (strcmp(key, "animation_target") == 0 && !have_animation_target)
+                have_animation_target = parse_u32(value, &element->animation.target_id, false),
+                saw_v4_only_field = true;
+            else if (strcmp(key, "animation_trigger") == 0 && !have_animation_trigger)
+                have_animation_trigger = parse_animation_trigger(value, &element->animation.trigger),
+                saw_v4_only_field = true;
+            else if (strcmp(key, "animation_orientation") == 0 && !have_animation_orientation)
+                have_animation_orientation = parse_animation_orientation(
+                    value, &element->animation.orientation), saw_v4_only_field = true;
+            else if (strcmp(key, "animation_loop") == 0 && !have_animation_loop)
+                have_animation_loop = parse_bool(value, &element->animation.loop),
+                saw_v4_only_field = true;
+            else if (strcmp(key, "animation_randomize") == 0 && !have_animation_randomize)
+                have_animation_randomize = parse_bool(value, &element->animation.randomize),
+                saw_v4_only_field = true;
             else return UI_DOCUMENT_PARSE_ERROR;
             if ((strcmp(key, "id") == 0 && !have_id) ||
                 (strcmp(key, "parent") == 0 && !have_parent) ||
@@ -1162,7 +1471,13 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 (strcmp(key, "border_glyph") == 0 && !have_border_glyph) ||
                 (strcmp(key, "sprite_id") == 0 && !have_sprite_id) ||
                 (strcmp(key, "align") == 0 && !have_align) ||
-                (strcmp(key, "visible") == 0 && !have_visible))
+                (strcmp(key, "visible") == 0 && !have_visible) ||
+                (strcmp(key, "animation_preset") == 0 && !have_animation_preset) ||
+                (strcmp(key, "animation_target") == 0 && !have_animation_target) ||
+                (strcmp(key, "animation_trigger") == 0 && !have_animation_trigger) ||
+                (strcmp(key, "animation_orientation") == 0 && !have_animation_orientation) ||
+                (strcmp(key, "animation_loop") == 0 && !have_animation_loop) ||
+                (strcmp(key, "animation_randomize") == 0 && !have_animation_randomize))
                 return UI_DOCUMENT_PARSE_ERROR;
         }
     }
@@ -1178,6 +1493,13 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
             have_visible,
         have_binding && have_action && have_entry_effect && have_exit_effect &&
             have_focus_effect && have_activate_effect))
+        return UI_DOCUMENT_PARSE_ERROR;
+    if (section == ELEMENT &&
+        !animation_fields_complete_for_element(
+            &candidate->elements[candidate->element_count - 1U],
+            have_animation_preset, have_animation_target,
+            have_animation_trigger, have_animation_orientation,
+            have_animation_loop, have_animation_randomize))
         return UI_DOCUMENT_PARSE_ERROR;
     if (version != UI_DOCUMENT_VERSION && version != UI_DOCUMENT_VERSION_V3 &&
         version != UI_DOCUMENT_VERSION_V2 && version != UI_DOCUMENT_VERSION_V1)

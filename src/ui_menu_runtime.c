@@ -101,6 +101,33 @@ UiMenuRuntimeResult ui_menu_runtime_activate(
     return UI_MENU_RUNTIME_OK;
 }
 
+UiMenuRuntimeResult ui_menu_runtime_activate_playback(
+    UiMenuRuntime *runtime, const UiDocument *document,
+    const AssetRegistry *assets, const UiRenderTheme *theme,
+    const FlowDocument *flow_document, FlowRuntimeSession *flow_session,
+    int viewport_width, int viewport_height, double now_ms
+) {
+    UiMenuRuntime candidate;
+    UiMenuRuntimeResult result;
+    result = ui_menu_runtime_activate(&candidate, document, assets, theme,
+        flow_document, flow_session, viewport_width, viewport_height);
+    if (result != UI_MENU_RUNTIME_OK) return result;
+    if (!ui_animation_playback_init(&candidate.playback, now_ms) ||
+        !ui_animation_playback_event(&candidate.playback,
+            UI_ANIMATION_EVENT_CONTEXT_ENTER, 0U, now_ms) ||
+        (candidate.interaction.focused_element_id != 0U &&
+         !ui_animation_playback_event(&candidate.playback,
+            UI_ANIMATION_EVENT_FOCUS,
+            candidate.interaction.focused_element_id, now_ms)))
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    build_render_states(&candidate, candidate.context_snapshot);
+    candidate.context_snapshot_count = candidate.element_count;
+    candidate.playback_enabled = true;
+    candidate.exiting = false;
+    *runtime = candidate;
+    return UI_MENU_RUNTIME_OK;
+}
+
 UiMenuRuntimeResult ui_menu_runtime_set_element_state(
     UiMenuRuntime *runtime, UiElementId element_id, bool disabled, bool visible
 ) {
@@ -135,6 +162,53 @@ UiMenuRuntimeResult ui_menu_runtime_render(
         ? UI_MENU_RUNTIME_OK : UI_MENU_RUNTIME_RENDER_ERROR;
 }
 
+UiMenuRuntimeResult ui_menu_runtime_render_playback(
+    const UiMenuRuntime *runtime, double now_ms, bool reduced_motion,
+    UiCanvas *canvas
+) {
+    UiRenderElementState states[UI_DOCUMENT_MAX_ELEMENTS];
+    const UiRenderElementState *render_states = states;
+    size_t state_count;
+    if (!runtime || !canvas) return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    if (!runtime->active) return UI_MENU_RUNTIME_INACTIVE;
+    if (!runtime_dependencies_valid(runtime, true) || !runtime->playback_enabled)
+        return UI_MENU_RUNTIME_INVALID_DEPENDENCY;
+    if (canvas->width != runtime->viewport_width ||
+        canvas->height != runtime->viewport_height)
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    if (runtime->exiting) {
+        render_states = runtime->context_snapshot;
+        state_count = runtime->context_snapshot_count;
+    } else {
+        build_render_states(runtime, states);
+        state_count = runtime->element_count;
+    }
+    return ui_render_document_playback(runtime->document, runtime->assets,
+        render_states, state_count, runtime->theme, &runtime->playback,
+        now_ms, reduced_motion, canvas) == UI_RENDER_OK
+        ? UI_MENU_RUNTIME_OK : UI_MENU_RUNTIME_RENDER_ERROR;
+}
+
+UiMenuRuntimeResult ui_menu_runtime_begin_exit(
+    UiMenuRuntime *runtime, double now_ms
+) {
+    UiMenuRuntime candidate;
+    if (!runtime) return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    if (!runtime->active) return UI_MENU_RUNTIME_INACTIVE;
+    if (!runtime_dependencies_valid(runtime, false) || !runtime->playback_enabled)
+        return UI_MENU_RUNTIME_INVALID_DEPENDENCY;
+    candidate = *runtime;
+    build_render_states(&candidate, candidate.context_snapshot);
+    candidate.context_snapshot_count = candidate.element_count;
+    if (!ui_animation_playback_event(&candidate.playback,
+            UI_ANIMATION_EVENT_CONTEXT_EXIT, 0U, now_ms))
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    candidate.exiting = true;
+    candidate.pressed_element_id = 0U;
+    *runtime = candidate;
+    return UI_MENU_RUNTIME_OK;
+}
+
 static UiMenuRuntimeResult interaction_result(UiInteractionResult result) {
     if (result == UI_INTERACTION_OK) return UI_MENU_RUNTIME_OK;
     if (result == UI_INTERACTION_NO_HIT ||
@@ -146,11 +220,12 @@ static UiMenuRuntimeResult interaction_result(UiInteractionResult result) {
 
 static UiMenuRuntimeResult activate_pressed(
     UiMenuRuntime *runtime, UiElementId required_id,
-    FlowBindingTargetRequest *out_request
+    UiMenuRuntimeRequest *out_request
 ) {
     UiInteractionElementState states[UI_DOCUMENT_MAX_ELEMENTS];
     UiInteractionActivation activation;
-    FlowBindingResult result;
+    const UiDocumentElement *element;
+    UiMenuRuntimeRequest request;
     if (runtime->pressed_element_id == 0U ||
         runtime->pressed_element_id != required_id) {
         runtime->pressed_element_id = 0U;
@@ -163,17 +238,25 @@ static UiMenuRuntimeResult activate_pressed(
         runtime->pressed_element_id = 0U;
         return UI_MENU_RUNTIME_INTERACTION_ERROR;
     }
-    result = flow_binding_activate_button(runtime->flow_session,
-        runtime->flow_document, &activation, out_request);
     runtime->pressed_element_id = 0U;
-    if (result != FLOW_BINDING_OK) return UI_MENU_RUNTIME_FLOW_ERROR;
-    runtime->active = false;
+    element = ui_document_find_element(runtime->document, activation.element_id);
+    if (!element || element->type != UI_DOCUMENT_ELEMENT_BUTTON)
+        return UI_MENU_RUNTIME_INTERACTION_ERROR;
+    if (element->binding == UI_DOCUMENT_BINDING_NONE)
+        return UI_MENU_RUNTIME_NO_ACTION;
+    request.type = element->binding == UI_DOCUMENT_BINDING_FLOW
+        ? UI_MENU_RUNTIME_REQUEST_FLOW_PORT
+        : UI_MENU_RUNTIME_REQUEST_SYSTEM_ACTION;
+    request.element_id = element->id;
+    request.value = element->binding == UI_DOCUMENT_BINDING_FLOW
+        ? element->flow_port : element->system_action;
+    *out_request = request;
     return UI_MENU_RUNTIME_OK;
 }
 
-UiMenuRuntimeResult ui_menu_runtime_handle_input(
+UiMenuRuntimeResult ui_menu_runtime_handle_input_request(
     UiMenuRuntime *runtime, const UiMenuRuntimeInput *input,
-    FlowBindingTargetRequest *out_request
+    UiMenuRuntimeRequest *out_request
 ) {
     UiInteractionElementState states[UI_DOCUMENT_MAX_ELEMENTS];
     UiInteractionResult result;
@@ -183,6 +266,8 @@ UiMenuRuntimeResult ui_menu_runtime_handle_input(
     if (!runtime || !input || !out_request)
         return UI_MENU_RUNTIME_INVALID_ARGUMENT;
     if (!runtime->active) return UI_MENU_RUNTIME_INACTIVE;
+    if (runtime->playback_enabled && runtime->exiting)
+        return UI_MENU_RUNTIME_INVALID_DEPENDENCY;
     if (!runtime_dependencies_valid(runtime, false))
         return UI_MENU_RUNTIME_INVALID_DEPENDENCY;
     build_interaction_states(runtime, states);
@@ -246,4 +331,59 @@ UiMenuRuntimeResult ui_menu_runtime_handle_input(
         return activate_pressed(runtime, runtime->interaction.focused_element_id,
                                 out_request);
     return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+}
+
+UiMenuRuntimeResult ui_menu_runtime_handle_input_request_at(
+    UiMenuRuntime *runtime, const UiMenuRuntimeInput *input,
+    double now_ms, UiMenuRuntimeRequest *out_request
+) {
+    UiMenuRuntime candidate;
+    UiMenuRuntimeRequest request = {0};
+    UiMenuRuntimeResult result;
+    UiElementId previous_focus;
+    if (!runtime || !input || !out_request)
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    if (!runtime->active) return UI_MENU_RUNTIME_INACTIVE;
+    if (!runtime->playback_enabled || runtime->exiting)
+        return UI_MENU_RUNTIME_INVALID_DEPENDENCY;
+    candidate = *runtime;
+    previous_focus = candidate.interaction.focused_element_id;
+    result = ui_menu_runtime_handle_input_request(&candidate, input, &request);
+    if (result != UI_MENU_RUNTIME_OK && result != UI_MENU_RUNTIME_NO_ACTION)
+        return result;
+    if (candidate.interaction.focused_element_id != previous_focus &&
+        !ui_animation_playback_event(&candidate.playback,
+            UI_ANIMATION_EVENT_FOCUS,
+            candidate.interaction.focused_element_id, now_ms))
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    if (result == UI_MENU_RUNTIME_OK && request.value &&
+        !ui_animation_playback_event(&candidate.playback,
+            UI_ANIMATION_EVENT_ACTIVATE, request.element_id, now_ms))
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    *runtime = candidate;
+    if (request.value) *out_request = request;
+    return result;
+}
+
+UiMenuRuntimeResult ui_menu_runtime_handle_input(
+    UiMenuRuntime *runtime, const UiMenuRuntimeInput *input,
+    FlowBindingTargetRequest *out_request
+) {
+    UiMenuRuntimeRequest request = {0};
+    UiInteractionActivation activation;
+    UiMenuRuntimeResult result;
+    FlowBindingResult binding_result;
+    if (!runtime || !input || !out_request)
+        return UI_MENU_RUNTIME_INVALID_ARGUMENT;
+    result = ui_menu_runtime_handle_input_request(runtime, input, &request);
+    if (result != UI_MENU_RUNTIME_OK || !request.value) return result;
+    if (request.type != UI_MENU_RUNTIME_REQUEST_FLOW_PORT)
+        return UI_MENU_RUNTIME_FLOW_ERROR;
+    activation.element_id = request.element_id;
+    activation.flow_port = request.value;
+    binding_result = flow_binding_activate_button(runtime->flow_session,
+        runtime->flow_document, &activation, out_request);
+    if (binding_result != FLOW_BINDING_OK) return UI_MENU_RUNTIME_FLOW_ERROR;
+    runtime->active = false;
+    return UI_MENU_RUNTIME_OK;
 }

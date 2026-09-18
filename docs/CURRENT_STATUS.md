@@ -90,9 +90,27 @@ cppcheck/inventory/structure checks, strict default/no-tracker builds, ASan, and
 See [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).
 The copyable prompt-oriented asset reference is
 [`UI_WORKBENCH_ASSET_REFERENCE.md`](UI_WORKBENCH_ASSET_REFERENCE.md).
+
+The additive UI Scene Phase 2 runtime seam is implemented: deterministic explicit-time playback,
+bounded Animation/effect rendering, typed report-only flow/system requests, host-owned action
+policy, context enter/exit snapshots, and immediate Reduced Motion. It is intentionally not wired
+into application composition yet; the legacy application UI remains the active product path until
+the later migration gates. See
+[`reviews/2026-09-17-ui-scene-phase2-runtime.md`](reviews/2026-09-17-ui-scene-phase2-runtime.md).
+
+This workbench is a **legacy application UI editing path**; it is superseded as the project's
+authoring foundation by the UI Scene system in
+[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
+It remains functional and verified until Phase 8 of that plan removes the legacy application UI
+model.
 Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.
+
+The active UI Scene migration plan is
+[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
+Phase 0 and Phase 1 slice A (v4 document roles, bindings, system actions, and effect slots) are
+verified; the next safe action is Phase 1 slice B (Animation element document data).
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;

@@ -377,12 +377,14 @@ migrate to `binding=none`, `role=screen`, and `none` effects.
 Recognized v4 system-action values are `start_project`, `open_editor`, `open_settings`, `quit`,
 `confirm_quit`, `cancel`, `back`, `ui_scale_decrease`, `ui_scale_increase`, `ui_scale_reset`,
 `toggle_reduced_motion`, `resume`, and `return_to_bootstrap`. Recognition is data validation only;
-runtime context policy and dispatch are not yet implemented by this format increment.
+the additive UI Scene runtime reports typed system-action requests, and the separate host policy
+module enforces the frozen context matrix without executing actions in document/runtime core.
 
 Recognized effect values are `none`, `center_out`, `perimeter_burst`, `local_glitch`,
 `focus_pulse`, `focus_glitch`, and `input_hold_short`. V4 currently stores and validates these
-fields; production execution remains unchanged until the shared UI Scene runtime phase. Animation
-elements are also not yet part of the implemented v4 slice.
+fields. The playback-aware renderer executes supported slots and Animation elements from explicit
+event/time inputs with target-relative clipping and Reduced Motion; `input_hold_short` remains
+metadata-only. The legacy application UI remains the active product path.
 
 Inside an open authored Menu, `E` opens context actions. A selected Container can create
 Container/Text/Button children with deterministic unique names; Text/Button content and

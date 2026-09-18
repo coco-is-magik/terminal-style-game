@@ -398,6 +398,123 @@ static void test_runtime_render_matches_direct_production_render(void **state) {
     fixture_destroy(&f);
 }
 
+static void test_typed_requests_do_not_mutate_flow_or_load_targets(void **state) {
+    Fixture f;
+    UiMenuRuntime runtime;
+    UiMenuRuntimeRequest request = {UI_MENU_RUNTIME_REQUEST_SYSTEM_ACTION, 99U, "sentinel"};
+    FlowNodeId before_node;
+    UiDocumentElement *button;
+    (void)state;
+    fixture_init(&f);
+    runtime = active_runtime(&f);
+    before_node = f.flow_session.current_node_id;
+    assert_int_equal(ui_menu_runtime_handle_input_request(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_DOWN, 0, 0}, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(ui_menu_runtime_handle_input_request(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_UP, 0, 0}, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(request.type, UI_MENU_RUNTIME_REQUEST_FLOW_PORT);
+    assert_int_equal(request.element_id, f.play);
+    assert_string_equal(request.value, "play");
+    assert_int_equal(f.flow_session.current_node_id, before_node);
+    assert_true(runtime.active);
+
+    button = (UiDocumentElement *)ui_document_find_element(&f.menu, f.play);
+    assert_non_null(button);
+    button->binding = UI_DOCUMENT_BINDING_SYSTEM;
+    button->flow_port[0] = '\0';
+    memcpy(button->system_action, "open_editor", sizeof("open_editor"));
+    assert_int_equal(ui_document_validate(&f.menu), UI_DOCUMENT_OK);
+    runtime = active_runtime(&f);
+    assert_int_equal(ui_menu_runtime_handle_input_request(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_DOWN, 0, 0}, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(ui_menu_runtime_handle_input_request(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_UP, 0, 0}, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(request.type, UI_MENU_RUNTIME_REQUEST_SYSTEM_ACTION);
+    assert_int_equal(request.element_id, f.play);
+    assert_string_equal(request.value, "open_editor");
+    assert_int_equal(f.flow_session.current_node_id, before_node);
+    assert_true(runtime.active);
+    fixture_destroy(&f);
+}
+
+static void test_playback_lifecycle_snapshots_and_explicit_time(void **state) {
+    Fixture f;
+    UiMenuRuntime runtime;
+    UiMenuRuntime before;
+    UiMenuRuntimeRequest request = {0};
+    UiCanvas *enter;
+    UiCanvas *reduced;
+    UiCanvas *exit_canvas;
+    UiDocumentElement *play;
+    (void)state;
+    fixture_init(&f);
+    play = (UiDocumentElement *)ui_document_find_element(&f.menu, f.play);
+    assert_non_null(play);
+    memcpy(play->entry_effect, "perimeter_burst", sizeof("perimeter_burst"));
+    memcpy(play->exit_effect, "local_glitch", sizeof("local_glitch"));
+    memcpy(play->focus_effect, "focus_glitch", sizeof("focus_glitch"));
+    memcpy(play->activate_effect, "perimeter_burst", sizeof("perimeter_burst"));
+    assert_int_equal(ui_document_validate(&f.menu), UI_DOCUMENT_OK);
+    ui_menu_runtime_init(&runtime);
+    assert_int_equal(ui_menu_runtime_activate_playback(&runtime, &f.menu,
+        &f.assets, &theme, &f.flow, &f.flow_session, 12, 6, 10.0),
+        UI_MENU_RUNTIME_OK);
+    enter = ui_canvas_create(12, 6);
+    reduced = ui_canvas_create(12, 6);
+    exit_canvas = ui_canvas_create(12, 6);
+    assert_non_null(enter);
+    assert_non_null(reduced);
+    assert_non_null(exit_canvas);
+    assert_int_equal(ui_menu_runtime_render_playback(&runtime, 10.0, false, enter),
+                     UI_MENU_RUNTIME_OK);
+    assert_int_equal(enter->cells[1 * enter->width + 1].glyph, '*');
+    assert_int_equal(ui_menu_runtime_render_playback(&runtime, 10.0, true, reduced),
+                     UI_MENU_RUNTIME_OK);
+    assert_int_equal(reduced->cells[1 * reduced->width + 1].glyph, '>');
+
+    assert_int_equal(ui_menu_runtime_handle_input_request_at(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_FOCUS_NEXT, 0, 0}, 20.0, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(runtime.interaction.focused_element_id, f.back);
+    assert_int_equal(ui_menu_runtime_handle_input_request_at(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_FOCUS_PREVIOUS, 0, 0}, 30.0, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(runtime.interaction.focused_element_id, f.play);
+    assert_int_equal(ui_menu_runtime_handle_input_request_at(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_DOWN, 0, 0}, 40.0, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_int_equal(ui_menu_runtime_handle_input_request_at(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_UP, 0, 0}, 50.0, &request),
+        UI_MENU_RUNTIME_OK);
+    assert_string_equal(request.value, "play");
+    assert_int_equal(f.flow_session.current_node_id, f.menu_id);
+    assert_true(runtime.active);
+
+    assert_int_equal(ui_menu_runtime_begin_exit(&runtime, 60.0), UI_MENU_RUNTIME_OK);
+    assert_true(runtime.exiting);
+    assert_int_equal(ui_menu_runtime_set_element_state(&runtime, f.play, true, false),
+                     UI_MENU_RUNTIME_OK);
+    assert_int_equal(ui_menu_runtime_render_playback(&runtime, 60.0, false, exit_canvas),
+                     UI_MENU_RUNTIME_OK);
+    assert_int_equal(exit_canvas->cells[1 * exit_canvas->width + 3].glyph, ':');
+    before = runtime;
+    assert_int_equal(ui_menu_runtime_handle_input_request_at(&runtime,
+        &(UiMenuRuntimeInput){UI_MENU_INPUT_FOCUS_NEXT, 0, 0}, 70.0, &request),
+        UI_MENU_RUNTIME_INVALID_DEPENDENCY);
+    assert_memory_equal(&runtime, &before, sizeof(runtime));
+    assert_int_equal(ui_menu_runtime_begin_exit(&runtime, 59.0),
+                     UI_MENU_RUNTIME_INVALID_ARGUMENT);
+    assert_memory_equal(&runtime, &before, sizeof(runtime));
+    ui_canvas_destroy(exit_canvas);
+    ui_canvas_destroy(reduced);
+    ui_canvas_destroy(enter);
+    fixture_destroy(&f);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_activation_render_and_confirm_target),
@@ -406,7 +523,9 @@ int main(void) {
         cmocka_unit_test(test_activation_reset_is_transactional),
         cmocka_unit_test(test_render_and_flow_failures_preserve_external_outputs),
         cmocka_unit_test(test_deterministic_replay_and_invalid_input),
-        cmocka_unit_test(test_runtime_render_matches_direct_production_render)
+        cmocka_unit_test(test_runtime_render_matches_direct_production_render),
+        cmocka_unit_test(test_typed_requests_do_not_mutate_flow_or_load_targets),
+        cmocka_unit_test(test_playback_lifecycle_snapshots_and_explicit_time)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
