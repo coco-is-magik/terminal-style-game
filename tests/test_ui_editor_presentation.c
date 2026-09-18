@@ -57,9 +57,8 @@ static void test_renders_workspace_candidate_without_host_state(void **state) {
     grid = grid_create(120, 40);
     assert_non_null(grid);
     assert_true(ui_editor_presentation_render(&workspace, UI_MENU_WORKSPACE_OK,
-                                              &assets, &theme, 25.0, grid));
-    assert_true(grid_contains_text(grid, "UI SCENE EDITOR"));
-    assert_true(grid_contains_text(grid, "candidate:yes"));
+                                              &assets, &theme, NULL, 25.0, grid));
+    assert_true(grid_contains_text(grid, "AUTHORED MENU WORKSPACE"));
     assert_true(grid_contains_text(grid, "Focus Effect"));
     assert_true(grid_contains_text(grid, "center_out"));
     assert_int_equal(workspace.document.state.current_state, staged_state);
@@ -75,7 +74,7 @@ static void test_rejects_invalid_arguments(void **state) {
     (void)state;
     assert_non_null(grid);
     assert_false(ui_editor_presentation_render(
-        NULL, UI_MENU_WORKSPACE_OK, NULL, NULL, 0.0, grid));
+        NULL, UI_MENU_WORKSPACE_OK, NULL, NULL, NULL, 0.0, grid));
     grid_destroy(grid);
 }
 

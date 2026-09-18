@@ -171,6 +171,21 @@ and element transition presets use the same production/workbench evaluator for p
 center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
 See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
 
+To author staged `.tui` UI Scenes through the shared standalone/embedded editor core:
+
+```sh
+make ui-editor
+```
+
+The standalone editor opens the project UI Scene chooser. Up/Down navigates chooser, hierarchy,
+properties, actions, and prompts; Enter opens or confirms; E opens element actions; Left/Right
+adjusts ordinary properties or browses effect/Animation candidates; Backspace removes through a
+confirmation prompt; Ctrl+Z/Ctrl+Y undo and redo; Ctrl+S saves; Escape cancels the current mode or
+opens staged Save/Discard/Cancel when edits are dirty. Pointer selection, move, resize, commit, and
+cancel use the same workspace and presentation paths as embedded authoring. Preview resolution and
+scale affect only the production preview; editor chrome remains fixed. Unlike `make ui-workbench`,
+this editor does not immediately rewrite legacy application UI assets.
+
 make run
 make run-normal
 make run-stress

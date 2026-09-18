@@ -838,7 +838,8 @@ Production mirror changes remain conditional on a distinct failing reproduction.
 workbench formats remain blocked on the glyph model, although behavior characterization and
 headless painter-session extraction may proceed earlier under their own Q1 plan.
 
-The active UI Scene migration has verified Phases 0-3: versioned document data, deterministic
-runtime/playback, and the reusable editor core are complete at their stated gates. Phase 4's
-standalone host and exact standalone/embedded parity are the next safe work under
+The active UI Scene migration has verified Phases 0-3. Phase 4's standalone host and automated
+standalone/embedded parity are implemented and pass; its required native 1920x1080 readability and
+smooth-interaction acceptance remains pending. Phase 5 is blocked until that manual evidence is
+recorded under
 [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).

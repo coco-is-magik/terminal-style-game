@@ -178,6 +178,7 @@ TEST_UI_INTERACTION_RUNNER := $(BUILD_DIR)/test-ui-interaction
 TEST_UI_MENU_RUNTIME_RUNNER := $(BUILD_DIR)/test-ui-menu-runtime
 TEST_UI_MENU_WORKSPACE_RUNNER := $(BUILD_DIR)/test-ui-menu-workspace
 TEST_UI_EDITOR_PRESENTATION_RUNNER := $(BUILD_DIR)/test-ui-editor-presentation
+TEST_UI_EDITOR_HOST_RUNNER := $(BUILD_DIR)/test-ui-editor-host
 TEST_SCENE_FLOW_ADAPTER_RUNNER := $(BUILD_DIR)/test-scene-flow-adapter
 TEST_ENTITY_TRIGGER_SESSION_RUNNER := $(BUILD_DIR)/test-entity-trigger-session
 TEST_ASSET_REFRESH_RUNNER := $(BUILD_DIR)/test-asset-refresh
@@ -203,7 +204,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 .PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer matrix matrix-one smoke
-.PHONY: ui-motion-demo ui-workbench
+.PHONY: ui-motion-demo ui-workbench ui-editor
 
 
 all: $(APP)
@@ -298,6 +299,7 @@ SRC_UI_MENU_RUNTIME := src/ui_menu_runtime.c
 SRC_UI_MENU_WORKSPACE := src/ui_menu_workspace.c
 SRC_UI_EDITOR_ACTION := src/ui_editor_action.c
 SRC_UI_EDITOR_PRESENTATION := src/ui_editor_presentation.c
+SRC_UI_EDITOR_HOST := src/ui_editor_host.c
 SRC_UI_NESTED_INSPECTOR := src/ui_nested_inspector.c
 SRC_SCENE_FLOW_ADAPTER := src/scene_flow_adapter.c
 SRC_ENTITY_TRIGGER_SESSION := src/entity_trigger_session.c
@@ -567,6 +569,7 @@ TEST_UNIFIED_EDITOR_SRC := \
     $(SRC_UI_DOCUMENT) \
     $(SRC_UI_MENU_WORKSPACE) \
     $(SRC_UI_EDITOR_ACTION) \
+    $(SRC_UI_EDITOR_HOST) \
     $(SRC_UI_EDITOR_PRESENTATION) \
     $(SRC_UI_NESTED_INSPECTOR) \
     $(SRC_UI_LAYOUT_RESOLVER) \
@@ -978,6 +981,17 @@ $(TEST_UI_EDITOR_PRESENTATION_RUNNER): tests/test_ui_editor_presentation.c $(SRC
 		$(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) \
 		-o $(TEST_UI_EDITOR_PRESENTATION_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_UI_EDITOR_HOST_RUNNER): tests/test_ui_editor_host.c $(SRC_UI_EDITOR_HOST) $(SRC_UI_EDITOR_ACTION) $(SRC_UI_EDITOR_PRESENTATION) $(SRC_UI_MENU_WORKSPACE) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_RENDER_ADAPTER) $(SRC_UI_SCENE_ANIMATION_RENDERER) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_UI_CANVAS) $(SRC_GRID) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) $(SRC_MAP_CATALOG) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_editor_host.c \
+		$(SRC_UI_EDITOR_HOST) $(SRC_UI_EDITOR_ACTION) $(SRC_UI_EDITOR_PRESENTATION) \
+		$(SRC_UI_MENU_WORKSPACE) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_RENDER_ADAPTER) \
+		$(SRC_UI_SCENE_ANIMATION_RENDERER) $(SRC_UI_MOTION) $(SRC_UI_THEME) \
+		$(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) \
+		$(SRC_RGBA_PARSE) $(SRC_UI_CANVAS) $(SRC_GRID) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) \
+		$(SRC_MAP_CATALOG) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) \
+		$(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) \
+		-o $(TEST_UI_EDITOR_HOST_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_ASSET_REFRESH_RUNNER): tests/test_asset_refresh.c $(SRC_ASSET_REFRESH) $(SRC_ASSET_DOCUMENT) $(SRC_MATERIAL_DOCUMENT) $(SRC_DECAL_DOCUMENT) $(SRC_ASSET_LOADER) $(SRC_RGBA_PARSE) $(SRC_DECAL_PAINTER) $(SRC_DECAL_IO) $(SRC_SCENE_DOCUMENT) $(SRC_SCENE_FORMAT) $(SRC_SCENE_BLOCK_CODEC) $(SRC_SCENE_DIAGNOSTIC) $(SRC_CONFIG) $(SRC_MAP_LOADER) $(SRC_MAP) $(SRC_WORLD) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_asset_refresh.c $(SRC_ASSET_REFRESH) \
 		$(SRC_ASSET_DOCUMENT) $(SRC_MATERIAL_DOCUMENT) $(SRC_DECAL_DOCUMENT) \
@@ -1116,6 +1130,9 @@ ui-motion-demo: $(APP)
 ui-workbench: $(APP)
 	./$(APP) --ui-workbench
 
+ui-editor: $(APP)
+	./$(APP) --ui-editor
+
 run-stress: $(APP)
 	./$(APP) --mode stress
 
@@ -1153,7 +1170,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_DOCUMENT_RUNNER) $(TEST_UI_LAYOUT_RESOLVER_RUNNER) \
 	$(TEST_UI_RENDER_ADAPTER_RUNNER) $(TEST_UI_INTERACTION_RUNNER) \
 	$(TEST_UI_MENU_RUNTIME_RUNNER) $(TEST_UI_MENU_WORKSPACE_RUNNER) \
-	$(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
+	$(TEST_UI_EDITOR_PRESENTATION_RUNNER) $(TEST_UI_EDITOR_HOST_RUNNER) \
 	$(TEST_ASSET_REFRESH_RUNNER) $(TEST_R9_OPTICAL_SEMANTICS_RUNNER) \
 	$(TEST_R9_MULTIHIT_TRACE_RUNNER) $(TEST_R9_OPTICAL_COMPOSITOR_RUNNER) \
 	$(TEST_R9_MIRROR_TRACE_RUNNER) $(TEST_OPTICAL_RUNTIME_VIEW_RUNNER) \
@@ -1230,6 +1247,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_UI_MENU_RUNTIME_RUNNER)
 	./$(TEST_UI_MENU_WORKSPACE_RUNNER)
 	./$(TEST_UI_EDITOR_PRESENTATION_RUNNER)
+	./$(TEST_UI_EDITOR_HOST_RUNNER)
 	./$(TEST_ASSET_REFRESH_RUNNER)
 	./$(TEST_R9_OPTICAL_SEMANTICS_RUNNER)
 	./$(TEST_R9_MULTIHIT_TRACE_RUNNER)
@@ -1254,7 +1272,8 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	$(TEST_UI_DOCUMENT_RUNNER) \
 	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
 	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
-	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER)
+	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
+	$(TEST_UI_EDITOR_HOST_RUNNER)
 	./$(TEST_UI_ELE_RUNNER)
 	./$(TEST_UI_PREFERENCES_RUNNER)
 	./$(TEST_UI_COMPOSITOR_RUNNER)
@@ -1274,6 +1293,7 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	./$(TEST_UI_MENU_RUNTIME_RUNNER)
 	./$(TEST_UI_MENU_WORKSPACE_RUNNER)
 	./$(TEST_UI_EDITOR_PRESENTATION_RUNNER)
+	./$(TEST_UI_EDITOR_HOST_RUNNER)
 check: all test standards
 
 standards: style check-static-analysis-policy standards-core

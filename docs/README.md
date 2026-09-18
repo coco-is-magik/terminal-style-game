@@ -20,14 +20,17 @@ only a small set of documents should be treated as current authority.
   migration, and native Windows verification boundaries for W2-W4.
 - [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md)
   — approved authority for converging protected application UI and editable project UI on one
-  versioned UI Scene system and one reusable standalone/embedded editor core; Phases 0-3 are
-  verified and Phase 4 standalone-host/parity work is next.
+  versioned UI Scene system and one reusable standalone/embedded editor core; Phase 4 automated
+  implementation passes and its manual native-display acceptance remains pending.
 - [`reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md`](reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md)
   — Phase 0 legacy migration inventory, v4 schema decisions, reusable renderer/runtime/workspace
   baseline tests, failures, and Phase 1 entry boundary.
 - [`reviews/2026-09-18-ui-scene-phase3-editor-core.md`](reviews/2026-09-18-ui-scene-phase3-editor-core.md)
   — verified reusable UI Scene workspace, candidate/history semantics, explicit playback state,
   shared actions and presentation, preserved embedded baselines, and Phase 4 host-parity handoff.
+- [`reviews/2026-09-18-ui-scene-phase4-standalone-host.md`](reviews/2026-09-18-ui-scene-phase4-standalone-host.md)
+  — standalone UI Scene editor route, shared host/presentation parity, automated evidence,
+  implementation corrections, and the still-required native 1920x1080 acceptance checklist.
 - [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md)
   — byte-exact first-party newline correction, pinned-SMC boundary, local verification,
   Docker/classifier failure, and required-profile handoff.

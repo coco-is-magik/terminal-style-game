@@ -115,6 +115,22 @@ static void test_ui_workbench_mode_and_conflicts(void **state) {
     assert_memory_equal(&options, &before, sizeof(options));
 }
 
+static void test_ui_editor_mode_and_conflicts(void **state) {
+    AppOptions options;
+    AppOptions before;
+    char *valid[] = {"app", "--ui-editor"};
+    char *mode_conflict[] = {"app", "--ui-editor", "--mode", "normal"};
+    char *other_conflict[] = {"app", "--ui-editor", "--ui-workbench"};
+    (void)state;
+    assert_int_equal(app_options_parse(2, valid, &options), APP_OPTIONS_OK);
+    assert_int_equal(options.mode, RUN_MODE_UI_EDITOR);
+    before = options;
+    assert_int_equal(app_options_parse(4, mode_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+    assert_int_equal(app_options_parse(3, other_conflict, &options), APP_OPTIONS_CONFLICT);
+    assert_memory_equal(&options, &before, sizeof(options));
+}
+
 static void test_display_acceptance_requires_all_observations(void **state) {
     DisplayAcceptance acceptance = {0};
     InputState input = {0};
@@ -191,6 +207,7 @@ int main(void) {
         cmocka_unit_test(test_ui_theme_demo_mode_and_conflicts),
         cmocka_unit_test(test_ui_motion_demo_mode_and_conflicts),
         cmocka_unit_test(test_ui_workbench_mode_and_conflicts),
+        cmocka_unit_test(test_ui_editor_mode_and_conflicts),
         cmocka_unit_test(test_display_acceptance_requires_all_observations),
         cmocka_unit_test(test_display_acceptance_json_text_is_bounded),
         cmocka_unit_test(test_rejects_missing_unknown_and_invalid),

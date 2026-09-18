@@ -36,6 +36,7 @@
 #include "ui_theme.h"
 #include "ui_theme_demo_runtime.h"
 #include "ui_workbench_runtime.h"
+#include "ui_editor_runtime.h"
 #include "menu_state.h"
 #include "unified_editor.h"
 #include "editor_highlight.h"
@@ -541,10 +542,11 @@ int app_main(int argc, char* argv[]) {
     if (!ren) {
         fprintf(stderr, "Failed to initialize renderer. (Headless environment expected)\n");
         if (mode == RUN_MODE_UI_THEME_DEMO || mode == RUN_MODE_UI_MOTION_DEMO ||
-            mode == RUN_MODE_UI_WORKBENCH)
+            mode == RUN_MODE_UI_WORKBENCH || mode == RUN_MODE_UI_EDITOR)
             fprintf(stderr, "TSG-UI-ENV-0003: UI diagnostic display initialization failed\n");
         return display_acceptance_mode || mode == RUN_MODE_UI_THEME_DEMO ||
-            mode == RUN_MODE_UI_MOTION_DEMO || mode == RUN_MODE_UI_WORKBENCH ? 1 : 0;
+            mode == RUN_MODE_UI_MOTION_DEMO || mode == RUN_MODE_UI_WORKBENCH ||
+            mode == RUN_MODE_UI_EDITOR ? 1 : 0;
     }
     resources.renderer = ren;
 
@@ -552,7 +554,7 @@ int app_main(int argc, char* argv[]) {
     if (!grid) {
         fprintf(stderr, "Failed to initialize grid.\n");
         if (mode == RUN_MODE_UI_THEME_DEMO || mode == RUN_MODE_UI_MOTION_DEMO ||
-            mode == RUN_MODE_UI_WORKBENCH)
+            mode == RUN_MODE_UI_WORKBENCH || mode == RUN_MODE_UI_EDITOR)
             fprintf(stderr, "TSG-UI-ENV-0003: UI diagnostic display initialization failed\n");
         app_resources_cleanup(&resources);
         return 1;
@@ -560,7 +562,7 @@ int app_main(int argc, char* argv[]) {
     resources.grid = grid;
 
     if (mode == RUN_MODE_UI_THEME_DEMO || mode == RUN_MODE_UI_MOTION_DEMO ||
-        mode == RUN_MODE_UI_WORKBENCH) {
+        mode == RUN_MODE_UI_WORKBENCH || mode == RUN_MODE_UI_EDITOR) {
         int result_code;
         bool diagnostic_ok;
         bool diagnostic_out_of_memory;
@@ -597,11 +599,17 @@ int app_main(int argc, char* argv[]) {
             result_code = (int)result;
             diagnostic_ok = result == UI_MOTION_DEMO_RUNTIME_OK;
             diagnostic_out_of_memory = result == UI_MOTION_DEMO_RUNTIME_OUT_OF_MEMORY;
-        } else {
+        } else if (mode == RUN_MODE_UI_WORKBENCH) {
             UiWorkbenchRuntimeResult result =
                 ui_workbench_runtime_run(ren, grid, cfg->target_fps);
             result_code = (int)result;
             diagnostic_ok = result == UI_WORKBENCH_RUNTIME_OK;
+            diagnostic_out_of_memory = false;
+        } else {
+            UiEditorRuntimeResult result = ui_editor_runtime_run(
+                ren, grid, cfg->target_fps, "assets");
+            result_code = (int)result;
+            diagnostic_ok = result == UI_EDITOR_RUNTIME_OK;
             diagnostic_out_of_memory = false;
         }
         if (diagnostic_out_of_memory) {

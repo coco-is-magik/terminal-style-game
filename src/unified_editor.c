@@ -10,6 +10,8 @@
 #include "unified_editor_test.h"
 #include "ui_nested_inspector.h"
 #include "ui_editor_action.h"
+#include "ui_editor_host.h"
+#include "ui_editor_presentation.h"
 #include "asset_refresh.h"
 #include "editor_domain.h"
 #include "editor_highlight.h"
@@ -248,91 +250,10 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     int viewport_rows,
     bool *handled
 ) {
-    UiEditorAction action = {0};
-    bool have_action = false;
-    int preview_x = 40;
-    int preview_y = 3;
-    int available_width = viewport_columns - preview_x - 1;
-    int available_height = viewport_rows - preview_y - 2;
-    int preview_width;
-    int preview_height;
-    bool text_mode = workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME ||
-                     workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
-                     workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
-                     workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME;
-    *handled = true;
-    ui_menu_workspace_preview_dimensions(workspace, &preview_width, &preview_height);
-    if (preview_width > available_width) preview_width = available_width;
-    if (preview_height > available_height) preview_height = available_height;
-    if (workspace->pointer_before) {
-        if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
-            return ui_menu_workspace_pointer_cancel(workspace);
-        if (input->mouse_grid_valid &&
-            (input->mouse_dx != 0.0f || input->mouse_dy != 0.0f ||
-             input->mouse_left_released)) {
-            UiMenuWorkspaceResult motion = ui_menu_workspace_pointer_motion(
-                workspace, input->mouse_grid_x - preview_x,
-                input->mouse_grid_y - preview_y);
-            if (motion != UI_MENU_WORKSPACE_OK) return motion;
-        }
-        if (input->mouse_left_released)
-            return ui_menu_workspace_pointer_release(workspace);
-        return UI_MENU_WORKSPACE_OK;
-    }
-    if (text_mode) {
-        if (input->editor_confirm_pressed) {
-            action.type = UI_EDITOR_ACTION_CONFIRM;
-            return ui_editor_action_apply(workspace, &action);
-        }
-        if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
-            action.type = UI_EDITOR_ACTION_CANCEL, have_action = true;
-        else if (input->editor_text_backspace_pressed)
-            action.type = UI_EDITOR_ACTION_BACKSPACE, have_action = true;
-        else if (input->text_input_len > 0) {
-            action.type = UI_EDITOR_ACTION_APPEND_TEXT;
-            action.text = input->text_input;
-            have_action = true;
-        }
-        if (have_action)
-            return ui_editor_action_apply(workspace, &action);
-        *handled = false;
-        return UI_MENU_WORKSPACE_NO_ACTION;
-    }
-    if (input->mouse_left_pressed && input->mouse_grid_valid &&
-        preview_width > 0 && preview_height > 0) {
-        UiMenuWorkspaceResult result = ui_menu_workspace_pointer_press(
-            workspace, input->mouse_grid_x - preview_x,
-            input->mouse_grid_y - preview_y, preview_width, preview_height);
-        if (result == UI_MENU_WORKSPACE_OK && input->mouse_left_released)
-            return ui_menu_workspace_pointer_release(workspace);
-        return result;
-    }
-    if (input->editor_previous_pressed)
-        action.type = UI_EDITOR_ACTION_PREVIOUS, have_action = true;
-    else if (input->editor_next_pressed)
-        action.type = UI_EDITOR_ACTION_NEXT, have_action = true;
-    else if (input->editor_confirm_pressed)
-        action.type = UI_EDITOR_ACTION_CONFIRM, have_action = true;
-    if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
-        action.type = UI_EDITOR_ACTION_CANCEL, have_action = true;
-    else if (input->editor_save_pressed)
-        action.type = UI_EDITOR_ACTION_SAVE, have_action = true;
-    else if (input->editor_undo_pressed)
-        action.type = UI_EDITOR_ACTION_UNDO, have_action = true;
-    else if (input->editor_redo_pressed)
-        action.type = UI_EDITOR_ACTION_REDO, have_action = true;
-    else if (input->editor_decrease_pressed)
-        action.type = UI_EDITOR_ACTION_DECREASE, have_action = true;
-    else if (input->editor_increase_pressed)
-        action.type = UI_EDITOR_ACTION_INCREASE, have_action = true;
-    else if (input->editor_select_pressed)
-        action.type = UI_EDITOR_ACTION_OPEN_ACTIONS, have_action = true;
-    if (input->editor_text_backspace_pressed)
-        action.type = UI_EDITOR_ACTION_REMOVE, have_action = true;
-    if (have_action)
-        return ui_editor_action_apply(workspace, &action);
-    *handled = false;
-    return UI_MENU_WORKSPACE_NO_ACTION;
+    UiEditorHostViewport viewport = {
+        viewport_columns, viewport_rows, 40, 3
+    };
+    return ui_editor_host_apply_input(workspace, input, &viewport, handled);
 }
 
 static const FlowNode *editor_find_menu_flow_node(const FlowDocument *flow,
@@ -5318,39 +5239,6 @@ static void editor_render_sprite_pattern_menu(
     }
 }
 
-static const char *editor_ui_element_type(UiDocumentElementType type) {
-    if (type == UI_DOCUMENT_ELEMENT_CONTAINER) return "Container";
-    if (type == UI_DOCUMENT_ELEMENT_TEXT) return "Text";
-    if (type == UI_DOCUMENT_ELEMENT_BUTTON) return "Button";
-    return "?";
-}
-
-static size_t editor_ui_element_depth(const UiDocument *document,
-                                      const UiDocumentElement *element) {
-    size_t depth = 0U;
-    while (element && element->parent_id != 0U && depth < document->element_count) {
-        element = ui_document_find_element(document, element->parent_id);
-        depth++;
-    }
-    return depth;
-}
-
-static const char *editor_ui_anchor_name(UiDocumentAnchor anchor) {
-    static const char *names[] = {"Start", "Center", "End", "Stretch"};
-    return anchor >= UI_DOCUMENT_ANCHOR_START && anchor <= UI_DOCUMENT_ANCHOR_STRETCH
-        ? names[anchor] : "?";
-}
-
-static const char *editor_ui_property_name(UiMenuProperty property) {
-    static const char *names[UI_MENU_PROPERTY_COUNT] = {
-        "X", "Y", "Width", "Height", "Scale", "H Anchor", "V Anchor",
-        "Visual", "Sprite ID", "Alignment", "FG Red", "FG Green", "FG Blue",
-        "FG Alpha", "BG Red", "BG Green", "BG Blue", "BG Alpha", "Fill",
-        "Fill Glyph", "Border", "Border Glyph", "Visible"
-    };
-    return property >= UI_MENU_PROPERTY_X && property < UI_MENU_PROPERTY_COUNT
-        ? names[property] : "?";
-}
 
 static const char *editor_flow_reference_result(FlowReferenceResult result) {
     switch (result) {
@@ -5382,359 +5270,37 @@ static const char *editor_flow_node_type(FlowNodeType type) {
     return "Start";
 }
 
-static void editor_ui_property_value(char *out, size_t capacity,
-                                     const UiDocumentElement *element,
-                                     UiMenuProperty property) {
-    const UiDocumentLayout *layout = &element->layout;
-    const UiDocumentVisual *visual = &element->visual;
-    if (property == UI_MENU_PROPERTY_X) snprintf(out, capacity, "%d", layout->x);
-    else if (property == UI_MENU_PROPERTY_Y) snprintf(out, capacity, "%d", layout->y);
-    else if (property == UI_MENU_PROPERTY_WIDTH) snprintf(out, capacity, "%d", layout->width);
-    else if (property == UI_MENU_PROPERTY_HEIGHT) snprintf(out, capacity, "%d", layout->height);
-    else if (property == UI_MENU_PROPERTY_SCALE)
-        snprintf(out, capacity, "%d%%", layout->scale_percent);
-    else if (property == UI_MENU_PROPERTY_HORIZONTAL_ANCHOR)
-        snprintf(out, capacity, "%s", editor_ui_anchor_name(layout->horizontal_anchor));
-    else if (property == UI_MENU_PROPERTY_VERTICAL_ANCHOR)
-        snprintf(out, capacity, "%s", editor_ui_anchor_name(layout->vertical_anchor));
-    else if (property == UI_MENU_PROPERTY_VISUAL_MODE)
-        snprintf(out, capacity, "%s",
-                 visual->mode == UI_DOCUMENT_VISUAL_NATIVE ? "Native" : "Sprite");
-    else if (property == UI_MENU_PROPERTY_SPRITE_ID)
-        snprintf(out, capacity, "%u", (unsigned)visual->sprite_id);
-    else if (property == UI_MENU_PROPERTY_ALIGNMENT)
-        snprintf(out, capacity, "%s", visual->align == UI_DOCUMENT_ALIGN_LEFT ? "Left" :
-                 visual->align == UI_DOCUMENT_ALIGN_CENTER ? "Center" : "Right");
-    else if (property >= UI_MENU_PROPERTY_FOREGROUND_RED &&
-             property <= UI_MENU_PROPERTY_BACKGROUND_ALPHA) {
-        unsigned values[] = {
-            visual->foreground.red, visual->foreground.green, visual->foreground.blue,
-            visual->foreground.alpha, visual->background.red, visual->background.green,
-            visual->background.blue, visual->background.alpha
-        };
-        snprintf(out, capacity, "%u",
-                 values[property - UI_MENU_PROPERTY_FOREGROUND_RED]);
-    } else if (property == UI_MENU_PROPERTY_FILL_ENABLED)
-        snprintf(out, capacity, "%s", visual->fill_enabled ? "On" : "Off");
-    else if (property == UI_MENU_PROPERTY_FILL_GLYPH)
-        snprintf(out, capacity, "'%c' (%u)", visual->fill_glyph,
-                 (unsigned)visual->fill_glyph);
-    else if (property == UI_MENU_PROPERTY_BORDER_ENABLED)
-        snprintf(out, capacity, "%s", visual->border_enabled ? "On" : "Off");
-    else if (property == UI_MENU_PROPERTY_BORDER_GLYPH)
-        snprintf(out, capacity, "'%c' (%u)", visual->border_glyph,
-                 (unsigned)visual->border_glyph);
-    else if (property == UI_MENU_PROPERTY_VISIBLE)
-        snprintf(out, capacity, "%s", visual->visible_by_default ? "On" : "Off");
-    else snprintf(out, capacity, "?");
-}
 
 static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
                                             Grid *grid) {
-    const UiMenuWorkspace *workspace = &editor->ui_menu_workspace;
-    SDL_Color fg = {220, 220, 220, 255};
-    SDL_Color bg = {0, 0, 0, 255};
-    SDL_Color dim = {150, 150, 150, 255};
-    SDL_Color hi = {120, 220, 160, 255};
-    SDL_Color warn = {220, 180, 80, 255};
-    char line[180];
-    int row = 1;
-    size_t i;
-    grid_clear(grid, bg);
-    grid_print(grid, 1, row++, "AUTHORED MENU WORKSPACE", fg, bg);
-    if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_CATALOG_FAILED)
-        grid_print(grid, 1, row++, "Menu catalog failed", warn, bg);
-    else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_LOAD_FAILED)
-        grid_print(grid, 1, row++, "Menu load failed: document is invalid", warn, bg);
-    else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_INVALID_NAME)
-        grid_print(grid, 1, row++, "Menu name is invalid or already exists", warn, bg);
-    else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_SAVE_FAILED)
-        grid_print(grid, 1, row++, "Menu save failed", warn, bg);
-    else if (editor->last_ui_menu_result ==
-             UI_MENU_WORKSPACE_OK_DURABILITY_WARNING)
-        grid_print(grid, 1, row++, "Menu saved; durability warning", warn, bg);
-    else if (editor->last_ui_menu_result == UI_MENU_WORKSPACE_MUTATION_FAILED ||
-             editor->last_ui_menu_result == UI_MENU_WORKSPACE_HISTORY_FULL)
-        grid_print(grid, 1, row++, "Menu change rejected", warn, bg);
-
-    if (workspace->mode == UI_MENU_WORKSPACE_CHOOSER) {
-        grid_print(grid, 1, row++, "PROJECT MENUS", fg, bg);
-        for (i = 0U; i < workspace->catalog.count; i++) {
-            const MapCatalogEntry *entry = map_catalog_get(&workspace->catalog, i);
-            snprintf(line, sizeof(line), " %s %s",
-                     workspace->chooser_index == i ? ">" : " ",
-                     entry ? entry->name : "?");
-            grid_print(grid, 1, row++, line,
-                       workspace->chooser_index == i ? hi : dim, bg);
-        }
-        snprintf(line, sizeof(line), " %s + Create new Menu",
-                 workspace->chooser_index == workspace->catalog.count ? ">" : " ");
-        grid_print(grid, 1, row++, line,
-                   workspace->chooser_index == workspace->catalog.count ? hi : dim, bg);
-        grid_print(grid, 1, grid->height - 1,
-                   "Up/Down=choose  Enter=open/create  Ctrl+U/Esc=close", dim, bg);
-        return;
+    UiEditorPresentationDiagnostics diagnostics = {0};
+    const char *flow_status = NULL;
+    Cell runtime_cells[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
+    uint8_t runtime_touched[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
+    UiCanvas runtime_canvas;
+    int runtime_width = editor->ui_menu_test_runtime.viewport_width;
+    int runtime_height = editor->ui_menu_test_runtime.viewport_height;
+    if (editor->ui_menu_test_reference_result != FLOW_REFERENCE_INVALID_ARGUMENT)
+        flow_status = editor_flow_reference_result(editor->ui_menu_test_reference_result);
+    if (editor->ui_menu_test_mode && runtime_width > 0 && runtime_height > 0 &&
+        runtime_width <= EDITOR_UI_PREVIEW_MAX_WIDTH &&
+        runtime_height <= EDITOR_UI_PREVIEW_MAX_HEIGHT) {
+        runtime_canvas = (UiCanvas){
+            runtime_width, runtime_height, runtime_cells, runtime_touched};
+        if (ui_menu_runtime_render(&editor->ui_menu_test_runtime, &runtime_canvas) ==
+            UI_MENU_RUNTIME_OK)
+            diagnostics.runtime_canvas = &runtime_canvas;
     }
-    if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME) {
-        snprintf(line, sizeof(line), "NEW MENU  Name: %s_", workspace->create_name);
-        grid_print(grid, 1, row++, line, hi, bg);
-        grid_print(grid, 1, row++,
-                   "Type identifier  Backspace=delete  Enter=create  Esc=back", dim, bg);
-        return;
-    }
-    if (workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
-        workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
-        workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME) {
-        snprintf(line, sizeof(line), "%s: %.155s_",
-                 workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT
-                     ? "EDIT CONTENT" : workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT
-                     ? "EDIT BUTTON PORT" : "RENAME ELEMENT",
-                 workspace->edit_text);
-        grid_print(grid, 1, row++, line, hi, bg);
-        grid_print(grid, 1, row++,
-                   "Type  Backspace=delete  Enter=commit  Esc=cancel", dim, bg);
-        return;
-    }
-    if (workspace->mode == UI_MENU_WORKSPACE_REPARENT) {
-        grid_print(grid, 1, row++, "REPARENT UNDER CONTAINER", fg, bg);
-        for (i = 0U; i < workspace->document.element_count; i++) {
-            const UiDocumentElement *candidate = &workspace->document.elements[i];
-            if (!ui_menu_workspace_reparent_target_available(workspace, i)) continue;
-            snprintf(line, sizeof(line), " %s [%u] %s",
-                     workspace->reparent_index == i ? ">" : " ",
-                     candidate->id, candidate->name);
-            grid_print(grid, 1, row++, line,
-                       workspace->reparent_index == i ? hi : dim, bg);
-        }
-        grid_print(grid, 1, row++, "Up/Down=parent Enter=commit Esc=actions", dim, bg);
-        return;
-    }
-    if (workspace->mode == UI_MENU_WORKSPACE_PREVIEW_SETTINGS) {
-        int width;
-        int height;
-        int scale = ui_menu_workspace_preview_scale_percent(workspace);
-        ui_menu_workspace_preview_dimensions(workspace, &width, &height);
-        grid_print(grid, 1, row++, "PREVIEW SETTINGS", fg, bg);
-        snprintf(line, sizeof(line), " %s Resolution  %dx%d logical",
-                 workspace->preview_field == UI_MENU_PREVIEW_FIELD_RESOLUTION ? ">" : " ",
-                 width, height);
-        grid_print(grid, 1, row++, line,
-                   workspace->preview_field == UI_MENU_PREVIEW_FIELD_RESOLUTION ? hi : dim, bg);
-        snprintf(line, sizeof(line), " %s UI scale    %d%%",
-                 workspace->preview_field == UI_MENU_PREVIEW_FIELD_SCALE ? ">" : " ", scale);
-        grid_print(grid, 1, row++, line,
-                   workspace->preview_field == UI_MENU_PREVIEW_FIELD_SCALE ? hi : dim, bg);
-        grid_print(grid, 1, row++, "Up/Down=field Left/Right=change Esc=actions", dim, bg);
-        return;
-    }
-    if (workspace->mode == UI_MENU_WORKSPACE_REMOVE_PROMPT) {
-        const UiDocumentElement *selected = ui_menu_workspace_selected_element(workspace);
-        snprintf(line, sizeof(line), "Remove %s%s?",
-                 selected ? selected->name : "selection",
-                 selected && selected->type == UI_DOCUMENT_ELEMENT_CONTAINER
-                    ? " and all descendants" : "");
-        grid_print(grid, 1, row++, line, warn, bg);
-        grid_print(grid, 1, row++, "Enter=remove  Esc=cancel", dim, bg);
-        return;
-    }
-    if (workspace->mode == UI_MENU_WORKSPACE_CLOSE_PROMPT) {
-        static const char *choices[] = {"Save", "Discard", "Cancel"};
-        grid_print(grid, 1, row++, "Unsaved Menu changes", warn, bg);
-        for (i = 0U; i < UI_MENU_CLOSE_COUNT; i++) {
-            snprintf(line, sizeof(line), " %s %s",
-                     workspace->close_choice == (UiMenuCloseChoice)i ? ">" : " ",
-                     choices[i]);
-            grid_print(grid, 1, row++, line,
-                       workspace->close_choice == (UiMenuCloseChoice)i ? hi : dim, bg);
-        }
-        grid_print(grid, 1, grid->height - 1,
-                   "Up/Down=choose  Enter=select  Esc=cancel", dim, bg);
-        return;
-    }
-    if (workspace->has_document) {
-        const UiDocumentElement *selected = ui_menu_workspace_selected_element(workspace);
-        int panel_width = 38;
-        int preview_x = panel_width + 2;
-        int preview_y = 3;
-        int preview_width;
-        int preview_height;
-        int selected_width;
-        int selected_height;
-        int preview_scale = ui_menu_workspace_preview_scale_percent(workspace);
-        Cell cells[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
-        uint8_t touched[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
-        UiCanvas canvas;
-        UiRenderElementState selected_state;
-        size_t state_count = 0U;
-        UiRenderResult render_result;
-        ui_menu_workspace_preview_dimensions(workspace, &selected_width, &selected_height);
-        preview_width = selected_width;
-        preview_height = selected_height;
-        if (preview_width > grid->width - preview_x - 1)
-            preview_width = grid->width - preview_x - 1;
-        if (preview_height > grid->height - preview_y - 2)
-            preview_height = grid->height - preview_y - 2;
-        snprintf(line, sizeof(line), "Menu:%s dirty:%s preview:%dx%d@%d%% %s",
-                 workspace->document.name,
-                 ui_menu_workspace_is_dirty(workspace) ? "yes" : "no",
-                 selected_width, selected_height, preview_scale,
-                 editor->ui_menu_test_mode ? "TEST" : "EDIT");
-        grid_print(grid, 1, row++, line, fg, bg);
-        if (editor->ui_menu_test_reference_result != FLOW_REFERENCE_INVALID_ARGUMENT) {
-            snprintf(line, sizeof(line), "FLOW: %s",
-                     editor_flow_reference_result(editor->ui_menu_test_reference_result));
-            grid_print(grid, 1, row++, line,
-                       editor->ui_menu_test_reference_result == FLOW_REFERENCE_OK ? hi : warn, bg);
-        }
-        if (editor->ui_menu_test_target_valid) {
-            snprintf(line, sizeof(line), "TARGET: %s:%s [%u]",
-                     editor_flow_node_type(editor->ui_menu_test_target_type),
-                     editor->ui_menu_test_target_name, editor->ui_menu_test_target_id);
-            grid_print(grid, 1, row++, line, hi, bg);
-            grid_print(grid, 1, row++, "(reported only; no target loaded)", hi, bg);
-        }
-        grid_print(grid, 1, row++, "HIERARCHY", fg, bg);
-        {
-            size_t hierarchy[UI_DOCUMENT_MAX_ELEMENTS];
-            size_t hierarchy_count = 0U;
-            size_t hierarchy_row;
-            if (!ui_menu_workspace_build_hierarchy(
-                    workspace, hierarchy, &hierarchy_count)) hierarchy_count = 0U;
-            for (hierarchy_row = 0U;
-                 hierarchy_row < hierarchy_count && row < grid->height - 8;
-                 hierarchy_row++) {
-                size_t document_index = hierarchy[hierarchy_row];
-                const UiDocumentElement *element =
-                    &workspace->document.elements[document_index];
-                size_t depth = editor_ui_element_depth(&workspace->document, element);
-                char label[96];
-                snprintf(label, sizeof(label), "[%u] %s:%s", element->id,
-                         editor_ui_element_type(element->type), element->name);
-                (void)ui_nested_inspector_format_row(line, sizeof(line),
-                    workspace->element_index == document_index, depth,
-                    document_index, label);
-                grid_print(grid, 1, row++, line,
-                           workspace->element_index == document_index ? hi : dim, bg);
-            }
-        }
-        if (selected) {
-            size_t first_property = 0U;
-            size_t shown = 0U;
-            size_t maximum_rows;
-            row++;
-            snprintf(line, sizeof(line), "SELECTED %s:%s",
-                     editor_ui_element_type(selected->type), selected->name);
-            grid_print(grid, 1, row++, line, fg, bg);
-            maximum_rows = row < grid->height - 2
-                ? (size_t)(grid->height - 2 - row) : 0U;
-            if (workspace->mode == UI_MENU_WORKSPACE_PROPERTIES &&
-                (size_t)workspace->property > maximum_rows / 2U)
-                first_property = (size_t)workspace->property - maximum_rows / 2U;
-            for (i = first_property; i < UI_MENU_PROPERTY_COUNT && shown < maximum_rows; i++) {
-                char value[32];
-                if (!ui_menu_workspace_property_available(workspace, (UiMenuProperty)i))
-                    continue;
-                editor_ui_property_value(value, sizeof(value), selected, (UiMenuProperty)i);
-                snprintf(line, sizeof(line), " %s %-12s %s",
-                         workspace->mode == UI_MENU_WORKSPACE_PROPERTIES &&
-                         workspace->property == (UiMenuProperty)i ? ">" : " ",
-                          editor_ui_property_name((UiMenuProperty)i), value);
-                grid_print(grid, 1, row++, line,
-                    workspace->mode == UI_MENU_WORKSPACE_PROPERTIES &&
-                    workspace->property == (UiMenuProperty)i ? hi : dim, bg);
-                shown++;
-            }
-        }
-        if (workspace->mode == UI_MENU_WORKSPACE_ACTIONS) {
-            static const char *action_names[] = {
-                "Properties", "Add Container", "Add Text", "Add Button",
-                "Edit content", "Edit flow port", "Remove", "Rename", "Reparent",
-                "Move Earlier", "Move Later", "Preview Settings", "Add Animation"
-            };
-            int action_row = 3;
-            int action_x = 20;
-            grid_print(grid, action_x, action_row++, "ACTIONS", fg, bg);
-            for (i = 0U; i < UI_MENU_ACTION_COUNT; i++) {
-                bool available = ui_menu_workspace_action_available(
-                    workspace, (UiMenuAction)i);
-                const char *unavailable = i == UI_MENU_ACTION_REPARENT && !available
-                    ? " (none)" : available ? "" : " (n/a)";
-                snprintf(line, sizeof(line), " %s %s%s",
-                    workspace->action_index == i ? ">" : " ", action_names[i],
-                    unavailable);
-                grid_print(grid, action_x, action_row++, line,
-                    workspace->action_index == i ? hi : dim, bg);
-            }
-        }
-        if (preview_width > EDITOR_UI_PREVIEW_MAX_WIDTH)
-            preview_width = EDITOR_UI_PREVIEW_MAX_WIDTH;
-        if (preview_height > EDITOR_UI_PREVIEW_MAX_HEIGHT)
-            preview_height = EDITOR_UI_PREVIEW_MAX_HEIGHT;
-        if (preview_width > 0 && preview_height > 0) {
-            canvas = (UiCanvas){preview_width, preview_height, cells, touched};
-            if (selected) {
-                selected_state = (UiRenderElementState){
-                    selected->id, true, false, false, true, true};
-                state_count = 1U;
-            }
-            if (editor->ui_menu_test_mode)
-                render_result = ui_menu_runtime_render(
-                    &editor->ui_menu_test_runtime, &canvas) == UI_MENU_RUNTIME_OK
-                    ? UI_RENDER_OK : UI_RENDER_INVALID_STATE;
-            else render_result = ui_render_document(&workspace->document, editor->assets,
-                    state_count ? &selected_state : NULL, state_count,
-                    &editor_ui_preview_theme, &canvas);
-            if (render_result == UI_RENDER_OK) {
-                int y;
-                int x;
-                for (y = 0; y < preview_height; y++)
-                    for (x = 0; x < preview_width; x++)
-                        if (ui_canvas_is_touched(&canvas, x, y)) {
-                            Cell cell = cells[(size_t)y * (size_t)preview_width + (size_t)x];
-                            (void)grid_set(grid, preview_x + x, preview_y + y,
-                                           cell.glyph, cell.fg, cell.bg);
-                        }
-                if (!editor->ui_menu_test_mode && selected && selected->id != 1U) {
-                    UiResolvedElement resolved[UI_DOCUMENT_MAX_ELEMENTS];
-                    size_t resolved_count = 0U;
-                    if (ui_layout_resolve(&workspace->document,
-                            preview_width, preview_height,
-                            resolved, &resolved_count) == UI_LAYOUT_RESOLVE_OK) {
-                        for (i = 0U; i < resolved_count; i++)
-                            if (resolved[i].element_id == selected->id &&
-                                resolved[i].rect.width > 0 && resolved[i].rect.height > 0) {
-                                int handle_x = resolved[i].rect.x + resolved[i].rect.width - 1;
-                                int handle_y = resolved[i].rect.y + resolved[i].rect.height - 1;
-                                if (handle_x >= resolved[i].clip.x &&
-                                    handle_y >= resolved[i].clip.y &&
-                                    handle_x < resolved[i].clip.x + resolved[i].clip.width &&
-                                    handle_y < resolved[i].clip.y + resolved[i].clip.height)
-                                    (void)grid_set(grid, preview_x + handle_x,
-                                                   preview_y + handle_y,
-                                                   (uint8_t)'+', hi, bg);
-                                break;
-                            }
-                    }
-                }
-            } else grid_print(grid, preview_x, preview_y,
-                              "Preview unavailable: invalid/missing visual asset", warn, bg);
-        }
-        grid_print(grid, 1, grid->height - 2,
-                   editor->ui_menu_test_mode
-                    ? "TEST: Arrows=focus Enter=activate Click=activate Esc/Tab=edit"
-                    : workspace->pointer_before
-                    ? "Drag=preview  Release=commit  Esc=cancel  +=resize handle"
-                    : workspace->mode == UI_MENU_WORKSPACE_PROPERTIES
-                    ? "Up/Down=property Left/Right=adjust Esc=hierarchy"
-                    : workspace->mode == UI_MENU_WORKSPACE_ACTIONS
-                    ? "Up/Down=action Enter=select Esc=hierarchy"
-                    : "Up/Down=element Enter=properties E=actions Backspace=remove Esc=menus",
-                   dim, bg);
-        grid_print(grid, 1, grid->height - 1,
-                   editor->ui_menu_test_mode
-                    ? "Target requests are reported only; no loading or graph rewrite"
-                    : "Tab=test Ctrl+Z/Y=undo/redo Ctrl+S=save Ctrl+U=back", dim, bg);
-    }
+    diagnostics.flow_status = flow_status;
+    diagnostics.target_type = editor_flow_node_type(editor->ui_menu_test_target_type);
+    diagnostics.target_name = editor->ui_menu_test_target_name;
+    diagnostics.target_id = editor->ui_menu_test_target_id;
+    diagnostics.test_mode = editor->ui_menu_test_mode;
+    diagnostics.target_valid = editor->ui_menu_test_target_valid;
+    (void)ui_editor_presentation_render(
+        &editor->ui_menu_workspace, editor->last_ui_menu_result,
+        editor->assets, &editor_ui_preview_theme, &diagnostics, 0.0, grid);
+    return;
 }
 
 void unified_editor_render_text_overlay(

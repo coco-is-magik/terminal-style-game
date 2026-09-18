@@ -666,6 +666,13 @@ Rollback: retain the existing Menu workspace behavior and do not route hosts to 
 
 ### Phase 4 — standalone editor host and host parity
 
+Status: **implemented; automated gates pass; manual acceptance pending.** `make ui-editor`, the
+standalone lifecycle shell, shared keyboard/pointer host adapter, and shared standalone/embedded
+presentation are implemented. Automated traces verify document, history, candidate, playback, and
+composed-cell parity. The named native 1920x1080 readability and smooth-interaction review has not
+yet been recorded, so Phase 5 must not begin. Evidence and the manual checklist are in
+`reviews/2026-09-18-ui-scene-phase4-standalone-host.md`.
+
 Required work:
 
 1. Add `make ui-editor` and its run mode.
@@ -886,17 +893,14 @@ These are narrow phase-entry decisions, not permission to reopen the one-system 
 
 ## Next safe implementation step
 
-**Phase 3 is complete and verified at the reusable-core boundary.** Proceed to Phase 4 without
-migrating application screens:
+**Phase 4 implementation and automated verification are complete, but its manual gate remains
+open.** Do not begin Phase 5 or migrate application screens. The next safe action is:
 
-1. add the standalone UI Scene editor host around the shared workspace, actions, and presentation;
-2. route embedded authoring through the shared presentation while preserving its characterized
-   labels, diagnostics, pointer geometry, and preview cells;
-3. prove standalone/embedded parity for document, history, candidate, playback, and preview state;
-4. preserve report-only typed requests so preview cannot load flow targets or execute system
-   actions;
-5. retain the legacy application path until later migration and rollback gates authorize its
-   replacement.
+1. run `make ui-editor` on a native 1920x1080 display;
+2. record readability of hierarchy, inspector, production preview, and footer;
+3. record smooth keyboard candidate/save/discard interaction and pointer move/resize/cancel;
+4. confirm preview scaling leaves chrome scale unchanged;
+5. after that evidence passes, mark Phase 4 complete and begin the bounded Phase 5 pause migration.
 
 ## Documentation lifecycle
 
