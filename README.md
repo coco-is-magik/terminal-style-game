@@ -171,20 +171,18 @@ and element transition presets use the same production/workbench evaluator for p
 center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
 See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
 
-To author staged `.tui` UI Scenes through the shared standalone/embedded editor core:
+The staged `.tui` UI Scene editor (`make ui-editor`) is **withdrawn and unratified**. Its
+presentation used hardcoded colours instead of the accepted palette, applied no preference or
+compositor scale (so its scale control only shrank the preview), overwrote its own footer line, and
+drew selection markers inside the authored preview. Its "host parity" tests compared one function
+against itself. The command still runs, but it is **not** an accepted interface and it is not the
+authoring path to use.
 
-```sh
-make ui-editor
-```
-
-The standalone editor opens the project UI Scene chooser. Up/Down navigates chooser, hierarchy,
-properties, actions, and prompts; Enter opens or confirms; E opens element actions; Left/Right
-adjusts ordinary properties or browses effect/Animation candidates; Backspace removes through a
-confirmation prompt; Ctrl+Z/Ctrl+Y undo and redo; Ctrl+S saves; Escape cancels the current mode or
-opens staged Save/Discard/Cancel when edits are dirty. Pointer selection, move, resize, commit, and
-cancel use the same workspace and presentation paths as embedded authoring. Preview resolution and
-scale affect only the production preview; editor chrome remains fixed. Unlike `make ui-workbench`,
-this editor does not immediately rewrite legacy application UI assets.
+Authoring work is governed by
+[`docs/APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](docs/APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md)
+and the binding
+[`docs/UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](docs/UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md).
+The current authoring path remains `make ui-workbench` above.
 
 make run
 make run-normal

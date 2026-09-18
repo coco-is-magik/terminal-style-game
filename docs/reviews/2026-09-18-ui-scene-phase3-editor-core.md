@@ -1,5 +1,18 @@
 # UI Scene Phase 3 — reusable editor core
 
+> ## ⚠️ WITHDRAWN — interface claim not supportable
+>
+> This record's claim that a reusable editor **interface** was implemented is withdrawn. The
+> presentation module that this record describes was a verbatim extraction of the pre-existing
+> cramped embedded view; it did not implement the hierarchy/inspector/preview/footer contract, pane
+> focus, overlay separation, or independent chrome/preview scale.
+>
+> What remains valid: the staged workspace, bounded history, candidate accept/cancel semantics, and
+> explicit playback state.
+>
+> Active plan: [`../APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](../APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md).
+> Binding direction: [`../UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](../UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md).
+
 Date: 2026-09-18
 
 ## Result

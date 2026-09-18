@@ -1,5 +1,22 @@
 # Unified UI Scene System and Editor — Requirements and Implementation Plan — 2026-09-17
 
+> ## ⚠️ WITHDRAWN — retained as reference only
+>
+> **This plan no longer authorises work.** Its Phase 3 and Phase 4 editor-interface statuses are
+> withdrawn: the interface requirements stated in this document were never implemented, and the
+> "implemented" claims for the standalone/embedded editor interface were not supportable.
+>
+> - Active plan: [`APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md)
+> - Binding look-and-feel authority: [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md)
+>
+> **Still valid here:** the migration inventory, the v4 schema decisions, the Phase 1/2 additive
+> seams, the ownership model, and the deferred migration phases (5-8) that the Step 2 plan will
+> revisit.
+>
+> **Withdrawn:** any claim that the UI Scene editor interface (hierarchy/inspector/preview/footer
+> presentation, host parity, preview scaling, playback controls) was implemented. Code created by
+> this plan remains in the tree, marked **unratified**.
+
 ## Status and authority
 
 **Approved architecture and phased implementation plan; not an implementation claim.**

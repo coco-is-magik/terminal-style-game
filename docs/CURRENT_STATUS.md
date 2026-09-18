@@ -107,14 +107,19 @@ Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.
 
-The active UI Scene migration plan is
-[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
-Phases 0-3 are verified. Phase 4 is implemented and all automated gates pass: `make ui-editor`
-opens the staged UI Scene chooser, standalone and embedded authoring share workspace, input adapter,
-and presentation, and keyboard/pointer traces match documents, history, candidates, playback, and
-composed cells. The required native 1920x1080 readability and smooth-interaction review remains
-pending, so Phase 4 is not formally complete and Phase 5 must not begin. See
-[`reviews/2026-09-18-ui-scene-phase4-standalone-host.md`](reviews/2026-09-18-ui-scene-phase4-standalone-host.md).
+**UI authoring authority (2026-09-18).** The active plan for application-UI authoring is
+[`APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md),
+with the binding look-and-feel direction in
+[`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). Step 1 evolves
+`make ui-workbench` in place into a complete, readable, palette- and motion-directed application-UI
+editor. The staged `.tui` UI Scene editor interface is **withdrawn and deferred to Step 2**: its
+presentation used hardcoded colours instead of the accepted palette, had no preference or compositor
+scale, overwrote its own footer line, drew selection markers inside the preview, and its "parity"
+tests compared one function against itself. The earlier
+[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md)
+is withdrawn and retained as reference. Its Phase 0-2 additive seams and the `ui_editor_*` /
+`ui_menu_workspace` code remain in the tree, marked unratified; no interface claim from Phases 3-4
+stands.
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;

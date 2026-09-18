@@ -18,19 +18,31 @@ only a small set of documents should be treated as current authority.
 - [`V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md`](V1_0_W1_WINDOWS_PLATFORM_CAPABILITY_DECISION_2026-09-14.md)
   — accepted filesystem, catalog, locale-number, UTF-8 path, commit-state, fault,
   migration, and native Windows verification boundaries for W2-W4.
+- [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) — **binding
+  look-and-feel authority.** The guiding star for every colour, animation, transition, and motion
+  decision. Cited by every phase that touches interface feel.
+- [`APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md)
+  — active Step 1 plan: evolve `make ui-workbench` into a complete, readable, palette- and
+  motion-directed application-UI editor; includes the anti-drift testing gates. Step 2 (reuse for the
+  in-project edit-mode editor) is a note only.
+- [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md)
+  — the implemented application-UI workbench: bounded contexts, immediate atomic element writes,
+  style/transition/effect presets, reusable animation units, shared scale preference. The proven
+  host pattern Step 1 builds on.
+- [`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md) and
+  [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
+  — the manually approved palette and D6 motion specimens. The reference the editor must match.
 - [`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md)
-  — approved authority for converging protected application UI and editable project UI on one
-  versioned UI Scene system and one reusable standalone/embedded editor core; Phase 4 automated
-  implementation passes and its manual native-display acceptance remains pending.
+  — **withdrawn**; retained as reference for the UI Scene migration inventory, v4 schema decisions,
+  Phase 0-2 additive seams, ownership model, and deferred migration phases 5-8. Its Phase 3-4
+  editor-interface claims do not stand.
 - [`reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md`](reviews/2026-09-17-ui-scene-phase0-baseline-and-decisions.md)
   — Phase 0 legacy migration inventory, v4 schema decisions, reusable renderer/runtime/workspace
-  baseline tests, failures, and Phase 1 entry boundary.
+  baseline tests, failures, and Phase 1 entry boundary. Still valid as reference.
 - [`reviews/2026-09-18-ui-scene-phase3-editor-core.md`](reviews/2026-09-18-ui-scene-phase3-editor-core.md)
-  — verified reusable UI Scene workspace, candidate/history semantics, explicit playback state,
-  shared actions and presentation, preserved embedded baselines, and Phase 4 host-parity handoff.
-- [`reviews/2026-09-18-ui-scene-phase4-standalone-host.md`](reviews/2026-09-18-ui-scene-phase4-standalone-host.md)
-  — standalone UI Scene editor route, shared host/presentation parity, automated evidence,
-  implementation corrections, and the still-required native 1920x1080 acceptance checklist.
+  and [`reviews/2026-09-18-ui-scene-phase4-standalone-host.md`](reviews/2026-09-18-ui-scene-phase4-standalone-host.md)
+  — **withdrawn with banners.** Their interface and host-parity claims are not supportable; the staged
+  workspace, history, candidate, and input-adapter seams they describe remain valid.
 - [`reviews/2026-09-14-v1-0-c1-final-newline-remediation.md`](reviews/2026-09-14-v1-0-c1-final-newline-remediation.md)
   — byte-exact first-party newline correction, pinned-SMC boundary, local verification,
   Docker/classifier failure, and required-profile handoff.

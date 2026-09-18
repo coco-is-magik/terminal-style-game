@@ -838,8 +838,12 @@ Production mirror changes remain conditional on a distinct failing reproduction.
 workbench formats remain blocked on the glyph model, although behavior characterization and
 headless painter-session extraction may proceed earlier under their own Q1 plan.
 
-The active UI Scene migration has verified Phases 0-3. Phase 4's standalone host and automated
-standalone/embedded parity are implemented and pass; its required native 1920x1080 readability and
-smooth-interaction acceptance remains pending. Phase 5 is blocked until that manual evidence is
-recorded under
-[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
+**UI authoring direction (2026-09-18).** The active authority for application-UI authoring is
+[`APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md),
+bound to the look-and-feel direction in
+[`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). Step 1 evolves
+`make ui-workbench` in place into a complete, readable, palette- and motion-directed application-UI
+editor, and builds its anti-drift gates first. The staged `.tui` UI Scene editor interface described
+by the 2026-09-17 plan is withdrawn: the plan is retained as reference only, and its Phase 3-4
+editor-interface claims do not stand. Migration phases 5-8 are deferred to a Step 2 plan that will
+reuse Step 1's interface contract and gates.

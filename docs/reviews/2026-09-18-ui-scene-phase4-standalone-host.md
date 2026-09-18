@@ -1,5 +1,23 @@
 # UI Scene Phase 4 — standalone host and host parity
 
+> ## ⚠️ WITHDRAWN — interface and parity claims not supportable
+>
+> This record's claims are withdrawn:
+>
+> - "**Shared hierarchy/inspector/preview/footer renderer**" — the shared module rendered the old
+>   cramped stacked layout with hardcoded colours, a two-row footer whose save/undo line was
+>   unconditionally overwritten, and a selection marker written inside the preview.
+> - "**Host parity coverage**" — the parity tests rendered both hosts through the *same function*
+>   and therefore could not detect an incorrect implementation.
+> - Preview scale did not work: the standalone host applied no compositor or preference scale, so
+>   the scale control only shrank the preview.
+>
+> What remains valid: the standalone lifecycle shell, the shared input-adapter seam, the staged
+> workspace, and the fail-safe Save/Discard-on-close behaviour.
+>
+> Active plan: [`../APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](../APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md).
+> Binding direction: [`../UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](../UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md).
+
 Date: 2026-09-18
 
 ## Status
