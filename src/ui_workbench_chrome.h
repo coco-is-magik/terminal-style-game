@@ -79,8 +79,22 @@ bool ui_workbench_chrome_pane_content_bounds(int pane, int grid_columns,
                                              int *out_height);
 bool ui_workbench_chrome_cell_in_preview(int x, int y, int grid_columns,
                                          int grid_rows);
-bool ui_workbench_chrome_blend_preview(Grid *grid, const UiCanvas *preview,
+bool ui_workbench_chrome_scale_preview_rows(UiCanvas *scaled,
+                                            const UiCanvas *authored,
+                                            int preview_rows, int scale_percent);
+bool ui_workbench_chrome_placement_cover_row(UiCanvas *expected,
+                                             const UiCanvas *authored,
+                                             int preview_space,
+                                             int scale_percent,
+                                             int footer_first_row);
+bool ui_workbench_chrome_blend_matches(const Grid *grid,
+                                       const UiCanvas *expected,
+                                       int preview_first_row,
                                        int preview_rows);
+bool ui_workbench_chrome_chrome_stable(const Grid *grid, int grid_columns,
+                                       int grid_rows, int preview_space);
+bool ui_workbench_chrome_blend_preview(Grid *grid, const UiCanvas *preview,
+                                       int preview_rows, int scale_percent);
 bool ui_workbench_chrome_default_left_focused(bool pointer_active,
                                               int pointer_column,
                                               int pointer_row);

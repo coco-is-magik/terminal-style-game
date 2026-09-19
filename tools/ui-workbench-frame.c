@@ -19,10 +19,16 @@ static int write_text_frame(const Grid *grid) {
     if (!grid || !grid->cells) return 1;
     for (y = 0; y < grid->height; y++) {
         for (x = 0; x < grid->width; x++) {
-            uint8_t glyph = grid->cells[(size_t)y * (size_t)grid->width +
-                                        (size_t)x]
-                                .glyph;
-            fputc((glyph >= 32 && glyph < 127) ? (int)glyph : ' ', stdout);
+            const Cell *cell = &grid->cells[(size_t)y * (size_t)grid->width +
+                                            (size_t)x];
+            uint8_t glyph = cell->glyph;
+            if (glyph >= 32 && glyph < 127) {
+                fputc((int)glyph, stdout);
+            } else if (glyph == 0) {
+                fputc('.', stdout);
+            } else {
+                fputc(' ', stdout);
+            }
         }
         fputc('\n', stdout);
     }

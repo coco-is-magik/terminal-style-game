@@ -93,6 +93,7 @@ static bool preview_focus_index(UiWorkbench *workbench, Grid *grid,
     UiElement *selected;
     if (!workbench || !workbench->layout || !grid || !palette) return false;
     selected = ui_workbench_current_element(workbench);
+    if (!selected) return true;
     count = ui_layout_focusable_count(workbench->layout);
     for (index = 0; index < count; index++) {
         if (ui_layout_get_focused(workbench->layout, index) == selected) {
@@ -105,11 +106,41 @@ static bool preview_focus_index(UiWorkbench *workbench, Grid *grid,
     return true;
 }
 
+static bool preview_render_into(const UiWorkbench *workbench, Grid *target,
+                               const UiAppWorkbenchPalette *palette,
+                               double elapsed_ms, bool reduced_motion) {
+    UiElement *element;
+    int x;
+    int y;
+    int width;
+    int height;
+    if (!workbench || !workbench->layout || !target || !target->cells ||
+        !palette) return false;
+    (void)grid_clear_region_zero(target, 0, 0, target->width, target->height);
+    ui_layout_set_focus((UiLayout *)workbench->layout,
+                        selected_focus_index(workbench));
+    ui_layout_render((UiLayout *)workbench->layout, target,
+                     palette->secondary_text, palette->canvas);
+    (void)ui_animation_render_layout((UiLayout *)workbench->layout, target,
+                                     elapsed_ms, reduced_motion, true,
+                                     UI_ANIMATION_EVENT_PREVIEW);
+    if (!preview_focus_index((UiWorkbench *)workbench, target, palette,
+                             elapsed_ms, reduced_motion)) return false;
+    element = ui_workbench_current_element((UiWorkbench *)workbench);
+    if (!element) return true;
+    if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
+        width <= 0 || height <= 0) return false;
+    if (y < 0 || y >= target->height) return false;
+    draw_selection(target, palette, element);
+    return true;
+}
+
 static bool compose_preview(UiWorkbench *workbench, Grid *grid,
                             const UiAppWorkbenchPalette *palette,
                             int scale_percent, double elapsed_ms,
                             bool reduced_motion) {
-    UiCanvas *canvas = NULL;
+    UiCanvas *authored = NULL;
+    Grid *staging = NULL;
     UiElement *element;
     int preview_rows;
     int footer_first = ui_workbench_chrome_footer_first_row(
@@ -121,29 +152,32 @@ static bool compose_preview(UiWorkbench *workbench, Grid *grid,
     if (preview_rows <= 0 ||
         preview_rows > footer_first - UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW)
         return false;
-    canvas = ui_canvas_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS,
-                              preview_rows);
-    if (!canvas) return false;
-    ui_layout_set_focus(workbench->layout,
-                        selected_focus_index(workbench));
-    ui_layout_render(workbench->layout, grid,
-                     palette->secondary_text, palette->canvas);
-    (void)ui_animation_render_layout(workbench->layout, grid, elapsed_ms,
-                                     reduced_motion, true,
-                                     UI_ANIMATION_EVENT_PREVIEW);
-    if (!preview_focus_index(workbench, grid, palette, elapsed_ms,
+    staging = grid_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS,
+                          footer_first - UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW);
+    if (!staging) return false;
+    if (!preview_render_into(workbench, staging, palette, elapsed_ms,
                              reduced_motion)) {
-        ui_canvas_destroy(canvas);
+        grid_destroy(staging);
         return false;
     }
     element = ui_workbench_current_element(workbench);
-    draw_selection(grid, palette, element);
-    ui_canvas_copy_grid_region(canvas, grid, 0, 0);
-    if (!ui_workbench_chrome_blend_preview(grid, canvas, preview_rows)) {
-        ui_canvas_destroy(canvas);
+    authored = ui_canvas_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS,
+                                footer_first -
+                                    UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW);
+    if (!authored) {
+        grid_destroy(staging);
         return false;
     }
-    ui_canvas_destroy(canvas);
+    ui_canvas_copy_grid_region(authored, staging, 0, 0);
+    if (!ui_workbench_chrome_blend_preview(grid, authored, preview_rows,
+                                           scale_percent)) {
+        ui_canvas_destroy(authored);
+        grid_destroy(staging);
+        return false;
+    }
+    (void)element;
+    ui_canvas_destroy(authored);
+    grid_destroy(staging);
     return true;
 }
 
@@ -189,92 +223,63 @@ bool ui_workbench_frame_render(UiWorkbenchFrameInput input) {
     return true;
 }
 
-bool ui_workbench_frame_preview_matches(Grid *grid,
-                                        const UiWorkbench *workbench,
+bool ui_workbench_frame_preview_matches(Grid *grid, UiWorkbench *workbench,
                                         const UiAppWorkbenchPalette *palette,
                                         int scale_percent, double elapsed_ms,
                                         bool reduced_motion) {
-    Grid full;
+    const int contract_columns = UI_WORKBENCH_FRAME_CONTRACT_COLUMNS;
+    const int contract_rows = UI_WORKBENCH_FRAME_CONTRACT_ROWS;
+    const int preview_first = UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW;
+    const int footer_first = contract_rows - UI_WORKBENCH_CHROME_FOOTER_ROWS;
     Grid *staging = NULL;
-    UiCanvas *canvas = NULL;
+    UiCanvas *authored = NULL;
     UiCanvas *expected = NULL;
-    UiElement *element;
+    int preview_space = footer_first - preview_first;
     int preview_rows;
-    int y;
-    int x;
     bool matches = false;
     if (!grid || !grid->cells || !workbench || !workbench->layout || !palette ||
         !ui_workbench_frame_contract_dimensions(grid->width, grid->height) ||
         !ui_preferences_is_valid_scale(scale_percent) || elapsed_ms < 0.0 ||
         elapsed_ms > 3600000.0) return false;
-    preview_rows = preview_scaled_rows(grid->height, scale_percent);
-    if (preview_rows <= 0 ||
-        preview_rows > grid->height - UI_WORKBENCH_CHROME_FOOTER_ROWS -
-                        UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW) return false;
-    staging = grid_create(grid->width, preview_rows);
+    if (preview_space <= 0 || preview_space > 10000) return false;
+    preview_rows = ui_workbench_chrome_preview_rows(contract_rows,
+                                                    scale_percent);
+    if (preview_rows <= 0 || preview_rows > preview_space) return false;
+    staging = grid_create(contract_columns, preview_space);
     if (!staging) return false;
-    canvas = ui_canvas_create(grid->width, preview_rows);
-    if (!canvas) {
+    if (!preview_render_into(workbench, staging, palette, elapsed_ms,
+                             reduced_motion)) {
         grid_destroy(staging);
         return false;
     }
-    expected = ui_canvas_create(grid->width, preview_rows);
+    authored = ui_canvas_create(contract_columns, preview_space);
+    if (!authored) {
+        grid_destroy(staging);
+        return false;
+    }
+    ui_canvas_copy_grid_region(authored, staging, 0, 0);
+    expected = ui_canvas_create(contract_columns, preview_space);
     if (!expected) {
-        ui_canvas_destroy(canvas);
+        ui_canvas_destroy(authored);
         grid_destroy(staging);
         return false;
     }
-    ui_layout_set_focus(workbench->layout,
-                        selected_focus_index(workbench));
-    full.width = grid->width;
-    full.height = grid->height;
-    full.cells = grid->cells;
-    full.prev_cells = NULL;
-    full.column_depths = NULL;
-    full.world_depths = NULL;
-    full.world_hit_keys = NULL;
-    full.overlay_depths = NULL;
-    ui_layout_render(workbench->layout, &full,
-                     palette->secondary_text, palette->canvas);
-    (void)ui_animation_render_layout(workbench->layout, &full, elapsed_ms,
-                                     reduced_motion, true,
-                                     UI_ANIMATION_EVENT_PREVIEW);
-    (void)ui_layout_render_focus_effect(
-        workbench->layout, selected_focus_index(workbench), &full, elapsed_ms,
-        reduced_motion, palette->accent, palette->focus, palette->canvas);
-    element = ui_workbench_current_element((UiWorkbench *)workbench);
-    draw_selection(&full, palette, element);
-    ui_canvas_copy_grid_region(canvas, &full, 0, 0);
-    ui_canvas_copy_grid_region(expected, grid,
-                               0, UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW);
-    for (y = 0; y < preview_rows && matches == false; y++) {
-        for (x = 0; x < grid->width; x++) {
-            const Cell *wanted =
-                &canvas->cells[(size_t)y * (size_t)grid->width + (size_t)x];
-            const Cell *composed = &expected->cells[(size_t)y *
-                                                    (size_t)grid->width +
-                                                    (size_t)x];
-            if (wanted->glyph != composed->glyph ||
-                wanted->fg.r != composed->fg.r ||
-                wanted->fg.g != composed->fg.g ||
-                wanted->fg.b != composed->fg.b ||
-                wanted->fg.a != composed->fg.a ||
-                wanted->bg.r != composed->bg.r ||
-                wanted->bg.g != composed->bg.g ||
-                wanted->bg.b != composed->bg.b ||
-                wanted->bg.a != composed->bg.a) {
-                ui_canvas_destroy(expected);
-                ui_canvas_destroy(canvas);
-                grid_destroy(staging);
-                return false;
-            }
-        }
+    if (!ui_workbench_chrome_scale_preview_rows(expected, authored,
+                                                preview_rows,
+                                                scale_percent)) {
+        ui_canvas_destroy(expected);
+        ui_canvas_destroy(authored);
+        grid_destroy(staging);
+        return false;
     }
-    matches = true;
+    matches = ui_workbench_chrome_blend_matches(grid, expected, preview_first,
+                                                preview_rows);
     ui_canvas_destroy(expected);
-    ui_canvas_destroy(canvas);
+    ui_canvas_destroy(authored);
     grid_destroy(staging);
-    return matches;
+    if (!matches) return false;
+    return ui_workbench_chrome_chrome_stable(grid, contract_columns,
+                                             contract_rows, preview_space);
 }
 
 bool ui_workbench_frame_copy_cells(const Grid *grid, Cell *out_cells,
@@ -308,13 +313,16 @@ uint64_t ui_workbench_frame_checksum_fixture(const Cell *cells,
 
 bool ui_workbench_frame_footer_distinct(const Grid *grid,
                                          bool *out_distinct) {
-    char status_head[97];
-    char control_head[97];
-    char diagnostic_head[97];
     SDL_Color status_fg;
     SDL_Color control_fg;
     SDL_Color diagnostic_fg;
     bool have_colors = false;
+    int status_length = 0;
+    int control_length = 0;
+    int diagnostic_length = 0;
+    int status_words = 0;
+    int control_words = 0;
+    int diagnostic_words = 0;
     int x;
     if (!grid || !grid->cells ||
         grid->width != UI_WORKBENCH_FRAME_CONTRACT_COLUMNS ||
@@ -330,9 +338,18 @@ bool ui_workbench_frame_footer_distinct(const Grid *grid,
         const Cell *diagnostic = &grid->cells[
             (size_t)(UI_WORKBENCH_FRAME_CONTRACT_ROWS - 1) *
             (size_t)grid->width + (size_t)x];
-        status_head[x] = (char)status->glyph;
-        control_head[x] = (char)control->glyph;
-        diagnostic_head[x] = (char)diagnostic->glyph;
+        if (status->glyph != ' ') {
+            status_length++;
+            status_words++;
+        }
+        if (control->glyph != ' ') {
+            control_length++;
+            control_words++;
+        }
+        if (diagnostic->glyph != ' ') {
+            diagnostic_length++;
+            diagnostic_words++;
+        }
         if (x == 1) {
             status_fg = status->fg;
             control_fg = control->fg;
@@ -340,12 +357,11 @@ bool ui_workbench_frame_footer_distinct(const Grid *grid,
             have_colors = true;
         }
     }
-    status_head[96] = '\0';
-    control_head[96] = '\0';
-    diagnostic_head[96] = '\0';
-    *out_distinct = strcmp(status_head, control_head) != 0 &&
-                    strcmp(status_head, diagnostic_head) != 0 &&
-                    strcmp(control_head, diagnostic_head) != 0 &&
+    *out_distinct = status_words >= 1 && control_words >= 1 &&
+                    diagnostic_words >= 1 &&
+                    status_length != control_length &&
+                    status_length != diagnostic_length &&
+                    control_length != diagnostic_length &&
                     have_colors &&
                     (status_fg.r != control_fg.r ||
                      status_fg.g != control_fg.g ||

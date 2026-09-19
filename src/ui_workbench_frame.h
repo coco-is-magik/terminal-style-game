@@ -45,8 +45,7 @@ typedef struct {
 const char *ui_workbench_frame_result_string(UiWorkbenchFrameResult result);
 bool ui_workbench_frame_contract_dimensions(int columns, int rows);
 bool ui_workbench_frame_contract_scale_policy(int scale_percent);
-bool ui_workbench_frame_preview_matches(Grid *grid,
-                                        const UiWorkbench *workbench,
+bool ui_workbench_frame_preview_matches(Grid *grid, UiWorkbench *workbench,
                                         const UiAppWorkbenchPalette *palette,
                                         int scale_percent, double elapsed_ms,
                                         bool reduced_motion);

@@ -1,15 +1,12 @@
 #include "ui_workbench_chrome.h"
 
 #include "checked_size.h"
+#include "ui_canvas.h"
 #include "ui_ele.h"
 #include "ui_preferences.h"
 #include "ui_theme.h"
 
 #include <stdio.h>
-#include <string.h>
-
-#include <stdio.h>
-#include <string.h>
 
 static bool pane_geometry(const UiThemeGeometry *geometry, int pane,
                           int grid_columns, int grid_rows, int *out_x,
@@ -42,10 +39,32 @@ static bool pane_geometry(const UiThemeGeometry *geometry, int pane,
 bool ui_workbench_chrome_paint_panes(Grid *grid,
                                      const UiAppWorkbenchPalette *palette,
                                      bool left_focused, bool right_focused) {
+    int pane;
+    bool focus[2];
+    int pane_x[2] = {0, 0};
+    int pane_y[2] = {0, 0};
+    int pane_width[2] = {0, 0};
+    int pane_height[2] = {0, 0};
     if (!grid || !grid->cells || !palette ||
         grid->width != UI_WORKBENCH_CHROME_COLUMNS ||
         grid->height != UI_WORKBENCH_CHROME_ROWS) return false;
     if (!left_focused && !right_focused) return false;
+    focus[0] = left_focused;
+    focus[1] = right_focused;
+    if (!ui_workbench_chrome_pane_content_bounds(0, grid->width, grid->height,
+                                                 &pane_x[0], &pane_y[0],
+                                                 &pane_width[0],
+                                                 &pane_height[0])) return false;
+    if (!ui_workbench_chrome_pane_content_bounds(1, grid->width, grid->height,
+                                                 &pane_x[1], &pane_y[1],
+                                                 &pane_width[1],
+                                                 &pane_height[1])) return false;
+    for (pane = 0; pane < 2; pane++) {
+        if (!ui_workbench_chrome_paint_panel(grid, palette, pane_x[pane],
+                                             pane_y[pane], pane_width[pane],
+                                             pane_height[pane],
+                                             focus[pane])) return false;
+    }
     return true;
 }
 
@@ -132,17 +151,179 @@ int ui_workbench_chrome_preview_rows(int grid_rows, int scale_percent) {
     return (preview_space * 100) / scale_percent;
 }
 
-bool ui_workbench_chrome_blend_preview(Grid *grid, const UiCanvas *preview,
+bool ui_workbench_chrome_scale_preview_rows(UiCanvas *scaled,
+                                            const UiCanvas *authored,
+                                            int preview_rows, int scale_percent) {
+    int source;
+    int row;
+    int column;
+    if (!scaled || !scaled->cells || !scaled->touched || !authored ||
+        !authored->cells || !authored->touched || preview_rows <= 0 ||
+        scale_percent < 100 || preview_rows > authored->height ||
+        scaled->width != authored->width || scaled->height <= 0 ||
+        authored->height <= 0 || scaled->width <= 0 ||
+        authored->width <= 0 || preview_rows > scaled->height) return false;
+    source = (authored->height * 100) / scale_percent;
+    if (source <= 0 || source > authored->height) return false;
+    ui_canvas_clear(scaled);
+    for (row = 0; row < preview_rows; row++) {
+        int sample = row < source ? row : source - 1;
+        if (sample < 0) sample = 0;
+        if (sample >= authored->height) sample = authored->height - 1;
+        for (column = 0; column < scaled->width; column++) {
+            if (ui_canvas_is_touched(authored, column, sample)) {
+                const Cell *picked =
+                    &authored->cells[(size_t)sample *
+                                         (size_t)authored->width +
+                                     (size_t)column];
+                (void)ui_canvas_set(scaled, column, row, picked->glyph,
+                                    picked->fg, picked->bg);
+            }
+        }
+    }
+    return true;
+}
+
+bool ui_workbench_chrome_placement_cover_row(UiCanvas *expected,
+                                             const UiCanvas *authored,
+                                             int preview_space,
+                                             int scale_percent,
+                                             int footer_first_row) {
+    int source;
+    int rows;
+    int row;
+    int column;
+    if (!expected || !expected->cells || !expected->touched || !authored ||
+        !authored->cells || !authored->touched || preview_space <= 0 ||
+        scale_percent < 100 ||
+        footer_first_row <= UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW ||
+        preview_space != authored->height ||
+        expected->width != authored->width || expected->height <= 0 ||
+        authored->height <= 0 || expected->width <= 0 ||
+        authored->width <= 0) return false;
+    rows = ui_workbench_chrome_preview_rows(
+        footer_first_row + UI_WORKBENCH_CHROME_FOOTER_ROWS, scale_percent);
+    if (rows <= 0 || rows > authored->height || rows > expected->height)
+        return false;
+    source = (authored->height * 100) / scale_percent;
+    if (source <= 0 || source > authored->height) return false;
+    ui_canvas_clear(expected);
+    for (row = 0; row < rows; row++) {
+        int sample = row < source ? row : source - 1;
+        if (sample < 0) sample = 0;
+        if (sample >= authored->height) sample = authored->height - 1;
+        for (column = 0; column < expected->width; column++) {
+            if (ui_canvas_is_touched(authored, column, sample)) {
+                const Cell *picked =
+                    &authored->cells[(size_t)sample *
+                                         (size_t)authored->width +
+                                     (size_t)column];
+                (void)ui_canvas_set(expected, column, row, picked->glyph,
+                                    picked->fg, picked->bg);
+            }
+        }
+    }
+    return true;
+}
+
+bool ui_workbench_chrome_chrome_stable(const Grid *grid, int grid_columns,
+                                       int grid_rows, int preview_space) {
+    int footer_first;
+    int row0;
+    int row1;
+    int row2;
+    int stable_x;
+    int stable_y;
+    int focus_r;
+    int focus_g;
+    int focus_b;
+    (void)preview_space;
+    if (!grid || !grid->cells || grid_columns != UI_WORKBENCH_CHROME_COLUMNS ||
+        grid_rows != UI_WORKBENCH_CHROME_ROWS) return false;
+    footer_first = ui_workbench_chrome_footer_first_row(grid_rows);
+    if (footer_first < 0) return false;
+    for (stable_y = 0; stable_y < UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW;
+         stable_y++) {
+        for (stable_x = 0; stable_x < grid_columns; stable_x++) {
+            if (grid->cells[(size_t)stable_y * (size_t)grid_columns +
+                            (size_t)stable_x]
+                    .glyph != 0) return false;
+        }
+    }
+    row0 = (int)grid->cells[(size_t)footer_first * (size_t)grid_columns + 1U]
+               .glyph;
+    row1 = (int)grid->cells[(size_t)(footer_first + 1) *
+                                (size_t)grid_columns +
+                            1U]
+               .glyph;
+    row2 = (int)grid->cells[(size_t)(footer_first + 2) *
+                                (size_t)grid_columns +
+                            1U]
+               .glyph;
+    if (row0 != 'U' && row0 != 'A') return false;
+    if (row1 == 0 || row2 == 0) return false;
+    focus_r =
+        (int)grid->cells[(size_t)footer_first * (size_t)grid_columns + 1U].fg.r;
+    focus_g =
+        (int)grid->cells[(size_t)footer_first * (size_t)grid_columns + 1U].fg.g;
+    focus_b =
+        (int)grid->cells[(size_t)footer_first * (size_t)grid_columns + 1U].fg.b;
+    if (focus_r == 0 && focus_g == 0 && focus_b == 0) return false;
+    return true;
+}
+
+bool ui_workbench_chrome_blend_matches(const Grid *grid,
+                                       const UiCanvas *expected,
+                                       int preview_first_row,
                                        int preview_rows) {
-    const UiThemePalette *tokens = &ui_theme_provisional_tokens()->palette;
+    int first = UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW;
+    int row;
+    int column;
+    if (!grid || !grid->cells ||
+        grid->width != UI_WORKBENCH_CHROME_COLUMNS ||
+        grid->height != UI_WORKBENCH_CHROME_ROWS || !expected ||
+        !expected->cells || !expected->touched ||
+        preview_first_row != first || preview_rows <= 0 ||
+        preview_rows > grid->height - UI_WORKBENCH_CHROME_FOOTER_ROWS -
+                            first ||
+        expected->width != grid->width || expected->height < preview_rows)
+        return false;
+    for (row = 0; row < preview_rows; row++) {
+        for (column = 0; column < grid->width; column++) {
+            const Cell *wanted =
+                &expected->cells[(size_t)row * (size_t)expected->width +
+                                 (size_t)column];
+            const Cell *composed = &grid->cells[(size_t)(first + row) *
+                                                    (size_t)grid->width +
+                                                (size_t)column];
+            if (wanted->glyph != composed->glyph ||
+                wanted->fg.r != composed->fg.r ||
+                wanted->fg.g != composed->fg.g ||
+                wanted->fg.b != composed->fg.b ||
+                wanted->fg.a != composed->fg.a ||
+                wanted->bg.r != composed->bg.r ||
+                wanted->bg.g != composed->bg.g ||
+                wanted->bg.b != composed->bg.b ||
+                wanted->bg.a != composed->bg.a) return false;
+        }
+    }
+    return true;
+}
+
+bool ui_workbench_chrome_blend_preview(Grid *grid, const UiCanvas *preview,
+                                       int preview_rows, int scale_percent) {
+    const UiAppWorkbenchPalette *owned = NULL;
+    UiAppWorkbenchPalette snapshot;
     int first = UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW;
     int y;
     int x;
     if (!grid || !grid->cells || grid->width != UI_WORKBENCH_CHROME_COLUMNS ||
         grid->height != UI_WORKBENCH_CHROME_ROWS || !preview || !preview->cells ||
-        preview_rows <= 0 ||
+        !ui_preferences_is_valid_scale(scale_percent) || preview_rows <= 0 ||
         preview_rows > grid->height - UI_WORKBENCH_CHROME_FOOTER_ROWS - first)
         return false;
+    if (!ui_app_theme_workbench_palette(&snapshot)) return false;
+    owned = &snapshot;
     for (y = 0; y < preview_rows; y++) {
         int cell_row = first + y;
         for (x = 0; x < grid->width; x++) {
@@ -153,14 +334,8 @@ bool ui_workbench_chrome_blend_preview(Grid *grid, const UiCanvas *preview,
                                                      grid->height)) continue;
             composed = *authored;
             if (composed.glyph == 0) {
-                composed.fg.r = tokens->text_secondary.red;
-                composed.fg.g = tokens->text_secondary.green;
-                composed.fg.b = tokens->text_secondary.blue;
-                composed.fg.a = tokens->text_secondary.alpha;
-                composed.bg.r = tokens->panel.red;
-                composed.bg.g = tokens->panel.green;
-                composed.bg.b = tokens->panel.blue;
-                composed.bg.a = tokens->panel.alpha;
+                composed.fg = owned->secondary_text;
+                composed.bg = owned->panel;
             }
             grid->cells[(size_t)cell_row * (size_t)grid->width + (size_t)x] =
                 composed;

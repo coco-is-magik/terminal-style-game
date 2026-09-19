@@ -163,6 +163,7 @@ static void test_footer_rows_stay_distinct_across_contexts(void **state) {
     for (index = 0U; index < sizeof(contexts) / sizeof(contexts[0U]); index++) {
         bool distinct = false;
         assert_true(open_fixture(&workbench, contexts[index]));
+        assert_non_null(workbench.layout);
         assert_true(distinct_footer(&workbench, grid, &palette, &distinct));
         assert_true(distinct);
     }
@@ -255,8 +256,14 @@ static void test_overlays_stay_outside_authored_cells(void **state) {
     Grid *grid;
     UiAppWorkbenchPalette palette;
     bool rendered = false;
-    int index;
+    UiElement *focused = NULL;
     SDL_Color selection;
+    int focus_x;
+    int focus_y;
+    int focus_width;
+    int focus_height;
+    Cell left_marker;
+    Cell right_marker;
     (void)state;
     ui_workbench_init(&workbench);
     grid = grid_create(UI_WORKBENCH_FRAME_TEST_COLUMNS,
@@ -264,60 +271,37 @@ static void test_overlays_stay_outside_authored_cells(void **state) {
     assert_non_null(grid);
     assert_true(ui_app_theme_workbench_palette(&palette));
     assert_true(open_fixture(&workbench, MENU_MAIN));
-    assert_true(render_fixture(&workbench, grid, &palette, 100, 0.0, &rendered));
-    assert_true(rendered);
     assert_true(ui_workbench_chrome_role_color(
         &palette, UI_WORKBENCH_CHROME_ROLE_ACCENT, &selection));
-    for (index = 0; index < workbench.layout->element_count; index++) {
-        UiElement *element = workbench.layout->elements[index];
-        int element_x;
-        int element_y;
-        int element_width;
-        int element_height;
-        if (!element) continue;
-        if (strcmp(element->name, workbench.layout->name) == 0) continue;
-        if (!ui_ele_absolute_bounds(element, &element_x, &element_y,
-                                    &element_width, &element_height))
-            continue;
-        if (element_x - 1 >= 0) {
-            const Cell *cell = &grid->cells[(size_t)element_y *
-                                            (size_t)grid->width +
-                                            (size_t)(element_x - 1)];
-            assert_true(cell->glyph != '<' && cell->glyph != '>' ? true :
-                        (cell->fg.r == selection.r &&
-                         cell->fg.g == selection.g &&
-                         cell->fg.b == selection.b &&
-                         cell->fg.a == selection.a));
-            if (cell->glyph != '>' && cell->glyph != '<' &&
-                cell->glyph != ' ') {
-                UiElement *focused =
-                    ui_layout_get_focused(workbench.layout, 0);
-                if (focused && focused == element) {
-                    assert_true(cell->fg.r == palette.primary_text.r ||
-                                cell->fg.r == palette.accent.r);
-                }
-            }
-        }
-        if (element_x + element_width < grid->width) {
-            const Cell *cell = &grid->cells[(size_t)element_y *
-                                            (size_t)grid->width +
-                                            (size_t)(element_x + element_width)];
-            assert_true(cell->glyph != '<' && cell->glyph != '>' ? true :
-                        (cell->fg.r == selection.r &&
-                         cell->fg.g == selection.g &&
-                         cell->fg.b == selection.b &&
-                         cell->fg.a == selection.a));
-            if (cell->glyph != '>' && cell->glyph != '<' &&
-                cell->glyph != ' ') {
-                UiElement *focused =
-                    ui_layout_get_focused(workbench.layout, 0);
-                if (focused && focused == element) {
-                    assert_true(cell->fg.r == palette.primary_text.r ||
-                                cell->fg.r == palette.accent.r);
-                }
-            }
-        }
-    }
+    assert_true(render_fixture(&workbench, grid, &palette, 100, 0.0, &rendered));
+    assert_true(rendered);
+    focused = ui_workbench_current_element(&workbench);
+    assert_non_null(focused);
+    assert_true(ui_ele_absolute_bounds(focused, &focus_x, &focus_y,
+                                       &focus_width, &focus_height));
+    assert_true(focus_width > 0 && focus_height > 0);
+    assert_true(focus_x - 1 >= 0);
+    assert_true(focus_x + focus_width < UI_WORKBENCH_FRAME_TEST_COLUMNS);
+    assert_true(focus_y >= UI_WORKBENCH_CHROME_PREVIEW_FIRST_ROW);
+    assert_true(ui_workbench_chrome_cell_in_preview(
+        focus_x - 1, focus_y, UI_WORKBENCH_FRAME_TEST_COLUMNS,
+        UI_WORKBENCH_FRAME_TEST_ROWS));
+    assert_true(ui_workbench_chrome_cell_in_preview(
+        focus_x + focus_width, focus_y, UI_WORKBENCH_FRAME_TEST_COLUMNS,
+        UI_WORKBENCH_FRAME_TEST_ROWS));
+    assert_true(grid_get(grid, focus_x - 1, focus_y + 1, &left_marker));
+    assert_true(grid_get(grid, focus_x + focus_width, focus_y + 1,
+                         &right_marker));
+    assert_int_equal(left_marker.glyph, '>');
+    assert_int_equal(right_marker.glyph, '<');
+    assert_int_equal(left_marker.fg.r, selection.r);
+    assert_int_equal(left_marker.fg.g, selection.g);
+    assert_int_equal(left_marker.fg.b, selection.b);
+    assert_int_equal(left_marker.fg.a, selection.a);
+    assert_int_equal(right_marker.fg.r, selection.r);
+    assert_int_equal(right_marker.fg.g, selection.g);
+    assert_int_equal(right_marker.fg.b, selection.b);
+    assert_int_equal(right_marker.fg.a, selection.a);
     grid_destroy(grid);
     ui_workbench_destroy(&workbench);
 }
@@ -411,6 +395,10 @@ static void test_pointer_pane_focus_is_visible_without_color(void **state) {
     int left_y;
     int left_width;
     int left_height;
+    int right_x;
+    int right_y;
+    int right_width;
+    int right_height;
     Cell left_corner;
     Cell right_corner;
     (void)state;
@@ -423,6 +411,9 @@ static void test_pointer_pane_focus_is_visible_without_color(void **state) {
     assert_true(ui_workbench_chrome_pane_content_bounds(
         0, UI_WORKBENCH_FRAME_TEST_COLUMNS, UI_WORKBENCH_FRAME_TEST_ROWS,
         &left_x, &left_y, &left_width, &left_height));
+    assert_true(ui_workbench_chrome_pane_content_bounds(
+        1, UI_WORKBENCH_FRAME_TEST_COLUMNS, UI_WORKBENCH_FRAME_TEST_ROWS,
+        &right_x, &right_y, &right_width, &right_height));
     input.grid = grid;
     input.workbench = &workbench;
     input.palette = &palette;
@@ -444,8 +435,7 @@ static void test_pointer_pane_focus_is_visible_without_color(void **state) {
     assert_int_equal(left_corner.fg.r, palette.accent.r);
     assert_true(ui_workbench_chrome_paint_panes(grid, &palette, false, true));
     assert_true(grid_get(grid, left_x, left_y, &left_corner));
-    assert_true(grid_get(grid, UI_WORKBENCH_FRAME_TEST_COLUMNS - 72, left_y,
-                         &right_corner));
+    assert_true(grid_get(grid, right_x, right_y, &right_corner));
     assert_int_equal(right_corner.glyph, '+');
     assert_int_equal(right_corner.fg.r, palette.accent.r);
     assert_true(ui_workbench_frame_render(input));

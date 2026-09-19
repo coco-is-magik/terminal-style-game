@@ -20,11 +20,13 @@
 #include "../src/ui_theme.h"
 #include "../src/ui_workbench.h"
 #include "../src/ui_workbench_chrome.h"
+#include "../src/ui_workbench_frame.h"
 #include "../src/ui_workbench_store.h"
 
 static void test_rejects_invalid_arguments(void **state) {
     UiAppWorkbenchPalette palette;
     Grid *grid;
+    UiCanvas *canvas;
     SDL_Color color;
     (void)state;
     assert_non_null(ui_app_theme_workbench_palette(&palette) ? &palette : NULL);
@@ -48,6 +50,25 @@ static void test_rejects_invalid_arguments(void **state) {
     assert_int_equal(ui_workbench_chrome_footer_first_row(120), -1);
     assert_int_equal(ui_workbench_chrome_left_pane_width(), 48);
     assert_int_equal(ui_workbench_chrome_right_pane_width(), 72);
+    canvas = ui_canvas_create(260, 156);
+    assert_non_null(canvas);
+    assert_false(ui_workbench_chrome_scale_preview_rows(NULL, canvas, 156,
+                                                        100));
+    assert_false(ui_workbench_chrome_scale_preview_rows(canvas, NULL, 156,
+                                                        100));
+    assert_false(ui_workbench_chrome_scale_preview_rows(canvas, canvas, 0,
+                                                        100));
+    assert_true(ui_workbench_chrome_scale_preview_rows(canvas, canvas, 156,
+                                                       100));
+    assert_false(ui_workbench_chrome_placement_cover_row(NULL, canvas, 156,
+                                                         100, 157));
+    assert_false(ui_workbench_chrome_placement_cover_row(canvas, NULL, 156,
+                                                         100, 157));
+    assert_true(ui_workbench_chrome_placement_cover_row(canvas, canvas, 156,
+                                                        100, 157));
+    assert_false(ui_workbench_chrome_blend_preview(NULL, canvas, 156, 100));
+    assert_false(ui_workbench_chrome_blend_matches(NULL, canvas, 1, 156));
+    ui_canvas_destroy(canvas);
     assert_false(ui_workbench_chrome_paint_panel(NULL, &palette, 0, 0, 10, 10,
                                                  false));
     grid = grid_create(260, 160);
@@ -153,11 +174,65 @@ static void test_footer_rows_render_identity_controls_diagnostics(void **state) 
     ui_workbench_destroy(&workbench);
 }
 
+static bool open_fixture(UiWorkbench *workbench, MenuId context) {
+    return workbench && ui_workbench_open(workbench, context) == UI_WORKBENCH_OK;
+}
+
+static bool render_fixture(UiWorkbench *workbench, Grid *grid,
+                           UiAppWorkbenchPalette *palette, int scale_percent,
+                           double elapsed_ms, bool *ok) {
+    UiWorkbenchFrameInput input = {grid,      workbench, palette,
+                                    scale_percent, elapsed_ms, false,
+                                    0,         0,         false};
+    bool rendered;
+    if (!ok) return false;
+    rendered = ui_workbench_frame_render(input);
+    *ok = rendered;
+    return rendered;
+}
+
+static void test_scaled_preview_keeps_authored_cells(void **state) {
+    UiWorkbench workbench;
+    Grid *grid;
+    UiAppWorkbenchPalette palette;
+    UiCanvas *authored;
+    UiCanvas *scaled;
+    Cell expect;
+    Cell actual;
+    bool rendered = false;
+    (void)state;
+    ui_workbench_init(&workbench);
+    grid = grid_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS,
+                       UI_WORKBENCH_FRAME_CONTRACT_ROWS);
+    assert_non_null(grid);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_true(open_fixture(&workbench, MENU_MAIN));
+    assert_true(render_fixture(&workbench, grid, &palette, 100, 0.0, &rendered));
+    assert_true(rendered);
+    authored = ui_canvas_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS, 156);
+    assert_non_null(authored);
+    scaled = ui_canvas_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS, 156);
+    assert_non_null(scaled);
+    ui_canvas_copy_grid_region(authored, grid, 0, 1);
+    assert_true(ui_workbench_chrome_scale_preview_rows(scaled, authored, 156,
+                                                       100));
+    assert_true(ui_canvas_is_touched(scaled, 2, 4));
+    assert_true(grid_get(grid, 2, 5, &actual));
+    expect = scaled->cells[4U * 260U + 2U];
+    assert_int_equal(actual.glyph, expect.glyph);
+    assert_int_equal(actual.fg.r, expect.fg.r);
+    ui_canvas_destroy(scaled);
+    ui_canvas_destroy(authored);
+    grid_destroy(grid);
+    ui_workbench_destroy(&workbench);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_rejects_invalid_arguments),
         cmocka_unit_test(test_all_role_colors_come_from_tokens),
         cmocka_unit_test(test_panels_use_token_borders_and_focus),
+        cmocka_unit_test(test_scaled_preview_keeps_authored_cells),
         cmocka_unit_test(test_footer_rows_render_identity_controls_diagnostics)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
