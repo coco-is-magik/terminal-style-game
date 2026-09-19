@@ -34,6 +34,7 @@ typedef struct {
     Grid *grid;
     const UiWorkbench *workbench;
     const UiAppWorkbenchPalette *palette;
+    const char *tooltip_text;
     int scale_percent;
     double elapsed_ms;
     bool reduced_motion;

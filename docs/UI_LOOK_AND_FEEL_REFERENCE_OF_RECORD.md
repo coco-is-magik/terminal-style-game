@@ -47,9 +47,29 @@ Related authority:
    default.** "It looked fine" is not a citation.
 4. Where this document and a dated plan disagree about look and feel, **this document wins.**
 
-Chrome colour, motion vocabulary, animation behaviour, and transition behaviour are **directed
-decisions, not open design problems.** They are not to be re-invented, re-derived, or "improved"
-in passing while doing something else.
+Editor-interface colour, motion vocabulary, animation behaviour, and transition behaviour are
+**directed decisions, not open design problems.** They are not to be re-invented, re-derived, or
+"improved" in passing while doing something else.
+
+## Terminology — plain words only
+
+This document names things literally. Earlier revisions used "chrome", which appears in none of the
+direction sources and reads as browser jargon.
+
+| Term used here | Means |
+|---|---|
+| **authored UI** | the `assets/ui_elements/` and `assets/ui_layouts/` content a user is editing, and its faithful preview (§4.1) |
+| **editor interface** | everything the editor itself draws that is not authored content: pane bodies and borders, footer rows, tooltips, status text, selection markers |
+| **editor surface** | the 260×160 cell area the editor composes into; the token names remain `editor_baseline_columns` / `editor_baseline_rows` |
+| **UI scale** | the shared `ui_preferences` setting, 100/125/150/200, applied through `ui_compositor` |
+| **headless frame renderer** | `src/ui_workbench_frame.c`, which composes a frame with explicit time and no display, so it can be checksummed and reviewed |
+| **matches normal run** | the preview renders the same cells normal run would (this replaces the word "parity") |
+| **acceptance check** | one of the named checks G1–G10 in the Step 1 plan |
+
+Code identifiers still use older names — `src/ui_workbench_chrome.h/.c`, `ui_workbench_chrome_*()`,
+`UI_WORKBENCH_CHROME_ROLE_*`, `test-ui-workbench-chrome`. Where this document or a plan names a file,
+target, or function, it uses the real identifier, because a document must never name something that
+does not exist. Identifier renaming is deferred, tracked separately, and is not a behaviour change.
 
 ---
 
@@ -191,15 +211,15 @@ directions to respect and extend. They must not be forked, bypassed, or re-imple
 
 | Foundation | Path | Rule |
 |---|---|---|
-| Accepted provisional palette + geometry tokens | [`../src/ui_theme.h`](../src/ui_theme.h) / [`../src/ui_theme.c`](../src/ui_theme.c) — `ui_theme_provisional_tokens()` | All chrome colour and spacing derives from here. **No literal colours in editor chrome.** |
-| Application palette adapter | [`../src/ui_app_theme_adapter.h`](../src/ui_app_theme_adapter.h) / `.c` | The only bridge from tokens to chrome. Extend it additively for the roles the editor needs. |
+| Accepted provisional palette + geometry tokens | [`../src/ui_theme.h`](../src/ui_theme.h) / [`../src/ui_theme.c`](../src/ui_theme.c) — `ui_theme_provisional_tokens()` | All editor-interface colour and spacing derives from here. **No literal colours in the editor interface.** |
+| Application palette adapter | [`../src/ui_app_theme_adapter.h`](../src/ui_app_theme_adapter.h) / `.c` | The only bridge from tokens to the editor interface. Extend it additively for the roles the editor needs. |
 | Accepted motion vocabulary + timings | [`../src/ui_motion.h`](../src/ui_motion.h) / `.c`, plus the `ui_theme` motion roles | Bounded vocabulary only. Deterministic, explicit time, stable IDs, exact endpoints. |
-| Compositor, canvas, scale policy | [`../src/ui_compositor.h`](../src/ui_compositor.h), [`../src/ui_canvas.h`](../src/ui_canvas.h) | Preview scales as a centred layer; chrome does not. |
+| Compositor, canvas, scale policy | [`../src/ui_compositor.h`](../src/ui_compositor.h), [`../src/ui_canvas.h`](../src/ui_canvas.h) | The preview **and** the editor interface both scale with the UI scale setting (100/125/150/200). Magnifying must never push the editor interface or a control off the visible surface, or hide it behind the preview. |
 | Shared UI scale preferences | [`../src/ui_preferences.h`](../src/ui_preferences.h) / `.c` | `default_user.ini` / `user.ini`, 100/125/150/200, same precedence and persistence as normal run. |
 | Shared animation evaluator | [`../src/ui_animation.h`](../src/ui_animation.h) / `.c` | **One evaluator for normal run and editor. A workbench-only renderer is forbidden.** |
 | Application UI model + atomic persistence | [`../src/ui_ele.h`](../src/ui_ele.h), [`../src/ui_workbench_store.h`](../src/ui_workbench_store.h), `platform_fs` | Validated same-directory temp file, flush, sync, atomic replace. Failure preserves both the file and the in-memory edit. |
 | Accepted diagnostic specimens | `make ui-theme-demo`, `make ui-motion-demo` ([`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md), [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)) | **Manually approved** palette and D6 motion references. The editor must look and move like these. |
-| Live application-UI editor | `make ui-workbench` ([`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md)) | The proven host pattern: adapter palette, offscreen canvas, centred scaled layer, fixed chrome, dedicated footer rows. |
+| Live application-UI editor | `make ui-workbench` ([`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md)) | The proven host pattern: adapter palette, offscreen canvas, one composited layer, dedicated footer rows. Scale treatment is corrected in §4.7 — the I1 host left the editor interface at a fixed 100%, which is superseded. |
 | Determinism harness pattern | `tests/benchmark_*.c`, `benchmark-*` / `stability-*` make targets | Determinism is proven by checksums and snapshots, never by prose. Reuse this pattern for frame gates. |
 | Visual direction source | [`inspiration_and_notes/`](inspiration_and_notes/) | The primary references in section 1. |
 
@@ -232,7 +252,7 @@ truth**; this table is the reference copy.
 
 | Role | Value | Intended use |
 |---|---|---|
-| `canvas` | `#05080A` | Chrome backdrop; the space behind everything |
+| `canvas` | `#05080A` | Editor-interface backdrop; the space behind everything |
 | `panel` | `#0D1418` | Pane bodies |
 | `elevated` | `#162126` | Focused pane, selected row, modal surface |
 | `text_primary` | `#F2F7F8` | Pane titles, active values |
@@ -262,14 +282,14 @@ Contrast floors enforced by `test-ui-theme`: text pairs **≥ 4.5**, non-text pa
 | `group_gap_cells` | 2 | Gap between groups |
 | `major_section_gap_cells` | 3 | Gap between major sections |
 | `border_cells` | 1 | Border thickness |
-| `editor_baseline_columns` | **260** | **The editor chrome baseline width** |
-| `editor_baseline_rows` | **160** | **The editor chrome baseline height** |
+| `editor_baseline_columns` | **260** | **The editor surface width** |
+| `editor_baseline_rows` | **160** | **The editor surface height** |
 | `authored_minimum_columns` | 40 | Minimum authored UI width |
 | `authored_minimum_rows` | 15 | Minimum authored UI height |
 | `ordinary_major_context_limit` | 2 | Ordinary major-context limit |
 
 `editor_baseline_columns`/`rows` matching the shipping `config.ini` `grid_width`/`grid_height`
-(260×160) is intentional: **the editor chrome is designed for the real display grid, not for a
+(260×160) is intentional: **the editor surface is designed for the real display grid, not for a
 small logical panel.**
 
 ## 3.3 Motion roles (D6)
@@ -297,14 +317,14 @@ The preview must use the **same rendering path as normal run**. The default view
 **near-full-size, faithful preview** of the authored UI. An editor that shows a small, scaled,
 approximate, or differently-coloured version of the user's UI violates the direction.
 
-## 4.2 White-dominant, selectively coloured chrome
+## 4.2 White-dominant, selectively coloured editor interface
 
 > "Use a white-dominant, selectively colored treatment for the everyday workbench, and give richer
 > chromatic activity substantial roles in live tools and visualizations."
 
-Editor chrome is restrained. `text_primary` carries the emphasis; `accent` and `focus` are used
-selectively for state, not as decoration. Rich chromatic activity belongs to the **preview, the
-live tool feedback, and the visualizations** — not to the chrome.
+Editor-interface colour is restrained. `text_primary` carries the emphasis; `accent` and `focus` are
+used selectively for state, not as decoration. Rich chromatic activity belongs to the **preview, the
+live tool feedback, and the visualizations** — not to the editor interface.
 
 ## 4.3 Preview-first, panes by progressive disclosure
 
@@ -334,7 +354,7 @@ the interface, not of the user.
 
 Recorded so they are never repeated:
 
-1. Hardcoded chrome colours instead of `ui_theme_provisional_tokens()`.
+1. Hardcoded editor-interface colours instead of `ui_theme_provisional_tokens()`.
 2. No `ui_preferences` and no compositor, so preview scale became a no-op that **shrank** the
    preview.
 3. A two-row footer where one row was **unconditionally overwritten**, so the save/undo hint was
@@ -347,7 +367,39 @@ Recorded so they are never repeated:
    detect a wrong implementation.
 8. Frame tests that asserted only the presence of a few strings anywhere on the grid.
 9. Declaring a phase "implemented" while deferring the only gate that could have rejected it.
-10. **The root cause: treating this document's direction as optional.**
+10. Leaving the editor interface permanently at 100% so the guidance text is too small to read at
+    1920×1080, while the preview beside it scales normally.
+11. **The root cause: treating this document's direction as optional.**
+
+## 4.7 The workbench interface scales; the authored preview does not follow it
+
+The workbench UI scale setting is a **readability control for the tool itself**, not a zoom for the
+thing being edited. A 1920×1080 display shows the 260×160 surface larger than one person can
+comfortably read, so the workbench interface — pane borders, footer rows, tooltips, status text —
+scales with the `ui_preferences` setting, through the compositor, at the same 100/125/150/200
+presets as normal run.
+
+The authored preview is the thing being edited. It must stay a **faithful copy of the authored UI
+at a fixed preview scale**, independent of the workbench interface scale. Changing the workbench
+interface scale must never resize, recolour, or reflow the authored preview. Any future preview
+zoom is a separate, explicitly named control — not the workbench UI scale.
+
+Two hard constraints, both from §4.4's "nothing displaces or obscures a control":
+
+1. **Nothing leaves the surface.** At 200% a magnified row occupies two source rows, so half as many
+   rows fit. The workbench interface must claim the room it needs — more footer rows, narrower panes —
+   rather than let labels run past the edge or off-screen.
+2. **Nothing is hidden or truncated.** Guidance text that does not fit one magnified row wraps to
+   the next. Being unable to read it is the defect this section exists to prevent, so shrinking the
+   text, dropping it, or clipping it instead of wrapping is not an acceptable resolution.
+
+**Correction recorded 2026-09-19.** Earlier revisions of §2 and of the Step 1 plan stated that the
+editor interface "never scales". A later 2026-09-18 correction stated that the preview and editor
+interface "both obey the shared UI scale" — that coupled the tool to the thing being edited, which
+is also wrong. Both wordings are superseded by this section: the workbench interface scales
+independently; the authored preview stays faithful at its own fixed scale. The word "chrome" is also
+retired: it appears in none of the direction sources, and it is replaced throughout this document by
+"workbench interface" or "editor interface" so that the tool and the authored UI cannot be confused.
 
 ---
 
@@ -364,7 +416,8 @@ Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §<n>[.<m>] — <th
 
 Worked examples:
 
-- Replacing chrome literals with tokens → `§2 (existing foundation: palette adapter), §3.1 (palette roles), §4.2 (white-dominant chrome)`
+- Replacing editor-interface literals with tokens → `§2 (existing foundation: palette adapter), §3.1 (palette roles), §4.2 (white-dominant editor interface)`
+- Correcting interface scale → `§4.7 (the editor interface obeys the same UI scale as everything else)`
 - Adding a context-enter transition → `§1.2 (glyph reassembly: precision → disorder → precision), §3.3 (MAJOR_ENTER 160 ms), §4.4 (motion budget)`
 - Adding in-editor tooltips → `§4.5 (guidance lives inside the editor)`
 
@@ -375,7 +428,7 @@ isolation:
 
 1. A change touching colour, motion, animation, transition, or interface feel with **no §
    citation**.
-2. A new hardcoded colour in editor chrome.
+2. A new hardcoded colour in the editor interface.
 3. A new motion treatment outside the bounded vocabulary or outside the 80/160/120/120 ms roles.
 4. Any motion that displaces, obscures, or delays a control, focus marker, or hit target.
 5. Any animation that reads as a global/persistent glitch or as a filter over the interface.

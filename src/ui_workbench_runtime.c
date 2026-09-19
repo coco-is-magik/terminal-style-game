@@ -9,6 +9,7 @@
 #include "ui_preferences.h"
 #include "ui_workbench.h"
 #include "ui_workbench_chrome.h"
+#include "ui_workbench_guide.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -31,23 +32,60 @@ static void draw_selection(Grid *grid, const UiAppWorkbenchPalette *palette,
     (void)grid_set(grid, x + width, y, '<', color, bg);
 }
 
-static int selected_focus_index(UiWorkbench *workbench) {
+static int selected_focus_index(const UiWorkbench *workbench) {
     int i;
     int count;
     UiElement *selected;
     if (!workbench || !workbench->layout) return -1;
-    selected = ui_workbench_current_element(workbench);
+    selected = ui_workbench_current_element((UiWorkbench *)workbench);
     count = ui_layout_focusable_count(workbench->layout);
     for (i = 0; i < count; i++)
         if (ui_layout_get_focused(workbench->layout, i) == selected) return i;
     return -1;
 }
 
-static void draw_help(Grid *grid, const UiWorkbench *workbench,
-                      const UiAppWorkbenchPalette *palette, int scale_percent) {
-    if (!grid || !workbench || !palette) return;
+bool ui_workbench_runtime_compose_footer_canvas(UiCanvas *canvas, Grid *grid,
+                                                const UiWorkbench *workbench,
+                                                const UiAppWorkbenchPalette *palette,
+                                                const char *tooltip_text,
+                                                int scale_percent,
+                                                bool reduced_motion) {
+    int footer_first;
+    if (!canvas || !canvas->cells || !grid || !grid->cells || !workbench ||
+        !workbench->layout || !palette || !ui_preferences_is_valid_scale(scale_percent) ||
+        canvas->width != grid->width ||
+        canvas->height != UI_WORKBENCH_CHROME_FOOTER_ROWS) return false;
+    footer_first = ui_workbench_chrome_footer_first_row(grid->height);
+    if (footer_first < 0) return false;
+    (void)grid_clear_region_zero(grid, 0, 0, grid->width, grid->height);
     (void)ui_workbench_chrome_footer_rows(grid, palette, workbench,
-                                          scale_percent, false);
+                                          tooltip_text, scale_percent,
+                                          reduced_motion);
+    ui_canvas_copy_grid_region(canvas, grid, 0, footer_first);
+    return true;
+}
+
+bool ui_workbench_runtime_build_layers(UiLayerList *layers,
+                                       const UiCanvas *preview_canvas,
+                                       const UiCanvas *footer_canvas,
+                                       int logical_w, int logical_h) {
+    UiLayer preview_layer;
+    UiLayer footer_layer;
+    if (!layers || !preview_canvas || !preview_canvas->cells || !footer_canvas ||
+        !footer_canvas->cells || logical_w <= 0 || logical_h <= 0) return false;
+    ui_layer_list_clear(layers);
+    preview_layer = (UiLayer){
+        1, preview_canvas, UI_ANCHOR_CENTER,
+        {0, 0, logical_w, logical_h},
+        UI_SCALE_FIXED_100, 100, 1, true, 0U
+    };
+    footer_layer = (UiLayer){
+        2, footer_canvas, UI_ANCHOR_BOTTOM_LEFT,
+        {0, 0, logical_w, logical_h},
+        UI_SCALE_INHERIT_GLOBAL, 100, 2, true, 0U
+    };
+    if (!ui_layer_list_add(layers, &preview_layer)) return false;
+    return ui_layer_list_add(layers, &footer_layer);
 }
 
 static void set_scale_status(UiWorkbench *workbench,
@@ -65,8 +103,10 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
                                                    int target_fps) {
     UiWorkbench workbench;
     UiAppWorkbenchPalette palette;
+    UiWorkbenchGuide guide;
     InputState input = {0};
-    UiCanvas *canvas;
+    UiCanvas *preview_canvas;
+    UiCanvas *footer_canvas;
     UiPreferences preferences;
     bool should_exit = false;
     double target_ms;
@@ -78,15 +118,23 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         ui_workbench_destroy(&workbench);
         return UI_WORKBENCH_RUNTIME_LOAD_FAILED;
     }
+    if (ui_workbench_guide_load(&guide, "assets/editor_tooltips.txt") !=
+        UI_WORKBENCH_GUIDE_OK) {
+        ui_workbench_destroy(&workbench);
+        return UI_WORKBENCH_RUNTIME_LOAD_FAILED;
+    }
     ui_preferences_init(&preferences, "default_user.ini", "user.ini");
     if (preferences.default_load_result != UI_PREFERENCES_IO_OK)
         fprintf(stderr, "UI preferences: default_user.ini invalid or missing; using 150%% fallback\n");
     if (preferences.user_load_result == UI_PREFERENCES_IO_INVALID ||
         preferences.user_load_result == UI_PREFERENCES_IO_FAILED)
         fprintf(stderr, "UI preferences: user.ini invalid; using immutable default\n");
-    canvas = ui_canvas_create(grid->width, grid->height);
-    if (!canvas) {
-        ui_canvas_destroy(canvas);
+    preview_canvas = ui_canvas_create(grid->width, grid->height);
+    footer_canvas = ui_canvas_create(grid->width, UI_WORKBENCH_CHROME_FOOTER_ROWS);
+    if (!preview_canvas || !footer_canvas) {
+        ui_workbench_guide_destroy(&guide);
+        ui_canvas_destroy(preview_canvas);
+        ui_canvas_destroy(footer_canvas);
         ui_workbench_destroy(&workbench);
         return UI_WORKBENCH_RUNTIME_RENDER_FAILED;
     }
@@ -99,7 +147,6 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         double frame_ms;
         uint32_t sleep_ms;
         UiLayerList layers;
-        UiLayer layer;
         input_process(&input, false);
         if (input.esc && workbench.mode != UI_WORKBENCH_MODE_BROWSE)
             ui_workbench_cancel_mode(&workbench);
@@ -158,17 +205,26 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
             palette.primary_text, palette.border, palette.canvas);
         element = ui_workbench_current_element(&workbench);
         draw_selection(grid, &palette, element);
-        ui_canvas_copy_grid_region(canvas, grid, 0, 0);
+        ui_canvas_copy_grid_region(preview_canvas, grid, 0, 0);
+        if (!ui_workbench_runtime_compose_footer_canvas(
+                footer_canvas, grid, &workbench, &palette,
+                ui_workbench_guide_tooltip(&guide, &workbench),
+                ui_preferences_scale(&preferences), false)) {
+            ui_workbench_guide_destroy(&guide);
+            ui_canvas_destroy(preview_canvas);
+            ui_canvas_destroy(footer_canvas);
+            ui_workbench_destroy(&workbench);
+            return UI_WORKBENCH_RUNTIME_RENDER_FAILED;
+        }
         grid_clear(grid, palette.canvas);
-        draw_help(grid, &workbench, &palette, ui_preferences_scale(&preferences));
         ui_layer_list_clear(&layers);
-        layer = (UiLayer){
-            1, canvas, UI_ANCHOR_CENTER,
-            {0, 0, renderer->logical_w, renderer->logical_h},
-            UI_SCALE_INHERIT_GLOBAL, 100, 1, true, 0U
-        };
-        if (!ui_layer_list_add(&layers, &layer)) {
-            ui_canvas_destroy(canvas);
+        if (!ui_workbench_runtime_build_layers(&layers, preview_canvas,
+                                               footer_canvas,
+                                               renderer->logical_w,
+                                               renderer->logical_h)) {
+            ui_workbench_guide_destroy(&guide);
+            ui_canvas_destroy(preview_canvas);
+            ui_canvas_destroy(footer_canvas);
             ui_workbench_destroy(&workbench);
             return UI_WORKBENCH_RUNTIME_RENDER_FAILED;
         }
@@ -179,7 +235,9 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         sleep_ms = timing_sleep_ms(timing_spare_ms(frame_ms, target_ms));
         if (sleep_ms > 0U) SDL_Delay(sleep_ms);
     }
-    ui_canvas_destroy(canvas);
+    ui_workbench_guide_destroy(&guide);
+    ui_canvas_destroy(preview_canvas);
+    ui_canvas_destroy(footer_canvas);
     ui_workbench_destroy(&workbench);
     return UI_WORKBENCH_RUNTIME_OK;
 }

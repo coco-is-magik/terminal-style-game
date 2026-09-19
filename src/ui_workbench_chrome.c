@@ -469,9 +469,11 @@ bool ui_workbench_chrome_paint_panel(Grid *grid,
 bool ui_workbench_chrome_footer_rows(Grid *grid,
                                      const UiAppWorkbenchPalette *palette,
                                      const UiWorkbench *workbench,
+                                     const char *tooltip_text,
                                      int scale_percent,
                                      bool reduced_motion) {
     char line[256];
+    char status[224];
     UiElement *element;
     const char *add_source;
     int footer_first;
@@ -510,7 +512,20 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
                    "Preview metadata only: input_hold_short has no production execution",
                    palette->secondary_text, palette->canvas);
     } else {
-        grid_print(grid, 1, footer_first + 2, workbench->status,
+        (void)snprintf(status, sizeof(status), "%s", workbench->status);
+        if (tooltip_text && tooltip_text[0] != '\0') {
+            size_t used = strlen(status);
+            size_t room = sizeof(status) > used + 3U
+                ? sizeof(status) - used - 3U
+                : 0U;
+            if (room > 0U) {
+                size_t take = strlen(tooltip_text);
+                if (take > room) take = room;
+                (void)snprintf(status + used, sizeof(status) - used, " | %.*s",
+                               (int)take, tooltip_text);
+            }
+        }
+        grid_print(grid, 1, footer_first + 2, status,
                    palette->secondary_text, palette->canvas);
     }
     return true;

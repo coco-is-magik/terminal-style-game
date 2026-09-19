@@ -333,7 +333,7 @@ merging editor UI and authored game UI.
 
 1. Define semantic color, spacing, density, typography, border, focus, contrast,
    warning/error/success, and motion-policy values.
-2. Give editor chrome a crisp grid-aligned, white-dominant, selectively saturated,
+2. Give the editor interface a crisp grid-aligned, white-dominant, selectively saturated,
    terminal-retrofuturist default with legibility ahead of decoration.
 3. Offer the same language as an authored-game template while preserving explicit
    author control.

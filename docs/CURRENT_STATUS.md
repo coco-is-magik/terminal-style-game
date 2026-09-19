@@ -83,8 +83,8 @@ local glitch use one shared normal/workbench evaluator with context/focus/activa
 triggers, orientation, loop, deterministic bounded random placement, and Reduced Motion.
 `input_hold_short` remains non-production. The preview loads and persists the same
 `default_user.ini` / `user.ini`
-100%, 125%, 150%, and 200% scale preference as normal run. Only the application UI preview is
-scaled; workbench instructions remain fixed and visible. Eighteen UI standards owners, the
+100%, 125%, and 200% scale preference as normal run. The application UI preview stays at a
+fixed faithful scale, while the workbench instructions use the workbench UI scale and remain visible. Eighteen UI standards owners, the
 complete functional aggregate,
 cppcheck/inventory/structure checks, strict default/no-tracker builds, ASan, and UBSan pass.
 See [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).
@@ -134,8 +134,8 @@ the frozen contract frame artifact is accepted — after which A2 may begin.
 
 **Step 1 A2 close-out (2026-09-18).** Phase A2's code deliverables are implemented and verified
 (see [`reviews/2026-09-18-application-ui-editor-a2-chrome-rebase.md`](reviews/2026-09-18-application-ui-editor-a2-chrome-rebase.md)):
-`UiAppWorkbenchPalette` now carries the full chrome role set additively; `ui_workbench_chrome`
-is the single owner of chrome geometry and token roles; both the live runtime and the headless
+`UiAppWorkbenchPalette` now carries the full editor-interface role set additively; `ui_workbench_chrome`
+is the single owner of editor-interface geometry and token roles; both the live runtime and the headless
 oracle compose footer and selection through it with all overlays token-derived and outside authored
 bounds. Five contract checksums were refreshed with explicit review. Broad gates pass: complete
 `make test` with no failures, `make test-ui-standards` with all twenty UI rule owners (including

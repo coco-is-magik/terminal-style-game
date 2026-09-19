@@ -39,8 +39,8 @@ routine authoring direct without scripting.
 ```text
 Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1 (primary references),
 §2 (existing foundation), §2.1 (accepted motion boundary), §3 (accepted values),
-§4.1 (faithful preview), §4.2 (white-dominant chrome), §4.3 (preview-first),
-§4.4 (motion budget), §4.5 (guidance lives inside the editor).
+§4.1 (faithful preview), §4.2 (white-dominant editor interface), §4.3 (preview-first),
+§4.4 (motion budget), §4.5 (guidance lives inside the editor), §4.7 (shared UI scale).
 ```
 
 ---
@@ -83,7 +83,7 @@ playback/renderer seams remain in the tree, marked **unratified**, as that plan'
 ## 2. Why the previous attempt failed (cautionary record)
 
 The prior work built a sound data architecture and then implemented its editor interface against
-**none** of the reference of record: hardcoded chrome colours instead of the accepted palette; no
+**none** of the reference of record: hardcoded editor-interface colours instead of the accepted palette; no
 `ui_preferences` and no compositor, so preview scale was a no-op that **shrank** the preview; a
 two-row footer with one row unconditionally overwritten; a selection marker written **inside** the
 preview; a hardcoded preview origin ignoring `editor_baseline` and panel geometry. It self-certified
@@ -108,10 +108,11 @@ The full anti-pattern list is recorded in the reference of record §4.6.
 
 1. **End-to-end workflow.** Launch → choose context → edit → save → reload works, with no world or
    project initialisation.
-2. **Readable at 1920×1080 without leaning in.** Token-derived chrome, clear panel and border
+2. **Readable at 1920×1080 without leaning in.** Token-derived editor interface, clear panel and border
    division, pane focus visible without relying on colour alone.
-3. **Faithful preview.** Identical rendering path to normal run. Scale changes preview size only,
-   never chrome, and matches the persisted preference.
+3. **Faithful preview.** Identical rendering path to normal run. The workbench interface obeys
+   its own UI scale preference, while the authored preview stays at a fixed faithful scale and is
+   never resized by workbench scale changes.
 4. **Complete authoring.** Every field a user needs for Container / Text / Button / animation unit is
    reachable. Enumerated values are browsed, not typed. Add, clone, remove, and context-switch are
    unambiguous and reversible. Overlays never damage authored cells.
@@ -158,7 +159,7 @@ three-row `draw_help` footer. **Phase A2 refreshed these checksums with explicit
 markers and their edge now use the `accent` token on `canvas` instead of the provisional
 `border`-on-black, so every overlay colour is token-derived and outside authored bounds.
 The oracle (`src/ui_workbench_frame.c`) reproduces today's display
-composition before the chrome re-base: same preview, focus-effect, selection, and help text, with
+composition before the editor-interface re-base: same preview, focus-effect, selection, and help text, with
 `SDL_GetTicks()` replaced by explicit `elapsed_ms`.
 
 ```text
@@ -171,12 +172,12 @@ checksum confirm@100/0ms = 8315436846210167558
 footer rows              = status | controls | diagnostics (distinct, never overwritten)
 controls row             = "Up/Down element | Enter move | arrows move | Tab property | [ or ] value | Ctrl+N add | Backspace remove | Ctrl+Left/Right layout | Esc exit"
 selection markers        = '>' and '<' outside authored bounds
-chrome                   = UiAppWorkbenchPalette (primary_text, secondary_text, canvas, border)
+editor interface         = UiAppWorkbenchPalette (primary_text, secondary_text, canvas, border)
 ```
 
 The preview uses the same `ui_layout_render` + `ui_animation_render_layout` +
 `ui_layout_render_focus_effect` path as the live `ui-workbench` host, on `palette.canvas`, with
-focus effects driven by explicit time. A1 freezes this geometry. Any later chrome change (panes,
+focus effects driven by explicit time. A1 freezes this geometry. Any later editor-interface change (panes,
 roles, footer content) must refresh these checksums only with an explicit review, never silently.
 
 ### 5.1 Composition
@@ -187,14 +188,14 @@ roles, footer content) must refresh these checksums only with an explicit review
   inspector pane appear while editing and collapse back to preview-first.
 - **Pane geometry derives from tokens** (`panel_inset_cells` 2, `border_cells` 1, `group_gap_cells`
   2, `major_section_gap_cells` 3, `base_space_cells` 1, `horizontal_label_padding_cells` 2).
-- **Chrome spans the 260×160 baseline** (`editor_baseline_columns`/`rows`). Dead space in the editor
+- **The editor interface spans the 260×160 baseline** (`editor_baseline_columns`/`rows`). Dead space in the editor
   frame is a defect, not a neutral choice.
 
 ### 5.2 Role mapping
 
 | Surface | Token |
 |---|---|
-| Chrome backdrop | `canvas` |
+| Editor-interface backdrop | `canvas` |
 | Pane bodies | `panel` |
 | Focused pane / selected row / modal | `elevated` |
 | Pane titles, active property values | `text_primary` |
@@ -206,8 +207,9 @@ roles, footer content) must refresh these checksums only with an explicit review
 | Unavailable actions | `disabled_text` / `disabled_background` |
 | Status meanings | `warning` / `error` / `success` / `destructive` |
 
-Chrome obtains these **only** through `ui_app_theme_adapter`. The adapter gains the roles the editor
-needs **additively**. No literal colour may appear in editor chrome modules.
+The editor interface obtains these **only** through `ui_app_theme_adapter`. The adapter gains the roles the editor
+needs **additively**. No literal colour may appear in editor-interface modules, including the current
+`ui_workbench_chrome` implementation.
 
 ### 5.3 Footer
 
@@ -226,8 +228,11 @@ pattern.
 
 ### 5.5 Scale
 
-- Preview: centred scaled layer with `UI_SCALE_INHERIT_GLOBAL` through `ui_compositor`.
-- Chrome: `UI_SCALE_FIXED_100` — chrome **never** scales with the preview.
+- Preview: centred fixed-scale layer with `UI_SCALE_FIXED_100` through `ui_compositor`. It is the
+  thing being edited and must not resize when the workbench interface scale changes.
+- Workbench interface: the shared `ui_preferences` UI scale, through the compositor, at
+  100/125/150/200. Pane borders, footer rows, tooltips, status text, and other editor controls must
+  remain readable, visible, and inside the editor surface at every preset.
 - Preferences: `ui_preferences` with `default_user.ini` / `user.ini` precedence,
   100/125/150/200, persisted exactly as normal run.
 - A reduced-motion path is always available.
@@ -249,7 +254,7 @@ Every phase that touches colour, motion, animation, transition, or interface fee
 3. pass the §7 gates;
 4. attach the composed-frame artifact that shows the result.
 
-Chrome colour, motion vocabulary, animation behaviour, and transition behaviour are **directed
+Editor-interface colour, motion vocabulary, animation behaviour, and transition behaviour are **directed
 decisions, not open design problems.**
 
 ---
@@ -264,10 +269,10 @@ gates below exist for one purpose: to make the previous drift impossible to repe
 |---|---|---|---|
 | **G1 — Composed-frame oracle** | "The frame was never looked at." | A pure, display-free composition of the editor frame into the 260×160 grid, plus a `make ui-workbench-frame` dump and checksum/snapshot fixtures, reusing the repository's benchmark checksum-determinism pattern. | **A1** |
 | **G2 — Independent-oracle rule** | Tautological parity tests (rendering both hosts through the same function). | Any equivalence claim must compare against an independent composition path or a committed snapshot. Calling one function twice is forbidden as evidence. | **A1** |
-| **G3 — Palette/token conformance** | Hardcoded chrome colours — the exact prior failure. | A static/policy check for literal `SDL_Color` in editor chrome modules, plus a runtime assertion that chrome colours are token-derived; adapter extension covered by `test-ui-app-theme-adapter`. | **A2** |
+| **G3 — Palette/token conformance** | Hardcoded editor-interface colours — the exact prior failure. | A static/policy check for literal `SDL_Color` in editor-interface modules, including the current `ui_workbench_chrome` implementation, plus a runtime assertion that interface colours are token-derived; adapter extension covered by `test-ui-app-theme-adapter`. | **A2** |
 | **G4 — Footer integrity** | The overwritten-row bug. | Assert the three footer rows are distinct, non-empty, and not overwritten in every mode and state. | **A2** |
 | **G5 — Overlay separation** | Selection/editing handles damaging authored cells. | Assert no editor overlay writes into authored preview cells; overlay layer verified independently. | **A2** |
-| **G6 — Scale independence and preview fidelity** | No-op/inverted preview scale; chrome moving with the preview. | Assert scale changes alter preview geometry only, never chrome; assert preview cells match normal-run rendering at 100/125/150/200. | **A3** |
+| **G6 — Independent scales and preview fidelity** | No-op/inverted preview scale; workbench interface pinned at unreadable 100%; workbench scale changing the authored preview. | Assert authored preview stays fixed while workbench interface controls scale through the UI scale and remain readable, visible, and inside the surface at 100/125/150/200; assert preview cells match faithful authored rendering. | **A3** |
 | **G7 — Direction conformance** | Motion drift away from the reference of record. | Bounded vocabulary and timings (80/160/120/120 ms); deterministic replay; exact endpoints; reduced-motion frame equals the static frame; controls, focus markers, and hit targets stable while decorative material moves. | **A5** |
 | **G8 — Evidence rule** | "Module exists" accepted as "contract met." | Every requirement maps to a named test or frame artifact in the phase record. Unbacked claims fail review. | **A1, enforced every phase** |
 | **G9 — Guidance coverage** | Workflow completable only by the developer. | Assert every editable property/action/failure path has tooltip text; tooltips legible at all four scales and never overlapping authored cells. | **A4** |
@@ -302,32 +307,34 @@ change; the contract frame is published; G2, G8, and G10 are in force and docume
 
 **Rollback:** documentation and the new oracle only. No production behaviour changes.
 
-### A2 — Chrome re-base on tokens and geometry
+### A2 — Editor-interface re-base on tokens and geometry
 
-**Deliverables:** the palette adapter extended additively to the full chrome role set; workbench
-chrome rebuilt on tokens and token geometry — real pane bodies and borders, pane focus visible
+**Deliverables:** the palette adapter extended additively to the full editor-interface role set; workbench
+interface rebuilt on tokens and token geometry — real pane bodies and borders, pane focus visible
 without colour alone, three dedicated footer rows, overlays outside authored cells, dead space
 eliminated across the 260×160 baseline.
 
 **Reference of record:** §3.1, §3.2, §4.2, §4.3, §5.2–5.4.
 
 **Exit gate:** **G3**, **G4**, **G5** pass; frame snapshots are token-derived; contrast floors hold;
-`test-ui-workbench` and `test-ui-workbench-store` pass; no literal chrome colours remain.
+`test-ui-workbench` and `test-ui-workbench-store` pass; no literal editor-interface colours remain.
 
-**Rollback:** revert the chrome module; the adapter extension is additive and independently
+**Rollback:** revert the `ui_workbench_chrome` implementation; the adapter extension is additive and independently
 reversible.
 
-### A3 — Preview fidelity and scale parity
+### A3 — Preview fidelity and independent workbench scale
 
-**Deliverables:** preview rendered as an offscreen canvas composited as a centred scaled layer;
-`ui_preferences` loaded and persisted exactly as normal run; chrome pinned at 100%.
+**Deliverables:** preview rendered as an offscreen canvas composited as a centred fixed-scale layer;
+`ui_preferences` scale drives the workbench interface controls, which remain readable, visible, and
+inside the surface at 100/125/150/200, without resizing the authored preview.
 
-**Reference of record:** §4.1, §5.5.
+**Reference of record:** §4.1, §4.7, §5.5.
 
-**Exit gate:** **G6** passes — preview cells match normal-run rendering at 100/125/150/200, and
-scale changes never move, resize, or recolour chrome.
+**Exit gate:** **G6** passes — preview cells stay faithful to authored rendering, and
+workbench scale changes make the editor interface readable without resizing the preview or hiding,
+clipping, or pushing controls off-surface.
 
-**Rollback:** revert runtime changes; the previous preview path is restored.
+**Rollback:** revert runtime preview/scale changes; no rollback may restore a fixed-100% editor-interface rule.
 
 ### A4 — Authoring completeness and in-editor guidance
 
@@ -378,7 +385,7 @@ documentation.
 - Extended `test-ui-app-theme-adapter` (G3 role coverage).
 - Extended `test-ui-theme` (G3 contrast floors under the extended role set).
 - Extended `test-ui-motion` and `test-ui-animation` (G7).
-- New editor-chrome token-conformance policy check wired into `make standards` (G3, G10).
+- New editor-interface token-conformance policy check wired into `make standards` (G3, G10).
 - New guidance-coverage check (G9).
 
 ### 9.2 Existing gates that must keep passing
@@ -397,7 +404,7 @@ motion on and off. **No interface claim without a composed-frame artifact.**
 ## 10. Non-goals and forbidden shortcuts
 
 - No workbench-only renderer. One shared animation evaluator.
-- No literal colours in editor chrome.
+- No literal colours in the editor interface.
 - No second editor host, pane renderer, or animation renderer. Extend the existing owners.
 - No `.tui` or staged-document authoring in Step 1.
 - No scripting, timeline, plugin system, or arbitrary callbacks.
@@ -416,7 +423,7 @@ motion on and off. **No interface claim without a composed-frame artifact.**
 1. Pane geometry in cells per context, and whether panes are fixed, overlay, or push the preview.
 2. Default view: preview-first only, or preview-first with a remembered last pane.
 3. Exact footer field order and which channel carries the context-sensitive tooltip.
-4. Whether chrome motion applies to all panes or only to context transitions.
+4. Whether editor-interface motion applies to all panes or only to context transitions.
 5. Which palette roles are added to `ui_app_theme_adapter` and their names.
 6. Preview anchoring and centring behaviour across all four scales.
 7. Typed-choice inventory per element type and property.
@@ -450,7 +457,7 @@ motion on and off. **No interface claim without a composed-frame artifact.**
 | Scope | Rollback |
 |---|---|
 | A1 | Documentation plus a new, unused oracle; no production behaviour change. |
-| A2 | Revert the chrome module; the palette-adapter extension is additive. |
+| A2 | Revert the `ui_workbench_chrome` implementation; the palette-adapter extension is additive. |
 | A3 | Revert runtime preview/scale changes. |
 | A4 | Revert controller/property/tooltip additions independently. |
 | A5 | Revert motion integration; the editor stays fully usable statically. |

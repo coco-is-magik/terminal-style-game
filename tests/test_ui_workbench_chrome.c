@@ -21,7 +21,11 @@
 #include "../src/ui_workbench.h"
 #include "../src/ui_workbench_chrome.h"
 #include "../src/ui_workbench_frame.h"
+#include "../src/ui_workbench_guide.h"
+#include "../src/ui_workbench_runtime.h"
 #include "../src/ui_workbench_store.h"
+
+#include <stdint.h>
 
 static void test_rejects_invalid_arguments(void **state) {
     UiAppWorkbenchPalette palette;
@@ -77,8 +81,8 @@ static void test_rejects_invalid_arguments(void **state) {
         grid, NULL, 0, 0, 10, 10, false));
     assert_false(ui_workbench_chrome_paint_panel(
         grid, &palette, -1, 0, 10, 10, false));
-    assert_false(ui_workbench_chrome_footer_rows(NULL, &palette, NULL, 100,
-                                                 false));
+    assert_false(ui_workbench_chrome_footer_rows(NULL, &palette, NULL, NULL,
+                                                 100, false));
     grid_destroy(grid);
 }
 
@@ -162,7 +166,7 @@ static void test_footer_rows_render_identity_controls_diagnostics(void **state) 
     assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN),
                      UI_WORKBENCH_OK);
     assert_true(ui_workbench_chrome_footer_rows(grid, &palette, &workbench,
-                                                100, false));
+                                                NULL, 100, false));
     assert_true(grid_get(grid, 1, 157, &status));
     assert_true(grid_get(grid, 1, 158, &controls));
     assert_true(grid_get(grid, 1, 159, &diagnostic));
@@ -181,11 +185,19 @@ static bool open_fixture(UiWorkbench *workbench, MenuId context) {
 static bool render_fixture(UiWorkbench *workbench, Grid *grid,
                            UiAppWorkbenchPalette *palette, int scale_percent,
                            double elapsed_ms, bool *ok) {
-    UiWorkbenchFrameInput input = {grid,      workbench, palette,
-                                    scale_percent, elapsed_ms, false,
-                                    0,         0,         false};
+    UiWorkbenchFrameInput input;
     bool rendered;
     if (!ok) return false;
+    input.grid = grid;
+    input.workbench = workbench;
+    input.palette = palette;
+    input.tooltip_text = NULL;
+    input.scale_percent = scale_percent;
+    input.elapsed_ms = elapsed_ms;
+    input.reduced_motion = false;
+    input.pointer_row = 0;
+    input.pointer_column = 0;
+    input.pointer_active = false;
     rendered = ui_workbench_frame_render(input);
     *ok = rendered;
     return rendered;
@@ -227,12 +239,119 @@ static void test_scaled_preview_keeps_authored_cells(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
+static void test_tooltip_text_sits_beside_status(void **state) {
+    UiWorkbench workbench;
+    Grid *grid;
+    UiAppWorkbenchPalette palette;
+    static const char *const tooltip = "Browse mode. Pick a row.";
+    size_t length;
+    size_t i;
+    size_t status_length;
+    (void)state;
+    ui_workbench_init(&workbench);
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN),
+                     UI_WORKBENCH_OK);
+    assert_true(ui_workbench_chrome_footer_rows(grid, &palette, &workbench,
+                                                tooltip, 100, false));
+    length = strlen(tooltip);
+    assert_true(length > 0U && length < 96U);
+    status_length = strlen(workbench.status);
+    assert_true(status_length > 0U);
+    assert_true(status_length + 3U + length < 224U);
+    for (i = 0U; i < length; i++) {
+        Cell diagnostic;
+        assert_true(grid_get(grid, 1 + (int)status_length + 3 + (int)i, 159,
+                             &diagnostic));
+        assert_int_equal(diagnostic.glyph, (uint8_t)tooltip[i]);
+    }
+    grid_destroy(grid);
+    ui_workbench_destroy(&workbench);
+}
+
+static void test_runtime_footer_canvas_contains_scaled_footer(void **state) {
+    UiWorkbench workbench;
+    Grid *grid;
+    UiCanvas *canvas;
+    UiAppWorkbenchPalette palette;
+    static const char *const tooltip = "Runtime footer must scale.";
+    size_t tooltip_length;
+    size_t status_length;
+    size_t i;
+    const int footer_y = UI_WORKBENCH_CHROME_FOOTER_ROWS - 1;
+    const int controls_y = UI_WORKBENCH_CHROME_FOOTER_ROWS - 2;
+    (void)state;
+    ui_workbench_init(&workbench);
+    grid = grid_create(UI_WORKBENCH_CHROME_COLUMNS, UI_WORKBENCH_CHROME_ROWS);
+    assert_non_null(grid);
+    canvas = ui_canvas_create(UI_WORKBENCH_CHROME_COLUMNS,
+                              UI_WORKBENCH_CHROME_FOOTER_ROWS);
+    assert_non_null(canvas);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN),
+                     UI_WORKBENCH_OK);
+    assert_true(ui_workbench_runtime_compose_footer_canvas(
+        canvas, grid, &workbench, &palette, tooltip, 200, false));
+    assert_true(ui_canvas_is_touched(canvas, 1, controls_y));
+    assert_int_equal(canvas->cells[(size_t)controls_y *
+                                   (size_t)canvas->width + 1U].glyph,
+                     'U');
+    tooltip_length = strlen(tooltip);
+    status_length = strlen(workbench.status);
+    assert_true(tooltip_length > 0U);
+    assert_true(status_length + 3U + tooltip_length <
+                (size_t)UI_WORKBENCH_CHROME_COLUMNS);
+    for (i = 0U; i < tooltip_length; i++) {
+        size_t x = status_length + 3U + i + 1U;
+        size_t index = (size_t)footer_y * (size_t)canvas->width + x;
+        assert_true(ui_canvas_is_touched(canvas, (int)x, footer_y));
+        assert_int_equal(canvas->cells[index].glyph, (uint8_t)tooltip[i]);
+    }
+    grid_destroy(grid);
+    ui_canvas_destroy(canvas);
+    ui_workbench_destroy(&workbench);
+}
+
+static void test_runtime_preview_layer_stays_fixed(void **state) {
+    UiCanvas *preview;
+    UiCanvas *footer;
+    UiLayerList layers;
+    SDL_Color black = {0, 0, 0, 255};
+    (void)state;
+    preview = ui_canvas_create(UI_WORKBENCH_CHROME_COLUMNS,
+                               UI_WORKBENCH_CHROME_ROWS);
+    assert_non_null(preview);
+    footer = ui_canvas_create(UI_WORKBENCH_CHROME_COLUMNS,
+                              UI_WORKBENCH_CHROME_FOOTER_ROWS);
+    assert_non_null(footer);
+    assert_true(ui_canvas_set(preview, 0, 0, 'P', black, black));
+    assert_true(ui_canvas_set(footer, 0, 0, 'F', black, black));
+    assert_true(ui_workbench_runtime_build_layers(&layers, preview, footer,
+                                                  2080, 1280));
+    assert_int_equal((int)layers.count, 2);
+    assert_int_equal(layers.layers[0].role_id, 1);
+    assert_int_equal(layers.layers[0].anchor, UI_ANCHOR_CENTER);
+    assert_int_equal(layers.layers[0].scale_policy, UI_SCALE_FIXED_100);
+    assert_int_equal(layers.layers[1].role_id, 2);
+    assert_int_equal(layers.layers[1].anchor, UI_ANCHOR_BOTTOM_LEFT);
+    assert_int_equal(layers.layers[1].scale_policy, UI_SCALE_INHERIT_GLOBAL);
+    assert_false(ui_workbench_runtime_build_layers(NULL, preview, footer,
+                                                   2080, 1280));
+    ui_canvas_destroy(footer);
+    ui_canvas_destroy(preview);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_rejects_invalid_arguments),
         cmocka_unit_test(test_all_role_colors_come_from_tokens),
         cmocka_unit_test(test_panels_use_token_borders_and_focus),
         cmocka_unit_test(test_scaled_preview_keeps_authored_cells),
+        cmocka_unit_test(test_tooltip_text_sits_beside_status),
+        cmocka_unit_test(test_runtime_footer_canvas_contains_scaled_footer),
+        cmocka_unit_test(test_runtime_preview_layer_stays_fixed),
         cmocka_unit_test(test_footer_rows_render_identity_controls_diagnostics)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

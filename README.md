@@ -159,7 +159,7 @@ preserving its reusable source file;
 Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;
 Ctrl+`-`/Ctrl+`+` changes the shared 100%, 125%, 150%, and 200% UI preference; Ctrl+`0`
 resets to the immutable default, exactly as in `make run`; Escape exits. The application UI
-preview inherits that scale while workbench instructions remain fixed and visible. Every
+preview stays fixed and faithful, while the workbench instructions use the workbench UI scale and remain visible. Every
 accepted edit canonically rewrites the affected
 `assets/ui_elements/*.txt` file
 through a synced same-directory temporary file and atomic replacement, then reloads the active

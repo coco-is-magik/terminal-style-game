@@ -68,6 +68,7 @@ bool ui_workbench_chrome_paint_panel(Grid *grid,
 bool ui_workbench_chrome_footer_rows(Grid *grid,
                                      const UiAppWorkbenchPalette *palette,
                                      const UiWorkbench *workbench,
+                                     const char *tooltip_text,
                                      int scale_percent,
                                      bool reduced_motion);
 bool ui_workbench_chrome_paint_panes(Grid *grid,

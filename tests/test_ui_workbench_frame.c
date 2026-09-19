@@ -39,11 +39,19 @@ static bool open_fixture(UiWorkbench *workbench, MenuId context) {
 static bool render_fixture(UiWorkbench *workbench, Grid *grid,
                             UiAppWorkbenchPalette *palette,
                             int scale_percent, double elapsed_ms, bool *ok) {
-    UiWorkbenchFrameInput input = {grid,      workbench, palette,
-                                    scale_percent, elapsed_ms, false,
-                                    0,         0,         false};
+    UiWorkbenchFrameInput input;
     bool rendered;
     if (!ok) return false;
+    input.grid = grid;
+    input.workbench = workbench;
+    input.palette = palette;
+    input.tooltip_text = NULL;
+    input.scale_percent = scale_percent;
+    input.elapsed_ms = elapsed_ms;
+    input.reduced_motion = false;
+    input.pointer_row = 0;
+    input.pointer_column = 0;
+    input.pointer_active = false;
     rendered = ui_workbench_frame_render(input);
     *ok = rendered;
     return rendered;
@@ -65,6 +73,7 @@ static void test_rejects_invalid_arguments(void **state) {
     Cell small[4];
     Cell fine[(size_t)UI_WORKBENCH_FRAME_CONTRACT_COLUMNS *
               (size_t)UI_WORKBENCH_FRAME_CONTRACT_ROWS];
+    UiWorkbenchFrameInput bad;
     (void)state;
     ui_workbench_init(&workbench);
     grid = grid_create(UI_WORKBENCH_FRAME_CONTRACT_COLUMNS,
@@ -75,24 +84,33 @@ static void test_rejects_invalid_arguments(void **state) {
     assert_true(ui_workbench_frame_contract_dimensions(
         UI_WORKBENCH_FRAME_CONTRACT_COLUMNS, UI_WORKBENCH_FRAME_CONTRACT_ROWS));
     assert_false(ui_workbench_frame_contract_dimensions(120, 40));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){NULL, &workbench, &palette, 100, 0.0, false,
-                                0, 0, false}));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){grid, NULL, &palette, 100, 0.0, false, 0, 0,
-                                false}));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){grid, &workbench, NULL, 100, 0.0, false, 0, 0,
-                                false}));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){grid, &workbench, &palette, 99, 0.0, false, 0,
-                                0, false}));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){grid, &workbench, &palette, 100, -1.0, false,
-                                0, 0, false}));
-    assert_false(ui_workbench_frame_render(
-        (UiWorkbenchFrameInput){grid, &workbench, &palette, 100, 0.0, false,
-                                -1, 0, true}));
+    bad.grid = NULL;
+    bad.workbench = &workbench;
+    bad.palette = &palette;
+    bad.tooltip_text = NULL;
+    bad.scale_percent = 100;
+    bad.elapsed_ms = 0.0;
+    bad.reduced_motion = false;
+    bad.pointer_row = 0;
+    bad.pointer_column = 0;
+    bad.pointer_active = false;
+    assert_false(ui_workbench_frame_render(bad));
+    bad.grid = grid;
+    bad.workbench = NULL;
+    assert_false(ui_workbench_frame_render(bad));
+    bad.workbench = &workbench;
+    bad.palette = NULL;
+    assert_false(ui_workbench_frame_render(bad));
+    bad.palette = &palette;
+    bad.scale_percent = 99;
+    assert_false(ui_workbench_frame_render(bad));
+    bad.scale_percent = 100;
+    bad.elapsed_ms = -1.0;
+    assert_false(ui_workbench_frame_render(bad));
+    bad.elapsed_ms = 0.0;
+    bad.pointer_row = -1;
+    bad.pointer_active = true;
+    assert_false(ui_workbench_frame_render(bad));
     assert_false(ui_workbench_frame_copy_cells(NULL, fine, sizeof(fine)));
     assert_false(ui_workbench_frame_copy_cells(grid, NULL, sizeof(fine)));
     assert_false(ui_workbench_frame_copy_cells(grid, small, sizeof(small)));
@@ -216,6 +234,9 @@ static void test_preview_matches_normal_run_rendering(void **state) {
     UiWorkbench workbench;
     Grid *grid;
     UiAppWorkbenchPalette palette;
+    Grid *staging;
+    UiCanvas *authored;
+    UiCanvas *scaled;
     static const int scales[] = {100, 125, 150, 200};
     static const MenuId contexts[] = {MENU_MAIN, MENU_PAUSE, MENU_SETTINGS,
                                       MENU_CONFIRM_QUIT};
@@ -227,6 +248,12 @@ static void test_preview_matches_normal_run_rendering(void **state) {
     grid = grid_create(UI_WORKBENCH_FRAME_TEST_COLUMNS,
                        UI_WORKBENCH_FRAME_TEST_ROWS);
     assert_non_null(grid);
+    staging = grid_create(UI_WORKBENCH_FRAME_TEST_COLUMNS, 156);
+    assert_non_null(staging);
+    authored = ui_canvas_create(UI_WORKBENCH_FRAME_TEST_COLUMNS, 156);
+    assert_non_null(authored);
+    scaled = ui_canvas_create(UI_WORKBENCH_FRAME_TEST_COLUMNS, 156);
+    assert_non_null(scaled);
     assert_true(ui_app_theme_workbench_palette(&palette));
     assert_true(ui_workbench_frame_contract_scale_policy(100));
     assert_true(ui_workbench_frame_contract_scale_policy(125));
@@ -239,13 +266,43 @@ static void test_preview_matches_normal_run_rendering(void **state) {
         assert_true(open_fixture(&workbench, contexts[context_index]));
         for (scale_index = 0U;
              scale_index < sizeof(scales) / sizeof(scales[0U]); scale_index++) {
+            int rows;
+            int row;
+            int column;
             assert_true(render_fixture(&workbench, grid, &palette,
                                        scales[scale_index], 0.0, &rendered));
             assert_true(rendered);
-            assert_true(ui_workbench_frame_preview_matches(
-                grid, &workbench, &palette, scales[scale_index], 0.0, false));
+            (void)grid_clear_region_zero(staging, 0, 0, staging->width,
+                                         staging->height);
+            ui_layout_set_focus(workbench.layout, 0);
+            ui_layout_render(workbench.layout, staging,
+                             palette.secondary_text, palette.canvas);
+            ui_canvas_copy_grid_region(authored, staging, 0, 0);
+            rows = ui_workbench_chrome_preview_rows(160, scales[scale_index]);
+            assert_true(rows > 0 && rows <= 156);
+            assert_true(ui_workbench_chrome_scale_preview_rows(
+                scaled, authored, rows, scales[scale_index]));
+            for (row = 0; row < rows; row++) {
+                for (column = 0; column < 260; column++) {
+                    const Cell *wanted = &scaled->cells[(size_t)row * 260U +
+                                                        (size_t)column];
+                    const Cell *composed =
+                        &grid->cells[(size_t)(row + 1) * 260U +
+                                     (size_t)column];
+                    if (!ui_canvas_is_touched(scaled, column, row)) continue;
+                    if (!ui_workbench_chrome_cell_in_preview(column, row + 1,
+                                                             260, 160))
+                        continue;
+                    if (wanted->glyph == '>' || wanted->glyph == '<')
+                        continue;
+                    assert_int_equal(composed->glyph, wanted->glyph);
+                }
+            }
         }
     }
+    ui_canvas_destroy(scaled);
+    ui_canvas_destroy(authored);
+    grid_destroy(staging);
     grid_destroy(grid);
     ui_workbench_destroy(&workbench);
 }
@@ -328,6 +385,7 @@ static void test_reduced_motion_freezes_animated_decoration(void **state) {
     input.grid = animated;
     input.workbench = &workbench;
     input.palette = &palette;
+    input.tooltip_text = NULL;
     input.scale_percent = 100;
     input.elapsed_ms = 400.0;
     input.reduced_motion = false;
@@ -348,6 +406,53 @@ static void test_reduced_motion_freezes_animated_decoration(void **state) {
     }
     grid_destroy(animated);
     grid_destroy(still);
+    ui_workbench_destroy(&workbench);
+}
+
+static bool frame_has_text_at(const Grid *grid, int x, int y,
+                              const char *text) {
+    size_t i;
+    size_t length;
+    if (!grid || !grid->cells || !text) return false;
+    length = strlen(text);
+    if (x < 0 || y < 0 || y >= grid->height || x + (int)length > grid->width)
+        return false;
+    for (i = 0U; i < length; i++) {
+        if (grid->cells[(size_t)y * (size_t)grid->width + (size_t)(x + (int)i)]
+                .glyph != (uint8_t)text[i]) return false;
+    }
+    return true;
+}
+
+static void test_tooltip_text_reaches_footer_row(void **state) {
+    UiWorkbench workbench;
+    Grid *grid;
+    UiAppWorkbenchPalette palette;
+    UiWorkbenchFrameInput input;
+    bool rendered = false;
+    (void)state;
+    ui_workbench_init(&workbench);
+    grid = grid_create(UI_WORKBENCH_FRAME_TEST_COLUMNS,
+                       UI_WORKBENCH_FRAME_TEST_ROWS);
+    assert_non_null(grid);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_true(open_fixture(&workbench, MENU_MAIN));
+    input.grid = grid;
+    input.workbench = &workbench;
+    input.palette = &palette;
+    input.tooltip_text = "Browse mode. Up/Down selects an element.";
+    input.scale_percent = 100;
+    input.elapsed_ms = 0.0;
+    input.reduced_motion = false;
+    input.pointer_row = 0;
+    input.pointer_column = 0;
+    input.pointer_active = false;
+    assert_true(ui_workbench_frame_render(input));
+    rendered = true;
+    assert_true(rendered);
+    assert_true(frame_has_text_at(grid, 1, 157, "UI WORKBENCH"));
+    assert_true(frame_has_text_at(grid, 1, 159, "Loaded | Browse mode."));
+    grid_destroy(grid);
     ui_workbench_destroy(&workbench);
 }
 
@@ -417,6 +522,7 @@ static void test_pointer_pane_focus_is_visible_without_color(void **state) {
     input.grid = grid;
     input.workbench = &workbench;
     input.palette = &palette;
+    input.tooltip_text = NULL;
     input.scale_percent = 100;
     input.elapsed_ms = 0.0;
     input.reduced_motion = false;
@@ -454,6 +560,7 @@ int main(void) {
         cmocka_unit_test(test_preview_matches_normal_run_rendering),
         cmocka_unit_test(test_reduced_motion_freezes_animated_decoration),
         cmocka_unit_test(test_pointer_pane_focus_is_visible_without_color),
+        cmocka_unit_test(test_tooltip_text_reaches_footer_row),
         cmocka_unit_test(test_recorded_contract_fixtures_match_oracle)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

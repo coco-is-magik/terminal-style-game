@@ -39,10 +39,12 @@ static int selected_focus_index(const UiWorkbench *workbench) {
 }
 
 static void draw_help(Grid *grid, const UiWorkbench *workbench,
-                      const UiAppWorkbenchPalette *palette, int scale_percent,
+                      const UiAppWorkbenchPalette *palette,
+                      const char *tooltip_text, int scale_percent,
                       bool reduced_motion) {
     (void)ui_workbench_chrome_footer_rows(grid, palette, workbench,
-                                          scale_percent, reduced_motion);
+                                          tooltip_text, scale_percent,
+                                          reduced_motion);
 }
 
 static void draw_selection(Grid *grid, const UiAppWorkbenchPalette *palette,
@@ -218,8 +220,8 @@ bool ui_workbench_frame_render(UiWorkbenchFrameInput input) {
     if (!compose_preview((UiWorkbench *)input.workbench, input.grid,
                          input.palette, input.scale_percent, input.elapsed_ms,
                          input.reduced_motion)) return false;
-    draw_help(input.grid, input.workbench, input.palette, input.scale_percent,
-              input.reduced_motion);
+    draw_help(input.grid, input.workbench, input.palette, input.tooltip_text,
+              input.scale_percent, input.reduced_motion);
     return true;
 }
 
