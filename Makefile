@@ -840,7 +840,7 @@ $(TEST_UI_WORKBENCH_STORE_RUNNER): tests/test_ui_workbench_store.c $(SRC_UI_WORK
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_workbench_store.c \
 		$(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) \
 		$(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) \
-		-o $(TEST_UI_WORKBENCH_STORE_RUNNER) $(TEST_LIBS) $(RPATH)
+		-o $(TEST_UI_WORKBENCH_STORE_RUNNER) -Wl,--wrap=platform_fs_replace $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_WORKBENCH_RUNNER): tests/test_ui_workbench.c $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) $(SRC_MAP_CATALOG) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_workbench.c $(SRC_UI_WORKBENCH) \
@@ -878,8 +878,9 @@ $(TEST_UI_WORKBENCH_GUIDE_RUNNER): tests/test_ui_workbench_guide.c $(SRC_UI_WORK
 		$(SRC_UI_PREFERENCES) \
 		-o $(TEST_UI_WORKBENCH_GUIDE_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(UI_WORKBENCH_FRAME_TOOL): tools/ui-workbench-frame.c tests/fixtures/ui_workbench_frame_fixtures.h $(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH_GUIDE) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) $(SRC_MAP_CATALOG) $(SRC_UI_PREFERENCES) | dirs
+$(UI_WORKBENCH_FRAME_TOOL): tools/ui-workbench-frame.c tests/fixtures/ui_workbench_frame_fixtures.h $(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH_GUIDE) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) $(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_CANVAS) $(SRC_MENU_STATE) $(SRC_CONFIG) $(SRC_PLATFORM_FS) $(SRC_PLATFORM_PATH) $(SRC_MAP_CATALOG) $(SRC_UI_PREFERENCES) $(SRC_UI_WORKBENCH_RUNTIME) $(SRC_INPUT) $(SRC_TIMING) $(SRC_RENDERER) $(SRC_UI_COMPOSITOR) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) -Itests/fixtures tools/ui-workbench-frame.c \
+		$(SRC_UI_WORKBENCH_RUNTIME) $(SRC_INPUT) $(SRC_TIMING) $(SRC_RENDERER) $(SRC_UI_COMPOSITOR) \
 		$(SRC_UI_WORKBENCH_FRAME) $(SRC_UI_WORKBENCH_CHROME) $(SRC_UI_WORKBENCH_GUIDE) $(SRC_UI_WORKBENCH) $(SRC_UI_WORKBENCH_STORE) \
 		$(TEST_UI_ELE_SRC) $(SRC_UI_ANIMATION) $(SRC_UI_MOTION) \
 		$(SRC_UI_APP_THEME_ADAPTER) \
@@ -893,10 +894,10 @@ check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 	@set -e; for context in main pause settings confirm; do \
 		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
 		case " $$context " in \
-			*" main "*) expected=15106231313638485604 ;; \
-			*" pause "*) expected=16767408351412020113 ;; \
-			*" settings "*) expected=8577113895234228389 ;; \
-			*" confirm "*) expected=8315436846210167558 ;; \
+			*" main "*) expected=13910126345440706794 ;; \
+			*" pause "*) expected=1475701774946690991 ;; \
+			*" settings "*) expected=9870106462813291221 ;; \
+			*" confirm "*) expected=12275623073148853648 ;; \
 		esac; \
 		if [ "$$actual" != "$$expected" ]; then echo "FAIL-PRODUCT: ui-workbench-frame $$context checksum=$$actual expected=$$expected"; exit 1; fi; \
 	done
@@ -1291,6 +1292,9 @@ test: $(TEST_RUNNERS)
 	./$(TEST_UI_SYSTEM_ACTION_POLICY_RUNNER)
 	./$(TEST_UI_WORKBENCH_STORE_RUNNER)
 	./$(TEST_UI_WORKBENCH_RUNNER)
+	./$(TEST_UI_WORKBENCH_FRAME_RUNNER)
+	./$(TEST_UI_WORKBENCH_CHROME_RUNNER)
+	./$(TEST_UI_WORKBENCH_GUIDE_RUNNER)
 	./$(TEST_UI_APP_THEME_ADAPTER_RUNNER)
 	./$(TEST_UI_THEME_DEMO_RUNNER)
 	./$(TEST_UI_MOTION_DEMO_RUNNER)
@@ -1342,10 +1346,6 @@ test-ui-standards: $(TEST_UI_ELE_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
 	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
 	$(TEST_UI_EDITOR_HOST_RUNNER)
-	$(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_UI_RENDER_ADAPTER_RUNNER) \
-	$(TEST_UI_INTERACTION_RUNNER) $(TEST_UI_MENU_RUNTIME_RUNNER) \
-	$(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_UI_EDITOR_PRESENTATION_RUNNER) \
-	$(TEST_UI_EDITOR_HOST_RUNNER)
 	./$(TEST_UI_ELE_RUNNER)
 	./$(TEST_UI_PREFERENCES_RUNNER)
 	./$(TEST_UI_COMPOSITOR_RUNNER)
@@ -1374,7 +1374,17 @@ check: all test standards
 standards: style check-static-analysis-policy standards-core
 
 standards-core: check-unsafe-calls check-project-structure check-test-inventory \
-	check-legacy-unused check-current-renderer
+	check-legacy-unused check-current-renderer check-ui-workbench-policy
+
+.PHONY: check-ui-workbench-policy ui-workbench-frame
+ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
+	./$(UI_WORKBENCH_FRAME_TOOL) --context main
+
+check-ui-workbench-policy:
+	@echo "Checking workbench token and host boundaries..."
+	@if grep -En '\(SDL_Color\)[[:space:]]*\{|SDL_Color[^;]*=[[:space:]]*\{|\.(fg|bg)[[:space:]]*=[[:space:]]*\{' src/ui_workbench_chrome.c src/ui_workbench_runtime.c src/ui_workbench_frame.c; then echo "FAIL: literal workbench color"; exit 1; fi
+	@if grep -En '#include.*(ui_editor_|ui_menu_workspace|world|project_flow)' src/ui_workbench.c src/ui_workbench_runtime.c src/ui_workbench_frame.c; then echo "FAIL: parallel editor dependency"; exit 1; fi
+	@echo "PASS: workbench token and host boundaries"
 
 asan:
 	$(MAKE) clean

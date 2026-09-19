@@ -3,6 +3,7 @@
 #include "ui_workbench_store.h"
 
 #include "platform_fs.h"
+#include "number_parse.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,14 +157,19 @@ static char *read_all(const char *path, size_t *out_size) {
     long length;
     char *text;
     if (!path || !out_size || !(file = fopen(path, "rb"))) return NULL;
-    if (fseek(file, 0, SEEK_END) != 0 || (length = ftell(file)) < 0 ||
+    if (fseek(file, 0, SEEK_END) != 0 || (length = ftell(file)) < 0 || length > 16777216L ||
         fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }
     text = malloc((size_t)length + 1U);
     if (!text) { fclose(file); return NULL; }
-    if (fread(text, 1U, (size_t)length, file) != (size_t)length || fclose(file) != 0) {
+    if (fread(text, 1U, (size_t)length, file) != (size_t)length) {
+        (void)fclose(file);
+        free(text);
+        return NULL;
+    }
+    if (fclose(file) != 0) {
         free(text);
         return NULL;
     }
@@ -231,22 +237,30 @@ static char *rewrite_csv_line(const char *text, const char *prefix,
     return result;
 }
 
-static UiWorkbenchStoreResult replace_text(const char *path, const char *text) {
-    char temporary[UI_ELE_PATH_MAX + 32U];
+static UiWorkbenchStoreResult prepare_text(const char *path, const char *text,
+                                           char *temporary, size_t capacity) {
     int descriptor;
     FILE *file;
     PlatformFileMetadata metadata;
     PlatformNativeError error;
-    PlatformReplaceResult replacement;
     bool failed = false;
-    if (snprintf(temporary, sizeof(temporary), "%s.tmp.XXXXXX", path) >=
-        (int)sizeof(temporary) ||
+    int written = snprintf(temporary, capacity, "%s.tmp.XXXXXX", path);
+    if (written < 0 || (size_t)written >= capacity ||
         platform_fs_inspect_nofollow(path, &metadata, &error) != PLATFORM_FS_OK ||
-        !metadata.is_regular_file || metadata.is_link_or_reparse) return UI_WORKBENCH_STORE_IO_ERROR;
+        !metadata.is_regular_file || metadata.is_link_or_reparse) {
+        temporary[0] = '\0';
+        return UI_WORKBENCH_STORE_IO_ERROR;
+    }
     descriptor = mkstemp(temporary);
-    if (descriptor < 0 || !(file = fdopen(descriptor, "w"))) {
-        if (descriptor >= 0) close(descriptor);
-        unlink(temporary);
+    if (descriptor < 0) {
+        temporary[0] = '\0';
+        return UI_WORKBENCH_STORE_IO_ERROR;
+    }
+    file = fdopen(descriptor, "w");
+    if (!file) {
+        (void)close(descriptor);
+        (void)unlink(temporary);
+        temporary[0] = '\0';
         return UI_WORKBENCH_STORE_IO_ERROR;
     }
     if (platform_fs_apply_metadata(file, &metadata, &error) != PLATFORM_FS_OK)
@@ -257,11 +271,97 @@ static UiWorkbenchStoreResult replace_text(const char *path, const char *text) {
     if (fclose(file) != 0) failed = true;
     if (failed) {
         unlink(temporary);
+        temporary[0] = '\0';
         return UI_WORKBENCH_STORE_IO_ERROR;
     }
-    replacement = platform_fs_replace(temporary, path, true);
-    return replacement.commit_state == PLATFORM_COMMIT_NOT_COMMITTED
-        ? UI_WORKBENCH_STORE_IO_ERROR : UI_WORKBENCH_STORE_OK;
+    return UI_WORKBENCH_STORE_OK;
+}
+
+static bool recovery_path(const char *layout_path, char *path, size_t capacity) {
+    return layout_path && layout_path[0] &&
+        snprintf(path, capacity, "%s.membership-recovery", layout_path) < (int)capacity;
+}
+
+UiWorkbenchStoreResult ui_workbench_recover_membership(const char *layout_path,
+                                                       const char *master_path) {
+    char path[UI_ELE_PATH_MAX + 32U];
+    char temporary[UI_ELE_PATH_MAX + 32U] = {0};
+    PlatformFileMetadata metadata;
+    PlatformNativeError error;
+    PlatformFsResult inspected;
+    char *record = NULL;
+    char *master = NULL;
+    char *line;
+    char *payload;
+    size_t size;
+    size_t ignored;
+    int lengths[3];
+    size_t total = 0;
+    UiWorkbenchStoreResult result = UI_WORKBENCH_STORE_ROLLBACK_FAILED;
+    if (!master_path || !recovery_path(layout_path, path, sizeof(path)))
+        return UI_WORKBENCH_STORE_INVALID_ARGUMENT;
+    inspected = platform_fs_inspect_nofollow(path, &metadata, &error);
+    if (inspected == PLATFORM_FS_NOT_FOUND) return UI_WORKBENCH_STORE_OK;
+    if (inspected != PLATFORM_FS_OK || !metadata.is_regular_file || metadata.is_link_or_reparse)
+        return result;
+    record = read_all(path, &size);
+    master = read_all(master_path, &ignored);
+    if (!record || !master || strlen(record) != size) goto done;
+    line = record;
+    for (size_t i = 0; i < 3; i++) {
+        char *end = strchr(line, '\n');
+        if (!end) goto done;
+        *end = '\0';
+        if (!number_parse_int(line, 1, 4194304, &lengths[i])) goto done;
+        total += (size_t)lengths[i];
+        line = end + 1;
+    }
+    payload = line;
+    if ((size_t)(payload - record) > size || size - (size_t)(payload - record) != total)
+        goto done;
+    /* The master replacement is the commit decision. Unknown external edits are
+       never overwritten. Repeating recovery after interruption is idempotent. */
+    if (strlen(master) == (size_t)lengths[2] &&
+        memcmp(master, payload + lengths[0] + lengths[1], (size_t)lengths[2]) == 0) {
+        result = unlink(path) == 0 ? UI_WORKBENCH_STORE_OK : UI_WORKBENCH_STORE_ROLLBACK_FAILED;
+        goto done;
+    }
+    if (strlen(master) != (size_t)lengths[1] ||
+        memcmp(master, payload + lengths[0], (size_t)lengths[1]) != 0) goto done;
+    payload[lengths[0]] = '\0';
+    if (prepare_text(layout_path, payload, temporary, sizeof(temporary)) != UI_WORKBENCH_STORE_OK)
+        goto done;
+    if (platform_fs_replace(temporary, layout_path, true).commit_state == PLATFORM_COMMIT_NOT_COMMITTED)
+        goto done;
+    result = unlink(path) == 0 ? UI_WORKBENCH_STORE_OK : UI_WORKBENCH_STORE_ROLLBACK_FAILED;
+done:
+    if (temporary[0]) (void)unlink(temporary);
+    free(master);
+    free(record);
+    return result;
+}
+
+static bool publish_recovery(const char *layout_path, const char *layout,
+                             const char *master, const char *new_master,
+                             char *path, size_t capacity) {
+    char temporary[UI_ELE_PATH_MAX + 32U] = {0};
+    char *record;
+    size_t size = strlen(layout) + strlen(master) + strlen(new_master) + 96U;
+    bool success = false;
+    if (strlen(layout) > 4194304U || strlen(master) > 4194304U ||
+        strlen(new_master) > 4194304U || !recovery_path(layout_path, path, capacity)) return false;
+    record = malloc(size);
+    if (!record) return false;
+    if (snprintf(record, size, "%zu\n%zu\n%zu\n%s%s%s", strlen(layout), strlen(master),
+                 strlen(new_master), layout, master, new_master) < (int)size &&
+        prepare_text(layout_path, record, temporary, sizeof(temporary)) == UI_WORKBENCH_STORE_OK) {
+        PlatformMoveResult moved = platform_fs_move(temporary, path);
+        success = moved.commit_state == PLATFORM_COMMIT_COMMITTED;
+        if (!success && moved.commit_state != PLATFORM_COMMIT_NOT_COMMITTED) (void)unlink(path);
+    }
+    if (temporary[0]) (void)unlink(temporary);
+    free(record);
+    return success;
 }
 
 UiWorkbenchStoreResult ui_workbench_store_membership(const char *layout_path,
@@ -270,20 +370,43 @@ UiWorkbenchStoreResult ui_workbench_store_membership(const char *layout_path,
                                                       const char *element_name,
                                                       bool add) {
     size_t ignored;
-    char *layout = read_all(layout_path, &ignored);
-    char *master = read_all(master_path, &ignored);
+    char *layout;
+    char *master;
     char *new_layout;
     char *new_master = NULL;
     char marker[UI_ELE_NAME_MAX + 16U];
     char *section;
+    char staged_layout[UI_ELE_PATH_MAX + 32U] = {0};
+    char staged_master[UI_ELE_PATH_MAX + 32U] = {0};
+    char rollback[UI_ELE_PATH_MAX + 32U] = {0};
+    char journal[UI_ELE_PATH_MAX + 32U] = {0};
+    bool keep_journal = false;
     UiWorkbenchStoreResult result = UI_WORKBENCH_STORE_IO_ERROR;
+    if (!layout_path || !master_path || !layout_name || !element_name ||
+        !layout_name[0] || !element_name[0] || !safe_text(layout_name) ||
+        !safe_text(element_name) || strchr(element_name, ',') ||
+        strchr(layout_name, '=') || strcmp(layout_path, master_path) == 0)
+        return UI_WORKBENCH_STORE_INVALID_ARGUMENT;
+    if (ui_workbench_recover_membership(layout_path, master_path) != UI_WORKBENCH_STORE_OK)
+        return UI_WORKBENCH_STORE_ROLLBACK_FAILED;
+    layout = read_all(layout_path, &ignored);
+    master = read_all(master_path, &ignored);
     if (!layout || !master || !layout_name || !element_name ||
         snprintf(marker, sizeof(marker), "layout=%s\n", layout_name) >= (int)sizeof(marker))
         goto done;
     new_layout = rewrite_csv_line(layout, "elements=", element_name, add);
     section = strstr(master, marker);
-    if (!new_layout || !section) { free(new_layout); goto done; }
+    if (!new_layout || !section || (section != master && section[-1] != '\n')) {
+        free(new_layout);
+        goto done;
+    }
     {
+        const char *next_section = strstr(section + strlen(marker), "\nlayout=");
+        const char *cache = strstr(section, "\ncache_next=");
+        if (!cache || (next_section && cache >= next_section)) {
+            free(new_layout);
+            goto done;
+        }
         char *section_rewritten = rewrite_csv_line(section, "cache_next=", element_name, add);
         size_t prefix = (size_t)(section - master);
         if (section_rewritten) {
@@ -296,17 +419,40 @@ UiWorkbenchStoreResult ui_workbench_store_membership(const char *layout_path,
             free(section_rewritten);
         }
     }
-    if (!new_master || replace_text(layout_path, new_layout) != UI_WORKBENCH_STORE_OK) {
+    /* Prepare both replacements and compensation before touching either original.
+       A second-write failure must not require fresh allocation or free disk space. */
+    if (!new_master ||
+        prepare_text(layout_path, layout, rollback, sizeof(rollback)) != UI_WORKBENCH_STORE_OK ||
+        prepare_text(layout_path, new_layout, staged_layout, sizeof(staged_layout)) != UI_WORKBENCH_STORE_OK ||
+        prepare_text(master_path, new_master, staged_master, sizeof(staged_master)) != UI_WORKBENCH_STORE_OK) {
         free(new_layout); goto done;
     }
-    if (replace_text(master_path, new_master) != UI_WORKBENCH_STORE_OK) {
-        (void)replace_text(layout_path, layout);
+    if (!publish_recovery(layout_path, layout, master, new_master, journal, sizeof(journal))) {
+        journal[0] = '\0';
+        free(new_layout); goto done;
+    }
+    if (platform_fs_replace(staged_layout, layout_path, true).commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        free(new_layout); goto done;
+    }
+    if (platform_fs_replace(staged_master, master_path, true).commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+        if (platform_fs_replace(rollback, layout_path, true).commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+            result = UI_WORKBENCH_STORE_ROLLBACK_FAILED;
+            keep_journal = true;
+            /* Preserve the synchronized original for recovery, never delete it. */
+            fprintf(stderr, "UI membership rollback failed: original layout preserved at %s; destination %s\n",
+                    rollback, layout_path);
+            rollback[0] = '\0';
+        }
         free(new_layout);
         goto done;
     }
     free(new_layout);
     result = UI_WORKBENCH_STORE_OK;
 done:
+    if (journal[0] && !keep_journal) (void)unlink(journal);
+    if (staged_layout[0]) (void)unlink(staged_layout);
+    if (staged_master[0]) (void)unlink(staged_master);
+    if (rollback[0]) (void)unlink(rollback);
     free(new_master);
     free(master);
     free(layout);

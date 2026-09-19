@@ -10,9 +10,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include "../src/ui_ele.h"
 #include "../src/ui_workbench_store.h"
+#include "../src/platform_fs.h"
+
+static unsigned int replace_calls;
+static unsigned int fail_replace_call;
+static unsigned int fail_replace_call_also;
+static unsigned int interrupt_after_replace;
+static char retained_original[UI_ELE_PATH_MAX + 32U];
+
+PlatformReplaceResult __real_platform_fs_replace(const char *, const char *, bool);
+PlatformReplaceResult __wrap_platform_fs_replace(const char *, const char *, bool);
+
+PlatformReplaceResult __wrap_platform_fs_replace(const char *source, const char *destination,
+                                                 bool exists) {
+    replace_calls++;
+    if ((fail_replace_call && replace_calls == fail_replace_call) ||
+        (fail_replace_call_also && replace_calls == fail_replace_call_also)) {
+        PlatformReplaceResult failed = {0};
+        if (replace_calls == fail_replace_call_also)
+            (void)snprintf(retained_original, sizeof(retained_original), "%s", source);
+        failed.commit_state = PLATFORM_COMMIT_NOT_COMMITTED;
+        return failed;
+    }
+    PlatformReplaceResult result = __real_platform_fs_replace(source, destination, exists);
+    if (interrupt_after_replace && replace_calls == interrupt_after_replace &&
+        result.commit_state != PLATFORM_COMMIT_NOT_COMMITTED) _exit(73);
+    return result;
+}
 
 static void write_text(const char *path, const char *text) {
     FILE *file = fopen(path, "wb");
@@ -242,13 +270,225 @@ static void test_layout_membership_add_remove_and_failure_restore(void **state) 
     assert_non_null(fgets(bytes, sizeof(bytes), file));
     assert_int_equal(fclose(file), 0);
     assert_string_equal(bytes, "elements=one,three\n");
+    assert_int_equal(ui_workbench_store_membership(
+        layout, master, "main_menu", "bad,injection", true),
+        UI_WORKBENCH_STORE_INVALID_ARGUMENT);
+    assert_int_equal(ui_workbench_store_membership(
+        layout, layout, "main_menu", "four", true),
+        UI_WORKBENCH_STORE_INVALID_ARGUMENT);
+    write_text(master, "layout=main_menu\ndrop_after=\nlayout=pause_menu\ncache_next=pause\n");
+    assert_int_equal(ui_workbench_store_membership(
+        layout, master, "main_menu", "four", true), UI_WORKBENCH_STORE_IO_ERROR);
     assert_int_equal(unlink(master), 0);
     assert_int_equal(unlink(layout), 0);
+}
+
+static void test_membership_second_write_failure_restores_first(void **state) {
+    char layout[] = "build/tsg_membership_layout_XXXXXX";
+    char master[] = "build/tsg_membership_master_XXXXXX";
+    char link[256];
+    char bytes[128] = {0};
+    const char *original = "name=main_menu\nelements=one,two\n";
+    int descriptor;
+    FILE *file;
+    (void)state;
+    descriptor = mkstemp(layout);
+    assert_true(descriptor >= 0);
+    assert_int_equal(close(descriptor), 0);
+    descriptor = mkstemp(master);
+    assert_true(descriptor >= 0);
+    assert_int_equal(close(descriptor), 0);
+    write_text(layout, original);
+    write_text(master, "layout=main_menu\ncache_next=one,two\n");
+    assert_true(snprintf(link, sizeof(link), "%s.link", master) < (int)sizeof(link));
+    /* Reading succeeds; replacement explicitly rejects a symbolic link. */
+    assert_int_equal(symlink(strrchr(master, '/') + 1, link), 0);
+    assert_int_equal(ui_workbench_store_membership(layout, link, "main_menu", "three", true),
+                     UI_WORKBENCH_STORE_IO_ERROR);
+    file = fopen(layout, "rb");
+    assert_non_null(file);
+    assert_int_equal(fread(bytes, 1, sizeof(bytes) - 1, file), strlen(original));
+    assert_int_equal(fclose(file), 0);
+    assert_string_equal(bytes, original);
+    assert_int_equal(unlink(link), 0);
+    assert_int_equal(unlink(master), 0);
+    assert_int_equal(unlink(layout), 0);
+}
+
+static void test_membership_commit_faults_preserve_originals(void **state) {
+    const char *original_layout = "name=main_menu\nelements=one,two\n";
+    const char *original_master = "layout=main_menu\ncache_next=one,two\n";
+    (void)state;
+    for (unsigned int fault = 1; fault <= 2; fault++) {
+        char layout[] = "build/tsg_commit_layout_XXXXXX";
+        char master[] = "build/tsg_commit_master_XXXXXX";
+        const char *paths[] = {layout, master};
+        const char *expected[] = {original_layout, original_master};
+        for (size_t i = 0; i < 2; i++) {
+            int descriptor = mkstemp(i == 0 ? layout : master);
+            assert_true(descriptor >= 0);
+            assert_int_equal(close(descriptor), 0);
+            write_text(paths[i], expected[i]);
+        }
+        replace_calls = 0;
+        fail_replace_call = fault;
+        assert_int_equal(ui_workbench_store_membership(layout, master, "main_menu", "three", true),
+                         UI_WORKBENCH_STORE_IO_ERROR);
+        fail_replace_call = 0;
+        assert_int_equal(replace_calls, fault == 1 ? 1 : 3);
+        for (size_t i = 0; i < 2; i++) {
+            char bytes[128] = {0};
+            FILE *file = fopen(paths[i], "rb");
+            assert_non_null(file);
+            assert_int_equal(fread(bytes, 1, sizeof(bytes) - 1, file), strlen(expected[i]));
+            assert_int_equal(fclose(file), 0);
+            assert_string_equal(bytes, expected[i]);
+            assert_int_equal(unlink(paths[i]), 0);
+        }
+    }
+}
+
+static void test_failed_compensation_retains_synced_original(void **state) {
+    char layout[] = "build/tsg_recovery_layout_XXXXXX";
+    char master[] = "build/tsg_recovery_master_XXXXXX";
+    const char *original = "name=main_menu\nelements=one,two\n";
+    char bytes[128] = {0};
+    FILE *file;
+    int descriptor;
+    (void)state;
+    descriptor = mkstemp(layout);
+    assert_true(descriptor >= 0);
+    assert_int_equal(close(descriptor), 0);
+    descriptor = mkstemp(master);
+    assert_true(descriptor >= 0);
+    assert_int_equal(close(descriptor), 0);
+    write_text(layout, original);
+    write_text(master, "layout=main_menu\ncache_next=one,two\n");
+    replace_calls = 0;
+    fail_replace_call = 2;
+    fail_replace_call_also = 3;
+    retained_original[0] = '\0';
+    assert_int_equal(ui_workbench_store_membership(layout, master, "main_menu", "three", true),
+                     UI_WORKBENCH_STORE_ROLLBACK_FAILED);
+    fail_replace_call = 0;
+    fail_replace_call_also = 0;
+    assert_true(retained_original[0] != '\0');
+    file = fopen(retained_original, "rb");
+    assert_non_null(file);
+    assert_int_equal(fread(bytes, 1, sizeof(bytes) - 1, file), strlen(original));
+    assert_int_equal(fclose(file), 0);
+    assert_string_equal(bytes, original);
+    assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_OK);
+    assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_OK);
+    memset(bytes, 0, sizeof(bytes));
+    file = fopen(layout, "rb");
+    assert_non_null(file);
+    assert_int_equal(fread(bytes, 1, sizeof(bytes) - 1, file), strlen(original));
+    assert_int_equal(fclose(file), 0);
+    assert_string_equal(bytes, original);
+    assert_int_equal(unlink(retained_original), 0);
+    assert_int_equal(unlink(master), 0);
+    assert_int_equal(unlink(layout), 0);
+}
+
+static void test_recovery_commit_decision_and_corrupt_record(void **state) {
+    char layout[] = "build/tsg_journal_layout_XXXXXX";
+    char master[] = "build/tsg_journal_master_XXXXXX";
+    char journal[UI_ELE_PATH_MAX + 32U];
+    const char *old_layout = "elements=one\n";
+    const char *old_master = "layout=main_menu\ncache_next=one\n";
+    const char *new_master = "layout=main_menu\ncache_next=one,two\n";
+    char record[512];
+    char bytes[128] = {0};
+    int fd;
+    FILE *file;
+    (void)state;
+    fd = mkstemp(layout);
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    fd = mkstemp(master);
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    assert_true(snprintf(journal, sizeof(journal), "%s.membership-recovery", layout) > 0);
+    assert_true(snprintf(record, sizeof(record), "%zu\n%zu\n%zu\n%s%s%s",
+        strlen(old_layout), strlen(old_master), strlen(new_master),
+        old_layout, old_master, new_master) > 0);
+    write_text(layout, "elements=one,two\n");
+    write_text(master, new_master);
+    write_text(journal, record);
+    assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_OK);
+    assert_int_equal(access(journal, F_OK), -1);
+    file = fopen(layout, "rb");
+    assert_non_null(file);
+    assert_true(fread(bytes, 1, sizeof(bytes) - 1, file) > 0);
+    assert_int_equal(fclose(file), 0);
+    assert_string_equal(bytes, "elements=one,two\n");
+    write_text(journal, record);
+    write_text(master, "external modification\n");
+    assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_ROLLBACK_FAILED);
+    assert_int_equal(access(journal, F_OK), 0);
+    write_text(journal, "4\ninvalid\n");
+    assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_ROLLBACK_FAILED);
+    assert_int_equal(unlink(journal), 0);
+    assert_int_equal(unlink(master), 0);
+    assert_int_equal(unlink(layout), 0);
+}
+
+static void test_recovery_after_process_interruption(void **state) {
+    (void)state;
+    for (unsigned int stop = 1; stop <= 2; stop++) {
+        char layout[] = "build/tsg_interrupted_layout_XXXXXX";
+        char master[] = "build/tsg_interrupted_master_XXXXXX";
+        char bytes[128] = {0};
+        int fd = mkstemp(layout);
+        int status;
+        pid_t child;
+        FILE *file;
+        assert_true(fd >= 0);
+        assert_int_equal(close(fd), 0);
+        fd = mkstemp(master);
+        assert_true(fd >= 0);
+        assert_int_equal(close(fd), 0);
+        write_text(layout, "elements=one\n");
+        write_text(master, "layout=main_menu\ncache_next=one\n");
+        child = fork();
+        assert_true(child >= 0);
+        if (child == 0) {
+            replace_calls = 0;
+            interrupt_after_replace = stop;
+            (void)ui_workbench_store_membership(layout, master, "main_menu", "two", true);
+            _exit(74);
+        }
+        assert_int_equal(waitpid(child, &status, 0), child);
+        assert_true(WIFEXITED(status));
+        assert_int_equal(WEXITSTATUS(status), 73);
+        assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_OK);
+        assert_int_equal(ui_workbench_recover_membership(layout, master), UI_WORKBENCH_STORE_OK);
+        file = fopen(layout, "rb");
+        assert_non_null(file);
+        assert_true(fread(bytes, 1, sizeof(bytes) - 1, file) > 0);
+        assert_int_equal(fclose(file), 0);
+        assert_string_equal(bytes, stop == 1 ? "elements=one\n" : "elements=one,two\n");
+        memset(bytes, 0, sizeof(bytes));
+        file = fopen(master, "rb");
+        assert_non_null(file);
+        assert_true(fread(bytes, 1, sizeof(bytes) - 1, file) > 0);
+        assert_int_equal(fclose(file), 0);
+        assert_string_equal(bytes, stop == 1 ? "layout=main_menu\ncache_next=one\n" :
+                            "layout=main_menu\ncache_next=one,two\n");
+        assert_int_equal(unlink(master), 0);
+        assert_int_equal(unlink(layout), 0);
+    }
 }
 
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_legacy_defaults_and_valid_metadata),
+        cmocka_unit_test(test_recovery_commit_decision_and_corrupt_record),
+        cmocka_unit_test(test_recovery_after_process_interruption),
+        cmocka_unit_test(test_membership_commit_faults_preserve_originals),
+        cmocka_unit_test(test_failed_compensation_retains_synced_original),
+        cmocka_unit_test(test_membership_second_write_failure_restores_first),
         cmocka_unit_test(test_invalid_presets_are_rejected),
         cmocka_unit_test(test_atomic_store_round_trip),
         cmocka_unit_test(test_invalid_store_preserves_destination),

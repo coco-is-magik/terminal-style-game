@@ -71,6 +71,8 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
                                      const char *tooltip_text,
                                      int scale_percent,
                                      bool reduced_motion);
+bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *palette,
+                                    const UiWorkbench *workbench, int width, int height);
 bool ui_workbench_chrome_paint_panes(Grid *grid,
                                      const UiAppWorkbenchPalette *palette,
                                      bool left_focused, bool right_focused);

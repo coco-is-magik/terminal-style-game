@@ -194,9 +194,93 @@ static void test_trigger_filter_and_random_bounds(void **state) {
     grid_destroy(grid);
 }
 
+static void test_directed_trigger_endpoints(void **state) {
+    static const char *const triggers[] = {"context_enter", "context_exit", "focus", "activate"};
+    static const double durations[] = {160.0, 120.0, 80.0, 80.0};
+    static const UiAnimationEvent events[] = {
+        UI_ANIMATION_EVENT_CONTEXT_ENTER, UI_ANIMATION_EVENT_CONTEXT_EXIT,
+        UI_ANIMATION_EVENT_FOCUS, UI_ANIMATION_EVENT_ACTIVATE
+    };
+    UiElement target = element("target", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement unit = element("unit", UI_ELE_ANIMATION, 0, 0, 12, 1);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 24);
+    Grid *reference = grid_create(40, 24);
+    SDL_Color bg = {0, 0, 0, 255};
+    SDL_Color fg = {255, 255, 255, 255};
+    size_t i;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(reference);
+    target.focused = true;
+    (void)snprintf(unit.target, sizeof(unit.target), "target");
+    (void)snprintf(unit.preset, sizeof(unit.preset), "local_glitch");
+    layout.elements[0] = &target;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+    for (i = 0; i < sizeof(triggers) / sizeof(triggers[0]); i++) {
+        (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s", triggers[i]);
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, durations[i], false, false, events[i]));
+        assert_memory_equal(grid->cells, reference->cells, 40U * 24U * sizeof(Cell));
+        assert_true(ui_animation_render_layout(&layout, grid, durations[i] / 2, true, false, events[i]));
+        assert_memory_equal(grid->cells, reference->cells, 40U * 24U * sizeof(Cell));
+    }
+    release(&target);
+    grid_destroy(reference);
+    grid_destroy(grid);
+}
+
+static void test_lifecycle_protects_authored_spaces_not_backdrop(void **state) {
+    UiElement target = element("target", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement unit = element("unit", UI_ELE_ANIMATION, 0, 0, 12, 1);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 24);
+    Grid *authored = grid_create(40, 24);
+    SDL_Color bg = {3, 7, 11, 255};
+    SDL_Color fg = {220, 230, 240, 255};
+    bool decoration = false;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(authored);
+    free(target.content);
+    target.content = malloc(4);
+    assert_non_null(target.content);
+    memcpy(target.content, "A B", 4);
+    target.content_capacity = 4;
+    target.focused = true;
+    (void)snprintf(unit.target, sizeof(unit.target), "target");
+    (void)snprintf(unit.preset, sizeof(unit.preset), "center_out");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_enter");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
+    layout.elements[0] = &target;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+    ui_layout_render(&layout, authored, fg, bg);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    for (size_t i = 0; i < 40U * 24U; i++) {
+        if (authored->cells[i].glyph)
+            assert_memory_equal(&grid->cells[i], &authored->cells[i], sizeof(Cell));
+        else if (grid->cells[i].glyph != ' ' && grid->cells[i].glyph != 0)
+            decoration = true;
+    }
+    assert_true(decoration);
+    release(&target);
+    grid_destroy(authored);
+    grid_destroy(grid);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_pause_glitch_canvas_matches_layout_unit),
+        cmocka_unit_test(test_directed_trigger_endpoints),
+        cmocka_unit_test(test_lifecycle_protects_authored_spaces_not_backdrop),
         cmocka_unit_test(test_center_out_and_reduced_motion),
         cmocka_unit_test(test_focus_trigger_and_ordinary_transition),
         cmocka_unit_test(test_trigger_filter_and_random_bounds)

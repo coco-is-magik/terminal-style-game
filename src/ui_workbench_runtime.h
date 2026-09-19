@@ -7,6 +7,7 @@
 #include "ui_app_theme_adapter.h"
 #include "ui_canvas.h"
 #include "ui_workbench.h"
+#include "ui_animation.h"
 
 typedef enum {
     UI_WORKBENCH_RUNTIME_OK = 0,
@@ -30,5 +31,31 @@ bool ui_workbench_runtime_build_layers(UiLayerList *layers,
                                        int authored_scale_percent,
                                        int workbench_scale_percent);
 int ui_workbench_runtime_step_scale(int scale_percent, int direction);
+bool ui_workbench_runtime_footer_size(int scale_percent, int *width, int *height);
+bool ui_workbench_runtime_interface_size(int scale_percent, bool editing, int *width, int *height);
+bool ui_workbench_runtime_preview(UiCanvas *canvas, Grid *staging,
+                                  UiWorkbench *workbench,
+                                  const UiAppWorkbenchPalette *palette,
+                                  double elapsed_ms, bool reduced_motion);
+bool ui_workbench_runtime_preview_event(UiCanvas *canvas, Grid *staging,
+                                        UiWorkbench *workbench,
+                                        const UiAppWorkbenchPalette *palette,
+                                        UiAnimationEvent event,
+                                        double elapsed_ms, bool reduced_motion);
+bool ui_workbench_runtime_snapshot(UiWorkbench *workbench,
+                                   const UiAppWorkbenchPalette *palette,
+                                   const char *tooltip_text,
+                                   int authored_scale, int workbench_scale,
+                                   double elapsed_ms, bool reduced_motion,
+                                   uint32_t *pixels, size_t pixel_count);
+bool ui_workbench_runtime_exit_overlay(UiCanvas *preview, Grid *staging,
+                                       UiWorkbench *outgoing, double elapsed_ms,
+                                       bool reduced_motion);
+/* Negative event ages are inactive. Each lifecycle clock advances independently. */
+bool ui_workbench_runtime_preview_events(UiCanvas *canvas, Grid *staging,
+                                         UiWorkbench *workbench,
+                                         const UiAppWorkbenchPalette *palette,
+                                         const double ages[UI_ANIMATION_EVENT_PREVIEW],
+                                         bool reduced_motion);
 
 #endif

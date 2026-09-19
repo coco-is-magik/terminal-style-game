@@ -151,7 +151,8 @@ make ui-workbench
 
 Up/Down browses elements (including the active context container); Enter enters or leaves
 move mode; arrows move a move-selected element one cell and save immediately; Tab cycles
-parent, style, transition, and focus/effect metadata; the literal `[` and `]` keys cycle
+parent, style, transition, focus/effect, dimensions, visibility, alignment, z-order,
+coordinate mode, action and content metadata; the literal `[` and `]` keys cycle
 compatible values directly on the highlighted element without entering move mode;
 Ctrl+N opens a list of existing reusable elements/animations to clone into the active layout;
 Backspace removes the highlighted direct member from that layout after confirmation while
@@ -163,13 +164,23 @@ persisted application UI scale used by `make run` and does not change when workb
 accepted edit canonically rewrites the affected
 `assets/ui_elements/*.txt` file
 through a synced same-directory temporary file and atomic replacement, then reloads the active
-layout. There is no undo, draft, free-form creation, click selection, authored `.tui` editing,
-or custom-theme editing in this mode. Scale changes use the normal `default_user.ini` /
-`user.ini` precedence and persistence. `focus_pulse` and `focus_glitch` are rendered for the
+layout. Content opens a bounded single-line entry: Enter saves and Escape cancels.
+F9 opens paged help, F5 reloads, and F10 toggles reduced motion. There is no general undo,
+but Ctrl+Z reverses the most recent add/remove membership operation. Membership writes prepare
+both replacements and a synchronized rollback copy before committing; if rollback also fails,
+the original is retained at the recovery path printed to stderr. A synchronized recovery record
+also allows the next workbench load to reconcile process-interrupted writes before loading its
+cache. This assumes one authoring writer, not simultaneous cross-file visibility to external readers.
+Conflicting external edits or persistent filesystem failures block recovery without discarding its data. There is no
+free-form creation, click selection, authored `.tui` editing, or custom-theme editing in this mode.
+Only the preview loads `default_user.ini` / `user.ini`; workbench scale is session-local.
+`focus_pulse` and `focus_glitch` are rendered for the
 focused button in normal application menus as well as the workbench. Reusable animation units
 and element transition presets use the same production/workbench evaluator for pause glitch,
 center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
 See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
+Current evidence, remaining implementation requirements and final manual acceptance are recorded
+in `docs/reviews/2026-09-19-application-ui-editor-a6-closeout.md`; the full plan is not yet closed.
 
 The staged `.tui` UI Scene editor (`make ui-editor`) is **withdrawn and unratified**. Its
 presentation used hardcoded colours instead of the accepted palette, applied no preference or

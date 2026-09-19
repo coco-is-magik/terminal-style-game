@@ -30,8 +30,11 @@ static void guide_clear(UiWorkbenchGuide *guide) {
 static bool guide_append(UiWorkbenchGuide *guide, const char *key,
                          const char *text) {
     UiWorkbenchGuideEntry *entry;
+    size_t i;
     if (!guide || !key || !text || key[0] == '\0' || text[0] == '\0' ||
         guide->count >= UI_WORKBENCH_GUIDE_ENTRY_MAX) return false;
+    for (i = 0; i < guide->count; i++)
+        if (strcmp(guide->entries[i].key, key) == 0) return false;
     entry = &guide->entries[guide->count];
     if (snprintf(entry->key, sizeof(entry->key), "%s", key) >=
         (int)sizeof(entry->key)) return false;
@@ -61,10 +64,19 @@ UiWorkbenchGuideResult ui_workbench_guide_load(UiWorkbenchGuide *guide,
     if (!file) return UI_WORKBENCH_GUIDE_LOAD_FAILED;
     while (fgets(line, sizeof(line), file)) {
         char *divider;
+        if (!strchr(line, '\n') && !feof(file)) {
+            (void)fclose(file);
+            guide_clear(guide);
+            return UI_WORKBENCH_GUIDE_LOAD_FAILED;
+        }
         strip_trailing(line);
         if (line[0] == '\0' || line[0] == '#') continue;
         divider = strchr(line, '=');
-        if (!divider || divider == line || divider[1] == '\0') continue;
+        if (!divider || divider == line || divider[1] == '\0') {
+            (void)fclose(file);
+            guide_clear(guide);
+            return UI_WORKBENCH_GUIDE_LOAD_FAILED;
+        }
         *divider = '\0';
         if (!guide_append(guide, line, divider + 1)) {
             (void)fclose(file);
@@ -77,7 +89,10 @@ UiWorkbenchGuideResult ui_workbench_guide_load(UiWorkbenchGuide *guide,
         guide_clear(guide);
         return UI_WORKBENCH_GUIDE_LOAD_FAILED;
     }
-    (void)fclose(file);
+    if (fclose(file) != 0) {
+        guide_clear(guide);
+        return UI_WORKBENCH_GUIDE_LOAD_FAILED;
+    }
     guide->loaded = true;
     return UI_WORKBENCH_GUIDE_OK;
 }
@@ -114,6 +129,14 @@ static const char *property_key(UiWorkbenchProperty property) {
         case UI_WORKBENCH_PROPERTY_RANDOMIZE: return "ui_property_randomize";
         case UI_WORKBENCH_PROPERTY_WIDTH: return "ui_property_width";
         case UI_WORKBENCH_PROPERTY_HEIGHT: return "ui_property_height";
+        case UI_WORKBENCH_PROPERTY_COORDS: return "ui_property_coords";
+        case UI_WORKBENCH_PROPERTY_ACTION: return "ui_property_action";
+        case UI_WORKBENCH_PROPERTY_CONTENT: return "ui_property_content";
+        case UI_WORKBENCH_PROPERTY_FOREGROUND: return "ui_property_foreground";
+        case UI_WORKBENCH_PROPERTY_BACKGROUND: return "ui_property_background";
+        case UI_WORKBENCH_PROPERTY_VISIBLE: return "ui_property_visible";
+        case UI_WORKBENCH_PROPERTY_ALIGN: return "ui_property_align";
+        case UI_WORKBENCH_PROPERTY_Z_INDEX: return "ui_property_z_index";
         default: return NULL;
     }
 }
@@ -123,7 +146,14 @@ const char *ui_workbench_guide_tooltip(const UiWorkbenchGuide *guide,
     const char *key = NULL;
     const char *text;
     if (!guide || !guide->loaded || !workbench) return NULL;
-    if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
+    if (workbench->mode == UI_WORKBENCH_MODE_TEXT) return workbench->text_edit;
+    if (workbench->mode == UI_WORKBENCH_MODE_HELP) {
+        static const char *const pages[] = {
+            "ui_help_workflow", "ui_help_contexts", "ui_help_elements",
+            "ui_help_animation", "ui_help_persistence"
+        };
+        key = pages[workbench->help_page % 5U];
+    } else if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
         key = "ui_mode_add";
     } else if (workbench->mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM) {
         key = "ui_mode_remove_confirm";
@@ -151,12 +181,16 @@ size_t ui_workbench_guide_missing_count(const UiWorkbenchGuide *guide,
         "ui_property_focus_effect", "ui_property_preset", "ui_property_target",
         "ui_property_trigger", "ui_property_orientation", "ui_property_loop",
         "ui_property_randomize", "ui_property_width", "ui_property_height",
+        "ui_property_visible", "ui_property_align", "ui_property_z_index",
+        "ui_property_coords", "ui_property_action", "ui_property_content",
+        "ui_property_foreground", "ui_property_background",
         "ui_context_main", "ui_context_pause", "ui_context_settings",
         "ui_context_confirm", "ui_mode_browse", "ui_mode_add",
         "ui_mode_remove_confirm", "ui_action_activate",
         "ui_action_add_confirm", "ui_action_remove_confirm",
         "ui_action_scale", "ui_editor_save_failed", "ui_editor_load_failed",
-        "ui_editor_help"
+        "ui_editor_help", "ui_help_workflow", "ui_help_contexts",
+        "ui_help_elements", "ui_help_animation", "ui_help_persistence"
     };
     size_t missing = 0U;
     size_t i;

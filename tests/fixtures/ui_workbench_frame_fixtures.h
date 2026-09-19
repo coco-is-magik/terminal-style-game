@@ -15,11 +15,13 @@ static const struct {
     int scale_percent;
     uint64_t checksum;
 } ui_workbench_frame_contract_fixtures[] = {
-    {MENU_MAIN, 100, 15106231313638485604ULL},
-    {MENU_MAIN, 150, 7566924062443564644ULL},
-    {MENU_PAUSE, 100, 16767408351412020113ULL},
-    {MENU_SETTINGS, 100, 8577113895234228389ULL},
-    {MENU_CONFIRM_QUIT, 100, 8315436846210167558ULL}
+    /* Reviewed refresh: docs/reviews/2026-09-19-application-ui-editor-execution.md.
+     * Legacy cell contract only; runtime fidelity uses compositor pixel evidence. */
+    {MENU_MAIN, 100, 13910126345440706794ULL},
+    {MENU_MAIN, 150, 1637535885879394538ULL},
+    {MENU_PAUSE, 100, 1475701774946690991ULL},
+    {MENU_SETTINGS, 100, 9870106462813291221ULL},
+    {MENU_CONFIRM_QUIT, 100, 12275623073148853648ULL}
 };
 
 static const size_t ui_workbench_frame_contract_fixture_count =

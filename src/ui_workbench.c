@@ -1,5 +1,7 @@
 #include "ui_workbench.h"
+#include "rgba_parse.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +44,11 @@ static void copy_bounded(char *destination, size_t capacity, const char *source)
 static bool property_matches_element(UiWorkbenchProperty property,
                                      const UiElement *element) {
     if (!element) return false;
+    if (property == UI_WORKBENCH_PROPERTY_CONTENT)
+        return element->type == UI_ELE_TEXT || element->type == UI_ELE_BUTTON;
+    if (property == UI_WORKBENCH_PROPERTY_ACTION) return element->type == UI_ELE_BUTTON;
+    if (property >= UI_WORKBENCH_PROPERTY_WIDTH && property < UI_WORKBENCH_PROPERTY_COUNT)
+        return true;
     return element->type == UI_ELE_ANIMATION
         ? property >= UI_WORKBENCH_PROPERTY_PRESET
         : property <= UI_WORKBENCH_PROPERTY_FOCUS_EFFECT;
@@ -70,10 +77,16 @@ void ui_workbench_destroy(UiWorkbench *workbench) {
     ui_workbench_init(workbench);
 }
 
-UiWorkbenchResult ui_workbench_open(UiWorkbench *workbench, MenuId context) {
+static UiWorkbenchResult load_context(UiWorkbench *workbench, MenuId context) {
     const char *name;
     char path[UI_ELE_PATH_MAX];
     if (!workbench || !(name = layout_name(context))) return UI_WORKBENCH_INVALID_ARGUMENT;
+    for (int id = MENU_MAIN; id <= MENU_CONFIRM_QUIT; id++) {
+        if (snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", layout_name((MenuId)id)) >=
+            (int)sizeof(path) || ui_workbench_recover_membership(path,
+                "assets/ui_layouts/master_map.txt") != UI_WORKBENCH_STORE_OK)
+            return UI_WORKBENCH_LOAD_FAILED;
+    }
     ui_layout_destroy(workbench->layout);
     workbench->layout = NULL;
     ui_cache_destroy(&workbench->cache);
@@ -128,6 +141,49 @@ UiWorkbenchResult ui_workbench_open(UiWorkbench *workbench, MenuId context) {
     return UI_WORKBENCH_OK;
 }
 
+UiWorkbenchResult ui_workbench_open(UiWorkbench *workbench, MenuId context) {
+    UiWorkbench *replacement;
+    UiWorkbenchResult result;
+    if (!workbench || !layout_name(context)) return UI_WORKBENCH_INVALID_ARGUMENT;
+    replacement = malloc(sizeof(*replacement));
+    if (!replacement) {
+        set_status(workbench, "Load failed: insufficient memory; current edit preserved. Retry.");
+        return UI_WORKBENCH_LOAD_FAILED;
+    }
+    ui_workbench_init(replacement);
+    result = load_context(replacement, context);
+    if (result == UI_WORKBENCH_OK) {
+        copy_bounded(replacement->membership_undo_name, sizeof(replacement->membership_undo_name),
+                     workbench->membership_undo_name);
+        replacement->membership_undo_context = workbench->membership_undo_context;
+        replacement->membership_undo_add = workbench->membership_undo_add;
+        ui_workbench_destroy(workbench);
+        *workbench = *replacement;
+    } else {
+        ui_workbench_destroy(replacement);
+        set_status(workbench, "Load failed: check layout and element files; current edit preserved. Retry.");
+    }
+    free(replacement);
+    return result;
+}
+
+UiWorkbenchResult ui_workbench_open_help(UiWorkbench *workbench) {
+    if (!workbench || !workbench->layout || workbench->mode != UI_WORKBENCH_MODE_BROWSE)
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    workbench->mode = UI_WORKBENCH_MODE_HELP;
+    workbench->help_page = 0;
+    set_status(workbench, "Help 1/5 | Up/Down page | Esc returns without changing the edit");
+    return UI_WORKBENCH_OK;
+}
+
+void ui_workbench_cycle_help(UiWorkbench *workbench, int direction) {
+    if (!workbench || workbench->mode != UI_WORKBENCH_MODE_HELP || direction == 0) return;
+    workbench->help_page = (workbench->help_page + (direction > 0 ? 1U : 4U)) % 5U;
+    (void)snprintf(workbench->status, sizeof(workbench->status),
+                   "Help %zu/5 | Up/Down page | Esc returns without changing the edit",
+                   workbench->help_page + 1U);
+}
+
 UiElement *ui_workbench_current_element(UiWorkbench *workbench) {
     if (!workbench || !workbench->layout || workbench->element_index < 0 ||
         workbench->element_index >= workbench->element_count) return NULL;
@@ -164,9 +220,7 @@ UiWorkbenchResult ui_workbench_cycle_property(UiWorkbench *workbench, int direct
         value = (int)workbench->property +
             (direction > 0 ? 1 : UI_WORKBENCH_PROPERTY_COUNT - 1);
         workbench->property = (UiWorkbenchProperty)(value % UI_WORKBENCH_PROPERTY_COUNT);
-    } while (element && element->type == UI_ELE_ANIMATION
-        ? workbench->property <= UI_WORKBENCH_PROPERTY_FOCUS_EFFECT
-        : workbench->property >= UI_WORKBENCH_PROPERTY_PRESET);
+    } while (element && !property_matches_element(workbench->property, element));
     set_status(workbench, "Property changed");
     return UI_WORKBENCH_OK;
 }
@@ -185,15 +239,17 @@ static UiWorkbenchResult save_and_reload(UiWorkbench *workbench,
     char path[UI_ELE_PATH_MAX];
     char selected_name[UI_ELE_NAME_MAX];
     UiWorkbenchStoreResult result;
+    UiWorkbenchProperty property;
     int i;
     if (!workbench || !element || snprintf(path, sizeof(path),
             "assets/ui_elements/%s.txt", element->name) >= (int)sizeof(path))
         return UI_WORKBENCH_INVALID_ARGUMENT;
     (void)snprintf(selected_name, sizeof(selected_name), "%s", element->name);
+    property = workbench->property;
     result = ui_workbench_store_element(element, path);
     if (result != UI_WORKBENCH_STORE_OK &&
         result != UI_WORKBENCH_STORE_OK_DURABILITY_WARNING) {
-        set_status(workbench, "Save failed");
+        set_status(workbench, "Save failed: check values, file permissions and free space; previous value preserved. Retry.");
         return UI_WORKBENCH_SAVE_FAILED;
     }
     if (ui_workbench_open(workbench, workbench->context) != UI_WORKBENCH_OK)
@@ -206,6 +262,8 @@ static UiWorkbenchResult save_and_reload(UiWorkbench *workbench,
         }
     }
     workbench->editing = true;
+    workbench->property = property;
+    normalize_property(workbench);
     set_status(workbench, result == UI_WORKBENCH_STORE_OK
         ? "Saved live" : "Saved; durability warning");
     return UI_WORKBENCH_OK;
@@ -220,6 +278,13 @@ UiWorkbenchResult ui_workbench_move(UiWorkbench *workbench, int dx, int dy) {
         (dx == 0 && dy == 0)) return UI_WORKBENCH_NO_CHANGE;
     old_x = element->layout.x;
     old_y = element->layout.y;
+    if ((dx > 0 && old_x > INT_MAX - dx) ||
+        (dx < 0 && old_x < INT_MIN - dx) ||
+        (dy > 0 && old_y > INT_MAX - dy) ||
+        (dy < 0 && old_y < INT_MIN - dy)) {
+        set_status(workbench, "Move rejected: coordinate limit reached; use the opposite direction.");
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    }
     element->layout.x += dx;
     element->layout.y += dy;
     result = save_and_reload(workbench, element);
@@ -241,6 +306,72 @@ static const char *cycle_name(const char *current, const char *const *values,
         }
     }
     return values[0];
+}
+
+UiWorkbenchResult ui_workbench_begin_text(UiWorkbench *workbench) {
+    UiElement *element = ui_workbench_current_element(workbench);
+    const char *content;
+    if (!element || workbench->mode != UI_WORKBENCH_MODE_BROWSE ||
+        (workbench->property != UI_WORKBENCH_PROPERTY_CONTENT &&
+         workbench->property != UI_WORKBENCH_PROPERTY_FOREGROUND &&
+         workbench->property != UI_WORKBENCH_PROPERTY_BACKGROUND) ||
+        !property_matches_element(workbench->property, element)) return UI_WORKBENCH_INVALID_ARGUMENT;
+    content = ui_workbench_current_value(workbench);
+    if (strlen(content) >= sizeof(workbench->text_edit)) {
+        set_status(workbench, "Content exceeds 255 bytes; preserved unchanged. Choose a shorter source.");
+        return UI_WORKBENCH_NO_CHANGE;
+    }
+    memcpy(workbench->text_edit, content, strlen(content) + 1);
+    workbench->mode = UI_WORKBENCH_MODE_TEXT;
+    set_status(workbench, "Type value | Backspace deletes | Enter saves | Esc preserves original");
+    return UI_WORKBENCH_OK;
+}
+
+UiWorkbenchResult ui_workbench_text_input(UiWorkbench *workbench, const char *text, bool backspace) {
+    size_t used;
+    size_t length;
+    if (!workbench || workbench->mode != UI_WORKBENCH_MODE_TEXT || !text)
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    used = strlen(workbench->text_edit);
+    if (backspace && used > 0) used--;
+    length = strlen(text);
+    if (length >= sizeof(workbench->text_edit) - used || strchr(text, '\n') || strchr(text, '\r')) {
+        set_status(workbench, "Content must be a single line of at most 255 bytes. Shorten it and retry.");
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    }
+    memcpy(workbench->text_edit + used, text, length + 1);
+    return UI_WORKBENCH_OK;
+}
+
+UiWorkbenchResult ui_workbench_confirm_text(UiWorkbench *workbench) {
+    UiElement *element = ui_workbench_current_element(workbench);
+    UiElement candidate;
+    UiWorkbenchResult result;
+    if (!element || workbench->mode != UI_WORKBENCH_MODE_TEXT)
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    candidate = *element;
+    if (workbench->property == UI_WORKBENCH_PROPERTY_FOREGROUND ||
+        workbench->property == UI_WORKBENCH_PROPERTY_BACKGROUND) {
+        bool foreground = workbench->property == UI_WORKBENCH_PROPERTY_FOREGROUND;
+        bool inherited = strcmp(workbench->text_edit, "inherit") == 0;
+        uint8_t channels[4];
+        if (!inherited && !rgba_parse(workbench->text_edit, channels)) {
+            set_status(workbench, "Enter r,g,b,a (each 0..255), or inherit. Original color preserved; correct and retry.");
+            return UI_WORKBENCH_INVALID_ARGUMENT;
+        }
+        if (foreground) candidate.has_fg = !inherited;
+        else candidate.has_bg = !inherited;
+        if (!inherited) {
+            SDL_Color parsed = {channels[0], channels[1], channels[2], channels[3]};
+            if (foreground) candidate.fg = parsed;
+            else candidate.bg = parsed;
+        }
+    } else {
+        candidate.content = workbench->text_edit;
+        candidate.content_capacity = sizeof(workbench->text_edit);
+    }
+    result = save_and_reload(workbench, &candidate);
+    return result;
 }
 
 static UiWorkbenchResult cycle_parent(UiWorkbench *workbench, UiElement *element,
@@ -305,6 +436,56 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     if (!workbench || !element || direction == 0 ||
         !property_matches_element(workbench->property, element))
         return UI_WORKBENCH_NO_CHANGE;
+    if (workbench->property >= UI_WORKBENCH_PROPERTY_WIDTH) {
+        UiElement original = *element;
+        int step = direction > 0 ? 1 : -1;
+        int *value = NULL;
+        switch (workbench->property) {
+            case UI_WORKBENCH_PROPERTY_WIDTH: value = &element->layout.width; break;
+            case UI_WORKBENCH_PROPERTY_HEIGHT: value = &element->layout.height; break;
+            case UI_WORKBENCH_PROPERTY_VISIBLE: element->visible = !element->visible; break;
+            case UI_WORKBENCH_PROPERTY_ALIGN:
+                element->align = (UiAlign)(((int)element->align + (step > 0 ? 1 : 2)) % 3);
+                break;
+            case UI_WORKBENCH_PROPERTY_Z_INDEX: value = &element->z_index; break;
+            case UI_WORKBENCH_PROPERTY_COORDS:
+                element->layout.coords_mode = element->layout.coords_mode == UI_COORD_ABSOLUTE
+                    ? UI_COORD_RELATIVE : UI_COORD_ABSOLUTE;
+                break;
+            case UI_WORKBENCH_PROPERTY_ACTION: {
+                const char *choices[UI_CACHE_MAX + 1];
+                size_t count = 1;
+                choices[0] = "";
+                for (int i = 0; i < workbench->cache.count; i++) {
+                    const UiElement *source = workbench->cache.items[i];
+                    bool known = false;
+                    if (!source || source->type != UI_ELE_BUTTON || !source->action[0]) continue;
+                    for (size_t j = 0; j < count; j++)
+                        if (strcmp(choices[j], source->action) == 0) known = true;
+                    if (!known) choices[count++] = source->action;
+                }
+                copy_bounded(element->action, sizeof(element->action),
+                    cycle_name(element->action, choices, count, direction));
+                break;
+            }
+            case UI_WORKBENCH_PROPERTY_CONTENT: return ui_workbench_begin_text(workbench);
+            case UI_WORKBENCH_PROPERTY_FOREGROUND:
+            case UI_WORKBENCH_PROPERTY_BACKGROUND: return ui_workbench_begin_text(workbench);
+            default: return UI_WORKBENCH_INVALID_ARGUMENT;
+        }
+        if (value) {
+            if ((step > 0 && *value == INT_MAX) || (step < 0 && *value == INT_MIN) ||
+                (step < 0 && *value == 0 && workbench->property != UI_WORKBENCH_PROPERTY_Z_INDEX)) {
+                set_status(workbench, "Value limit reached; use the opposite direction.");
+                return UI_WORKBENCH_NO_CHANGE;
+            }
+            *value += step;
+        }
+        result = save_and_reload(workbench, element);
+        if (result == UI_WORKBENCH_SAVE_FAILED || result == UI_WORKBENCH_INVALID_ARGUMENT)
+            *element = original;
+        return result;
+    }
     if (element->type != UI_ELE_ANIMATION &&
         workbench->property == UI_WORKBENCH_PROPERTY_PARENT)
         return cycle_parent(workbench, element, direction);
@@ -478,7 +659,10 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
     memcpy(stem, entry->name, length - 4U);
     stem[length - 4U] = '\0';
     source = ui_cache_get(&workbench->cache, stem);
-    if (!source) return UI_WORKBENCH_LOAD_FAILED;
+    if (!source) {
+        set_status(workbench, "Source unavailable: choose another unit or reload after repairing its file.");
+        return UI_WORKBENCH_LOAD_FAILED;
+    }
     clone = *source;
     clone.parent = NULL;
     memset(clone.children, 0, sizeof(clone.children));
@@ -499,13 +683,21 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
         if (result == UI_WORKBENCH_STORE_OK ||
             result == UI_WORKBENCH_STORE_OK_DURABILITY_WARNING) break;
     }
-    if (suffix >= 1000) return UI_WORKBENCH_SAVE_FAILED;
+    if (suffix >= 1000) {
+        set_status(workbench, "Add failed: check source values, destination access and free space, then retry.");
+        return UI_WORKBENCH_SAVE_FAILED;
+    }
     if (snprintf(layout_path, sizeof(layout_path), "assets/ui_layouts/%s.txt", layout) >=
-        (int)sizeof(layout_path) ||
-        ui_workbench_store_membership(layout_path, "assets/ui_layouts/master_map.txt",
-                                      layout, clone.name, true) != UI_WORKBENCH_STORE_OK) {
+        (int)sizeof(layout_path)) return UI_WORKBENCH_INVALID_ARGUMENT;
+    result = ui_workbench_store_membership(layout_path, "assets/ui_layouts/master_map.txt",
+                                           layout, clone.name, true);
+    if (result == UI_WORKBENCH_STORE_ROLLBACK_FAILED) {
+        set_status(workbench, "Partial save: layout/master map disagree. Clone retained; repair membership files before reload.");
+        return UI_WORKBENCH_SAVE_FAILED;
+    }
+    if (result != UI_WORKBENCH_STORE_OK) {
         (void)remove(path);
-        set_status(workbench, "Add failed; source preserved");
+        set_status(workbench, "Add failed; source preserved. Check layout/master-map access and free space, then retry.");
         return UI_WORKBENCH_SAVE_FAILED;
     }
     if (ui_workbench_open(workbench, workbench->context) != UI_WORKBENCH_OK)
@@ -514,7 +706,10 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
         if (strcmp(workbench->elements[i]->name, clone.name) == 0)
             workbench->element_index = i;
     normalize_property(workbench);
-    set_status(workbench, "Existing unit cloned and added");
+    copy_bounded(workbench->membership_undo_name, sizeof(workbench->membership_undo_name), clone.name);
+    workbench->membership_undo_context = workbench->context;
+    workbench->membership_undo_add = false;
+    set_status(workbench, "Existing unit cloned and added | Ctrl+Z reverses membership");
     return UI_WORKBENCH_OK;
 }
 
@@ -527,7 +722,7 @@ UiWorkbenchResult ui_workbench_request_remove(UiWorkbench *workbench) {
         if (other != element &&
             (strcmp(other->parent_name, element->name) == 0 ||
              (other->type == UI_ELE_ANIMATION && strcmp(other->target, element->name) == 0))) {
-            set_status(workbench, "Remove rejected: active unit references selection");
+            set_status(workbench, "Remove rejected: reparent children or retarget animation units that reference this selection first.");
             return UI_WORKBENCH_NO_CHANGE;
         }
     }
@@ -540,18 +735,72 @@ UiWorkbenchResult ui_workbench_confirm_remove(UiWorkbench *workbench) {
     UiElement *element = ui_workbench_current_element(workbench);
     const char *layout;
     char path[UI_ELE_PATH_MAX];
+    char removed[UI_ELE_NAME_MAX];
+    UiWorkbenchStoreResult stored;
     if (!workbench || workbench->mode != UI_WORKBENCH_MODE_REMOVE_CONFIRM ||
         !element || !(layout = layout_name(workbench->context)) ||
         snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", layout) >=
             (int)sizeof(path)) return UI_WORKBENCH_INVALID_ARGUMENT;
-    if (ui_workbench_store_membership(path, "assets/ui_layouts/master_map.txt",
-                                      layout, element->name, false) != UI_WORKBENCH_STORE_OK) {
-        set_status(workbench, "Remove failed; layout preserved");
+    copy_bounded(removed, sizeof(removed), element->name);
+    stored = ui_workbench_store_membership(path, "assets/ui_layouts/master_map.txt",
+                                           layout, element->name, false);
+    if (stored == UI_WORKBENCH_STORE_ROLLBACK_FAILED) {
+        set_status(workbench, "Partial save: layout/master map disagree. Source retained; repair membership files before reload.");
+        return UI_WORKBENCH_SAVE_FAILED;
+    }
+    if (stored != UI_WORKBENCH_STORE_OK) {
+        set_status(workbench, "Remove failed; layout preserved. Check layout/master-map access and free space, then retry.");
         return UI_WORKBENCH_SAVE_FAILED;
     }
     if (ui_workbench_open(workbench, workbench->context) != UI_WORKBENCH_OK)
         return UI_WORKBENCH_LOAD_FAILED;
-    set_status(workbench, "Removed from layout; source asset preserved");
+    copy_bounded(workbench->membership_undo_name, sizeof(workbench->membership_undo_name), removed);
+    workbench->membership_undo_context = workbench->context;
+    workbench->membership_undo_add = true;
+    set_status(workbench, "Removed; source preserved | Ctrl+Z restores membership");
+    return UI_WORKBENCH_OK;
+}
+
+UiWorkbenchResult ui_workbench_undo_membership(UiWorkbench *workbench) {
+    char path[UI_ELE_PATH_MAX];
+    const char *layout;
+    bool add;
+    UiWorkbenchStoreResult stored;
+    if (!workbench || workbench->mode != UI_WORKBENCH_MODE_BROWSE)
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    layout = layout_name(workbench->membership_undo_context);
+    if (!layout || !workbench->membership_undo_name[0]) {
+        set_status(workbench, "No membership change to reverse in this session.");
+        return UI_WORKBENCH_NO_CHANGE;
+    }
+    add = workbench->membership_undo_add;
+    if (!add) {
+        for (int i = 0; i < workbench->cache.count; i++) {
+            const UiElement *dependent = workbench->cache.items[i];
+            if (dependent && (strcmp(dependent->parent_name, workbench->membership_undo_name) == 0 ||
+                (dependent->type == UI_ELE_ANIMATION &&
+                 strcmp(dependent->target, workbench->membership_undo_name) == 0))) {
+                set_status(workbench, "Reverse rejected: reparent children or retarget dependent animations first.");
+                return UI_WORKBENCH_NO_CHANGE;
+            }
+        }
+    }
+    if (snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", layout) >= (int)sizeof(path))
+        return UI_WORKBENCH_INVALID_ARGUMENT;
+    stored = ui_workbench_store_membership(path, "assets/ui_layouts/master_map.txt", layout,
+                                           workbench->membership_undo_name, add);
+    if (stored == UI_WORKBENCH_STORE_ROLLBACK_FAILED) {
+        set_status(workbench, "Partial reverse: layout/master map disagree. Repair membership files before reload.");
+        return UI_WORKBENCH_SAVE_FAILED;
+    }
+    if (stored != UI_WORKBENCH_STORE_OK) {
+        set_status(workbench, "Reverse failed: check layout/master-map access, then retry.");
+        return UI_WORKBENCH_SAVE_FAILED;
+    }
+    workbench->membership_undo_add = !add;
+    if (ui_workbench_open(workbench, workbench->membership_undo_context) != UI_WORKBENCH_OK)
+        return UI_WORKBENCH_LOAD_FAILED;
+    set_status(workbench, "Membership reversed | Ctrl+Z toggles it again; source file is preserved");
     return UI_WORKBENCH_OK;
 }
 
@@ -565,7 +814,8 @@ const char *ui_workbench_property_name(UiWorkbenchProperty property) {
     static const char *const names[] = {
         "parent", "style", "transition", "focus effect", "preset", "target",
         "trigger", "orientation", "loop", "randomize"
-        ,"width", "height"
+        ,"width", "height", "visible", "alignment", "z index", "coordinates", "action", "content",
+        "foreground", "background"
     };
     return property >= UI_WORKBENCH_PROPERTY_PARENT &&
         property < UI_WORKBENCH_PROPERTY_COUNT ? names[property] : "invalid";
@@ -588,6 +838,28 @@ const char *ui_workbench_current_value(const UiWorkbench *workbench) {
         case UI_WORKBENCH_PROPERTY_ORIENTATION: return element->orientation;
         case UI_WORKBENCH_PROPERTY_LOOP: return element->loop ? "yes" : "no";
         case UI_WORKBENCH_PROPERTY_RANDOMIZE: return element->randomize ? "yes" : "no";
+        case UI_WORKBENCH_PROPERTY_VISIBLE: return element->visible ? "yes" : "no";
+        case UI_WORKBENCH_PROPERTY_COORDS:
+            return element->layout.coords_mode == UI_COORD_ABSOLUTE ? "absolute" : "relative";
+        case UI_WORKBENCH_PROPERTY_ACTION: return element->action[0] ? element->action : "none";
+        case UI_WORKBENCH_PROPERTY_CONTENT: return element->content ? element->content : "";
+        case UI_WORKBENCH_PROPERTY_FOREGROUND:
+        case UI_WORKBENCH_PROPERTY_BACKGROUND: {
+            static char value[24];
+            bool foreground = workbench->property == UI_WORKBENCH_PROPERTY_FOREGROUND;
+            SDL_Color color = foreground ? element->fg : element->bg;
+            if (!(foreground ? element->has_fg : element->has_bg)) return "inherit";
+            (void)snprintf(value, sizeof(value), "%u,%u,%u,%u", color.r, color.g, color.b, color.a);
+            return value;
+        }
+        case UI_WORKBENCH_PROPERTY_ALIGN:
+            return element->align == UI_ALIGN_LEFT ? "left" :
+                element->align == UI_ALIGN_CENTER ? "center" : "right";
+        case UI_WORKBENCH_PROPERTY_Z_INDEX: {
+            static char value[24];
+            (void)snprintf(value, sizeof(value), "%d", element->z_index);
+            return value;
+        }
         case UI_WORKBENCH_PROPERTY_WIDTH: {
             static char width[24];
             (void)snprintf(width, sizeof(width), "%d", element->layout.width);

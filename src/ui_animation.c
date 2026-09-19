@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define UI_ANIMATION_DURATION_MS 160.0
 #define PAUSE_GLITCH_STABLE_ID UINT32_C(0x50415553)
 
 typedef bool (*SetCell)(void *, int, int, uint8_t, SDL_Color, SDL_Color);
@@ -103,11 +102,18 @@ static bool animation_progress(const UiElement *unit, double elapsed_ms,
                                double *out_progress) {
     double elapsed = elapsed_ms;
     double progress;
+    UiThemeMotionRole role = UI_THEME_MOTION_MAJOR_ENTER;
+    double duration;
+    if (strcmp(unit->trigger, "context_exit") == 0) role = UI_THEME_MOTION_MAJOR_EXIT;
+    else if (strcmp(unit->trigger, "focus") == 0 || strcmp(unit->trigger, "activate") == 0)
+        role = UI_THEME_MOTION_FEEDBACK;
+    else if (strcmp(unit->trigger, "while_visible") == 0) role = UI_THEME_MOTION_RELATIONSHIP;
+    duration = (double)ui_theme_motion_duration_ms(role, false);
     *visible = true;
     if (unit->loop || preview_loop || strcmp(unit->trigger, "while_visible") == 0)
-        elapsed = fmod(elapsed_ms, UI_ANIMATION_DURATION_MS);
-    else if (elapsed_ms >= UI_ANIMATION_DURATION_MS) *visible = false;
-    if (!ui_theme_motion_progress(UI_THEME_MOTION_MAJOR_ENTER, elapsed,
+        elapsed = fmod(elapsed_ms, duration);
+    else if (elapsed_ms >= duration) *visible = false;
+    if (!ui_theme_motion_progress(role, elapsed,
                                   false, &progress)) return false;
     *out_progress = strcmp(unit->trigger, "context_exit") == 0
         ? 1.0 - progress : progress;
@@ -208,7 +214,7 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     return false;
 }
 
-bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
+static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
                                 bool reduced_motion, bool preview_loop,
                                 UiAnimationEvent event) {
     UiElement *processed[UI_LAYOUT_MAX_ELEMS];
@@ -223,6 +229,7 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
             for (int p = 0; p < processed_count; p++)
                 if (processed[p] == cursor) known = true;
             if (!known && (event == UI_ANIMATION_EVENT_CONTEXT_ENTER ||
+                           event == UI_ANIMATION_EVENT_CONTEXT_EXIT ||
                            event == UI_ANIMATION_EVENT_PREVIEW) &&
                 cursor->type != UI_ELE_ANIMATION && cursor->visible &&
                 strcmp(cursor->transition, "none") != 0) {
@@ -235,11 +242,14 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
             (void)snprintf(unit.name, sizeof(unit.name), "%s", cursor->name);
             (void)snprintf(unit.preset, sizeof(unit.preset), "%s", cursor->transition);
             (void)snprintf(unit.target, sizeof(unit.target), "%s", cursor->name);
-            (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_enter");
+            (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s",
+                event == UI_ANIMATION_EVENT_CONTEXT_EXIT ? "context_exit" : "context_enter");
             (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
             if (!render_unit(&unit, layout, grid, elapsed_ms,
                              reduced_motion, preview_loop,
-                             UI_ANIMATION_EVENT_CONTEXT_ENTER)) return false;
+                              event == UI_ANIMATION_EVENT_CONTEXT_EXIT
+                                  ? UI_ANIMATION_EVENT_CONTEXT_EXIT
+                                  : UI_ANIMATION_EVENT_CONTEXT_ENTER)) return false;
             }
             if (!known && processed_count < UI_LAYOUT_MAX_ELEMS)
                 processed[processed_count++] = cursor;
@@ -250,4 +260,40 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
                          reduced_motion, preview_loop, event)) return false;
     }
     return true;
+}
+
+bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
+                                bool reduced_motion, bool preview_loop,
+                                UiAnimationEvent event) {
+    Grid *mask;
+    UiCanvas *authored;
+    bool result;
+    size_t count;
+    SDL_Color unused = {0};
+    if (!layout || !grid || !grid->cells || !isfinite(elapsed_ms) || elapsed_ms < 0 ||
+        event < UI_ANIMATION_EVENT_CONTEXT_ENTER || event > UI_ANIMATION_EVENT_PREVIEW)
+        return false;
+    if (reduced_motion) return true;
+    if (event == UI_ANIMATION_EVENT_PREVIEW)
+        return render_layout_units(layout, grid, elapsed_ms, false, preview_loop, event);
+    /* A fresh layout render identifies authored cells, including authored spaces,
+       independently of the caller's backdrop. Save their original colors too. */
+    mask = grid_create(grid->width, grid->height);
+    if (!mask) return false;
+    authored = ui_canvas_create(grid->width, grid->height);
+    if (!authored) {
+        grid_destroy(mask);
+        return false;
+    }
+    ui_layout_render(layout, mask, unused, unused);
+    ui_canvas_copy_grid_region(authored, mask, 0, 0);
+    count = (size_t)grid->width * (size_t)grid->height;
+    for (size_t i = 0; i < count; i++)
+        if (authored->touched[i]) authored->cells[i] = grid->cells[i];
+    grid_destroy(mask);
+    result = render_layout_units(layout, grid, elapsed_ms, false, preview_loop, event);
+    for (size_t i = 0; i < count; i++)
+        if (authored->touched[i]) grid->cells[i] = authored->cells[i];
+    ui_canvas_destroy(authored);
+    return result;
 }

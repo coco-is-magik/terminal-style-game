@@ -847,3 +847,13 @@ editor, and builds its anti-drift gates first. The staged `.tui` UI Scene editor
 by the 2026-09-17 plan is withdrawn: the plan is retained as reference only, and its Phase 3-4
 editor-interface claims do not stand. Migration phases 5-8 are deferred to a Step 2 plan that will
 reuse Step 1's interface contract and gates.
+
+**2026-09-19 execution:** scale wrapping, progressive edit panels, in-editor help, additional
+authoring controls and runtime pixel evidence are implemented and tested. Step 1 remains open
+for final native product acceptance; see
+[`reviews/2026-09-19-application-ui-editor-a6-closeout.md`](reviews/2026-09-19-application-ui-editor-a6-closeout.md).
+The resumed work adds staged membership compensation/fault tests and nonblocking outgoing
+context decoration. Follow-through implements automatic membership reconciliation,
+independent incoming event clocks and shared lifecycle protection with interruption,
+independent-composition and sanitizer evidence. Native visual/non-author acceptance is
+not inferred from these tests; persistence limits are explicit in the closeout record.

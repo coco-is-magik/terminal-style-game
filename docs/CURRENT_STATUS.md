@@ -99,11 +99,8 @@ into application composition yet; the legacy application UI remains the active p
 the later migration gates. See
 [`reviews/2026-09-17-ui-scene-phase2-runtime.md`](reviews/2026-09-17-ui-scene-phase2-runtime.md).
 
-This workbench is a **legacy application UI editing path**; it is superseded as the project's
-authoring foundation by the UI Scene system in
-[`UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md`](UI_SCENE_SYSTEM_AND_EDITOR_IMPLEMENTATION_PLAN_2026-09-17.md).
-It remains functional and verified until Phase 8 of that plan removes the legacy application UI
-model.
+This workbench is the **active application UI editing path** under the 2026-09-18 plan.
+The 2026-09-17 UI Scene editor plan is withdrawn, not a current migration authority.
 Sprite-painter behavior
 characterization may proceed only under its own focused plan; final glyph-aware formats
 still depend on the Unicode/glyph foundation.
@@ -143,7 +140,25 @@ bounds. Five contract checksums were refreshed with explicit review. Broad gates
 the new `test-ui-workbench-chrome`), `make standards`, focused ASan/UBSan on the chrome and
 adapter runners, and the strict default application build. Gates G3-G5 are enforced by
 `test-ui-workbench-chrome` plus the refreshed contract artifact. The only remaining A2 items are
-native Valgrind and the native 1920x1080 display confirmation — after which A3 may begin.
+native Valgrind and the native 1920x1080 display confirmation. This is the historical A2 record;
+the owner subsequently directed manual acceptance to be deferred until the end.
+
+**Step 1 execution update (2026-09-19).** Independent interface scale now wraps guidance;
+edit panels are progressively disclosed, F9 help/F5 reload/F10 reduced motion are available,
+and additional authoring fields and cancellable content entry are implemented. Runtime pixel
+snapshots supplement the historical cell oracle. Full tests, UI standards, frame checks,
+strict build, static standards and dummy-driver smoke passed. Focused ASan/UBSan/leak checks
+passed in isolated execution. Final native product acceptance is still pending.
+See [the current closeout and verification record](reviews/2026-09-19-application-ui-editor-a6-closeout.md)
+and its A3/A4/A5 companion records. Do not infer closure from passing aggregates.
+
+The resumed continuation adds prepared membership compensation with injected commit/rollback
+failure tests, retained recovery data, and outgoing-context decoration overlapping the incoming
+preview. Follow-through adds automatic membership reconciliation after interruption,
+independent incoming event clocks and shared authored-cell protection. Storage tests pass
+11/11, animation 6/6 and interface 18/18; sanitizer/leak checks pass. Recovery is not
+simultaneous cross-file visibility or concurrent-writer support. Named automated checks and
+the final manual-only acceptance checklist are in the closeout record.
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;

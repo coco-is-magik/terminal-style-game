@@ -16,11 +16,20 @@ Run `make ui-workbench`.
 - Backspace: request removal from the current layout; Enter confirms, Escape cancels.
 - Ctrl+Left/Right: change application context.
 - Ctrl+Enter: invoke the selected Button action where safe in the workbench.
-- Ctrl+`-` / Ctrl+`+` / Ctrl+`0`: shared application UI scale preference.
+- Ctrl+`-` / Ctrl+`+` / Ctrl+`0`: session-local workbench scale; the preview retains the persisted application scale.
+- F9: five-page in-editor help; Up/Down changes page and Escape returns to the edit.
+- F5: reload the active context; a failed load preserves the existing session.
+- F10: session-local reduced motion toggle.
+- Ctrl+Z: reverse the latest add/remove membership operation; this is not general edit undo.
 
 Add clones the selected reusable asset to the current layout under a deterministic unique name.
 Remove detaches the selected direct member from the current layout and preload list; its source
 file remains available for reuse. Referenced parents/targets cannot be removed.
+
+Membership writes publish a synchronized recovery record before replacing files. The next
+workbench load reconciles interrupted writes before loading the cache. A persistent filesystem
+failure or conflicting external master edit keeps recovery data intact and blocks loading;
+it is never silently treated as a successful save. This assumes one authoring writer.
 
 ## Element types
 
@@ -53,7 +62,8 @@ content=
 Rules:
 
 - Workbench and normal run call the same evaluator.
-- `loop=1` and `while_visible` repeat the fixed 160 ms treatment while visible.
+- Timings come from theme roles: enter 160 ms, exit 120 ms, focus/activation 80 ms,
+  while-visible relationship treatment 120 ms. Explicit looping repeats the corresponding role.
 - `focus` runs only while the target Button is focused.
 - `activate` runs when an action in the containing layout activates; it never delays the action.
 - `context_exit` uses a bounded departing-menu snapshot while destination controls appear

@@ -274,9 +274,12 @@ static void test_preview_matches_normal_run_rendering(void **state) {
             assert_true(rendered);
             (void)grid_clear_region_zero(staging, 0, 0, staging->width,
                                          staging->height);
-            ui_layout_set_focus(workbench.layout, 0);
+            /* The initial selection is the container, not the first button. */
+            ui_layout_set_focus(workbench.layout, -1);
             ui_layout_render(workbench.layout, staging,
                              palette.secondary_text, palette.canvas);
+            (void)ui_animation_render_layout(workbench.layout, staging, 0.0,
+                                             false, true, UI_ANIMATION_EVENT_PREVIEW);
             ui_canvas_copy_grid_region(authored, staging, 0, 0);
             rows = ui_workbench_chrome_preview_rows(160, scales[scale_index]);
             assert_true(rows > 0 && rows <= 156);

@@ -215,7 +215,8 @@ bool ui_workbench_frame_render(UiWorkbenchFrameInput input) {
     if (!left_focused && !right_focused) {
         left_focused = true;
     }
-    if (!ui_workbench_chrome_paint_panes(input.grid, input.palette, left_focused,
+    if (input.workbench->editing &&
+        !ui_workbench_chrome_paint_panes(input.grid, input.palette, left_focused,
                                          right_focused)) return false;
     if (!compose_preview((UiWorkbench *)input.workbench, input.grid,
                          input.palette, input.scale_percent, input.elapsed_ms,

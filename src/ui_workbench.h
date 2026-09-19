@@ -22,13 +22,23 @@ typedef enum {
     UI_WORKBENCH_PROPERTY_RANDOMIZE,
     UI_WORKBENCH_PROPERTY_WIDTH,
     UI_WORKBENCH_PROPERTY_HEIGHT,
+    UI_WORKBENCH_PROPERTY_VISIBLE,
+    UI_WORKBENCH_PROPERTY_ALIGN,
+    UI_WORKBENCH_PROPERTY_Z_INDEX,
+    UI_WORKBENCH_PROPERTY_COORDS,
+    UI_WORKBENCH_PROPERTY_ACTION,
+    UI_WORKBENCH_PROPERTY_CONTENT,
+    UI_WORKBENCH_PROPERTY_FOREGROUND,
+    UI_WORKBENCH_PROPERTY_BACKGROUND,
     UI_WORKBENCH_PROPERTY_COUNT
 } UiWorkbenchProperty;
 
 typedef enum {
     UI_WORKBENCH_MODE_BROWSE = 0,
     UI_WORKBENCH_MODE_ADD,
-    UI_WORKBENCH_MODE_REMOVE_CONFIRM
+    UI_WORKBENCH_MODE_REMOVE_CONFIRM,
+    UI_WORKBENCH_MODE_HELP,
+    UI_WORKBENCH_MODE_TEXT
 } UiWorkbenchMode;
 
 typedef enum {
@@ -52,7 +62,12 @@ typedef struct {
     UiWorkbenchProperty property;
     UiWorkbenchMode mode;
     size_t add_index;
+    size_t help_page;
+    char text_edit[256];
     char status[128];
+    char membership_undo_name[UI_ELE_NAME_MAX];
+    MenuId membership_undo_context;
+    bool membership_undo_add;
 } UiWorkbench;
 
 void ui_workbench_init(UiWorkbench *workbench);
@@ -70,7 +85,13 @@ UiWorkbenchResult ui_workbench_cycle_add_source(UiWorkbench *workbench, int dire
 UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench);
 UiWorkbenchResult ui_workbench_request_remove(UiWorkbench *workbench);
 UiWorkbenchResult ui_workbench_confirm_remove(UiWorkbench *workbench);
+UiWorkbenchResult ui_workbench_undo_membership(UiWorkbench *workbench);
 void ui_workbench_cancel_mode(UiWorkbench *workbench);
+UiWorkbenchResult ui_workbench_open_help(UiWorkbench *workbench);
+void ui_workbench_cycle_help(UiWorkbench *workbench, int direction);
+UiWorkbenchResult ui_workbench_begin_text(UiWorkbench *workbench);
+UiWorkbenchResult ui_workbench_text_input(UiWorkbench *workbench, const char *text, bool backspace);
+UiWorkbenchResult ui_workbench_confirm_text(UiWorkbench *workbench);
 const char *ui_workbench_add_source_name(const UiWorkbench *workbench);
 const char *ui_workbench_property_name(UiWorkbenchProperty property);
 const char *ui_workbench_current_value(const UiWorkbench *workbench);

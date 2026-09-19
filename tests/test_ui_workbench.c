@@ -6,6 +6,7 @@
 
 #include <cmocka.h>
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,29 @@ static void test_open_cycle_select_and_properties(void **state) {
     assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
     assert_string_equal(ui_workbench_property_name(workbench.property), "transition");
     assert_non_null(ui_workbench_current_value(&workbench));
+    ui_workbench_destroy(&workbench);
+}
+
+static void test_failed_reload_preserves_session(void **state) {
+    UiWorkbench workbench;
+    UiElement *selected;
+    char original[1024];
+    char root[] = "build/tsg_reload_failure_XXXXXX";
+    (void)state;
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    selected = ui_workbench_current_element(&workbench);
+    workbench.editing = true;
+    assert_non_null(getcwd(original, sizeof(original)));
+    assert_non_null(mkdtemp(root));
+    assert_int_equal(chdir(root), 0);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_SETTINGS), UI_WORKBENCH_LOAD_FAILED);
+    assert_ptr_equal(ui_workbench_current_element(&workbench), selected);
+    assert_true(workbench.editing);
+    assert_int_equal(workbench.context, MENU_MAIN);
+    assert_non_null(strstr(workbench.status, "preserved"));
+    assert_int_equal(chdir(original), 0);
+    assert_int_equal(rmdir(root), 0);
     ui_workbench_destroy(&workbench);
 }
 
@@ -68,6 +92,25 @@ static void test_invalid_operations_are_nonmutating(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
+static void test_coordinate_limits_preserve_edit(void **state) {
+    UiWorkbench workbench;
+    UiElement *element;
+    (void)state;
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    element = ui_workbench_current_element(&workbench);
+    assert_non_null(element);
+    workbench.editing = true;
+    element->layout.x = INT_MAX;
+    element->layout.y = INT_MIN;
+    assert_int_equal(ui_workbench_move(&workbench, 1, 0), UI_WORKBENCH_INVALID_ARGUMENT);
+    assert_int_equal(ui_workbench_move(&workbench, 0, -1), UI_WORKBENCH_INVALID_ARGUMENT);
+    assert_int_equal(element->layout.x, INT_MAX);
+    assert_int_equal(element->layout.y, INT_MIN);
+    assert_non_null(strstr(workbench.status, "opposite direction"));
+    ui_workbench_destroy(&workbench);
+}
+
 static void test_value_cycle_is_not_move_mode_gated(void **state) {
     UiWorkbench workbench;
     UiLayout layout = {0};
@@ -93,6 +136,20 @@ static void test_value_cycle_is_not_move_mode_gated(void **state) {
     assert_int_equal(ui_workbench_cycle_value(&workbench, 1),
                      UI_WORKBENCH_SAVE_FAILED);
     assert_string_equal(element.style, "plain");
+    for (int property = UI_WORKBENCH_PROPERTY_WIDTH;
+         property < UI_WORKBENCH_PROPERTY_CONTENT; property++) {
+        UiElement before = element;
+        workbench.property = (UiWorkbenchProperty)property;
+        assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_SAVE_FAILED);
+        assert_memory_equal(&element, &before, sizeof(element));
+    }
+    workbench.property = UI_WORKBENCH_PROPERTY_WIDTH;
+    element.layout.width = INT_MAX;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_NO_CHANGE);
+    assert_int_equal(element.layout.width, INT_MAX);
+    element.layout.width = 0;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, -1), UI_WORKBENCH_NO_CHANGE);
+    assert_int_equal(element.layout.width, 0);
     workbench.layout = NULL;
 }
 
@@ -137,7 +194,7 @@ static void test_animation_properties_and_modes(void **state) {
     assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
     assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_PRESET);
     assert_int_equal(ui_workbench_cycle_property(&workbench, -1), UI_WORKBENCH_OK);
-    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_HEIGHT);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_BACKGROUND);
     workbench.catalog.entries = &source;
     workbench.catalog.count = 1U;
     assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
@@ -214,8 +271,51 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
             clone_index = i;
     assert_true(clone_index >= 0);
     workbench.element_index = clone_index;
+    workbench.property = UI_WORKBENCH_PROPERTY_TRANSITION;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_TRANSITION);
+    assert_string_equal(ui_workbench_current_value(&workbench), "center_out");
+    workbench.property = UI_WORKBENCH_PROPERTY_WIDTH;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_current_element(&workbench)->layout.width, 9);
+    workbench.property = UI_WORKBENCH_PROPERTY_VISIBLE;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_string_equal(ui_workbench_current_value(&workbench), "no");
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    workbench.property = UI_WORKBENCH_PROPERTY_ALIGN;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_string_equal(ui_workbench_current_value(&workbench), "center");
+    workbench.property = UI_WORKBENCH_PROPERTY_Z_INDEX;
+    assert_int_equal(ui_workbench_cycle_value(&workbench, -1), UI_WORKBENCH_OK);
+    assert_string_equal(ui_workbench_current_value(&workbench), "-1");
+    workbench.property = UI_WORKBENCH_PROPERTY_CONTENT;
+    assert_int_equal(ui_workbench_begin_text(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_text_input(&workbench, "!", false), UI_WORKBENCH_OK);
+    ui_workbench_cancel_mode(&workbench);
+    assert_string_equal(ui_workbench_current_element(&workbench)->content, "QUIT");
+    assert_int_equal(ui_workbench_begin_text(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_text_input(&workbench, "!", false), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_text_input(&workbench, "\n", false), UI_WORKBENCH_INVALID_ARGUMENT);
+    assert_int_equal(ui_workbench_text_input(&workbench, "\n", true), UI_WORKBENCH_INVALID_ARGUMENT);
+    assert_string_equal(workbench.text_edit, "QUIT!");
+    assert_int_equal(ui_workbench_confirm_text(&workbench), UI_WORKBENCH_OK);
+    assert_string_equal(ui_workbench_current_element(&workbench)->content, "QUIT!");
+    workbench.property = UI_WORKBENCH_PROPERTY_FOREGROUND;
+    assert_int_equal(ui_workbench_begin_text(&workbench), UI_WORKBENCH_OK);
+    (void)snprintf(workbench.text_edit, sizeof(workbench.text_edit), "300,0,0,255");
+    assert_int_equal(ui_workbench_confirm_text(&workbench), UI_WORKBENCH_INVALID_ARGUMENT);
+    assert_false(ui_workbench_current_element(&workbench)->has_fg);
+    (void)snprintf(workbench.text_edit, sizeof(workbench.text_edit), "12,34,56,255");
+    assert_int_equal(ui_workbench_confirm_text(&workbench), UI_WORKBENCH_OK);
+    assert_string_equal(ui_workbench_current_value(&workbench), "12,34,56,255");
+    assert_int_equal(ui_workbench_begin_text(&workbench), UI_WORKBENCH_OK);
+    (void)snprintf(workbench.text_edit, sizeof(workbench.text_edit), "inherit");
+    assert_int_equal(ui_workbench_confirm_text(&workbench), UI_WORKBENCH_OK);
+    assert_false(ui_workbench_current_element(&workbench)->has_fg);
     assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_undo_membership(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_undo_membership(&workbench), UI_WORKBENCH_OK);
     file = fopen("assets/ui_layouts/main_menu.txt", "rb");
     assert_non_null(file);
     read_count = fread(bytes, 1U, sizeof(bytes) - 1U, file);
@@ -244,8 +344,10 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_open_cycle_select_and_properties),
+        cmocka_unit_test(test_failed_reload_preserves_session),
         cmocka_unit_test(test_safe_navigation_and_unavailable_actions),
         cmocka_unit_test(test_invalid_operations_are_nonmutating),
+        cmocka_unit_test(test_coordinate_limits_preserve_edit),
         cmocka_unit_test(test_value_cycle_is_not_move_mode_gated),
         cmocka_unit_test(test_animation_properties_and_modes),
         cmocka_unit_test(test_add_and_remove_existing_unit_in_isolated_root)

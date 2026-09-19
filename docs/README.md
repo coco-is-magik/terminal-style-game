@@ -29,6 +29,9 @@ only a small set of documents should be treated as current authority.
   — the implemented application-UI workbench: bounded contexts, immediate atomic element writes,
   style/transition/effect presets, reusable animation units, shared scale preference. The proven
   host pattern Step 1 builds on.
+- [`reviews/2026-09-19-application-ui-editor-a6-closeout.md`](reviews/2026-09-19-application-ui-editor-a6-closeout.md)
+  — current automated evidence, persistence boundaries and final manual checklist;
+  includes links by filename to A3/A4/A5 records. The plan is not yet closed.
 - [`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md) and
   [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
   — the manually approved palette and D6 motion specimens. The reference the editor must match.

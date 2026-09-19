@@ -296,6 +296,9 @@ bool ui_workbench_chrome_blend_matches(const Grid *grid,
             const Cell *composed = &grid->cells[(size_t)(first + row) *
                                                     (size_t)grid->width +
                                                 (size_t)column];
+            if (!ui_workbench_chrome_cell_in_preview(column, first + row,
+                                                      grid->width, grid->height) ||
+                !ui_canvas_is_touched(expected, column, row)) continue;
             if (wanted->glyph != composed->glyph ||
                 wanted->fg.r != composed->fg.r ||
                 wanted->fg.g != composed->fg.g ||
@@ -466,6 +469,54 @@ bool ui_workbench_chrome_paint_panel(Grid *grid,
     return true;
 }
 
+static void panel_text(Grid *grid, int x, int y, int width, int rows,
+                       const char *text, SDL_Color foreground, SDL_Color background) {
+    size_t i;
+    if (!text || width <= 0 || rows <= 0) return;
+    for (i = 0; text[i] && i < (size_t)width * (size_t)rows; i++)
+        (void)grid_set(grid, x + (int)(i % (size_t)width), y + (int)(i / (size_t)width),
+                       (uint8_t)text[i], foreground, background);
+}
+
+bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *palette,
+                                    const UiWorkbench *workbench, int width, int height) {
+    const UiThemeGeometry *geometry = &ui_theme_provisional_tokens()->geometry;
+    int gap = geometry->group_gap_cells;
+    int inset = geometry->panel_inset_cells;
+    int left = (width - gap) / 2;
+    int right_x = left + gap;
+    int first;
+    int index;
+    int row;
+    if (!grid || !palette || !workbench || width > grid->width || height > grid->height ||
+        left <= 2 * inset || height < 12) return false;
+    if (!ui_workbench_chrome_paint_panel(grid, palette, 0, 0, left, height, false) ||
+        !ui_workbench_chrome_paint_panel(grid, palette, right_x, 0, width - right_x,
+                                        height, true)) return false;
+    panel_text(grid, inset, inset, left - 2 * inset, 1, "HIERARCHY | Up/Down in browse",
+               palette->primary_text, palette->panel);
+    first = workbench->element_index > 0 ? workbench->element_index - 1 : 0;
+    row = inset + 2;
+    for (index = first; index < workbench->element_count && row + 2 < height; index++) {
+        char text[UI_ELE_NAME_MAX + 4];
+        const UiElement *element = workbench->elements[index];
+        if (!element) continue;
+        (void)snprintf(text, sizeof(text), "%c %s", index == workbench->element_index ? '>' : ' ',
+                       element->name);
+        panel_text(grid, inset, row, left - 2 * inset, 2, text,
+                   index == workbench->element_index ? palette->focus : palette->secondary_text,
+                   palette->panel);
+        row += 2;
+    }
+    panel_text(grid, right_x + inset, inset, width - right_x - 2 * inset, 1,
+               "> INSPECTOR | Tab property", palette->primary_text, palette->elevated);
+    panel_text(grid, right_x + inset, inset + 2, width - right_x - 2 * inset, 1,
+               ui_workbench_property_name(workbench->property), palette->secondary_text, palette->elevated);
+    panel_text(grid, right_x + inset, inset + 3, width - right_x - 2 * inset, height - inset - 4,
+               ui_workbench_current_value(workbench), palette->primary_text, palette->elevated);
+    return true;
+}
+
 bool ui_workbench_chrome_footer_rows(Grid *grid,
                                      const UiAppWorkbenchPalette *palette,
                                      const UiWorkbench *workbench,
@@ -493,6 +544,9 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
         grid_print(grid, 1, footer_first + 1,
                    "Up/Down choose | Enter clone/add | Esc cancel",
                    palette->secondary_text, palette->canvas);
+        grid_print(grid, 1, footer_first + 2,
+                   workbench->status[0] ? workbench->status : "Choose a source; Esc preserves the layout.",
+                   palette->secondary_text, palette->canvas);
         return true;
     }
     (void)snprintf(line, sizeof(line),
@@ -505,7 +559,13 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
     grid_print(grid, 1, footer_first, line, palette->primary_text,
                palette->canvas);
     grid_print(grid, 1, footer_first + 1,
-        "Up/Down element | Enter move | arrows move | Tab property | [ or ] value | Ctrl+N add | Backspace remove | Ctrl+Left/Right layout | Esc exit",
+        workbench->mode == UI_WORKBENCH_MODE_TEXT
+            ? "VALUE | Type text or RGBA/inherit | Backspace deletes | Enter saves | Esc cancels"
+            : workbench->mode == UI_WORKBENCH_MODE_HELP
+            ? "HELP | Up/Down page | Esc return"
+            : workbench->mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM
+            ? "REMOVE? Enter confirms | Esc keeps element"
+            : "Up/Down select | Enter edit | arrows move | Tab property | brackets value | Ctrl+N clone | Backspace remove | Ctrl+Left/Right context | Ctrl +/-/0 scale | F5 reload | F9 help | F10 reduced motion | Esc exit",
         palette->secondary_text, palette->canvas);
     if (element && strcmp(element->focus_effect, "input_hold_short") == 0) {
         grid_print(grid, 1, footer_first + 2,

@@ -47,9 +47,5 @@ size_t ui_workbench_guide_missing_count(const UiWorkbenchGuide *guide,
                                         const UiWorkbench *workbench);
 bool ui_workbench_guide_footer_stable(const Grid *grid, int grid_columns,
                                       int grid_rows);
-size_t ui_workbench_guide_missing_count(const UiWorkbenchGuide *guide,
-                                        const UiWorkbench *workbench);
-bool ui_workbench_guide_footer_stable(const Grid *grid, int grid_columns,
-                                      int grid_rows);
 
 #endif /* UI_WORKBENCH_GUIDE_H */
