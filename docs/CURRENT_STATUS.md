@@ -83,8 +83,9 @@ local glitch use one shared normal/workbench evaluator with context/focus/activa
 triggers, orientation, loop, deterministic bounded random placement, and Reduced Motion.
 `input_hold_short` remains non-production. The preview loads and persists the same
 `default_user.ini` / `user.ini`
-100%, 125%, and 200% scale preference as normal run. The application UI preview stays at a
-fixed faithful scale, while the workbench instructions use the workbench UI scale and remain visible. Eighteen UI standards owners, the
+100%, 125%, 150%, and 200% application scale preference as normal run. The preview uses that loaded
+application scale, while workbench instructions use an independent session-local workbench scale.
+Eighteen UI standards owners, the
 complete functional aggregate,
 cppcheck/inventory/structure checks, strict default/no-tracker builds, ASan, and UBSan pass.
 See [`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md).

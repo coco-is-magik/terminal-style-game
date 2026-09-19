@@ -40,7 +40,7 @@ routine authoring direct without scripting.
 Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1 (primary references),
 §2 (existing foundation), §2.1 (accepted motion boundary), §3 (accepted values),
 §4.1 (faithful preview), §4.2 (white-dominant editor interface), §4.3 (preview-first),
-§4.4 (motion budget), §4.5 (guidance lives inside the editor), §4.7 (shared UI scale).
+§4.4 (motion budget), §4.5 (guidance lives inside the editor), §4.7 (independent scale domains).
 ```
 
 ---
@@ -110,9 +110,9 @@ The full anti-pattern list is recorded in the reference of record §4.6.
    project initialisation.
 2. **Readable at 1920×1080 without leaning in.** Token-derived editor interface, clear panel and border
    division, pane focus visible without relying on colour alone.
-3. **Faithful preview.** Identical rendering path to normal run. The workbench interface obeys
-   its own UI scale preference, while the authored preview stays at a fixed faithful scale and is
-   never resized by workbench scale changes.
+3. **Faithful preview.** Identical rendering path to normal run. The authored preview loads at the
+   persisted application UI scale, while the workbench interface has its own session-local scale;
+   changing either value does not implicitly change the other.
 4. **Complete authoring.** Every field a user needs for Container / Text / Button / animation unit is
    reachable. Enumerated values are browsed, not typed. Add, clone, remove, and context-switch are
    unambiguous and reversible. Overlays never damage authored cells.
@@ -228,13 +228,13 @@ pattern.
 
 ### 5.5 Scale
 
-- Preview: centred fixed-scale layer with `UI_SCALE_FIXED_100` through `ui_compositor`. It is the
-  thing being edited and must not resize when the workbench interface scale changes.
-- Workbench interface: the shared `ui_preferences` UI scale, through the compositor, at
+- Preview: centred `UI_SCALE_EXPLICIT_PRESET` layer using the persisted application UI scale loaded
+  from `default_user.ini` / `user.ini`. It must not resize when workbench interface scale changes.
+- Workbench interface: a separate session-local scale through the compositor at
   100/125/150/200. Pane borders, footer rows, tooltips, status text, and other editor controls must
   remain readable, visible, and inside the editor surface at every preset.
-- Preferences: `ui_preferences` with `default_user.ini` / `user.ini` precedence,
-  100/125/150/200, persisted exactly as normal run.
+- Keys: Ctrl+Plus / Ctrl+Minus / Ctrl+0 change only the session-local workbench scale. They do not
+  rewrite the persisted application UI scale shown by the preview.
 - A reduced-motion path is always available.
 
 ### 5.6 Motion
@@ -272,7 +272,7 @@ gates below exist for one purpose: to make the previous drift impossible to repe
 | **G3 — Palette/token conformance** | Hardcoded editor-interface colours — the exact prior failure. | A static/policy check for literal `SDL_Color` in editor-interface modules, including the current `ui_workbench_chrome` implementation, plus a runtime assertion that interface colours are token-derived; adapter extension covered by `test-ui-app-theme-adapter`. | **A2** |
 | **G4 — Footer integrity** | The overwritten-row bug. | Assert the three footer rows are distinct, non-empty, and not overwritten in every mode and state. | **A2** |
 | **G5 — Overlay separation** | Selection/editing handles damaging authored cells. | Assert no editor overlay writes into authored preview cells; overlay layer verified independently. | **A2** |
-| **G6 — Independent scales and preview fidelity** | No-op/inverted preview scale; workbench interface pinned at unreadable 100%; workbench scale changing the authored preview. | Assert authored preview stays fixed while workbench interface controls scale through the UI scale and remain readable, visible, and inside the surface at 100/125/150/200; assert preview cells match faithful authored rendering. | **A3** |
+| **G6 — Independent scales and preview fidelity** | Preview locked at 100% instead of its persisted application scale; workbench interface pinned at unreadable 100%; either scale changing the other. | Assert the preview layer uses the loaded application scale while workbench controls use a separate session-local 100/125/150/200 scale; changing workbench scale leaves preview scale unchanged and controls remain readable, visible, and inside the surface. | **A3** |
 | **G7 — Direction conformance** | Motion drift away from the reference of record. | Bounded vocabulary and timings (80/160/120/120 ms); deterministic replay; exact endpoints; reduced-motion frame equals the static frame; controls, focus markers, and hit targets stable while decorative material moves. | **A5** |
 | **G8 — Evidence rule** | "Module exists" accepted as "contract met." | Every requirement maps to a named test or frame artifact in the phase record. Unbacked claims fail review. | **A1, enforced every phase** |
 | **G9 — Guidance coverage** | Workflow completable only by the developer. | Assert every editable property/action/failure path has tooltip text; tooltips legible at all four scales and never overlapping authored cells. | **A4** |
@@ -324,15 +324,15 @@ reversible.
 
 ### A3 — Preview fidelity and independent workbench scale
 
-**Deliverables:** preview rendered as an offscreen canvas composited as a centred fixed-scale layer;
-`ui_preferences` scale drives the workbench interface controls, which remain readable, visible, and
-inside the surface at 100/125/150/200, without resizing the authored preview.
+**Deliverables:** preview rendered as an offscreen canvas composited at the loaded application UI
+scale; a separate session-local workbench scale drives editor controls, which remain readable,
+visible, and inside the surface at 100/125/150/200 without resizing the authored preview.
 
 **Reference of record:** §4.1, §4.7, §5.5.
 
-**Exit gate:** **G6** passes — preview cells stay faithful to authored rendering, and
-workbench scale changes make the editor interface readable without resizing the preview or hiding,
-clipping, or pushing controls off-surface.
+**Exit gate:** **G6** passes — preview cells use the persisted application scale, and workbench scale
+changes make the editor interface readable without changing preview scale or hiding, clipping, or
+pushing controls off-surface.
 
 **Rollback:** revert runtime preview/scale changes; no rollback may restore a fixed-100% editor-interface rule.
 

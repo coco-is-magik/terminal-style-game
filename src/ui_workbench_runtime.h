@@ -26,6 +26,9 @@ bool ui_workbench_runtime_compose_footer_canvas(UiCanvas *canvas, Grid *grid,
 bool ui_workbench_runtime_build_layers(UiLayerList *layers,
                                        const UiCanvas *preview_canvas,
                                        const UiCanvas *footer_canvas,
-                                       int logical_w, int logical_h);
+                                       int logical_w, int logical_h,
+                                       int authored_scale_percent,
+                                       int workbench_scale_percent);
+int ui_workbench_runtime_step_scale(int scale_percent, int direction);
 
 #endif

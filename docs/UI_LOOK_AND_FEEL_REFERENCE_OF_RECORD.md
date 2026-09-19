@@ -61,7 +61,8 @@ direction sources and reads as browser jargon.
 | **authored UI** | the `assets/ui_elements/` and `assets/ui_layouts/` content a user is editing, and its faithful preview (§4.1) |
 | **editor interface** | everything the editor itself draws that is not authored content: pane bodies and borders, footer rows, tooltips, status text, selection markers |
 | **editor surface** | the 260×160 cell area the editor composes into; the token names remain `editor_baseline_columns` / `editor_baseline_rows` |
-| **UI scale** | the shared `ui_preferences` setting, 100/125/150/200, applied through `ui_compositor` |
+| **application UI scale** | the persisted `ui_preferences` setting used by normal run and by the authored preview, 100/125/150/200 |
+| **workbench UI scale** | the independent session-local readability setting for the editor interface, 100/125/150/200 |
 | **headless frame renderer** | `src/ui_workbench_frame.c`, which composes a frame with explicit time and no display, so it can be checksummed and reviewed |
 | **matches normal run** | the preview renders the same cells normal run would (this replaces the word "parity") |
 | **acceptance check** | one of the named checks G1–G10 in the Step 1 plan |
@@ -376,13 +377,12 @@ Recorded so they are never repeated:
 The workbench UI scale setting is a **readability control for the tool itself**, not a zoom for the
 thing being edited. A 1920×1080 display shows the 260×160 surface larger than one person can
 comfortably read, so the workbench interface — pane borders, footer rows, tooltips, status text —
-scales with the `ui_preferences` setting, through the compositor, at the same 100/125/150/200
-presets as normal run.
+uses an independent session-local scale through the compositor at 100/125/150/200.
 
-The authored preview is the thing being edited. It must stay a **faithful copy of the authored UI
-at a fixed preview scale**, independent of the workbench interface scale. Changing the workbench
+The authored preview is the thing being edited. It must load at the **persisted application UI
+scale** used by normal run, independent of the workbench interface scale. Changing the workbench
 interface scale must never resize, recolour, or reflow the authored preview. Any future preview
-zoom is a separate, explicitly named control — not the workbench UI scale.
+zoom is a separate, explicitly named control — not either UI scale.
 
 Two hard constraints, both from §4.4's "nothing displaces or obscures a control":
 
@@ -397,7 +397,7 @@ Two hard constraints, both from §4.4's "nothing displaces or obscures a control
 editor interface "never scales". A later 2026-09-18 correction stated that the preview and editor
 interface "both obey the shared UI scale" — that coupled the tool to the thing being edited, which
 is also wrong. Both wordings are superseded by this section: the workbench interface scales
-independently; the authored preview stays faithful at its own fixed scale. The word "chrome" is also
+independently; the authored preview uses the persisted application UI scale. The word "chrome" is also
 retired: it appears in none of the direction sources, and it is replaced throughout this document by
 "workbench interface" or "editor interface" so that the tool and the authored UI cannot be confused.
 

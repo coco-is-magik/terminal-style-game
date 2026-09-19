@@ -314,11 +314,14 @@ static void test_runtime_footer_canvas_contains_scaled_footer(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
-static void test_runtime_preview_layer_stays_fixed(void **state) {
+static void test_runtime_layers_use_independent_scales(void **state) {
     UiCanvas *preview;
     UiCanvas *footer;
     UiLayerList layers;
     SDL_Color black = {0, 0, 0, 255};
+    static const int scales[] = {100, 125, 150, 200};
+    size_t authored_index;
+    size_t workbench_index;
     (void)state;
     preview = ui_canvas_create(UI_WORKBENCH_CHROME_COLUMNS,
                                UI_WORKBENCH_CHROME_ROWS);
@@ -328,19 +331,48 @@ static void test_runtime_preview_layer_stays_fixed(void **state) {
     assert_non_null(footer);
     assert_true(ui_canvas_set(preview, 0, 0, 'P', black, black));
     assert_true(ui_canvas_set(footer, 0, 0, 'F', black, black));
-    assert_true(ui_workbench_runtime_build_layers(&layers, preview, footer,
-                                                  2080, 1280));
-    assert_int_equal((int)layers.count, 2);
-    assert_int_equal(layers.layers[0].role_id, 1);
-    assert_int_equal(layers.layers[0].anchor, UI_ANCHOR_CENTER);
-    assert_int_equal(layers.layers[0].scale_policy, UI_SCALE_FIXED_100);
-    assert_int_equal(layers.layers[1].role_id, 2);
-    assert_int_equal(layers.layers[1].anchor, UI_ANCHOR_BOTTOM_LEFT);
-    assert_int_equal(layers.layers[1].scale_policy, UI_SCALE_INHERIT_GLOBAL);
+    for (authored_index = 0U;
+         authored_index < sizeof(scales) / sizeof(scales[0]);
+         authored_index++) {
+        for (workbench_index = 0U;
+             workbench_index < sizeof(scales) / sizeof(scales[0]);
+             workbench_index++) {
+            assert_true(ui_workbench_runtime_build_layers(
+                &layers, preview, footer, 2080, 1280,
+                scales[authored_index], scales[workbench_index]));
+            assert_int_equal((int)layers.count, 2);
+            assert_int_equal(layers.layers[0].role_id, 1);
+            assert_int_equal(layers.layers[0].anchor, UI_ANCHOR_CENTER);
+            assert_int_equal(layers.layers[0].scale_policy,
+                             UI_SCALE_EXPLICIT_PRESET);
+            assert_int_equal(layers.layers[0].explicit_scale_percent,
+                             scales[authored_index]);
+            assert_int_equal(layers.layers[1].role_id, 2);
+            assert_int_equal(layers.layers[1].anchor,
+                             UI_ANCHOR_BOTTOM_LEFT);
+            assert_int_equal(layers.layers[1].scale_policy,
+                             UI_SCALE_EXPLICIT_PRESET);
+            assert_int_equal(layers.layers[1].explicit_scale_percent,
+                             scales[workbench_index]);
+        }
+    }
     assert_false(ui_workbench_runtime_build_layers(NULL, preview, footer,
-                                                   2080, 1280));
+                                                   2080, 1280, 150, 200));
+    assert_false(ui_workbench_runtime_build_layers(&layers, preview, footer,
+                                                   2080, 1280, 175, 200));
     ui_canvas_destroy(footer);
     ui_canvas_destroy(preview);
+}
+
+static void test_runtime_workbench_scale_steps_independently(void **state) {
+    (void)state;
+    assert_int_equal(ui_workbench_runtime_step_scale(100, 1), 125);
+    assert_int_equal(ui_workbench_runtime_step_scale(125, 1), 150);
+    assert_int_equal(ui_workbench_runtime_step_scale(150, 1), 200);
+    assert_int_equal(ui_workbench_runtime_step_scale(200, 1), 200);
+    assert_int_equal(ui_workbench_runtime_step_scale(200, -1), 150);
+    assert_int_equal(ui_workbench_runtime_step_scale(100, -1), 100);
+    assert_int_equal(ui_workbench_runtime_step_scale(150, 0), 150);
 }
 
 int main(void) {
@@ -351,7 +383,8 @@ int main(void) {
         cmocka_unit_test(test_scaled_preview_keeps_authored_cells),
         cmocka_unit_test(test_tooltip_text_sits_beside_status),
         cmocka_unit_test(test_runtime_footer_canvas_contains_scaled_footer),
-        cmocka_unit_test(test_runtime_preview_layer_stays_fixed),
+        cmocka_unit_test(test_runtime_layers_use_independent_scales),
+        cmocka_unit_test(test_runtime_workbench_scale_steps_independently),
         cmocka_unit_test(test_footer_rows_render_identity_controls_diagnostics)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

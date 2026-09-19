@@ -157,9 +157,9 @@ Ctrl+N opens a list of existing reusable elements/animations to clone into the a
 Backspace removes the highlighted direct member from that layout after confirmation while
 preserving its reusable source file;
 Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;
-Ctrl+`-`/Ctrl+`+` changes the shared 100%, 125%, 150%, and 200% UI preference; Ctrl+`0`
-resets to the immutable default, exactly as in `make run`; Escape exits. The application UI
-preview stays fixed and faithful, while the workbench instructions use the workbench UI scale and remain visible. Every
+Ctrl+`-`/Ctrl+`+` changes the session-local workbench scale through 100%, 125%, 150%, and 200%;
+Ctrl+`0` resets the workbench scale to 100%; Escape exits. The application UI preview loads at the
+persisted application UI scale used by `make run` and does not change when workbench scale changes. Every
 accepted edit canonically rewrites the affected
 `assets/ui_elements/*.txt` file
 through a synced same-directory temporary file and atomic replacement, then reloads the active
