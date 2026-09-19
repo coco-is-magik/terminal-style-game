@@ -14,6 +14,7 @@ typedef enum {
 } UiWorkbenchStoreResult;
 
 bool ui_workbench_element_is_valid(const UiElement *element);
+UiWorkbenchStoreResult ui_workbench_store_transition(const char *path, const char *transition);
 /* Reconcile an interrupted membership write before loading either destination. */
 UiWorkbenchStoreResult ui_workbench_recover_membership(const char *layout_path,
                                                        const char *master_path);

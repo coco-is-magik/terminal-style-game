@@ -109,6 +109,7 @@ typedef struct {
     char slot_names[UI_LAYOUT_MAX_SLOTS][UI_ELE_NAME_MAX];
     UiElement *slot_elements[UI_LAYOUT_MAX_SLOTS];
     int slot_count;
+    char transition[32];
 } UiLayout;
 
 /* ---- Element API ---- */

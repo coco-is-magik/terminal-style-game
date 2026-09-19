@@ -232,7 +232,8 @@ static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
                            event == UI_ANIMATION_EVENT_CONTEXT_EXIT ||
                            event == UI_ANIMATION_EVENT_PREVIEW) &&
                 cursor->type != UI_ELE_ANIMATION && cursor->visible &&
-                strcmp(cursor->transition, "none") != 0) {
+                ((layout->transition[0] && strcmp(layout->transition, "none") != 0) ||
+                 strcmp(cursor->transition, "none") != 0)) {
             UiElement unit = {0};
             unit.type = UI_ELE_ANIMATION;
             unit.visible = 1;
@@ -240,7 +241,9 @@ static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
             unit.layout.x = 0;
             unit.layout.y = 0;
             (void)snprintf(unit.name, sizeof(unit.name), "%s", cursor->name);
-            (void)snprintf(unit.preset, sizeof(unit.preset), "%s", cursor->transition);
+            (void)snprintf(unit.preset, sizeof(unit.preset), "%s",
+                layout->transition[0] && strcmp(layout->transition, "none") != 0
+                    ? layout->transition : cursor->transition);
             (void)snprintf(unit.target, sizeof(unit.target), "%s", cursor->name);
             (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s",
                 event == UI_ANIMATION_EVENT_CONTEXT_EXIT ? "context_exit" : "context_enter");

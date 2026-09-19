@@ -481,9 +481,39 @@ static void test_recovery_after_process_interruption(void **state) {
     }
 }
 
+static void test_menu_transition_round_trip_and_failure(void **state) {
+    char path[] = "build/tsg_menu_transition_XXXXXX";
+    int fd = mkstemp(path);
+    UiLayout *layout;
+    (void)state;
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    write_text(path, "name=menu\ntype=layout\nelements=\n# preserve this comment\n");
+    assert_int_equal(ui_workbench_store_transition(path, "center_out"), UI_WORKBENCH_STORE_OK);
+    layout = ui_layout_load(path, NULL);
+    assert_non_null(layout);
+    assert_string_equal(layout->transition, "center_out");
+    ui_layout_destroy(layout);
+    assert_int_equal(ui_workbench_store_transition(path, "invalid"), UI_WORKBENCH_STORE_INVALID_ARGUMENT);
+    fail_replace_call = replace_calls + 1;
+    assert_int_equal(ui_workbench_store_transition(path, "none"), UI_WORKBENCH_STORE_IO_ERROR);
+    fail_replace_call = 0;
+    layout = ui_layout_load(path, NULL);
+    assert_non_null(layout);
+    assert_string_equal(layout->transition, "center_out");
+    ui_layout_destroy(layout);
+    assert_int_equal(ui_workbench_store_transition(path, "none"), UI_WORKBENCH_STORE_OK);
+    layout = ui_layout_load(path, NULL);
+    assert_non_null(layout);
+    assert_string_equal(layout->transition, "none");
+    ui_layout_destroy(layout);
+    assert_int_equal(unlink(path), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_legacy_defaults_and_valid_metadata),
+        cmocka_unit_test(test_menu_transition_round_trip_and_failure),
         cmocka_unit_test(test_recovery_commit_decision_and_corrupt_record),
         cmocka_unit_test(test_recovery_after_process_interruption),
         cmocka_unit_test(test_membership_commit_faults_preserve_originals),

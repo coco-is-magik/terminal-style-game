@@ -18,7 +18,8 @@
 #include <limits.h>
 
 static void draw_selection(UiCanvas *overlay, const UiCanvas *authored,
-                            const UiAppWorkbenchPalette *palette, UiElement *element) {
+                            const UiAppWorkbenchPalette *palette, UiElement *element,
+                            bool selected) {
     int x;
     int y;
     int width;
@@ -27,14 +28,22 @@ static void draw_selection(UiCanvas *overlay, const UiCanvas *authored,
     SDL_Color color;
     if (!palette) return;
     bg = palette->canvas;
-    color = palette->accent;
+    color = selected ? palette->editor_selection : palette->border;
     if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
         width <= 0 || height <= 0) return;
     ui_canvas_clear(overlay);
-    if (x > INT_MIN && !ui_canvas_is_touched(authored, x - 1, y))
-        (void)ui_canvas_set(overlay, x - 1, y, '>', color, bg);
-    if (x <= INT_MAX - width && !ui_canvas_is_touched(authored, x + width, y))
-        (void)ui_canvas_set(overlay, x + width, y, '<', color, bg);
+    if (x <= INT_MIN || y <= INT_MIN || x > INT_MAX - width || y > INT_MAX - height) return;
+    for (int row = 0; row < overlay->height; row++) {
+        for (int column = 0; column < overlay->width; column++) {
+            bool horizontal = (row == y - 1 || row == y + height) &&
+                               column >= x - 1 && column <= x + width;
+            bool vertical = (column == x - 1 || column == x + width) &&
+                             row >= y - 1 && row <= y + height;
+            if ((horizontal || vertical) && !ui_canvas_is_touched(authored, column, row))
+                (void)ui_canvas_set(overlay, column, row,
+                    horizontal && vertical ? '+' : horizontal ? (selected ? '=' : '-') : '|', color, bg);
+        }
+    }
 }
 
 static UiCanvas *selection_layer(UiLayerList *layers, const UiCanvas *authored,
@@ -43,7 +52,7 @@ static UiCanvas *selection_layer(UiLayerList *layers, const UiCanvas *authored,
     UiCanvas *overlay = ui_canvas_create(authored->width, authored->height);
     UiLayer layer;
     if (!overlay) return NULL;
-    draw_selection(overlay, authored, palette, ui_workbench_current_element(workbench));
+    draw_selection(overlay, authored, palette, ui_workbench_current_element(workbench), workbench->editing);
     layer = layers->layers[0];
     layer.canvas = overlay;
     layer.role_id = 3;
@@ -223,7 +232,8 @@ bool ui_workbench_runtime_footer_size(int scale_percent, int *width, int *height
 
 bool ui_workbench_runtime_interface_size(int scale_percent, bool editing, int *width, int *height) {
     if (!ui_workbench_runtime_footer_size(scale_percent, width, height)) return false;
-    if (editing) *height += 12;
+    (void)editing;
+    *height = UI_WORKBENCH_CHROME_ROWS * 100 / scale_percent;
     return true;
 }
 
@@ -255,11 +265,12 @@ bool ui_workbench_runtime_compose_footer_canvas(UiCanvas *canvas, Grid *grid,
         for (column = 0; column < grid->width; column++) {
             const Cell *cell = &grid->cells[(footer_first + channel) * grid->width + column];
             if (!ui_canvas_set(canvas, column % width,
-                               channel * rows_per_channel + column / width,
+                               (channel == 0 ? 0 : channel == 1 ? height - 3 * rows_per_channel :
+                                height - rows_per_channel) + column / width,
                                cell->glyph, cell->fg, cell->bg)) return false;
         }
     }
-    if (tooltip_text) {
+    if (tooltip_text && workbench->mode == UI_WORKBENCH_MODE_HELP) {
         size_t i;
         size_t length = strlen(tooltip_text);
         if (length >= UI_WORKBENCH_GUIDE_TEXT_MAX) return false;
@@ -270,17 +281,47 @@ bool ui_workbench_runtime_compose_footer_canvas(UiCanvas *canvas, Grid *grid,
                                palette->secondary_text, palette->canvas)) return false;
         }
     }
-    if (workbench->editing) {
+    {
         int row;
         int column;
         if (!ui_workbench_chrome_edit_panels(grid, palette, workbench, width, 12)) return false;
         for (row = 0; row < 12; row++) {
             for (column = 0; column < width; column++) {
                 const Cell *cell = &grid->cells[row * grid->width + column];
-                if (!ui_canvas_set(canvas, column, height - 12 + row, cell->glyph,
+                if (!ui_canvas_set(canvas, column, height - 12 - 3 * rows_per_channel + row, cell->glyph,
                                     cell->fg, cell->bg)) return false;
             }
         }
+    }
+    {
+        char menu[512];
+        size_t used = 0;
+        static const UiWorkbenchProperty properties[] = {
+            UI_WORKBENCH_PROPERTY_WIDTH, UI_WORKBENCH_PROPERTY_HEIGHT,
+            UI_WORKBENCH_PROPERTY_STYLE, UI_WORKBENCH_PROPERTY_CONTENT,
+            UI_WORKBENCH_PROPERTY_VISIBLE, UI_WORKBENCH_PROPERTY_ALIGN,
+            UI_WORKBENCH_PROPERTY_Z_INDEX
+        };
+        int written = snprintf(menu, sizeof(menu), "ELEMENT  ");
+        if (written < 0) return false;
+        used = (size_t)written;
+        for (size_t i = 0; i < sizeof(properties) / sizeof(properties[0]); i++) {
+            written = snprintf(menu + used, sizeof(menu) - used, "%c%s%c  ",
+                workbench->property == properties[i] ? '[' : ' ',
+                ui_workbench_property_name(properties[i]),
+                workbench->property == properties[i] ? ']' : ' ');
+            if (written < 0 || (size_t)written >= sizeof(menu) - used) return false;
+            used += (size_t)written;
+        }
+        written = snprintf(menu + used, sizeof(menu) - used, "MENU %cTransition%c  Add  Remove",
+            workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION ? '[' : ' ',
+            workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION ? ']' : ' ');
+        if (written < 0 || (size_t)written >= sizeof(menu) - used) return false;
+        used += (size_t)written;
+        for (size_t i = 0; i < used; i++)
+            if (!ui_canvas_set(canvas, (int)(i % (size_t)width),
+                               rows_per_channel + (int)(i / (size_t)width),
+                               (uint8_t)menu[i], palette->primary_text, palette->canvas)) return false;
     }
     return true;
 }
@@ -426,6 +467,7 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
                 (void)SDL_StopTextInput(renderer->window);
         } else if (input.esc && workbench.mode != UI_WORKBENCH_MODE_BROWSE)
             ui_workbench_cancel_mode(&workbench);
+        else if (input.esc && workbench.editing) workbench.editing = false;
         else if (input.esc || input.quit) should_exit = true;
         else if (workbench.mode == UI_WORKBENCH_MODE_HELP) {
             if (input.up || input.down)

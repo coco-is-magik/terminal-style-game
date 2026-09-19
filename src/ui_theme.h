@@ -31,6 +31,7 @@ typedef struct {
     UiThemeColor error;
     UiThemeColor success;
     UiThemeColor destructive;
+    UiThemeColor editor_selection;
 } UiThemePalette;
 
 typedef struct {

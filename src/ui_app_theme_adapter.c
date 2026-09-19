@@ -39,6 +39,7 @@ bool ui_app_theme_workbench_palette(UiAppWorkbenchPalette *out_palette) {
     palette.error = to_sdl_color(theme->error);
     palette.success = to_sdl_color(theme->success);
     palette.destructive = to_sdl_color(theme->destructive);
+    palette.editor_selection = to_sdl_color(theme->editor_selection);
     *out_palette = palette;
     return true;
 }

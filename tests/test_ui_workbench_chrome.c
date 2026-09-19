@@ -398,7 +398,7 @@ static void test_wrapped_guidance_all_scales_and_modes(void **state) {
         int height;
         int rows;
         UiCanvas *canvas;
-        assert_true(ui_workbench_runtime_footer_size(scales[scale], &width, &height));
+        assert_true(ui_workbench_runtime_interface_size(scales[scale], false, &width, &height));
         assert_true(width * scales[scale] <= 26000);
         assert_true(height * scales[scale] <= 16000);
         canvas = ui_canvas_create(width, height);
@@ -409,11 +409,11 @@ static void test_wrapped_guidance_all_scales_and_modes(void **state) {
             workbench.mode = (UiWorkbenchMode)mode;
             assert_true(ui_workbench_runtime_compose_footer_canvas(
                 canvas, grid, &workbench, &palette, tooltip, scales[scale], true));
-            for (i = 0; i < strlen(tooltip); i++) {
+            for (i = 0; mode == UI_WORKBENCH_MODE_HELP && i < strlen(tooltip); i++) {
                 size_t index = (size_t)(3 * rows) * (size_t)width + i;
                 assert_int_equal(canvas->cells[index].glyph, 'T');
             }
-            assert_true(canvas->cells[(size_t)(2 * rows) * (size_t)width + 1].glyph != 0);
+            assert_true(canvas->cells[(size_t)(height - rows) * (size_t)width + 1].glyph != 0);
         }
         ui_canvas_destroy(canvas);
     }
@@ -471,8 +471,9 @@ static void test_runtime_snapshot_scale_isolation(void **state) {
     for (i = 0; i < sizeof(scales) / sizeof(scales[0]); i++) {
         assert_true(ui_workbench_runtime_snapshot(&workbench, &palette, "Guidance", 150,
                                                  scales[i], 90, true, second, count));
-        /* Only the reserved bottom interface band may change with tool magnification. */
-        assert_memory_equal(first, second, 2080U * 1000U * sizeof(*first));
+        /* Top identity/tabs and bottom cards scale; the central authored region does not. */
+        assert_memory_equal(first + 2080U * 128U, second + 2080U * 128U,
+                            2080U * 768U * sizeof(*first));
     }
     assert_false(ui_workbench_runtime_snapshot(&workbench, &palette, NULL, 175, 100,
                                               0, true, second, count));
@@ -498,7 +499,7 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
         UiCanvas *canvas;
         assert_true(ui_workbench_runtime_interface_size(scales[i], false, &width, &browse_height));
         assert_true(ui_workbench_runtime_interface_size(scales[i], true, &width, &height));
-        assert_int_equal(height, browse_height + 12);
+        assert_int_equal(height, browse_height);
         assert_true(width * scales[i] <= 26000);
         assert_true(height * scales[i] <= 16000);
         canvas = ui_canvas_create(width, height);
@@ -506,8 +507,13 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
         workbench.editing = true;
         assert_true(ui_workbench_runtime_compose_footer_canvas(canvas, grid, &workbench,
                                                                &palette, "Help", scales[i], true));
-        assert_int_equal(canvas->cells[(browse_height + 2) * width + 2].glyph, 'H');
-        assert_int_equal(canvas->cells[(browse_height + 2) * width + (width - 2) / 2 + 4].glyph, '>');
+        {
+            int rows = (260 + width - 1) / width;
+            int tray = height - 12 - 3 * rows;
+            assert_int_equal(canvas->cells[tray * width].glyph, '+');
+            assert_int_equal(canvas->cells[(tray + 11) * width].glyph, '+');
+            assert_false(ui_canvas_is_touched(canvas, width / 2, height / 2));
+        }
         ui_canvas_destroy(canvas);
     }
     ui_workbench_destroy(&workbench);
@@ -708,9 +714,83 @@ static void test_overlapping_events_match_independent_composition(void **state) 
     grid_destroy(actual);
 }
 
+static void test_option_window_pages_without_four_option_limit(void **state) {
+    size_t first, count;
+    (void)state;
+    assert_true(ui_workbench_chrome_option_window(19, 0, 260, &first, &count));
+    assert_int_equal(first, 0);
+    assert_int_equal(count, 6);
+    assert_true(ui_workbench_chrome_option_window(19, 8, 260, &first, &count));
+    assert_int_equal(first, 6);
+    assert_int_equal(count, 6);
+    assert_true(ui_workbench_chrome_option_window(19, 18, 260, &first, &count));
+    assert_int_equal(first, 18);
+    assert_int_equal(count, 1);
+    assert_true(ui_workbench_chrome_option_window(19, 8, 130, &first, &count));
+    assert_int_equal(first, 8);
+    assert_int_equal(count, 4);
+    assert_false(ui_workbench_chrome_option_window(0, 0, 260, &first, &count));
+    assert_false(ui_workbench_chrome_option_window(2, 2, 260, &first, &count));
+    assert_false(ui_workbench_chrome_option_window(2, 0, 12, &first, &count));
+}
+
+static void test_menu_cards_render_visual_content_without_mutation(void **state) {
+    UiWorkbench workbench;
+    UiAppWorkbenchPalette palette;
+    Grid *grid = grid_create(260, 160);
+    char before[UI_ELE_NAME_MAX];
+    (void)state;
+    assert_non_null(grid);
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    (void)snprintf(before, sizeof(before), "%s", workbench.layout->transition);
+    workbench.property = UI_WORKBENCH_PROPERTY_TRANSITION;
+    assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+    for (int card = 0; card < 4; card++) {
+        bool visible = false;
+        for (int y = 2; y < 9; y++)
+            for (int x = card * 65 + 2; x < card * 65 + 63; x++) {
+                uint8_t glyph = grid->cells[y * grid->width + x].glyph;
+                if (glyph && glyph != ' ') visible = true;
+            }
+        assert_true(visible);
+    }
+    assert_string_equal(workbench.layout->transition, before);
+    ui_workbench_destroy(&workbench);
+    grid_destroy(grid);
+}
+
+static void test_add_cards_follow_catalog_page(void **state) {
+    UiWorkbench workbench;
+    UiAppWorkbenchPalette palette;
+    Grid *grid = grid_create(260, 160);
+    size_t first, count;
+    (void)state;
+    assert_non_null(grid);
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
+    assert_true(workbench.catalog.count > 6);
+    workbench.add_index = 6;
+    assert_true(ui_workbench_chrome_option_window(workbench.catalog.count, 6, 260, &first, &count));
+    assert_int_equal(first, 6);
+    assert_true(count > 0);
+    assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+    assert_int_equal(grid->cells[10 * 260 + 2].glyph, '>');
+    assert_int_equal(grid->cells[10 * 260 + 4].glyph, '7');
+    assert_int_equal(workbench.add_index, 6);
+    ui_workbench_destroy(&workbench);
+    grid_destroy(grid);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_rejects_invalid_arguments),
+        cmocka_unit_test(test_option_window_pages_without_four_option_limit),
+        cmocka_unit_test(test_menu_cards_render_visual_content_without_mutation),
+        cmocka_unit_test(test_add_cards_follow_catalog_page),
         cmocka_unit_test(test_overlapping_events_match_independent_composition),
         cmocka_unit_test(test_exit_overlay_preserves_incoming_and_endpoints),
         cmocka_unit_test(test_lifecycle_keeps_authored_cells_stable),

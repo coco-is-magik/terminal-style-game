@@ -12,5 +12,5 @@ align=center
 action=start_game
 style=plain
 transition=none
-focus_effect=focus_glitch
+focus_effect=none
 content=START GAME

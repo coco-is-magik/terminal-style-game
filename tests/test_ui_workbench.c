@@ -140,7 +140,8 @@ static void test_value_cycle_is_not_move_mode_gated(void **state) {
          property < UI_WORKBENCH_PROPERTY_CONTENT; property++) {
         UiElement before = element;
         workbench.property = (UiWorkbenchProperty)property;
-        assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_SAVE_FAILED);
+        assert_int_equal(ui_workbench_cycle_value(&workbench, 1),
+            property == UI_WORKBENCH_PROPERTY_ACTION ? UI_WORKBENCH_NO_CHANGE : UI_WORKBENCH_SAVE_FAILED);
         assert_memory_equal(&element, &before, sizeof(element));
     }
     workbench.property = UI_WORKBENCH_PROPERTY_WIDTH;
@@ -207,6 +208,8 @@ static void test_animation_properties_and_modes(void **state) {
     assert_int_equal(ui_workbench_request_remove(&workbench),
                      UI_WORKBENCH_NO_CHANGE);
     workbench.element_index = 1;
+    assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_NO_CHANGE);
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(workbench.mode, UI_WORKBENCH_MODE_REMOVE_CONFIRM);
     workbench.catalog.entries = NULL;

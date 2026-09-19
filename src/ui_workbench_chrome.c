@@ -5,6 +5,7 @@
 #include "ui_ele.h"
 #include "ui_preferences.h"
 #include "ui_theme.h"
+#include "ui_animation.h"
 
 #include <stdio.h>
 
@@ -478,42 +479,148 @@ static void panel_text(Grid *grid, int x, int y, int width, int rows,
                        (uint8_t)text[i], foreground, background);
 }
 
+/* A card samples the same whole-menu evaluator, never a substitute word list. */
+static bool menu_option_sample(Grid *sample, const UiWorkbench *workbench,
+                               const UiAppWorkbenchPalette *palette, const char *transition) {
+    UiLayout layout;
+    Grid *full;
+    if (!workbench->layout) return false;
+    full = grid_create(UI_WORKBENCH_CHROME_COLUMNS, UI_WORKBENCH_CHROME_ROWS);
+    if (!full) return false;
+    layout = *workbench->layout;
+    (void)snprintf(layout.transition, sizeof(layout.transition), "%s", transition);
+    grid_clear(full, palette->panel);
+    ui_layout_render(&layout, full, palette->primary_text, palette->panel);
+    if (!ui_animation_render_layout(&layout, full, 80.0, false, false,
+                                     UI_ANIMATION_EVENT_CONTEXT_ENTER)) {
+        grid_destroy(full);
+        return false;
+    }
+    for (int y = 0; y < full->height; y++)
+        for (int x = 0; x < full->width; x++) {
+            const Cell *cell = &full->cells[y * full->width + x];
+            if (cell->glyph && cell->glyph != ' ')
+                (void)grid_set(sample, x * sample->width / full->width,
+                               y * sample->height / full->height,
+                               cell->glyph, cell->fg, cell->bg);
+        }
+    grid_destroy(full);
+    return true;
+}
+
+bool ui_workbench_chrome_option_window(size_t total, size_t active, int width,
+                                      size_t *first, size_t *count) {
+    size_t capacity;
+    if (!first || !count || !total || active >= total || width < 24) return false;
+    capacity = (size_t)width / 32U;
+    if (capacity == 0) capacity = 1;
+    if (capacity > 6) capacity = 6;
+    *first = (active / capacity) * capacity;
+    *count = total - *first;
+    if (*count > capacity) *count = capacity;
+    return true;
+}
+
 bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *palette,
                                     const UiWorkbench *workbench, int width, int height) {
-    const UiThemeGeometry *geometry = &ui_theme_provisional_tokens()->geometry;
-    int gap = geometry->group_gap_cells;
-    int inset = geometry->panel_inset_cells;
-    int left = (width - gap) / 2;
-    int right_x = left + gap;
-    int first;
-    int index;
-    int row;
+    static const char *const button_styles[] = {"plain", "bracket", "inverse"};
+    static const char *const text_styles[] = {"plain", "bright"};
+    static const char *const container_styles[] = {"plain", "frame"};
+    static const char *const alignments[] = {"left", "center", "right"};
+    static const char *const transitions[] = {"none", "center_out", "perimeter_burst", "local_glitch"};
+    const UiElement *element = ui_workbench_current_element((UiWorkbench *)workbench);
+    const char *const *names = NULL;
+    size_t total = 1, active = 0, first, count;
+    int card_width;
+    char caption[96];
     if (!grid || !palette || !workbench || width > grid->width || height > grid->height ||
-        left <= 2 * inset || height < 12) return false;
-    if (!ui_workbench_chrome_paint_panel(grid, palette, 0, 0, left, height, false) ||
-        !ui_workbench_chrome_paint_panel(grid, palette, right_x, 0, width - right_x,
-                                        height, true)) return false;
-    panel_text(grid, inset, inset, left - 2 * inset, 1, "HIERARCHY | Up/Down in browse",
-               palette->primary_text, palette->panel);
-    first = workbench->element_index > 0 ? workbench->element_index - 1 : 0;
-    row = inset + 2;
-    for (index = first; index < workbench->element_count && row + 2 < height; index++) {
-        char text[UI_ELE_NAME_MAX + 4];
-        const UiElement *element = workbench->elements[index];
-        if (!element) continue;
-        (void)snprintf(text, sizeof(text), "%c %s", index == workbench->element_index ? '>' : ' ',
-                       element->name);
-        panel_text(grid, inset, row, left - 2 * inset, 2, text,
-                   index == workbench->element_index ? palette->focus : palette->secondary_text,
-                   palette->panel);
-        row += 2;
+        width < 24 || height < 12) return false;
+    if (workbench->mode == UI_WORKBENCH_MODE_ADD && workbench->catalog.count) {
+        total = workbench->catalog.count;
+        active = workbench->add_index;
+    } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION && workbench->layout) {
+        names = transitions;
+        total = sizeof(transitions) / sizeof(transitions[0]);
+        for (size_t i = 0; i < total; i++)
+            if (!strcmp(workbench->layout->transition, names[i])) active = i;
+    } else if (element && workbench->property == UI_WORKBENCH_PROPERTY_STYLE) {
+        names = element->type == UI_ELE_BUTTON ? button_styles :
+            element->type == UI_ELE_CONTAINER ? container_styles : text_styles;
+        total = element->type == UI_ELE_BUTTON ? 3 : 2;
+        for (size_t i = 0; i < total; i++) if (!strcmp(element->style, names[i])) active = i;
+    } else if (element && workbench->property == UI_WORKBENCH_PROPERTY_ALIGN) {
+        names = alignments;
+        total = 3;
+        active = (size_t)element->align;
+    } else if (element && workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE) {
+        total = 2;
+        active = element->visible ? 0 : 1;
     }
-    panel_text(grid, right_x + inset, inset, width - right_x - 2 * inset, 1,
-               "> INSPECTOR | Tab property", palette->primary_text, palette->elevated);
-    panel_text(grid, right_x + inset, inset + 2, width - right_x - 2 * inset, 1,
-               ui_workbench_property_name(workbench->property), palette->secondary_text, palette->elevated);
-    panel_text(grid, right_x + inset, inset + 3, width - right_x - 2 * inset, height - inset - 4,
-               ui_workbench_current_value(workbench), palette->primary_text, palette->elevated);
+    if (!ui_workbench_chrome_option_window(total, active, width, &first, &count)) return false;
+    card_width = width / (int)count;
+    for (size_t i = 0; i < count; i++) {
+        size_t option = first + i;
+        int x = (int)i * card_width;
+        Grid *sample = grid_create(card_width - 4, height - 5);
+        if (!sample) return false;
+        if (!ui_workbench_chrome_paint_panel(grid, palette, x, 0, card_width - 1, height,
+                                             option == active)) {
+            grid_destroy(sample);
+            return false;
+        }
+        grid_clear(sample, palette->panel);
+        if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
+            const char *filename = workbench->catalog.entries[option].name;
+            char stem[UI_ELE_NAME_MAX];
+            size_t length = strlen(filename);
+            const UiElement *source = NULL;
+            if (length > 4 && length - 4 < sizeof(stem)) {
+                memcpy(stem, filename, length - 4);
+                stem[length - 4] = '\0';
+                for (int item = 0; item < workbench->cache.count; item++)
+                    if (!strcmp(workbench->cache.items[item]->name, stem))
+                        source = workbench->cache.items[item];
+            }
+            if (source) {
+                UiElement copy = *source;
+                copy.parent = NULL;
+                copy.child_count = 0;
+                copy.layout = (UiElementLayout){1, 1, UI_COORD_ABSOLUTE,
+                                                sample->width - 2, sample->height - 2};
+                ui_ele_render_self(&copy, sample, 0, 0, palette->primary_text, palette->panel);
+            }
+        } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION && names) {
+            if (!menu_option_sample(sample, workbench, palette, names[option])) {
+                grid_destroy(sample);
+                return false;
+            }
+        } else if (element) {
+            UiElement copy = *element;
+            copy.parent = NULL;
+            copy.child_count = 0;
+            copy.layout = (UiElementLayout){1, 1, UI_COORD_ABSOLUTE,
+                                            sample->width - 2, sample->height - 2};
+            if (names && workbench->property == UI_WORKBENCH_PROPERTY_STYLE)
+                (void)snprintf(copy.style, sizeof(copy.style), "%s", names[option]);
+            if (workbench->property == UI_WORKBENCH_PROPERTY_ALIGN) copy.align = (UiAlign)option;
+            if (workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE) copy.visible = option == 0;
+            ui_ele_render_self(&copy, sample, 0, 0, palette->primary_text, palette->panel);
+        }
+        for (int y = 0; y < sample->height; y++)
+            for (int column = 0; column < sample->width; column++) {
+                Cell cell = sample->cells[y * sample->width + column];
+                paint_cell(grid, x + 2 + column, 2 + y, cell.glyph, cell.fg, cell.bg);
+            }
+        grid_destroy(sample);
+        (void)snprintf(caption, sizeof(caption), "%c %zu/%zu %s", option == active ? '>' : ' ',
+                       option + 1, total, workbench->mode == UI_WORKBENCH_MODE_ADD ?
+                       workbench->catalog.entries[option].name : names ? names[option] :
+                       !element ? "Select an element" :
+                       workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE ?
+                       (option == 0 ? "visible" : "hidden") : ui_workbench_property_name(workbench->property));
+        panel_text(grid, x + 2, height - 2, card_width - 5, 1, caption,
+                   palette->primary_text, palette->panel);
+    }
     return true;
 }
 
@@ -550,11 +657,10 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
         return true;
     }
     (void)snprintf(line, sizeof(line),
-                   "UI WORKBENCH | %s | %s | %s=%s | scale=%d%% | reduced=%s",
+                   "UI WORKBENCH | %s | Hover: %s | Selected: %s | scale=%d%% | reduced=%s",
                    workbench->layout ? workbench->layout->name : "none",
                    element ? element->name : "none",
-                   ui_workbench_property_name(workbench->property),
-                   ui_workbench_current_value(workbench), scale_percent,
+                   workbench->editing && element ? element->name : "none", scale_percent,
                    reduced_motion ? "on" : "off");
     grid_print(grid, 1, footer_first, line, palette->primary_text,
                palette->canvas);
@@ -565,7 +671,7 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
             ? "HELP | Up/Down page | Esc return"
             : workbench->mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM
             ? "REMOVE? Enter confirms | Esc keeps element"
-            : "Up/Down select | Enter edit | arrows move | Tab property | brackets value | Ctrl+N clone | Backspace remove | Ctrl+Left/Right context | Ctrl +/-/0 scale | F5 reload | F9 help | F10 reduced motion | Esc exit",
+            : "Enter select | Tab property | [ ] value | Ctrl+N add | Backspace remove | F9 help",
         palette->secondary_text, palette->canvas);
     if (element && strcmp(element->focus_effect, "input_hold_short") == 0) {
         grid_print(grid, 1, footer_first + 2,

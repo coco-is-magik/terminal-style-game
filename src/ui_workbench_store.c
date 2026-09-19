@@ -277,6 +277,47 @@ static UiWorkbenchStoreResult prepare_text(const char *path, const char *text,
     return UI_WORKBENCH_STORE_OK;
 }
 
+UiWorkbenchStoreResult ui_workbench_store_transition(const char *path, const char *transition) {
+    size_t length;
+    char *original;
+    char *updated;
+    char temporary[UI_ELE_PATH_MAX + 32U];
+    char *line;
+    size_t used = 0;
+    UiWorkbenchStoreResult result;
+    PlatformReplaceResult replacement;
+    if (!path || !ui_ele_transition_is_valid(transition)) return UI_WORKBENCH_STORE_INVALID_ARGUMENT;
+    original = read_all(path, &length);
+    if (!original) return UI_WORKBENCH_STORE_IO_ERROR;
+    updated = malloc(length + strlen(transition) + 32U);
+    if (!updated) { free(original); return UI_WORKBENCH_STORE_IO_ERROR; }
+    line = original;
+    while (*line) {
+        char *end = strchr(line, '\n');
+        size_t size = end ? (size_t)(end - line) + 1U : strlen(line);
+        if (strncmp(line, "transition=", 11) != 0) {
+            memcpy(updated + used, line, size);
+            used += size;
+        }
+        line += size;
+    }
+    if (used && updated[used - 1] != '\n') updated[used++] = '\n';
+    (void)snprintf(updated + used, length + strlen(transition) + 32U - used,
+                   "transition=%s\n", transition);
+    result = prepare_text(path, updated, temporary, sizeof(temporary));
+    if (result == UI_WORKBENCH_STORE_OK) {
+        replacement = platform_fs_replace(temporary, path, true);
+        if (replacement.commit_state == PLATFORM_COMMIT_NOT_COMMITTED) {
+            (void)unlink(temporary);
+            result = UI_WORKBENCH_STORE_IO_ERROR;
+        } else if (replacement.commit_state == PLATFORM_COMMIT_COMMITTED_DURABILITY_WARNING)
+            result = UI_WORKBENCH_STORE_OK_DURABILITY_WARNING;
+    }
+    free(updated);
+    free(original);
+    return result;
+}
+
 static bool recovery_path(const char *layout_path, char *path, size_t capacity) {
     return layout_path && layout_path[0] &&
         snprintf(path, capacity, "%s.membership-recovery", layout_path) < (int)capacity;

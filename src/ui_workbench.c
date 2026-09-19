@@ -46,7 +46,7 @@ static bool property_matches_element(UiWorkbenchProperty property,
     if (!element) return false;
     if (property == UI_WORKBENCH_PROPERTY_CONTENT)
         return element->type == UI_ELE_TEXT || element->type == UI_ELE_BUTTON;
-    if (property == UI_WORKBENCH_PROPERTY_ACTION) return element->type == UI_ELE_BUTTON;
+    if (property == UI_WORKBENCH_PROPERTY_ACTION) return false;
     if (property >= UI_WORKBENCH_PROPERTY_WIDTH && property < UI_WORKBENCH_PROPERTY_COUNT)
         return true;
     return element->type == UI_ELE_ANIMATION
@@ -433,6 +433,23 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     const char *next;
     char old_value[UI_ELE_NAME_MAX];
     UiWorkbenchResult result;
+    if (workbench && workbench->layout && direction != 0 &&
+        workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION) {
+        char path[UI_ELE_PATH_MAX];
+        UiWorkbenchStoreResult stored;
+        next = cycle_name(workbench->layout->transition, transitions,
+                          sizeof(transitions) / sizeof(transitions[0]), direction);
+        if (snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", workbench->layout->name) >=
+            (int)sizeof(path)) return UI_WORKBENCH_INVALID_ARGUMENT;
+        stored = ui_workbench_store_transition(path, next);
+        if (stored != UI_WORKBENCH_STORE_OK && stored != UI_WORKBENCH_STORE_OK_DURABILITY_WARNING) {
+            set_status(workbench, "Menu transition not saved; check file permissions and retry.");
+            return UI_WORKBENCH_SAVE_FAILED;
+        }
+        copy_bounded(workbench->layout->transition, sizeof(workbench->layout->transition), next);
+        set_status(workbench, "Menu transition saved live");
+        return UI_WORKBENCH_OK;
+    }
     if (!workbench || !element || direction == 0 ||
         !property_matches_element(workbench->property, element))
         return UI_WORKBENCH_NO_CHANGE;
@@ -707,6 +724,7 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
             workbench->element_index = i;
     normalize_property(workbench);
     copy_bounded(workbench->membership_undo_name, sizeof(workbench->membership_undo_name), clone.name);
+    workbench->editing = true;
     workbench->membership_undo_context = workbench->context;
     workbench->membership_undo_add = false;
     set_status(workbench, "Existing unit cloned and added | Ctrl+Z reverses membership");
@@ -715,7 +733,7 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
 
 UiWorkbenchResult ui_workbench_request_remove(UiWorkbench *workbench) {
     UiElement *element = ui_workbench_current_element(workbench);
-    if (!workbench || !element || !direct_layout_member(workbench, element))
+    if (!workbench || !workbench->editing || !element || !direct_layout_member(workbench, element))
         return UI_WORKBENCH_NO_CHANGE;
     for (int i = 0; i < workbench->element_count; i++) {
         UiElement *other = workbench->elements[i];
@@ -830,7 +848,7 @@ const char *ui_workbench_current_value(const UiWorkbench *workbench) {
         case UI_WORKBENCH_PROPERTY_PARENT:
             return element->parent_name[0] != '\0' ? element->parent_name : "screen root";
         case UI_WORKBENCH_PROPERTY_STYLE: return element->style;
-        case UI_WORKBENCH_PROPERTY_TRANSITION: return element->transition;
+        case UI_WORKBENCH_PROPERTY_TRANSITION: return workbench->layout->transition;
         case UI_WORKBENCH_PROPERTY_FOCUS_EFFECT: return element->focus_effect;
         case UI_WORKBENCH_PROPERTY_PRESET: return element->preset;
         case UI_WORKBENCH_PROPERTY_TARGET: return element->target;

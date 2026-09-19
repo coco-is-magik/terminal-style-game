@@ -28,6 +28,7 @@ typedef struct {
     SDL_Color error;
     SDL_Color success;
     SDL_Color destructive;
+    SDL_Color editor_selection;
 } UiAppWorkbenchPalette;
 
 /** Resolves provisional application-menu colors; output is unchanged on failure. */

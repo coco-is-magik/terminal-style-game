@@ -701,6 +701,7 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
         return NULL;
     }
     basename_no_ext(path, layout->name, sizeof(layout->name));
+    (void)snprintf(layout->transition, sizeof(layout->transition), "none");
 
     while (fgets(line, sizeof(line), f)) {
         char *eq;
@@ -719,6 +720,13 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
 
         if (strcmp(key, "name") == 0) {
             (void)snprintf(layout->name, sizeof(layout->name), "%s", val);
+        } else if (strcmp(key, "transition") == 0) {
+            if (!ui_ele_transition_is_valid(val)) {
+                fclose(f);
+                free(layout);
+                return NULL;
+            }
+            (void)snprintf(layout->transition, sizeof(layout->transition), "%s", val);
         } else if (strcmp(key, "elements") == 0) {
             char names[UI_LAYOUT_MAX_ELEMS][UI_ELE_NAME_MAX];
             int count = split_csv(names, UI_LAYOUT_MAX_ELEMS, val);
