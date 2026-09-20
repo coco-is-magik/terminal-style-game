@@ -162,12 +162,23 @@ static void test_help_pages_preserve_edit(void **state) {
     for (page = 0; page < 5; page++) {
         assert_int_equal(workbench.help_page, page);
         assert_non_null(ui_workbench_guide_tooltip(&guide, &workbench));
+        if (page == 0) {
+            const char *text = ui_workbench_guide_tooltip(&guide, &workbench);
+            assert_non_null(strstr(text, "MENU Transition/Add unselected"));
+            assert_non_null(strstr(text, "ELEMENT Style/Text/Visible/Align/Remove selected"));
+            assert_non_null(strstr(text, "arrows move; Esc deselects"));
+        }
         if (page == 1) {
             assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "Normal/Focused/Compare"));
             assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "editor-only"));
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "P cycles"));
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "runtime colors and arrows"));
         }
-        if (page == 3)
+        if (page == 3) {
             assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "spacing"));
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "no separate editable spacing field"));
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "Transition applies to the whole menu"));
+        }
         ui_workbench_cycle_help(&workbench, 1);
     }
     assert_int_equal(workbench.help_page, 0);

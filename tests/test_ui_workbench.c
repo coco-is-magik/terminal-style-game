@@ -377,8 +377,98 @@ static void test_scoped_categories_and_preview(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
+static void test_exact_category_cycles_and_type_skips(void **state) {
+    static const UiWorkbenchProperty menu[] = {
+        UI_WORKBENCH_PROPERTY_TRANSITION, UI_WORKBENCH_PROPERTY_ADD
+    };
+    static const UiWorkbenchProperty button[] = {
+        UI_WORKBENCH_PROPERTY_STYLE, UI_WORKBENCH_PROPERTY_CONTENT,
+        UI_WORKBENCH_PROPERTY_VISIBLE, UI_WORKBENCH_PROPERTY_ALIGN,
+        UI_WORKBENCH_PROPERTY_REMOVE
+    };
+    static const UiWorkbenchProperty container[] = {
+        UI_WORKBENCH_PROPERTY_STYLE, UI_WORKBENCH_PROPERTY_VISIBLE,
+        UI_WORKBENCH_PROPERTY_REMOVE
+    };
+    static const UiWorkbenchProperty animation[] = {
+        UI_WORKBENCH_PROPERTY_VISIBLE, UI_WORKBENCH_PROPERTY_REMOVE
+    };
+    UiWorkbench workbench;
+    UiElement element = {0};
+    UiLayout layout = {0};
+    (void)state;
+    ui_workbench_init(&workbench);
+    layout.elements[0] = &element;
+    layout.element_count = 1;
+    workbench.layout = &layout;
+    workbench.elements[0] = &element;
+    workbench.element_count = 1;
+    for (int scenario = 0; scenario < 5; scenario++) {
+        const UiWorkbenchProperty *expected = scenario == 0 ? menu :
+            scenario == 3 ? container : scenario == 4 ? animation : button;
+        size_t count = scenario == 0 || scenario == 4 ? 2U : scenario == 3 ? 3U : 5U;
+        workbench.editing = scenario != 0;
+        element.type = scenario == 3 ? UI_ELE_CONTAINER : scenario == 4 ? UI_ELE_ANIMATION :
+            scenario == 2 ? UI_ELE_TEXT : UI_ELE_BUTTON;
+        for (int property = 0; property < UI_WORKBENCH_PROPERTY_COUNT; property++) {
+            bool enabled = false;
+            for (size_t i = 0; i < count; i++)
+                if ((int)expected[i] == property) enabled = true;
+            assert_int_equal(ui_workbench_category_enabled(&workbench,
+                (UiWorkbenchProperty)property), enabled);
+        }
+        for (int direction = -1; direction <= 1; direction += 2) {
+            size_t index = 0;
+            workbench.property = expected[index];
+            for (size_t step = 0; step < count * 2; step++) {
+                workbench.remove_choice = true;
+                index = (index + (direction > 0 ? 1 : count - 1)) % count;
+                assert_int_equal(ui_workbench_cycle_property(&workbench, direction), UI_WORKBENCH_OK);
+                assert_int_equal(workbench.property, expected[index]);
+                assert_false(workbench.remove_choice);
+            }
+        }
+    }
+    /* An inherited parent is editable, but not removable from this layout. */
+    layout.element_count = 0;
+    assert_false(ui_workbench_category_enabled(&workbench, UI_WORKBENCH_PROPERTY_REMOVE));
+    workbench.element_index = -1;
+    assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_NO_CHANGE);
+    assert_int_equal(ui_workbench_cycle_property(&workbench, 0), UI_WORKBENCH_INVALID_ARGUMENT);
+}
+
+static void test_preview_cycle_modes_and_context_preservation(void **state) {
+    UiWorkbench workbench;
+    (void)state;
+    ui_workbench_init(&workbench);
+    assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_COMPARE);
+    for (int mode = UI_WORKBENCH_MODE_BROWSE; mode <= UI_WORKBENCH_MODE_TEXT; mode++) {
+        workbench.mode = (UiWorkbenchMode)mode;
+        workbench.preview_state = UI_WORKBENCH_PREVIEW_COMPARE;
+        for (int step = 0; step < 6; step++) {
+            ui_workbench_cycle_preview(&workbench);
+            assert_int_equal(workbench.preview_state, mode == UI_WORKBENCH_MODE_TEXT ?
+                UI_WORKBENCH_PREVIEW_COMPARE : step % 3);
+        }
+    }
+    workbench.preview_state = UI_WORKBENCH_PREVIEW_FOCUSED;
+    workbench.preview_elapsed_ms = 80.0;
+    workbench.preview_reduced_motion = true;
+    for (int context = MENU_MAIN; context <= MENU_CONFIRM_QUIT; context++) {
+        assert_int_equal(ui_workbench_open(&workbench, (MenuId)context), UI_WORKBENCH_OK);
+        assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_FOCUSED);
+        assert_true(workbench.preview_elapsed_ms == 80.0);
+        assert_true(workbench.preview_reduced_motion);
+        assert_false(workbench.editing);
+        assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_TRANSITION);
+    }
+    ui_workbench_destroy(&workbench);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_exact_category_cycles_and_type_skips),
+        cmocka_unit_test(test_preview_cycle_modes_and_context_preservation),
         cmocka_unit_test(test_scoped_categories_and_preview),
         cmocka_unit_test(test_open_cycle_select_and_properties),
         cmocka_unit_test(test_failed_reload_preserves_session),

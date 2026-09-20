@@ -818,26 +818,153 @@ static void test_cards_preview_runtime_states_without_mutation(void **state) {
     workbench.property = UI_WORKBENCH_PROPERTY_STYLE;
     for (int mode = 0; mode < 3; mode++) {
         bool bracket = false, arrow = false;
+        int bracket_row = -1, arrow_row = -1;
         workbench.preview_state = (UiWorkbenchPreviewState)mode;
         assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
         for (int y = 2; y < 9; y++) for (int x = 88; x < 168; x++) {
             Cell cell = grid->cells[y * 260 + x];
-            if (cell.glyph == '[') bracket = true;
+            if (cell.glyph == '[') { bracket = true; bracket_row = y; }
             if (cell.glyph == '>') {
                 arrow = true;
+                arrow_row = y;
                 assert_memory_equal(&cell.fg, &menu.selected_foreground, sizeof(cell.fg));
                 assert_memory_equal(&cell.bg, &menu.selected_background, sizeof(cell.bg));
             }
         }
         assert_int_equal(bracket, mode != UI_WORKBENCH_PREVIEW_FOCUSED);
         assert_int_equal(arrow, mode != UI_WORKBENCH_PREVIEW_NORMAL);
+        if (mode == UI_WORKBENCH_PREVIEW_COMPARE) assert_true(bracket_row < arrow_row);
         assert_memory_equal(&button, &before, sizeof(button));
+    }
+    grid_destroy(grid);
+}
+
+static int find_card_label(const Grid *grid, int card, int width, const char *text) {
+    size_t length = strlen(text);
+    for (int y = 2; y < 9; y++) {
+        for (int x = card * width + 2; x + (int)length < (card + 1) * width - 2; x++) {
+            size_t i = 0;
+            while (i < length && grid->cells[y * grid->width + x + (int)i].glyph == (uint8_t)text[i]) i++;
+            if (i == length) return x - card * width;
+        }
+    }
+    return -1;
+}
+
+static void test_element_category_samples_preserve_source(void **state) {
+    UiWorkbench workbench;
+    UiAppWorkbenchPalette palette;
+    UiElement element = {0}, before;
+    UiLayout layout = {0};
+    Grid *grid = grid_create(260, 160);
+    int positions[3];
+    (void)state;
+    assert_non_null(grid);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    ui_workbench_init(&workbench);
+    element.type = UI_ELE_BUTTON;
+    element.visible = true;
+    element.content = "START";
+    element.layout.width = 20;
+    element.layout.height = 1;
+    (void)snprintf(element.style, sizeof(element.style), "plain");
+    before = element;
+    layout.elements[0] = &element;
+    layout.element_count = 1;
+    workbench.layout = &layout;
+    workbench.elements[0] = &element;
+    workbench.element_count = 1;
+    workbench.editing = true;
+    workbench.preview_state = UI_WORKBENCH_PREVIEW_NORMAL;
+    workbench.property = UI_WORKBENCH_PROPERTY_ALIGN;
+    assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+    for (int card = 0; card < 3; card++) positions[card] = find_card_label(grid, card, 86, "START");
+    assert_true(positions[0] >= 0);
+    assert_true(positions[0] < positions[1]);
+    assert_true(positions[1] < positions[2]);
+    assert_memory_equal(&element, &before, sizeof(element));
+    for (int remove = 0; remove < 2; remove++) {
+        workbench.property = remove ? UI_WORKBENCH_PROPERTY_REMOVE : UI_WORKBENCH_PROPERTY_VISIBLE;
+        for (int choice = 0; choice < 2; choice++) {
+            workbench.remove_choice = choice != 0;
+            assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+            assert_true(find_card_label(grid, 0, 130, "START") >= 0);
+            assert_int_equal(find_card_label(grid, 1, 130, "START"), -1);
+            assert_int_equal(layout.element_count, 1);
+            assert_memory_equal(&element, &before, sizeof(element));
+        }
+    }
+    workbench.property = UI_WORKBENCH_PROPERTY_CONTENT;
+    assert_int_equal(ui_workbench_begin_text(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_text_input(&workbench, "!", false), UI_WORKBENCH_OK);
+    assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+    assert_true(find_card_label(grid, 0, 260, "START!") >= 0);
+    assert_string_equal(element.content, "START");
+    assert_memory_equal(&element, &before, sizeof(element));
+    ui_workbench_cancel_mode(&workbench);
+    assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+    assert_int_equal(find_card_label(grid, 0, 260, "START!"), -1);
+    grid_destroy(grid);
+}
+
+static void test_scoped_row_labels_colors_and_highlight(void **state) {
+    static const int scales[] = {100, 125, 150, 200};
+    static const char *const labels[] = {"MENU:", "Transition", "Add", "ELEMENT:",
+        "Style", "Text", "Visible", "Align", "Remove"};
+    UiWorkbench workbench;
+    UiLayout layout = {0};
+    UiElement element = {0};
+    UiAppWorkbenchPalette palette;
+    Grid *grid = grid_create(260, 160);
+    (void)state;
+    assert_non_null(grid);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    ui_workbench_init(&workbench);
+    element.type = UI_ELE_BUTTON;
+    layout.elements[0] = &element;
+    layout.element_count = 1;
+    workbench.layout = &layout;
+    workbench.elements[0] = &element;
+    workbench.element_count = 1;
+    for (int editing = 0; editing < 2; editing++) {
+        workbench.editing = editing != 0;
+        workbench.property = editing ? UI_WORKBENCH_PROPERTY_STYLE : UI_WORKBENCH_PROPERTY_TRANSITION;
+        for (size_t scale = 0; scale < sizeof(scales) / sizeof(scales[0]); scale++) {
+            int width, height;
+            char row[131];
+            UiCanvas *canvas;
+            assert_true(ui_workbench_runtime_interface_size(scales[scale], workbench.editing, &width, &height));
+            canvas = ui_canvas_create(width, height);
+            assert_non_null(canvas);
+            assert_true(ui_workbench_runtime_compose_footer_canvas(canvas, grid, &workbench,
+                &palette, NULL, scales[scale], false));
+            int offset = ((260 + width - 1) / width) * width;
+            for (int i = 0; i < 130; i++) row[i] = (char)canvas->cells[offset + i].glyph;
+            row[130] = '\0';
+            assert_non_null(strstr(row, editing ? "[Style]" : "[Transition]"));
+            assert_null(strstr(row, editing ? "[Transition]" : "[Style]"));
+            for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
+                const char *found = strstr(row, labels[i]);
+                SDL_Color expected = ((i < 3) != workbench.editing) ? palette.primary_text : palette.disabled_text;
+                assert_non_null(found);
+                for (size_t j = 0; j < strlen(labels[i]); j++)
+                    assert_memory_equal(&canvas->cells[offset + (found - row) + j].fg, &expected, sizeof(expected));
+            }
+            /* Exact labels above plus absence checks protect against inspector creep. */
+            assert_null(strstr(row, "Position"));
+            assert_null(strstr(row, "Size"));
+            assert_null(strstr(row, "Parent"));
+            assert_null(strstr(row, "Coords"));
+            ui_canvas_destroy(canvas);
+        }
     }
     grid_destroy(grid);
 }
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_scoped_row_labels_colors_and_highlight),
+        cmocka_unit_test(test_element_category_samples_preserve_source),
         cmocka_unit_test(test_cards_preview_runtime_states_without_mutation),
         cmocka_unit_test(test_rejects_invalid_arguments),
         cmocka_unit_test(test_option_window_pages_without_four_option_limit),

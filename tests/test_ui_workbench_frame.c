@@ -214,6 +214,14 @@ static void test_scale_change_does_not_rewrite_help_footer(void **state) {
                                         (size_t)grid->width + (size_t)x]
                           .glyph;
     expected[UI_WORKBENCH_FRAME_TEST_COLUMNS] = '\0';
+    /* Untouched cells are zero glyphs, not string terminators in a grid row. */
+    for (x = 0; x < UI_WORKBENCH_FRAME_TEST_COLUMNS; x++)
+        controls[x] = expected[x] ? expected[x] : ' ';
+    controls[UI_WORKBENCH_FRAME_TEST_COLUMNS] = '\0';
+    assert_non_null(strstr(controls, "P preview"));
+    assert_non_null(strstr(controls, "Tab category"));
+    assert_non_null(strstr(controls, "Esc deselect"));
+    assert_non_null(strstr(controls, "F9 help"));
     for (index = 1U; index < sizeof(scales) / sizeof(scales[0U]); index++) {
         assert_true(render_fixture(&workbench, grid, &palette, scales[index],
                                    0.0, &rendered));
