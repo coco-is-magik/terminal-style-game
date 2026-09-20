@@ -8,11 +8,12 @@ This is the copy/paste and text-prompt reference for application-owned UI under
 
 Run `make ui-workbench`.
 
-- Up/Down: select an active element or animation unit.
-- Enter: toggle move mode; arrows move the selected unit one cell.
-- Tab: cycle editable properties.
+- Up/Down: hover an element while unselected.
+- Enter: select; arrows move the selected unit one cell. Escape deselects.
+- Tab: MENU Transition/Add without selection; ELEMENT Style/Text/Visible/Align/Remove with selection. Both scopes remain visible, unavailable categories dimmed and skipped.
+- P: cycle Normal/Focused/Compare runtime card states. Compare shows normal above focused. Runtime arrows replace brackets; editor outlines are not part of the samples.
 - `[` / `]`: change the selected property and save immediately.
-- Ctrl+N: open the existing-unit chooser; Up/Down chooses, Enter clones/adds, Escape cancels.
+- Ctrl+N (unselected), or brackets on Add: open the existing-unit chooser; Up/Down or brackets choose, Enter clones/adds, Escape cancels.
 - Backspace: request removal from the current layout; Enter confirms, Escape cancels.
 - Ctrl+Left/Right: change application context.
 - Ctrl+Enter: invoke the selected Button action where safe in the workbench.

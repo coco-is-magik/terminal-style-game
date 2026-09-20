@@ -894,10 +894,10 @@ check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 	@set -e; for context in main pause settings confirm; do \
 		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
 		case " $$context " in \
-			*" main "*) expected=13910126345440706794 ;; \
-			*" pause "*) expected=1475701774946690991 ;; \
-			*" settings "*) expected=9870106462813291221 ;; \
-			*" confirm "*) expected=12275623073148853648 ;; \
+			*" main "*) expected=10821154052634477536 ;; \
+			*" pause "*) expected=11912315341095897809 ;; \
+			*" settings "*) expected=14648528100631133103 ;; \
+			*" confirm "*) expected=18405518230658705158 ;; \
 		esac; \
 		if [ "$$actual" != "$$expected" ]; then echo "FAIL-PRODUCT: ui-workbench-frame $$context checksum=$$actual expected=$$expected"; exit 1; fi; \
 	done

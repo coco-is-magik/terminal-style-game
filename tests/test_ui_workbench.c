@@ -30,7 +30,7 @@ static void test_open_cycle_select_and_properties(void **state) {
     assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
     assert_true(workbench.editing);
     assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
-    assert_string_equal(ui_workbench_property_name(workbench.property), "transition");
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_CONTENT);
     assert_non_null(ui_workbench_current_value(&workbench));
     ui_workbench_destroy(&workbench);
 }
@@ -193,9 +193,9 @@ static void test_animation_properties_and_modes(void **state) {
     assert_int_equal(animation.randomize, 0);
     workbench.property = UI_WORKBENCH_PROPERTY_FOCUS_EFFECT;
     assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
-    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_PRESET);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_TRANSITION);
     assert_int_equal(ui_workbench_cycle_property(&workbench, -1), UI_WORKBENCH_OK);
-    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_BACKGROUND);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_ADD);
     workbench.catalog.entries = &source;
     workbench.catalog.count = 1U;
     assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
@@ -344,8 +344,42 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+static void test_scoped_categories_and_preview(void **state) {
+    UiWorkbench workbench;
+    (void)state;
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_TRANSITION);
+    assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_ADD);
+    assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
+    assert_int_equal(workbench.property, UI_WORKBENCH_PROPERTY_TRANSITION);
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
+    for (int i = 0; i < 14; i++) {
+        assert_true(ui_workbench_category_enabled(&workbench, workbench.property));
+        assert_false(ui_workbench_category_enabled(&workbench, UI_WORKBENCH_PROPERTY_TRANSITION));
+        assert_false(ui_workbench_category_enabled(&workbench, UI_WORKBENCH_PROPERTY_ADD));
+        assert_int_equal(ui_workbench_cycle_property(&workbench, 1), UI_WORKBENCH_OK);
+    }
+    assert_false(ui_workbench_category_enabled(&workbench, UI_WORKBENCH_PROPERTY_CONTENT));
+    assert_false(ui_workbench_category_enabled(&workbench, UI_WORKBENCH_PROPERTY_WIDTH));
+    ui_workbench_cycle_preview(&workbench);
+    assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_NORMAL);
+    ui_workbench_cycle_preview(&workbench);
+    assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_FOCUSED);
+    ui_workbench_cycle_preview(&workbench);
+    assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_COMPARE);
+    workbench.mode = UI_WORKBENCH_MODE_TEXT;
+    ui_workbench_cycle_preview(&workbench);
+    assert_int_equal(workbench.preview_state, UI_WORKBENCH_PREVIEW_COMPARE);
+    assert_false(ui_workbench_category_enabled(NULL, UI_WORKBENCH_PROPERTY_STYLE));
+    ui_workbench_cycle_preview(NULL);
+    ui_workbench_destroy(&workbench);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_scoped_categories_and_preview),
         cmocka_unit_test(test_open_cycle_select_and_properties),
         cmocka_unit_test(test_failed_reload_preserves_session),
         cmocka_unit_test(test_safe_navigation_and_unavailable_actions),

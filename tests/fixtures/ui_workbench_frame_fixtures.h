@@ -17,11 +17,11 @@ static const struct {
 } ui_workbench_frame_contract_fixtures[] = {
     /* Reviewed refresh: docs/reviews/2026-09-19-application-ui-editor-execution.md.
      * Legacy cell contract only; runtime fidelity uses compositor pixel evidence. */
-    {MENU_MAIN, 100, 13910126345440706794ULL},
-    {MENU_MAIN, 150, 1637535885879394538ULL},
-    {MENU_PAUSE, 100, 1475701774946690991ULL},
-    {MENU_SETTINGS, 100, 9870106462813291221ULL},
-    {MENU_CONFIRM_QUIT, 100, 12275623073148853648ULL}
+    {MENU_MAIN, 100, 10821154052634477536ULL},
+    {MENU_MAIN, 150, 894376048979772384ULL},
+    {MENU_PAUSE, 100, 11912315341095897809ULL},
+    {MENU_SETTINGS, 100, 14648528100631133103ULL},
+    {MENU_CONFIRM_QUIT, 100, 18405518230658705158ULL}
 };
 
 static const size_t ui_workbench_frame_contract_fixture_count =

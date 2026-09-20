@@ -297,31 +297,42 @@ bool ui_workbench_runtime_compose_footer_canvas(UiCanvas *canvas, Grid *grid,
         char menu[512];
         size_t used = 0;
         static const UiWorkbenchProperty properties[] = {
-            UI_WORKBENCH_PROPERTY_WIDTH, UI_WORKBENCH_PROPERTY_HEIGHT,
+            UI_WORKBENCH_PROPERTY_TRANSITION, UI_WORKBENCH_PROPERTY_ADD,
             UI_WORKBENCH_PROPERTY_STYLE, UI_WORKBENCH_PROPERTY_CONTENT,
             UI_WORKBENCH_PROPERTY_VISIBLE, UI_WORKBENCH_PROPERTY_ALIGN,
-            UI_WORKBENCH_PROPERTY_Z_INDEX
+            UI_WORKBENCH_PROPERTY_REMOVE
         };
-        int written = snprintf(menu, sizeof(menu), "ELEMENT  ");
+        static const char *const labels[] = {"Transition", "Add", "Style", "Text", "Visible", "Align", "Remove"};
+        int written = snprintf(menu, sizeof(menu), "MENU: ");
+        size_t element_start = 0;
         if (written < 0) return false;
         used = (size_t)written;
         for (size_t i = 0; i < sizeof(properties) / sizeof(properties[0]); i++) {
+            bool enabled = ui_workbench_category_enabled(workbench, properties[i]);
+            if (i == 2) {
+                written = snprintf(menu + used, sizeof(menu) - used, "| ELEMENT: ");
+                if (written < 0 || (size_t)written >= sizeof(menu) - used) return false;
+                element_start = used;
+                used += (size_t)written;
+            }
             written = snprintf(menu + used, sizeof(menu) - used, "%c%s%c  ",
-                workbench->property == properties[i] ? '[' : ' ',
-                ui_workbench_property_name(properties[i]),
-                workbench->property == properties[i] ? ']' : ' ');
+                enabled && workbench->property == properties[i] ? '[' : ' ',
+                labels[i],
+                enabled && workbench->property == properties[i] ? ']' : ' ');
             if (written < 0 || (size_t)written >= sizeof(menu) - used) return false;
+            for (size_t j = used; j < used + (size_t)written; j++)
+                if (!ui_canvas_set(canvas, (int)(j % (size_t)width),
+                    rows_per_channel + (int)(j / (size_t)width), (uint8_t)menu[j],
+                    enabled ? palette->primary_text : palette->disabled_text, palette->canvas)) return false;
             used += (size_t)written;
         }
-        written = snprintf(menu + used, sizeof(menu) - used, "MENU %cTransition%c  Add  Remove",
-            workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION ? '[' : ' ',
-            workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION ? ']' : ' ');
-        if (written < 0 || (size_t)written >= sizeof(menu) - used) return false;
-        used += (size_t)written;
-        for (size_t i = 0; i < used; i++)
+        for (size_t i = 0; i < used; i++) {
+            if (i >= 6 && (i < element_start || i >= element_start + 11)) continue;
             if (!ui_canvas_set(canvas, (int)(i % (size_t)width),
-                               rows_per_channel + (int)(i / (size_t)width),
-                               (uint8_t)menu[i], palette->primary_text, palette->canvas)) return false;
+                rows_per_channel + (int)(i / (size_t)width), (uint8_t)menu[i],
+                ((i < 6) != workbench->editing) ? palette->primary_text : palette->disabled_text,
+                palette->canvas)) return false;
+        }
     }
     return true;
 }
@@ -467,7 +478,7 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
                 (void)SDL_StopTextInput(renderer->window);
         } else if (input.esc && workbench.mode != UI_WORKBENCH_MODE_BROWSE)
             ui_workbench_cancel_mode(&workbench);
-        else if (input.esc && workbench.editing) workbench.editing = false;
+        else if (input.esc && workbench.editing) (void)ui_workbench_toggle_editing(&workbench);
         else if (input.esc || input.quit) should_exit = true;
         else if (workbench.mode == UI_WORKBENCH_MODE_HELP) {
             if (input.up || input.down)
@@ -481,14 +492,20 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         } else if (input.editor_undo_pressed) {
             (void)ui_workbench_undo_membership(&workbench);
         }
-        else if (workbench.mode == UI_WORKBENCH_MODE_ADD) {
-            if (input.up || input.down)
-                (void)ui_workbench_cycle_add_source(&workbench, input.down ? 1 : -1);
+        else if (input.editor_place_sprite_pressed) {
+            ui_workbench_cycle_preview(&workbench);
+        } else if (workbench.mode == UI_WORKBENCH_MODE_ADD) {
+            if (input.tab) {
+                ui_workbench_cancel_mode(&workbench);
+                (void)ui_workbench_cycle_property(&workbench, 1);
+            } else if (input.up || input.down || input.prev_glyph || input.next_glyph)
+                (void)ui_workbench_cycle_add_source(&workbench, input.down || input.next_glyph ? 1 : -1);
             else if (input.confirm) (void)ui_workbench_confirm_add(&workbench);
         } else if (workbench.mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM) {
             if (input.confirm) (void)ui_workbench_confirm_remove(&workbench);
         }
-        else if (input.editor_new_pressed) {
+        else if (input.editor_new_pressed && !workbench.editing) {
+            workbench.property = UI_WORKBENCH_PROPERTY_ADD;
             (void)ui_workbench_begin_add(&workbench);
         } else if (input.erase) {
             (void)ui_workbench_request_remove(&workbench);
@@ -512,11 +529,19 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         } else if (input.ctrl_confirm) {
             (void)ui_workbench_invoke(&workbench);
         } else if (input.confirm) {
-            (void)ui_workbench_toggle_editing(&workbench);
+            if (workbench.editing && workbench.property == UI_WORKBENCH_PROPERTY_REMOVE) {
+                if (workbench.remove_choice && ui_workbench_request_remove(&workbench) == UI_WORKBENCH_OK)
+                    (void)ui_workbench_confirm_remove(&workbench);
+            } else (void)ui_workbench_toggle_editing(&workbench);
         } else if (input.tab) {
             (void)ui_workbench_cycle_property(&workbench, 1);
         } else if (input.prev_glyph || input.next_glyph) {
-            (void)ui_workbench_cycle_value(&workbench, input.next_glyph ? 1 : -1);
+            if (workbench.property == UI_WORKBENCH_PROPERTY_ADD && !workbench.editing)
+                (void)ui_workbench_begin_add(&workbench);
+            else if (workbench.property == UI_WORKBENCH_PROPERTY_REMOVE && workbench.editing)
+                workbench.remove_choice = !workbench.remove_choice;
+            else if (ui_workbench_category_enabled(&workbench, workbench.property))
+                (void)ui_workbench_cycle_value(&workbench, input.next_glyph ? 1 : -1);
             if (workbench.mode == UI_WORKBENCH_MODE_TEXT &&
                 !SDL_StartTextInput(renderer->window)) {
                 ui_workbench_cancel_mode(&workbench);
@@ -552,6 +577,8 @@ UiWorkbenchRuntimeResult ui_workbench_runtime_run(Renderer *renderer, Grid *grid
         }
         double ages[UI_ANIMATION_EVENT_PREVIEW];
         uint64_t now = SDL_GetTicks();
+        workbench.preview_elapsed_ms = (double)(now - preview_start);
+        workbench.preview_reduced_motion = reduced_motion;
         for (int event = 0; event < UI_ANIMATION_EVENT_PREVIEW; event++)
             ages[event] = event_active[event] ? (double)(now - event_start[event]) : -1.0;
         if (!ui_workbench_runtime_preview_events(preview_canvas, grid, &workbench, &palette,

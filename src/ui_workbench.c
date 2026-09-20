@@ -65,7 +65,8 @@ void ui_workbench_init(UiWorkbench *workbench) {
     if (!workbench) return;
     memset(workbench, 0, sizeof(*workbench));
     workbench->context = MENU_NONE;
-    workbench->property = UI_WORKBENCH_PROPERTY_STYLE;
+    workbench->property = UI_WORKBENCH_PROPERTY_TRANSITION;
+    workbench->preview_state = UI_WORKBENCH_PREVIEW_COMPARE;
     map_catalog_init(&workbench->catalog);
 }
 
@@ -153,6 +154,9 @@ UiWorkbenchResult ui_workbench_open(UiWorkbench *workbench, MenuId context) {
     ui_workbench_init(replacement);
     result = load_context(replacement, context);
     if (result == UI_WORKBENCH_OK) {
+        replacement->preview_state = workbench->preview_state;
+        replacement->preview_elapsed_ms = workbench->preview_elapsed_ms;
+        replacement->preview_reduced_motion = workbench->preview_reduced_motion;
         copy_bounded(replacement->membership_undo_name, sizeof(replacement->membership_undo_name),
                      workbench->membership_undo_name);
         replacement->membership_undo_context = workbench->membership_undo_context;
@@ -198,7 +202,6 @@ UiWorkbenchResult ui_workbench_cycle_element(UiWorkbench *workbench, int directi
     if (count <= 0) return UI_WORKBENCH_NO_CHANGE;
     workbench->element_index = (workbench->element_index +
                                 (direction > 0 ? 1 : count - 1)) % count;
-    normalize_property(workbench);
     workbench->editing = false;
     set_status(workbench, "Element changed");
     return UI_WORKBENCH_OK;
@@ -207,22 +210,59 @@ UiWorkbenchResult ui_workbench_cycle_element(UiWorkbench *workbench, int directi
 UiWorkbenchResult ui_workbench_toggle_editing(UiWorkbench *workbench) {
     if (!ui_workbench_current_element(workbench)) return UI_WORKBENCH_INVALID_ARGUMENT;
     workbench->editing = !workbench->editing;
+    workbench->property = workbench->editing ? UI_WORKBENCH_PROPERTY_STYLE :
+                                              UI_WORKBENCH_PROPERTY_TRANSITION;
+    workbench->remove_choice = false;
+    if (!ui_workbench_category_enabled(workbench, workbench->property))
+        (void)ui_workbench_cycle_property(workbench, 1);
     set_status(workbench, workbench->editing ? "Editing" : "Browsing");
     return UI_WORKBENCH_OK;
 }
 
+bool ui_workbench_category_enabled(const UiWorkbench *workbench, UiWorkbenchProperty property) {
+    const UiElement *element;
+    if (!workbench || !workbench->layout) return false;
+    if (!workbench->editing)
+        return property == UI_WORKBENCH_PROPERTY_TRANSITION || property == UI_WORKBENCH_PROPERTY_ADD;
+    element = ui_workbench_current_element((UiWorkbench *)workbench);
+    if (!element) return false;
+    switch (property) {
+        case UI_WORKBENCH_PROPERTY_STYLE: return element->type != UI_ELE_ANIMATION;
+        case UI_WORKBENCH_PROPERTY_CONTENT:
+        case UI_WORKBENCH_PROPERTY_ALIGN:
+            return element->type == UI_ELE_TEXT || element->type == UI_ELE_BUTTON;
+        case UI_WORKBENCH_PROPERTY_VISIBLE: return true;
+        case UI_WORKBENCH_PROPERTY_REMOVE:
+            for (int i = 0; i < workbench->layout->element_count; i++)
+                if (workbench->layout->elements[i] == element) return true;
+            return false;
+        default: return false;
+    }
+}
+
+void ui_workbench_cycle_preview(UiWorkbench *workbench) {
+    if (workbench && workbench->mode != UI_WORKBENCH_MODE_TEXT)
+        workbench->preview_state = (UiWorkbenchPreviewState)((workbench->preview_state + 1) % 3);
+}
+
 UiWorkbenchResult ui_workbench_cycle_property(UiWorkbench *workbench, int direction) {
-    int value;
-    UiElement *element;
+    static const UiWorkbenchProperty categories[] = {
+        UI_WORKBENCH_PROPERTY_TRANSITION, UI_WORKBENCH_PROPERTY_ADD,
+        UI_WORKBENCH_PROPERTY_STYLE, UI_WORKBENCH_PROPERTY_CONTENT,
+        UI_WORKBENCH_PROPERTY_VISIBLE, UI_WORKBENCH_PROPERTY_ALIGN, UI_WORKBENCH_PROPERTY_REMOVE
+    };
+    int index = direction > 0 ? -1 : 0;
     if (!workbench || direction == 0) return UI_WORKBENCH_INVALID_ARGUMENT;
-    element = ui_workbench_current_element(workbench);
-    do {
-        value = (int)workbench->property +
-            (direction > 0 ? 1 : UI_WORKBENCH_PROPERTY_COUNT - 1);
-        workbench->property = (UiWorkbenchProperty)(value % UI_WORKBENCH_PROPERTY_COUNT);
-    } while (element && !property_matches_element(workbench->property, element));
-    set_status(workbench, "Property changed");
-    return UI_WORKBENCH_OK;
+    for (int i = 0; i < 7; i++) if (categories[i] == workbench->property) index = i;
+    for (int i = 0; i < 7; i++) {
+        index = (index + (direction > 0 ? 1 : 6)) % 7;
+        if (!ui_workbench_category_enabled(workbench, categories[index])) continue;
+        workbench->property = categories[index];
+        workbench->remove_choice = false;
+        set_status(workbench, "Category changed");
+        return UI_WORKBENCH_OK;
+    }
+    return UI_WORKBENCH_NO_CHANGE;
 }
 
 static bool is_descendant(const UiElement *candidate, const UiElement *element) {
@@ -833,7 +873,7 @@ const char *ui_workbench_property_name(UiWorkbenchProperty property) {
         "parent", "style", "transition", "focus effect", "preset", "target",
         "trigger", "orientation", "loop", "randomize"
         ,"width", "height", "visible", "alignment", "z index", "coordinates", "action", "content",
-        "foreground", "background"
+        "foreground", "background", "Add", "Remove"
     };
     return property >= UI_WORKBENCH_PROPERTY_PARENT &&
         property < UI_WORKBENCH_PROPERTY_COUNT ? names[property] : "invalid";

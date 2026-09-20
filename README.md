@@ -149,12 +149,14 @@ UI assets without loading a world or the unified editor:
 make ui-workbench
 ```
 
-Up/Down browses elements (including the active context container); Enter enters or leaves
-move mode; arrows move a move-selected element one cell and save immediately; Tab cycles
-parent, style, transition, focus/effect, dimensions, visibility, alignment, z-order,
-coordinate mode, action and content metadata; the literal `[` and `]` keys cycle
-compatible values directly on the highlighted element without entering move mode;
-Ctrl+N opens a list of existing reusable elements/animations to clone into the active layout;
+Up/Down hovers elements; Enter selects; arrows move the selected element and save immediately.
+Tab cycles only the active scope in `MENU: Transition Add | ELEMENT: Style Text Visible Align Remove`.
+Both scopes remain visible; MENU is active without selection, ELEMENT with selection.
+Escape deselects before exiting. `[` / `]` choose values or enter Text/Add;
+P cycles Normal/Focused/Compare card previews (Compare defaults to normal above focused).
+Cards use runtime button colors and focus effects, not editor outlines. Focused arrows replace
+brackets exactly as in the application. No new spacing property is introduced.
+Ctrl+N opens existing reusable elements/animations to clone when no element is selected;
 Backspace removes the highlighted direct member from that layout after confirmation while
 preserving its reusable source file;
 Ctrl+Left/Right changes context; Ctrl+Enter invokes safe application-menu navigation;

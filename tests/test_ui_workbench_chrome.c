@@ -283,25 +283,26 @@ static void test_runtime_footer_canvas_contains_scaled_footer(void **state) {
     int width;
     int height;
     const int footer_y = 6;
-    const int controls_y = 2;
+    const int controls_y = 74;
     (void)state;
     ui_workbench_init(&workbench);
     grid = grid_create(UI_WORKBENCH_CHROME_COLUMNS, UI_WORKBENCH_CHROME_ROWS);
     assert_non_null(grid);
-    assert_true(ui_workbench_runtime_footer_size(200, &width, &height));
+    assert_true(ui_workbench_runtime_interface_size(200, false, &width, &height));
     assert_int_equal(width, 130);
-    assert_int_equal(height, 8);
+    assert_int_equal(height, 80);
     canvas = ui_canvas_create(width, height);
     assert_non_null(canvas);
     assert_true(ui_app_theme_workbench_palette(&palette));
     assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN),
                      UI_WORKBENCH_OK);
+    workbench.mode = UI_WORKBENCH_MODE_HELP;
     assert_true(ui_workbench_runtime_compose_footer_canvas(
         canvas, grid, &workbench, &palette, tooltip, 200, false));
     assert_true(ui_canvas_is_touched(canvas, 1, controls_y));
     assert_int_equal(canvas->cells[(size_t)controls_y *
                                    (size_t)canvas->width + 1U].glyph,
-                     'U');
+                     'H');
     tooltip_length = strlen(tooltip);
     assert_true(tooltip_length > 0U);
     for (i = 0U; i < tooltip_length; i++) {
@@ -522,8 +523,8 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
 
 static void test_runtime_pixel_fixtures(void **state) {
     static const uint64_t expected[] = {
-        UINT64_C(4283456333583077511), UINT64_C(6485980519635347163),
-        UINT64_C(5506666399887804633), UINT64_C(5100523525012112801)
+        UINT64_C(1972174810394524079), UINT64_C(1625212743618603965),
+        UINT64_C(14753538251050419893), UINT64_C(8134698366594751166)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));
@@ -785,8 +786,59 @@ static void test_add_cards_follow_catalog_page(void **state) {
     grid_destroy(grid);
 }
 
+static void test_cards_preview_runtime_states_without_mutation(void **state) {
+    UiWorkbench workbench;
+    UiAppWorkbenchPalette palette;
+    UiAppMenuPalette menu;
+    UiElement button = {0};
+    UiElement before;
+    UiLayout layout = {0};
+    Grid *grid = grid_create(260, 160);
+    (void)state;
+    assert_non_null(grid);
+    ui_workbench_init(&workbench);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_true(ui_app_theme_menu_palette(&menu));
+    button.type = UI_ELE_BUTTON;
+    button.visible = true;
+    button.focused = true;
+    button.content = "START";
+    button.align = UI_ALIGN_CENTER;
+    button.layout.width = 20;
+    button.layout.height = 1;
+    (void)snprintf(button.style, sizeof(button.style), "bracket");
+    (void)snprintf(button.focus_effect, sizeof(button.focus_effect), "none");
+    before = button;
+    layout.elements[0] = &button;
+    layout.element_count = 1;
+    workbench.layout = &layout;
+    workbench.elements[0] = &button;
+    workbench.element_count = 1;
+    workbench.editing = true;
+    workbench.property = UI_WORKBENCH_PROPERTY_STYLE;
+    for (int mode = 0; mode < 3; mode++) {
+        bool bracket = false, arrow = false;
+        workbench.preview_state = (UiWorkbenchPreviewState)mode;
+        assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
+        for (int y = 2; y < 9; y++) for (int x = 88; x < 168; x++) {
+            Cell cell = grid->cells[y * 260 + x];
+            if (cell.glyph == '[') bracket = true;
+            if (cell.glyph == '>') {
+                arrow = true;
+                assert_memory_equal(&cell.fg, &menu.selected_foreground, sizeof(cell.fg));
+                assert_memory_equal(&cell.bg, &menu.selected_background, sizeof(cell.bg));
+            }
+        }
+        assert_int_equal(bracket, mode != UI_WORKBENCH_PREVIEW_FOCUSED);
+        assert_int_equal(arrow, mode != UI_WORKBENCH_PREVIEW_NORMAL);
+        assert_memory_equal(&button, &before, sizeof(button));
+    }
+    grid_destroy(grid);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_cards_preview_runtime_states_without_mutation),
         cmocka_unit_test(test_rejects_invalid_arguments),
         cmocka_unit_test(test_option_window_pages_without_four_option_limit),
         cmocka_unit_test(test_menu_cards_render_visual_content_without_mutation),

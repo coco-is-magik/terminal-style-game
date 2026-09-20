@@ -30,8 +30,16 @@ typedef enum {
     UI_WORKBENCH_PROPERTY_CONTENT,
     UI_WORKBENCH_PROPERTY_FOREGROUND,
     UI_WORKBENCH_PROPERTY_BACKGROUND,
+    UI_WORKBENCH_PROPERTY_ADD,
+    UI_WORKBENCH_PROPERTY_REMOVE,
     UI_WORKBENCH_PROPERTY_COUNT
 } UiWorkbenchProperty;
+
+typedef enum {
+    UI_WORKBENCH_PREVIEW_NORMAL,
+    UI_WORKBENCH_PREVIEW_FOCUSED,
+    UI_WORKBENCH_PREVIEW_COMPARE
+} UiWorkbenchPreviewState;
 
 typedef enum {
     UI_WORKBENCH_MODE_BROWSE = 0,
@@ -61,6 +69,10 @@ typedef struct {
     bool editing;
     UiWorkbenchProperty property;
     UiWorkbenchMode mode;
+    UiWorkbenchPreviewState preview_state;
+    bool remove_choice;
+    double preview_elapsed_ms;
+    bool preview_reduced_motion;
     size_t add_index;
     size_t help_page;
     char text_edit[256];
@@ -71,6 +83,8 @@ typedef struct {
 } UiWorkbench;
 
 void ui_workbench_init(UiWorkbench *workbench);
+bool ui_workbench_category_enabled(const UiWorkbench *workbench, UiWorkbenchProperty property);
+void ui_workbench_cycle_preview(UiWorkbench *workbench);
 void ui_workbench_destroy(UiWorkbench *workbench);
 UiWorkbenchResult ui_workbench_open(UiWorkbench *workbench, MenuId context);
 UiElement *ui_workbench_current_element(UiWorkbench *workbench);

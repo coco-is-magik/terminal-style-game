@@ -483,15 +483,27 @@ static void panel_text(Grid *grid, int x, int y, int width, int rows,
 static bool menu_option_sample(Grid *sample, const UiWorkbench *workbench,
                                const UiAppWorkbenchPalette *palette, const char *transition) {
     UiLayout layout;
+    UiElement copies[UI_LAYOUT_MAX_ELEMS];
+    UiAppMenuPalette menu;
     Grid *full;
-    if (!workbench->layout) return false;
+    if (!workbench->layout || !ui_app_theme_menu_palette(&menu)) return false;
     full = grid_create(UI_WORKBENCH_CHROME_COLUMNS, UI_WORKBENCH_CHROME_ROWS);
     if (!full) return false;
     layout = *workbench->layout;
+    for (int i = 0; i < layout.element_count; i++) {
+        if (!layout.elements[i]) continue;
+        copies[i] = *layout.elements[i];
+        copies[i].child_count = 0;
+        if (copies[i].type == UI_ELE_BUTTON) {
+            copies[i].focused = false;
+            ui_ele_set_colors(&copies[i], menu.unselected_foreground, menu.unselected_background);
+        }
+        layout.elements[i] = &copies[i];
+    }
     (void)snprintf(layout.transition, sizeof(layout.transition), "%s", transition);
-    grid_clear(full, palette->panel);
-    ui_layout_render(&layout, full, palette->primary_text, palette->panel);
-    if (!ui_animation_render_layout(&layout, full, 80.0, false, false,
+    grid_clear(full, menu.unselected_background);
+    ui_layout_render(&layout, full, palette->primary_text, menu.unselected_background);
+    if (!ui_animation_render_layout(&layout, full, 80.0, workbench->preview_reduced_motion, false,
                                      UI_ANIMATION_EVENT_CONTEXT_ENTER)) {
         grid_destroy(full);
         return false;
@@ -521,6 +533,44 @@ bool ui_workbench_chrome_option_window(size_t total, size_t active, int width,
     return true;
 }
 
+static bool element_option_sample(Grid *sample, UiElement copy,
+                                  const UiWorkbench *workbench) {
+    UiAppMenuPalette menu;
+    const UiThemePalette *theme = &ui_theme_provisional_tokens()->palette;
+    UiLayout layout = {0};
+    int passes = workbench->preview_state == UI_WORKBENCH_PREVIEW_COMPARE ? 2 : 1;
+    if (!ui_app_theme_menu_palette(&menu)) return false;
+    grid_clear(sample, menu.unselected_background);
+    copy.parent = NULL;
+    copy.child_count = 0;
+    copy.layout.coords_mode = UI_COORD_ABSOLUTE;
+    /* Preserve authored dimensions; oversized samples are clipped, not resized. */
+    copy.layout.x = copy.layout.width < sample->width ? (sample->width - copy.layout.width) / 2 : 1;
+    layout.elements[0] = &copy;
+    layout.element_count = 1;
+    for (int pass = 0; pass < passes; pass++) {
+        bool focused = copy.type == UI_ELE_BUTTON &&
+            (workbench->preview_state == UI_WORKBENCH_PREVIEW_FOCUSED || pass == 1);
+        copy.focused = focused;
+        copy.layout.y = passes == 2 ? (pass == 0 ? 1 : sample->height / 2 + 1) : 1;
+        if (copy.type == UI_ELE_BUTTON)
+            ui_ele_set_colors(&copy, focused ? menu.selected_foreground : menu.unselected_foreground,
+                              focused ? menu.selected_background : menu.unselected_background);
+        ui_ele_render_self(&copy, sample, 0, 0, menu.unselected_foreground, menu.unselected_background);
+        if (focused) {
+            SDL_Color pulse;
+            SDL_Color glitch;
+            pulse.r = theme->focus.red; pulse.g = theme->focus.green;
+            pulse.b = theme->focus.blue; pulse.a = theme->focus.alpha;
+            glitch.r = theme->accent.red; glitch.g = theme->accent.green;
+            glitch.b = theme->accent.blue; glitch.a = theme->accent.alpha;
+            if (!ui_layout_render_focus_effect(&layout, 0, sample, workbench->preview_elapsed_ms,
+                    workbench->preview_reduced_motion, pulse, glitch, menu.unselected_background)) return false;
+        }
+    }
+    return true;
+}
+
 bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *palette,
                                     const UiWorkbench *workbench, int width, int height) {
     static const char *const button_styles[] = {"plain", "bracket", "inverse"};
@@ -535,7 +585,8 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
     char caption[96];
     if (!grid || !palette || !workbench || width > grid->width || height > grid->height ||
         width < 24 || height < 12) return false;
-    if (workbench->mode == UI_WORKBENCH_MODE_ADD && workbench->catalog.count) {
+    if ((workbench->mode == UI_WORKBENCH_MODE_ADD ||
+         workbench->property == UI_WORKBENCH_PROPERTY_ADD) && workbench->catalog.count) {
         total = workbench->catalog.count;
         active = workbench->add_index;
     } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION && workbench->layout) {
@@ -552,6 +603,9 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
         names = alignments;
         total = 3;
         active = (size_t)element->align;
+    } else if (element && workbench->property == UI_WORKBENCH_PROPERTY_REMOVE) {
+        total = 2;
+        active = workbench->remove_choice ? 1 : 0;
     } else if (element && workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE) {
         total = 2;
         active = element->visible ? 0 : 1;
@@ -569,7 +623,8 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
             return false;
         }
         grid_clear(sample, palette->panel);
-        if (workbench->mode == UI_WORKBENCH_MODE_ADD) {
+        if ((workbench->mode == UI_WORKBENCH_MODE_ADD ||
+             workbench->property == UI_WORKBENCH_PROPERTY_ADD) && workbench->catalog.count) {
             const char *filename = workbench->catalog.entries[option].name;
             char stem[UI_ELE_NAME_MAX];
             size_t length = strlen(filename);
@@ -583,11 +638,10 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
             }
             if (source) {
                 UiElement copy = *source;
-                copy.parent = NULL;
-                copy.child_count = 0;
-                copy.layout = (UiElementLayout){1, 1, UI_COORD_ABSOLUTE,
-                                                sample->width - 2, sample->height - 2};
-                ui_ele_render_self(&copy, sample, 0, 0, palette->primary_text, palette->panel);
+                if (!element_option_sample(sample, copy, workbench)) {
+                    grid_destroy(sample);
+                    return false;
+                }
             }
         } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION && names) {
             if (!menu_option_sample(sample, workbench, palette, names[option])) {
@@ -598,13 +652,17 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
             UiElement copy = *element;
             copy.parent = NULL;
             copy.child_count = 0;
-            copy.layout = (UiElementLayout){1, 1, UI_COORD_ABSOLUTE,
-                                            sample->width - 2, sample->height - 2};
             if (names && workbench->property == UI_WORKBENCH_PROPERTY_STYLE)
                 (void)snprintf(copy.style, sizeof(copy.style), "%s", names[option]);
             if (workbench->property == UI_WORKBENCH_PROPERTY_ALIGN) copy.align = (UiAlign)option;
             if (workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE) copy.visible = option == 0;
-            ui_ele_render_self(&copy, sample, 0, 0, palette->primary_text, palette->panel);
+            if (workbench->property == UI_WORKBENCH_PROPERTY_REMOVE && option == 1) copy.visible = false;
+            if (workbench->mode == UI_WORKBENCH_MODE_TEXT &&
+                workbench->property == UI_WORKBENCH_PROPERTY_CONTENT) copy.content = (char *)workbench->text_edit;
+            if (!element_option_sample(sample, copy, workbench)) {
+                grid_destroy(sample);
+                return false;
+            }
         }
         for (int y = 0; y < sample->height; y++)
             for (int column = 0; column < sample->width; column++) {
@@ -613,13 +671,20 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
             }
         grid_destroy(sample);
         (void)snprintf(caption, sizeof(caption), "%c %zu/%zu %s", option == active ? '>' : ' ',
-                       option + 1, total, workbench->mode == UI_WORKBENCH_MODE_ADD ?
+                       option + 1, total, (workbench->mode == UI_WORKBENCH_MODE_ADD ||
+                       workbench->property == UI_WORKBENCH_PROPERTY_ADD) && workbench->catalog.count ?
                        workbench->catalog.entries[option].name : names ? names[option] :
+                       workbench->property == UI_WORKBENCH_PROPERTY_REMOVE ?
+                       (option == 0 ? "keep selected" : "remove selected") :
                        !element ? "Select an element" :
                        workbench->property == UI_WORKBENCH_PROPERTY_VISIBLE ?
                        (option == 0 ? "visible" : "hidden") : ui_workbench_property_name(workbench->property));
         panel_text(grid, x + 2, height - 2, card_width - 5, 1, caption,
                    palette->primary_text, palette->panel);
+        panel_text(grid, x + 2, 1, card_width - 5, 1,
+                   workbench->preview_state == UI_WORKBENCH_PREVIEW_NORMAL ? "Normal" :
+                   workbench->preview_state == UI_WORKBENCH_PREVIEW_FOCUSED ? "Focused" :
+                   "Compare: Normal / Focused", palette->secondary_text, palette->panel);
     }
     return true;
 }
@@ -671,7 +736,7 @@ bool ui_workbench_chrome_footer_rows(Grid *grid,
             ? "HELP | Up/Down page | Esc return"
             : workbench->mode == UI_WORKBENCH_MODE_REMOVE_CONFIRM
             ? "REMOVE? Enter confirms | Esc keeps element"
-            : "Enter select | Tab property | [ ] value | Ctrl+N add | Backspace remove | F9 help",
+            : "Enter select/confirm | Tab category | [ ] choices | P preview | Esc deselect | F9 help",
         palette->secondary_text, palette->canvas);
     if (element && strcmp(element->focus_effect, "input_hold_short") == 0) {
         grid_print(grid, 1, footer_first + 2,

@@ -162,6 +162,12 @@ static void test_help_pages_preserve_edit(void **state) {
     for (page = 0; page < 5; page++) {
         assert_int_equal(workbench.help_page, page);
         assert_non_null(ui_workbench_guide_tooltip(&guide, &workbench));
+        if (page == 1) {
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "Normal/Focused/Compare"));
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "editor-only"));
+        }
+        if (page == 3)
+            assert_non_null(strstr(ui_workbench_guide_tooltip(&guide, &workbench), "spacing"));
         ui_workbench_cycle_help(&workbench, 1);
     }
     assert_int_equal(workbench.help_page, 0);
