@@ -181,8 +181,9 @@ focused button in normal application menus as well as the workbench. Reusable an
 and element transition presets use the same production/workbench evaluator for pause glitch,
 center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
 See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
-Current evidence, remaining implementation requirements and final manual acceptance are recorded
-in `docs/reviews/2026-09-19-application-ui-editor-a6-closeout.md`; the full plan is not yet closed.
+Current evidence, regression coverage and final manual acceptance are recorded in
+`docs/reviews/2026-09-19-application-ui-editor-a6-closeout.md` and
+`docs/reviews/2026-09-20-workbench-regression-coverage.md`; the full plan is not yet closed.
 
 The staged `.tui` UI Scene editor (`make ui-editor`) is **withdrawn and unratified**. Its
 presentation used hardcoded colours instead of the accepted palette, applied no preference or

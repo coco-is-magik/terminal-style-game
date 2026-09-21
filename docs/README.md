@@ -32,6 +32,9 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-19-application-ui-editor-a6-closeout.md`](reviews/2026-09-19-application-ui-editor-a6-closeout.md)
   — current automated evidence, persistence boundaries and final manual checklist;
   includes links by filename to A3/A4/A5 records. The plan is not yet closed.
+- [`reviews/2026-09-20-workbench-regression-coverage.md`](reviews/2026-09-20-workbench-regression-coverage.md)
+  — test-only lock on the accepted workbench behavior: scoped MENU/ELEMENT navigation, runtime card
+  previews, help/footer discoverability, frame gates and persistence boundaries.
 - [`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md) and
   [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
   — the manually approved palette and D6 motion specimens. The reference the editor must match.

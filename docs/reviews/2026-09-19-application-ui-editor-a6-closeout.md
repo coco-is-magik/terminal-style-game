@@ -34,6 +34,22 @@ That checkpoint left automatic multi-file recovery, overlapping incoming event c
 
 Recovery assumes a single authoring writer and the existing platform filesystem durability behavior. Unknown external modifications or persistent write failures preserve the record and block loading rather than silently overwriting data. Interrupted processes can leave prepared temporary copies. These limitations are not labeled physical power-loss or concurrent-writer verification. Historical PREVIEW snapshots intentionally broadcast animation triggers; the live runtime uses lifecycle events, and the distinction remains explicit.
 
+## Regression-guard update — 2026-09-21
+
+The current workbench behavior is now treated as the automated regression contract, not as an open
+behavior-redesign surface. The scoped row, runtime card previews, help text, frame gates and recovery
+boundaries are protected by the dedicated coverage map in
+`2026-09-20-workbench-regression-coverage.md`. That test-only pass changed no production code, assets,
+help text or frame checksum baselines.
+
+Current automated gates still pass after the regression-guard pass: `make check-ui-workbench-frame
+check-ui-workbench-policy test-ui-standards`. This confirms the frame baselines, workbench palette and
+dependency policy, and UI standards owners remain consistent with the accepted workbench behavior.
+
+This update does not close A6 native/manual acceptance. Native 1920x1080 product review, non-author
+guidance walkthrough, and moving-reference comparison remain manual acceptance items below. Native
+Valgrind remains uncounted unless a later dated record supplies a passing artifact.
+
 ## Step 2 boundary
 
 The staged `.tui` interface remains withdrawn. A separate approved plan is required before reusing this work for in-project authoring. Reuse the palette adapter, compositor, guidance conventions and independent evidence gates; do not revive a second host or renderer. Step 2 is not implemented here.

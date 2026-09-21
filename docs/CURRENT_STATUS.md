@@ -160,6 +160,16 @@ independent incoming event clocks and shared authored-cell protection. Storage t
 simultaneous cross-file visibility or concurrent-writer support. Named automated checks and
 the final manual-only acceptance checklist are in the closeout record.
 
+The current workbench behavior is now regression-guarded rather than open for further behavior
+iteration. The scoped `MENU: Transition Add | ELEMENT: Style Text Visible Align Remove` row,
+runtime-authentic bottom cards, preview-state cycling, help/footer discoverability, frame baselines,
+palette/dependency policy, and persistence/recovery boundaries are covered by
+[`reviews/2026-09-20-workbench-regression-coverage.md`](reviews/2026-09-20-workbench-regression-coverage.md).
+The 2026-09-21 roadmap check reran `make check-ui-workbench-frame check-ui-workbench-policy
+test-ui-standards` successfully. Final native 1920x1080 product acceptance, non-author walkthrough,
+moving-reference review, and native Valgrind remain unclaimed manual/native evidence items; do not
+infer A6 closure from automated gates alone.
+
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;
 no legacy code-page meaning has been assigned.

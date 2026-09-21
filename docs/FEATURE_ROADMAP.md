@@ -857,3 +857,9 @@ context decoration. Follow-through implements automatic membership reconciliatio
 independent incoming event clocks and shared lifecycle protection with interruption,
 independent-composition and sanitizer evidence. Native visual/non-author acceptance is
 not inferred from these tests; persistence limits are explicit in the closeout record.
+
+**2026-09-21 regression guard:** the accepted UI workbench behavior is locked by automated
+regression coverage rather than changed further; see
+[`reviews/2026-09-20-workbench-regression-coverage.md`](reviews/2026-09-20-workbench-regression-coverage.md).
+Focused frame, policy and UI-standards gates still pass. Step 1 still awaits final native/manual A6
+acceptance; no roadmap phase should treat the automated regression pass as native product approval.
