@@ -1,0 +1,16 @@
+name=btn_plain_technical
+type=button
+parent=button_gallery_container
+x=2
+y=2
+coords=relative
+width=20
+height=1
+visible=1
+z_index=0
+align=center
+action=start_game
+style=plain
+transition=none
+focus_effect=none
+content=PLAIN TECHNICAL

@@ -30,6 +30,7 @@ static UiElement element(const char *name, UiElementType type, int x, int y,
     return value;
 }
 
+
 static void release(UiElement *value) {
     free(value->content);
     value->content = NULL;
@@ -57,6 +58,146 @@ static bool grid_contains_any_glyph_in(Grid *grid, int x0, int y0, int width, in
         }
     }
     return false;
+}
+
+static void assert_region_equal(Grid *actual, Grid *expected,
+                                int x, int y, int width, int height) {
+    for (int row = y; row < y + height; row++) {
+        for (int column = x; column < x + width; column++) {
+            Cell actual_cell;
+            Cell expected_cell;
+            assert_true(grid_get(actual, column, row, &actual_cell));
+            assert_true(grid_get(expected, column, row, &expected_cell));
+            assert_memory_equal(&actual_cell, &expected_cell, sizeof(Cell));
+        }
+    }
+}
+
+static void test_button_effect_presets_are_deterministic_and_bounded(void **state) {
+    static const char *const presets[] = {
+        "edge_trace", "chromatic_register", "command_flash"
+    };
+    static const char *const triggers[] = {"focus", "focus", "activate"};
+    static const UiAnimationEvent events[] = {
+        UI_ANIMATION_EVENT_FOCUS, UI_ANIMATION_EVENT_FOCUS,
+        UI_ANIMATION_EVENT_ACTIVATE
+    };
+    UiElement target = element("target", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement unit = element("unit", UI_ELE_ANIMATION, 0, 0, 12, 1);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(32, 20);
+    Grid *repeat = grid_create(32, 20);
+    Grid *reference = grid_create(32, 20);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    Cell value;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(repeat);
+    assert_non_null(reference);
+    target.focused = true;
+    (void)snprintf(unit.target, sizeof(unit.target), "target");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "horizontal");
+    layout.elements[0] = &target;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+
+    for (size_t i = 0U; i < sizeof(presets) / sizeof(presets[0]); i++) {
+        (void)snprintf(unit.preset, sizeof(unit.preset), "%s", presets[i]);
+        (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s", triggers[i]);
+        assert_true(ui_ele_animation_is_valid(&unit));
+
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false, events[i]));
+        assert_region_equal(grid, reference, 8, 8, 12, 1);
+
+        grid_clear(repeat, bg);
+        ui_layout_render(&layout, repeat, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, repeat, 0.0, false, false, events[i]));
+        assert_memory_equal(grid->cells, repeat->cells, 32U * 20U * sizeof(Cell));
+
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, 40.0, false, false, events[i]));
+        assert_region_equal(grid, reference, 8, 8, 12, 1);
+
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, 80.0, false, false, events[i]));
+        assert_memory_equal(grid->cells, reference->cells, 32U * 20U * sizeof(Cell));
+
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, 40.0, true, false, events[i]));
+        assert_memory_equal(grid->cells, reference->cells, 32U * 20U * sizeof(Cell));
+    }
+
+    (void)snprintf(unit.preset, sizeof(unit.preset), "edge_trace");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "focus");
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_FOCUS));
+    assert_true(grid_get(grid, 8, 7, &value));
+    assert_int_equal(value.glyph, '=');
+    assert_int_equal(value.fg.g, 245);
+
+    (void)snprintf(unit.preset, sizeof(unit.preset), "chromatic_register");
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_FOCUS));
+    assert_true(grid_get(grid, 10, 7, &value));
+    assert_int_equal(value.fg.g, 245);
+    assert_true(grid_get(grid, 16, 9, &value));
+    assert_int_equal(value.fg.g, 255);
+
+    (void)snprintf(unit.preset, sizeof(unit.preset), "command_flash");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "activate");
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_ACTIVATE));
+    assert_true(grid_get(grid, 5, 8, &value));
+    assert_int_equal(value.glyph, '!');
+    assert_true(grid_get(grid, 22, 8, &value));
+    assert_int_equal(value.glyph, '!');
+    target.focused = false;
+    grid_clear(repeat, bg);
+    ui_layout_render(&layout, repeat, fg, bg);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_ACTIVATE));
+    assert_memory_equal(grid->cells, repeat->cells, 32U * 20U * sizeof(Cell));
+    target.focused = true;
+
+    unit.loop = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.loop = 0;
+    unit.randomize = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.randomize = 0;
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "vertical");
+    assert_false(ui_ele_animation_is_valid(&unit));
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "horizontal");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "focus");
+    assert_false(ui_ele_animation_is_valid(&unit));
+
+    unit.trigger[0] = '\0';
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "activate");
+    target.type = UI_ELE_CONTAINER;
+    grid_clear(grid, bg);
+    assert_false(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                            UI_ANIMATION_EVENT_ACTIVATE));
+
+    release(&target);
+    grid_destroy(reference);
+    grid_destroy(repeat);
+    grid_destroy(grid);
 }
 
 static void test_pause_glitch_canvas_matches_layout_unit(void **state) {
@@ -279,6 +420,7 @@ static void test_lifecycle_protects_authored_spaces_not_backdrop(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_pause_glitch_canvas_matches_layout_unit),
+        cmocka_unit_test(test_button_effect_presets_are_deterministic_and_bounded),
         cmocka_unit_test(test_directed_trigger_endpoints),
         cmocka_unit_test(test_lifecycle_protects_authored_spaces_not_backdrop),
         cmocka_unit_test(test_center_out_and_reduced_motion),

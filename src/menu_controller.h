@@ -35,4 +35,9 @@ bool menu_controller_toggle_session_option(bool *value);
 bool menu_controller_state_transition(MenuAction action, AppState current,
                                       AppState *out_next);
 
+/** Updates a tracked menu/focus identity and reports whether it changed. */
+bool menu_controller_focus_identity_changed(int active_menu, int focus_index,
+                                            int *tracked_menu,
+                                            int *tracked_focus_index);
+
 #endif

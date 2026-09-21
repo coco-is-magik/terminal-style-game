@@ -170,6 +170,33 @@ test-ui-standards` successfully. Final native 1920x1080 product acceptance, non-
 moving-reference review, and native Valgrind remain unclaimed manual/native evidence items; do not
 infer A6 closure from automated gates alone.
 
+The owner has approved the workbench as sufficient for the current project place while keeping it
+available for future targeted tweaks as UI needs expand. The next focused direction is no longer
+workbench mechanics; it is building actual application UI assets one class at a time. The current
+planning authority for that work is
+[`APPLICATION_UI_ASSET_LIBRARY_B1_PLAN_2026-09-21.md`](APPLICATION_UI_ASSET_LIBRARY_B1_PLAN_2026-09-21.md):
+start with a data-first button visual library, then button motion/chromatic effects through the shared
+evaluator, then transitions, ASCII-art image-space support if needed, menu composition, and later
+expanded non-menu UI benchmark surfaces.
+
+**B1.1 bounded implementation update (2026-09-21).** Ten reusable button templates and a diagnostic
+`button_gallery` layout now exercise the existing plain, bracket, inverse, focus-feedback, compact,
+hero, marker, confirm, and cancel vocabulary without adding renderer behavior or changing shipping
+menus. The gallery is registered for cache/render tests and workbench clone discovery, but it is not
+a runtime menu or workbench context. Strict `test-ui-ele` passes 20/20, strict workbench tests pass
+11/11, the UI standards aggregate passes, and focused ASan/leak and UBSan runs pass both owners.
+Native visual review remains unclaimed; the following B1.2 slice builds on this foundation.
+
+**B1.2 bounded implementation update (2026-09-21).** The shared application-UI evaluator now supports
+`edge_trace`, `chromatic_register`, and `command_flash` as deterministic, Button-targeted 80 ms
+feedback. Focus age resets explicitly when normal-menu focus identity changes; workbench authoring
+normalizes constrained metadata and clones these units onto a valid Button target. Target cells,
+labels, markers, bounds, actions, and hit targets remain stable; Reduced Motion draws nothing;
+chromatic registration uses palette accent/focus material, not semantic state. Focused strict tests pass at
+animation 7/7, element/gallery 20/20, workbench 11/11, and app modules 6/6, and the strict application
+build passes. UI standards, workbench frame/policy gates, and focused ASan/leak and UBSan runs also
+pass. Native visual review remains unclaimed; B1.3 has not started.
+
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;
 no legacy code-page meaning has been assigned.

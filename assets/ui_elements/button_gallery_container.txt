@@ -1,0 +1,14 @@
+name=button_gallery_container
+type=container
+x=16
+y=12
+coords=absolute
+width=64
+height=34
+visible=1
+z_index=0
+align=left
+style=plain
+transition=none
+focus_effect=none
+content=

@@ -74,6 +74,26 @@ static void test_application_state_transitions(void **state) {
         MENU_ACTION_START_GAME, APP_STATE_MAIN_MENU, NULL));
 }
 
+static void test_focus_identity_change_is_explicit_and_transactional(void **state) {
+    int tracked_menu = -1;
+    int tracked_focus = -1;
+    (void)state;
+
+    assert_true(menu_controller_focus_identity_changed(0, 0,
+                                                        &tracked_menu, &tracked_focus));
+    assert_int_equal(tracked_menu, 0);
+    assert_int_equal(tracked_focus, 0);
+    assert_false(menu_controller_focus_identity_changed(0, 0,
+                                                         &tracked_menu, &tracked_focus));
+    assert_true(menu_controller_focus_identity_changed(0, 1,
+                                                        &tracked_menu, &tracked_focus));
+    assert_true(menu_controller_focus_identity_changed(2, 1,
+                                                        &tracked_menu, &tracked_focus));
+    assert_false(menu_controller_focus_identity_changed(2, 1, NULL, &tracked_focus));
+    assert_int_equal(tracked_menu, 2);
+    assert_int_equal(tracked_focus, 1);
+}
+
 static void test_scenario_dispatch(void **state) {
     (void)state;
     Grid *grid = grid_create(2, 2);
@@ -97,6 +117,7 @@ int main(void) {
         cmocka_unit_test(test_handled_menu_action_consumes_confirm),
         cmocka_unit_test(test_session_option_toggle_is_immediate_and_transactional),
         cmocka_unit_test(test_application_state_transitions),
+        cmocka_unit_test(test_focus_identity_change_is_explicit_and_transactional),
         cmocka_unit_test(test_scenario_dispatch),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

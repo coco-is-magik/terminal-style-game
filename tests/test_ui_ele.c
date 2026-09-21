@@ -146,18 +146,83 @@ static void test_ui_cache_master_map(void **state) {
 
     UiCache cache;
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
-    assert_int_equal(cache.master_count, 5);
+    assert_int_equal(cache.master_count, 6);
     assert_string_equal(cache.master_entries[0].layout, "main_menu");
     assert_int_equal(cache.master_entries[0].cache_next_count, 6);
     assert_string_equal(cache.master_entries[1].layout, "pause_menu");
     assert_string_equal(cache.master_entries[2].layout, "confirm_quit");
     assert_string_equal(cache.master_entries[3].layout, "settings");
     assert_string_equal(cache.master_entries[4].layout, "hud_overlay");
+    assert_string_equal(cache.master_entries[5].layout, "button_gallery");
+    assert_int_equal(cache.master_entries[5].cache_next_count, 14);
 
     ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
     assert_non_null(ui_cache_get(&cache, "main_menu_container"));
     assert_non_null(ui_cache_get(&cache, "main_menu_level_editor"));
 
+    ui_cache_destroy(&cache);
+}
+
+static void test_button_gallery_loads_and_renders_library(void **state) {
+    static const char *const names[] = {
+        "btn_plain_technical", "btn_inverse_hero", "btn_bracket_command",
+        "btn_plain_marker", "btn_inverse_filled", "btn_confirm_affirm",
+        "btn_plain_cancel", "btn_bracket_feedback", "btn_plain_compact",
+        "btn_bracket_compact"
+    };
+    UiCache cache;
+    UiLayout *layout;
+    Grid *grid;
+    SDL_Color fg = {242, 247, 248, 255};
+    SDL_Color bg = {5, 8, 10, 255};
+    Cell cell;
+    (void)state;
+
+    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+    ui_cache_tick(&cache, "button_gallery", "assets/ui_elements");
+    layout = ui_layout_load("assets/ui_layouts/button_gallery.txt", &cache);
+    assert_non_null(layout);
+    assert_int_equal(layout->element_count, 13);
+    assert_int_equal(ui_layout_focusable_count(layout), 10);
+
+    for (int i = 0; i < 10; i++) {
+        UiElement *button = ui_layout_get_focused(layout, i);
+        assert_non_null(button);
+        assert_string_equal(button->name, names[i]);
+        assert_int_equal(button->type, UI_ELE_BUTTON);
+        assert_non_null(button->parent);
+        assert_string_equal(button->parent->name, "button_gallery_container");
+    }
+    assert_string_equal(ui_cache_get(&cache, "btn_plain_technical")->style, "plain");
+    assert_string_equal(ui_cache_get(&cache, "btn_bracket_command")->style, "bracket");
+    assert_string_equal(ui_cache_get(&cache, "btn_inverse_filled")->style, "inverse");
+    assert_string_equal(ui_cache_get(&cache, "btn_bracket_feedback")->focus_effect,
+                        "focus_pulse");
+    assert_true(ui_cache_get(&cache, "btn_confirm_affirm")->has_fg);
+    assert_int_equal(ui_cache_get(&cache, "btn_confirm_affirm")->fg.g, 247);
+    assert_string_equal(ui_cache_get(&cache, "animation_edge_trace")->preset,
+                        "edge_trace");
+    assert_string_equal(ui_cache_get(&cache, "animation_chromatic_register")->preset,
+                        "chromatic_register");
+    assert_string_equal(ui_cache_get(&cache, "animation_command_flash")->preset,
+                        "command_flash");
+
+    grid = grid_create(96, 56);
+    assert_non_null(grid);
+    grid_clear(grid, bg);
+    ui_layout_set_focus(layout, 0);
+    ui_layout_render(layout, grid, fg, bg);
+    assert_true(grid_has_text_at(grid, 52, 14, "LARGE COMMAND HERO"));
+    assert_true(grid_get(grid, 18, 16, &cell));
+    assert_int_equal(cell.glyph, '[');
+    assert_true(grid_get(grid, 37, 16, &cell));
+    assert_int_equal(cell.glyph, ']');
+    assert_true(grid_get(grid, 49, 18, &cell));
+    assert_int_equal(cell.fg.r, 13);
+    assert_int_equal(cell.bg.g, 247);
+
+    grid_destroy(grid);
+    ui_layout_destroy(layout);
     ui_cache_destroy(&cache);
 }
 
@@ -617,6 +682,7 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_render_wrap),
         cmocka_unit_test(test_ui_layout_load_and_substitute),
         cmocka_unit_test(test_ui_cache_master_map),
+        cmocka_unit_test(test_button_gallery_loads_and_renders_library),
         cmocka_unit_test(test_ui_layout_hud_overlay_slots),
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),
         cmocka_unit_test(test_ui_layout_remaining_menu_focus_actions),

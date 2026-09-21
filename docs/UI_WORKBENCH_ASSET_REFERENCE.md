@@ -48,7 +48,7 @@ height=<bounded region height>
 visible=1
 z_index=-1
 align=left
-preset=<pause_glitch|center_out|perimeter_burst|local_glitch>
+preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash>
 target=<element name in the same active layout>
 trigger=<context_enter|context_exit|focus|activate|while_visible>
 orientation=<horizontal|vertical|radial>
@@ -72,6 +72,13 @@ Rules:
 - `randomize=1` deterministically scatters pause-glitch glyphs inside x/y/width/height. The same
   unit name produces the same placement; there is no frame-dependent random state.
 - Reduced Motion suppresses spatial animation immediately.
+- `edge_trace` and `chromatic_register` require a Button target, `trigger=focus`,
+  `orientation=horizontal`, `loop=0`, and `randomize=0`.
+- `command_flash` requires a Button target, `trigger=activate`, `orientation=horizontal`, `loop=0`,
+  and `randomize=0`; action dispatch remains immediate.
+- Choosing one of these button presets in the workbench normalizes its constrained metadata and
+  selects a Button target. Cloning one into a menu targets that menu's first Button. A menu without a
+  Button rejects the clone without creating a file.
 
 ## Copyable units
 
@@ -178,14 +185,128 @@ focus_effect=none
 content=
 ```
 
+### Palette-native edge trace
+
+```text
+name=my_edge_trace
+type=animation
+x=0
+y=0
+coords=absolute
+width=20
+height=1
+visible=1
+z_index=-1
+align=left
+preset=edge_trace
+target=my_button
+trigger=focus
+orientation=horizontal
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
+### Palette-native chromatic registration
+
+```text
+name=my_chromatic_register
+type=animation
+x=0
+y=0
+coords=absolute
+width=20
+height=1
+visible=1
+z_index=-1
+align=left
+preset=chromatic_register
+target=my_button
+trigger=focus
+orientation=horizontal
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
+This uses palette accent/focus channels. The single literal red/cyan comparison remains isolated in
+the approved motion specimen; neither treatment communicates warning, failure, success,
+confirmation, or destructive meaning.
+
+### Immediate command flash
+
+```text
+name=my_command_flash
+type=animation
+x=0
+y=0
+coords=absolute
+width=20
+height=1
+visible=1
+z_index=-1
+align=left
+preset=command_flash
+target=my_button
+trigger=activate
+orientation=horizontal
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
 ## Existing reusable templates
 
+- `btn_plain_technical.txt`
+- `btn_bracket_command.txt`
+- `btn_inverse_filled.txt`
+- `btn_bracket_feedback.txt`
+- `btn_plain_compact.txt`
+- `btn_bracket_compact.txt`
+- `btn_inverse_hero.txt`
+- `btn_plain_marker.txt`
+- `btn_confirm_affirm.txt`
+- `btn_plain_cancel.txt`
 - `animation_pause_glitch.txt`
 - `animation_center_out.txt`
 - `animation_perimeter_burst.txt`
 - `animation_local_glitch.txt`
+- `animation_edge_trace.txt`
+- `animation_chromatic_register.txt`
+- `animation_command_flash.txt`
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
+
+### B1.1 button-template conventions
+
+The `btn_<style>_<role>.txt` prefix identifies reusable button templates. The checked-in templates
+use only the existing `plain`, `bracket`, and `inverse` renderer styles, existing focus effects, and
+the accepted palette values. When cloned into an editable menu, the workbench gives the clone a
+unique menu-owned name and reparents it to that menu's container; the source template remains
+unchanged.
+
+`assets/ui_layouts/button_gallery.txt` is a bounded diagnostic composition used by automated
+load/render checks. It is registered in `master_map.txt` so its source elements are preloaded and
+available to the workbench clone chooser. It is deliberately not a fifth workbench menu context and
+not a shipping application screen.
+
+Current data-only limitations:
+
+- panel-integrated buttons need a separately authored container composition;
+- segmented controls need multiple coordinated elements and interaction semantics that the current
+  single-button asset does not provide;
+- destructive meaning is not represented by decorative chromatic traces; a destructive template
+  should be added only with an approved semantic-color treatment;
+- B1.1 adds no new renderer style, animation evaluator, transition, or authored `.tui` behavior.
 
 ## Adding one new preset later
 

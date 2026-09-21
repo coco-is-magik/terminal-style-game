@@ -125,12 +125,26 @@ bool ui_ele_focus_effect_is_valid(const char *effect) {
 }
 
 bool ui_ele_animation_is_valid(const UiElement *element) {
+    bool button_effect;
     if (!element) return false;
     if (element->type != UI_ELE_ANIMATION) return true;
+    button_effect = strcmp(element->preset, "edge_trace") == 0 ||
+                    strcmp(element->preset, "chromatic_register") == 0 ||
+                    strcmp(element->preset, "command_flash") == 0;
+    if (button_effect &&
+        (strcmp(element->orientation, "horizontal") != 0 || element->loop != 0 ||
+         element->randomize != 0))
+        return false;
+    if ((strcmp(element->preset, "edge_trace") == 0 ||
+         strcmp(element->preset, "chromatic_register") == 0) &&
+        strcmp(element->trigger, "focus") != 0) return false;
+    if (strcmp(element->preset, "command_flash") == 0 &&
+        strcmp(element->trigger, "activate") != 0) return false;
     return (strcmp(element->preset, "pause_glitch") == 0 ||
             strcmp(element->preset, "center_out") == 0 ||
             strcmp(element->preset, "perimeter_burst") == 0 ||
-            strcmp(element->preset, "local_glitch") == 0) &&
+            strcmp(element->preset, "local_glitch") == 0 ||
+            button_effect) &&
         (strcmp(element->trigger, "context_enter") == 0 ||
          strcmp(element->trigger, "context_exit") == 0 ||
          strcmp(element->trigger, "focus") == 0 ||

@@ -186,6 +186,11 @@ Animation units add `preset`, `target`, `trigger`, `orientation`, `loop`, and `r
 Their complete bounded schema and copyable examples are in
 `docs/UI_WORKBENCH_ASSET_REFERENCE.md`.
 
+Recognized animation presets are `pause_glitch`, `center_out`, `perimeter_burst`,
+`local_glitch`, `edge_trace`, `chromatic_register`, and `command_flash`. The three button-effect
+presets require a Button target, `orientation=horizontal`, and `randomize=0`. `edge_trace` and
+`chromatic_register` require `trigger=focus`; `command_flash` requires `trigger=activate`.
+
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:
 

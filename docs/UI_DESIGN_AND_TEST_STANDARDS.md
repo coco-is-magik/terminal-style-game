@@ -133,9 +133,14 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   unchanged; reduced motion suppresses animated decoration immediately.
 - Reusable animation units and ordinary element transition presets use the same fixed production
   evaluator in normal run and workbench preview. Supported presets are pause glitch, center-out,
-  perimeter burst, and local glitch; triggers are context enter/exit, focus, activate, and while
-  visible. Reduced Motion suppresses spatial treatment. `input_hold_short` has no production
-  execution semantics until a separate non-blocking input design is approved.
+  perimeter burst, local glitch, edge trace, chromatic register, and command flash; triggers are
+  context enter/exit, focus, activate, and while visible. Button effects are horizontal,
+  non-randomized, button-targeted 80 ms feedback with exact clean endpoints. Edge trace and chromatic
+  register use palette accent/focus roles; the single literal red/cyan comparison remains isolated in
+  the approved motion specimen; command flash never delays activation. Normal application menus reset
+  explicit focus age when menu/focus identity changes. Reduced Motion suppresses spatial treatment.
+  `input_hold_short` has no production execution semantics until a separate non-blocking input design
+  is approved.
 
 ### Parsing and persistence
 
@@ -162,8 +167,9 @@ These decisions are now tracked as D1-D7 in
 [`V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md`](V1_1_UI_RULES_AND_TOKENS_Q1_PLAN_2026-09-16.md).
 The current static palette values and D6 motion vocabulary have manual approval. The
 isolated policy seam, first application-menu palette adapter, static palette specimen, pure
-motion model, and motion specimen are implemented and verified. No authored Menu component
-consumes them, and no real application context consumes motion yet.
+motion model, and motion specimen are implemented and verified. The application pause context and
+the B1.2 diagnostic button gallery consume the shared application-UI evaluator. Authored `.tui`
+Menu animation remains separately owned and is not changed by B1.2.
 
 When a rule is accepted, add it here first as a measurable invariant, identify one
 focused runner, add normal/boundary/failure coverage, and only then include it in

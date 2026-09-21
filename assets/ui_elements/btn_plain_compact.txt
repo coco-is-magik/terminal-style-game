@@ -1,0 +1,16 @@
+name=btn_plain_compact
+type=button
+parent=button_gallery_container
+x=2
+y=10
+coords=relative
+width=12
+height=1
+visible=1
+z_index=0
+align=center
+action=back
+style=plain
+transition=none
+focus_effect=none
+content=COMPACT

@@ -16,6 +16,7 @@ static const char *layout_name(MenuId context) {
     }
 }
 
+
 static const char *context_container(MenuId context) {
     switch (context) {
         case MENU_MAIN: return "main_menu_container";
@@ -39,6 +40,21 @@ static void copy_bounded(char *destination, size_t capacity, const char *source)
     if (length >= capacity) length = capacity - 1U;
     memcpy(destination, source, length);
     destination[length] = '\0';
+}
+
+static bool button_effect_preset(const char *preset) {
+    return preset && (strcmp(preset, "edge_trace") == 0 ||
+        strcmp(preset, "chromatic_register") == 0 ||
+        strcmp(preset, "command_flash") == 0);
+}
+
+static const char *first_layout_button_name(const UiWorkbench *workbench) {
+    if (!workbench) return NULL;
+    for (int i = 0; i < workbench->element_count; i++) {
+        const UiElement *candidate = workbench->elements[i];
+        if (candidate && candidate->type == UI_ELE_BUTTON) return candidate->name;
+    }
+    return NULL;
 }
 
 static bool property_matches_element(UiWorkbenchProperty property,
@@ -463,13 +479,16 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
         "none", "focus_pulse", "focus_glitch", "input_hold_short"
     };
     static const char *const presets[] = {
-        "pause_glitch", "center_out", "perimeter_burst", "local_glitch"
+        "pause_glitch", "center_out", "perimeter_burst", "local_glitch",
+        "edge_trace", "chromatic_register", "command_flash"
     };
     static const char *const triggers[] = {
         "context_enter", "context_exit", "focus", "activate", "while_visible"
     };
     static const char *const orientations[] = {"horizontal", "vertical", "radial"};
     UiElement *element = ui_workbench_current_element(workbench);
+    UiElement animation_original = {0};
+    bool animation_changed = false;
     const char *next;
     char old_value[UI_ELE_NAME_MAX];
     UiWorkbenchResult result;
@@ -547,6 +566,8 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
         workbench->property == UI_WORKBENCH_PROPERTY_PARENT)
         return cycle_parent(workbench, element, direction);
     if (element->type == UI_ELE_ANIMATION) {
+        animation_original = *element;
+        animation_changed = true;
         if (workbench->property == UI_WORKBENCH_PROPERTY_TARGET) {
             int candidate_count = 0;
             int current = 0;
@@ -568,6 +589,20 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
             next = cycle_name(element->preset, presets,
                               sizeof(presets) / sizeof(presets[0]), direction);
             (void)snprintf(element->preset, sizeof(element->preset), "%s", next);
+            if (button_effect_preset(next)) {
+                const char *button_name = first_layout_button_name(workbench);
+                if (!button_name) {
+                    *element = animation_original;
+                    return UI_WORKBENCH_NO_CHANGE;
+                }
+                (void)snprintf(element->trigger, sizeof(element->trigger), "%s",
+                    strcmp(next, "command_flash") == 0 ? "activate" : "focus");
+                (void)snprintf(element->orientation, sizeof(element->orientation),
+                               "horizontal");
+                (void)snprintf(element->target, sizeof(element->target), "%s", button_name);
+                element->loop = 0;
+                element->randomize = 0;
+            }
         } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRIGGER) {
             (void)snprintf(old_value, sizeof(old_value), "%s", element->trigger);
             next = cycle_name(element->trigger, triggers,
@@ -622,7 +657,9 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
             ? element->style
             : workbench->property == UI_WORKBENCH_PROPERTY_TRANSITION
                 ? element->transition : element->focus_effect;
-        if (element->type == UI_ELE_ANIMATION) {
+        if (animation_changed) {
+            *element = animation_original;
+        } else if (element->type == UI_ELE_ANIMATION) {
             if (workbench->property == UI_WORKBENCH_PROPERTY_PRESET)
                 copy_bounded(element->preset, sizeof(element->preset), old_value);
             else if (workbench->property == UI_WORKBENCH_PROPERTY_TARGET)
@@ -726,7 +763,16 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
     clone.child_count = 0;
     if (clone.type == UI_ELE_ANIMATION) {
         clone.parent_name[0] = '\0';
-        (void)snprintf(clone.target, sizeof(clone.target), "%s", container);
+        if (button_effect_preset(clone.preset)) {
+            const char *button_name = first_layout_button_name(workbench);
+            if (!button_name) {
+                set_status(workbench, "Add unavailable: this effect requires a button target in the current layout.");
+                return UI_WORKBENCH_NO_CHANGE;
+            }
+            (void)snprintf(clone.target, sizeof(clone.target), "%s", button_name);
+        } else {
+            (void)snprintf(clone.target, sizeof(clone.target), "%s", container);
+        }
     } else if (clone.type != UI_ELE_CONTAINER) {
         (void)snprintf(clone.parent_name, sizeof(clone.parent_name), "%s", container);
         clone.layout.coords_mode = UI_COORD_RELATIVE;

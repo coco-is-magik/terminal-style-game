@@ -53,3 +53,14 @@ bool menu_controller_state_transition(MenuAction action, AppState current,
     *out_next = next;
     return true;
 }
+
+bool menu_controller_focus_identity_changed(int active_menu, int focus_index,
+                                            int *tracked_menu,
+                                            int *tracked_focus_index) {
+    bool changed;
+    if (!tracked_menu || !tracked_focus_index) return false;
+    changed = *tracked_menu != active_menu || *tracked_focus_index != focus_index;
+    *tracked_menu = active_menu;
+    *tracked_focus_index = focus_index;
+    return changed;
+}

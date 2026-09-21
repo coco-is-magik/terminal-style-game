@@ -1,0 +1,4 @@
+name=button_gallery
+type=layout
+elements=btn_plain_technical,btn_inverse_hero,btn_bracket_command,btn_plain_marker,btn_inverse_filled,btn_confirm_affirm,btn_plain_cancel,btn_bracket_feedback,btn_plain_compact,btn_bracket_compact,animation_edge_trace,animation_chromatic_register,animation_command_flash
+transition=none

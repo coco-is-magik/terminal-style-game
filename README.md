@@ -176,10 +176,11 @@ cache. This assumes one authoring writer, not simultaneous cross-file visibility
 Conflicting external edits or persistent filesystem failures block recovery without discarding its data. There is no
 free-form creation, click selection, authored `.tui` editing, or custom-theme editing in this mode.
 Only the preview loads `default_user.ini` / `user.ini`; workbench scale is session-local.
-`focus_pulse` and `focus_glitch` are rendered for the
-focused button in normal application menus as well as the workbench. Reusable animation units
-and element transition presets use the same production/workbench evaluator for pause glitch,
-center-out, perimeter burst, and local glitch. `input_hold_short` remains metadata-only.
+`focus_pulse` and `focus_glitch` are rendered for the focused button in normal application menus as
+well as the workbench. Reusable animation units and element transition presets use the same
+production/workbench evaluator for pause glitch, center-out, perimeter burst, local glitch, edge
+trace, chromatic registration, and command flash. The button effects use explicit 80 ms focus or
+activation age and disappear under Reduced Motion. `input_hold_short` remains metadata-only.
 See `docs/UI_WORKBENCH_ASSET_REFERENCE.md` for copyable prompt-ready examples.
 Current evidence, regression coverage and final manual acceptance are recorded in
 `docs/reviews/2026-09-19-application-ui-editor-a6-closeout.md` and

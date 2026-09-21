@@ -1,0 +1,16 @@
+name=btn_plain_marker
+type=button
+parent=button_gallery_container
+x=30
+y=4
+coords=relative
+width=30
+height=1
+visible=1
+z_index=0
+align=center
+action=open_settings
+style=plain
+transition=none
+focus_effect=none
+content=> MARKER PREFIX

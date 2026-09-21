@@ -18,11 +18,20 @@
 static void test_open_cycle_select_and_properties(void **state) {
     UiWorkbench workbench;
     UiElement *first;
+    bool found_button_template = false;
     (void)state;
     ui_workbench_init(&workbench);
     assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
     assert_int_equal(workbench.element_count, workbench.layout->element_count + 1);
     assert_int_equal(workbench.elements[0]->type, UI_ELE_CONTAINER);
+    for (size_t i = 0U; i < workbench.catalog.count; i++) {
+        if (strcmp(workbench.catalog.entries[i].name, "btn_inverse_hero.txt") == 0)
+            found_button_template = true;
+    }
+    assert_true(found_button_template);
+    assert_non_null(ui_cache_get(&workbench.cache, "btn_inverse_hero"));
+    assert_string_equal(ui_cache_get(&workbench.cache, "btn_inverse_hero")->style,
+                        "inverse");
     first = ui_workbench_current_element(&workbench);
     assert_non_null(first);
     assert_int_equal(ui_workbench_cycle_element(&workbench, 1), UI_WORKBENCH_OK);
@@ -34,6 +43,7 @@ static void test_open_cycle_select_and_properties(void **state) {
     assert_non_null(ui_workbench_current_value(&workbench));
     ui_workbench_destroy(&workbench);
 }
+
 
 static void test_failed_reload_preserves_session(void **state) {
     UiWorkbench workbench;
@@ -230,6 +240,8 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     UiWorkbench workbench;
     int source_index = -1;
     int clone_index = -1;
+    int animation_source_index = -1;
+    int animation_clone_index = -1;
     FILE *file;
     char bytes[1024];
     size_t read_count;
@@ -245,6 +257,11 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     write_fixture("assets/ui_elements/source_button.txt",
         "name=source_button\ntype=button\nparent=main_menu_container\n"
         "coords=relative\nx=1\ny=1\nwidth=8\nheight=1\naction=quit\ncontent=QUIT\n");
+    write_fixture("assets/ui_elements/animation_edge_trace.txt",
+        "name=animation_edge_trace\ntype=animation\nx=0\ny=0\ncoords=absolute\n"
+        "width=8\nheight=1\nvisible=1\nz_index=-1\nalign=left\n"
+        "preset=edge_trace\ntarget=source_button\ntrigger=focus\norientation=horizontal\n"
+        "loop=0\nrandomize=0\nstyle=plain\ntransition=none\nfocus_effect=none\ncontent=\n");
     write_fixture("assets/ui_layouts/main_menu.txt",
         "name=main_menu\ntype=layout\nelements=source_button\n");
     write_fixture("assets/ui_layouts/pause_menu.txt",
@@ -315,6 +332,31 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     (void)snprintf(workbench.text_edit, sizeof(workbench.text_edit), "inherit");
     assert_int_equal(ui_workbench_confirm_text(&workbench), UI_WORKBENCH_OK);
     assert_false(ui_workbench_current_element(&workbench)->has_fg);
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
+    for (size_t i = 0U; i < workbench.catalog.count; i++)
+        if (strcmp(workbench.catalog.entries[i].name, "animation_edge_trace.txt") == 0)
+            animation_source_index = (int)i;
+    assert_true(animation_source_index >= 0);
+    workbench.add_index = (size_t)animation_source_index;
+    assert_int_equal(ui_workbench_confirm_add(&workbench), UI_WORKBENCH_OK);
+    for (int i = 0; i < workbench.element_count; i++)
+        if (strcmp(workbench.elements[i]->name,
+                   "main_menu_animation_edge_trace_1") == 0)
+            animation_clone_index = i;
+    assert_true(animation_clone_index >= 0);
+    workbench.element_index = animation_clone_index;
+    assert_string_equal(ui_workbench_current_element(&workbench)->preset, "edge_trace");
+    assert_string_equal(ui_workbench_current_element(&workbench)->target, "source_button");
+    assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
+    clone_index = -1;
+    for (int i = 0; i < workbench.element_count; i++)
+        if (strcmp(workbench.elements[i]->name, "main_menu_source_button_1") == 0)
+            clone_index = i;
+    assert_true(clone_index >= 0);
+    workbench.element_index = clone_index;
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_undo_membership(&workbench), UI_WORKBENCH_OK);
@@ -330,6 +372,8 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     assert_int_equal(access("assets/ui_elements/main_menu_source_button_1.txt", F_OK), 0);
     ui_workbench_destroy(&workbench);
     assert_int_equal(unlink("assets/ui_elements/main_menu_source_button_1.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/main_menu_animation_edge_trace_1.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/animation_edge_trace.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/source_button.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/main_menu_container.txt"), 0);
     assert_int_equal(unlink("assets/ui_layouts/main_menu.txt"), 0);

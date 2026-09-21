@@ -1,0 +1,17 @@
+name=btn_plain_cancel
+type=button
+parent=button_gallery_container
+x=46
+y=6
+coords=relative
+width=14
+height=1
+visible=1
+z_index=0
+align=center
+fg=242,247,248,255
+action=cancel
+style=plain
+transition=none
+focus_effect=none
+content=CANCEL

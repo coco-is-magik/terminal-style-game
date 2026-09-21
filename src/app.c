@@ -722,6 +722,9 @@ int app_main(int argc, char* argv[]) {
     for (int i = 0; i < MENU_ID_COUNT; i++) menu_selected[i] = 0;
     MenuId animation_menu = MENU_NONE;
     double animation_menu_start_ms = 0.0;
+    int animation_focus_menu = -1;
+    int animation_focus_index = -1;
+    double animation_focus_start_ms = 0.0;
     UiLayout *animation_event_layout = NULL;
     MenuId animation_event_menu = MENU_NONE;
     UiAnimationEvent animation_event = UI_ANIMATION_EVENT_CONTEXT_ENTER;
@@ -996,6 +999,15 @@ int app_main(int argc, char* argv[]) {
             animation_menu = active_menu;
             animation_menu_start_ms = motion_now_ms;
         }
+        {
+            int active_menu_index = (int)active_menu;
+            int active_focus_index = active_menu_index >= 0 &&
+                active_menu_index < MENU_ID_COUNT ? menu_selected[active_menu_index] : -1;
+            if (menu_controller_focus_identity_changed(active_menu_index,
+                    active_focus_index, &animation_focus_menu,
+                    &animation_focus_index))
+                animation_focus_start_ms = motion_now_ms;
+        }
 #if PROFILE_FRAME
         if (mode == RUN_MODE_BENCHMARK_SCENARIO &&
             frame_count == BENCHMARK_WARMUP_FRAMES) {
@@ -1077,7 +1089,7 @@ int app_main(int argc, char* argv[]) {
             }
             if (active_layout && !ui_animation_render_layout(
                     active_layout, ui_resources.staging,
-                    motion_now_ms - animation_menu_start_ms,
+                    motion_now_ms - animation_focus_start_ms,
                     reduced_motion, false,
                     UI_ANIMATION_EVENT_FOCUS)) {
                 fprintf(stderr, "TSG-UI-BUG-0004: focus animation failed\n");

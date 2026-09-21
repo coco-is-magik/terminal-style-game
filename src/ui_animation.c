@@ -156,6 +156,52 @@ static bool render_center_out(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+static bool render_edge_trace(Grid *grid, const UiElementLayout *bounds,
+                              double progress, SDL_Color accent,
+                              SDL_Color focus, SDL_Color background) {
+    int span;
+    int offset;
+    if (!grid || !bounds || bounds->width < 1 || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0) return false;
+    span = bounds->width - 1;
+    offset = (int)lround(progress * (double)span);
+    (void)grid_set(grid, bounds->x + offset, bounds->y - 1,
+                   '=', accent, background);
+    (void)grid_set(grid, bounds->x + span - offset,
+                   bounds->y + bounds->height, '=', focus, background);
+    return true;
+}
+
+static bool render_chromatic_register(Grid *grid, const UiElementLayout *bounds,
+                                      double progress, SDL_Color accent,
+                                      SDL_Color focus, SDL_Color background) {
+    int center;
+    int separation;
+    if (!grid || !bounds || bounds->width < 1 || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0) return false;
+    center = bounds->x + (bounds->width - 1) / 2;
+    separation = (int)ceil((1.0 - progress) * 3.0);
+    (void)grid_set(grid, center - separation, bounds->y - 1,
+                   ':', accent, background);
+    (void)grid_set(grid, center + separation, bounds->y + bounds->height,
+                   ':', focus, background);
+    return true;
+}
+
+static bool render_command_flash(Grid *grid, const UiElementLayout *bounds,
+                                 double progress, SDL_Color accent,
+                                 SDL_Color focus, SDL_Color background) {
+    int distance;
+    if (!grid || !bounds || bounds->width < 1 || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0) return false;
+    distance = 1 + (int)lround((1.0 - progress) * 2.0);
+    (void)grid_set(grid, bounds->x - distance, bounds->y,
+                   '!', accent, background);
+    (void)grid_set(grid, bounds->x + bounds->width - 1 + distance,
+                   bounds->y, '!', focus, background);
+    return true;
+}
+
 static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                         double elapsed_ms, bool reduced_motion, bool preview_loop,
                         UiAnimationEvent event) {
@@ -169,6 +215,10 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     int width;
     int height;
     if (!target || !ui_ele_absolute_bounds(target, &x, &y, &width, &height)) return false;
+    if ((strcmp(unit->preset, "edge_trace") == 0 ||
+         strcmp(unit->preset, "chromatic_register") == 0 ||
+         strcmp(unit->preset, "command_flash") == 0) &&
+        target->type != UI_ELE_BUTTON) return false;
     bounds = (UiElementLayout){x + unit->layout.x, y + unit->layout.y,
                                UI_COORD_ABSOLUTE,
                                unit->layout.width > 0 ? unit->layout.width : width,
@@ -187,6 +237,7 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
             event != UI_ANIMATION_EVENT_WHILE_VISIBLE) return true;
     }
     if (strcmp(unit->trigger, "focus") == 0 && !target->focused) return true;
+    if (strcmp(unit->preset, "command_flash") == 0 && !target->focused) return true;
     if (!animation_progress(unit, elapsed_ms, preview_loop, &visible, &progress))
         return false;
     if (!visible) return true;
@@ -211,6 +262,18 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                        ':', color(palette->accent), color(palette->canvas));
         return true;
     }
+    if (strcmp(unit->preset, "edge_trace") == 0)
+        return render_edge_trace(grid, &bounds, progress,
+                                 color(palette->accent), color(palette->focus),
+                                 color(palette->canvas));
+    if (strcmp(unit->preset, "chromatic_register") == 0)
+        return render_chromatic_register(grid, &bounds, progress,
+                                         color(palette->accent), color(palette->focus),
+                                         color(palette->canvas));
+    if (strcmp(unit->preset, "command_flash") == 0)
+        return render_command_flash(grid, &bounds, progress,
+                                    color(palette->accent), color(palette->focus),
+                                    color(palette->canvas));
     return false;
 }
 

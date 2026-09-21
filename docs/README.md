@@ -35,6 +35,11 @@ only a small set of documents should be treated as current authority.
 - [`reviews/2026-09-20-workbench-regression-coverage.md`](reviews/2026-09-20-workbench-regression-coverage.md)
   — test-only lock on the accepted workbench behavior: scoped MENU/ELEMENT navigation, runtime card
   previews, help/footer discoverability, frame gates and persistence boundaries.
+- [`APPLICATION_UI_ASSET_LIBRARY_B1_PLAN_2026-09-21.md`](APPLICATION_UI_ASSET_LIBRARY_B1_PLAN_2026-09-21.md)
+  — active asset-library direction after workbench mechanics: bounded B1.1 button templates and B1.2
+  shared edge-trace, chromatic-registration, and command-flash effects are implemented and
+  automatically verified with palette-native chromatic material; native visual review, B1.3 transitions, and the planned ASCII-art
+  image-space boundary remain future work.
 - [`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md) and
   [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)
   — the manually approved palette and D6 motion specimens. The reference the editor must match.
