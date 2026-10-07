@@ -1,5 +1,6 @@
 #include "ui_workbench.h"
 #include "rgba_parse.h"
+#include "ui_effect.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -42,19 +43,9 @@ static void copy_bounded(char *destination, size_t capacity, const char *source)
     destination[length] = '\0';
 }
 
-static bool button_effect_preset(const char *preset) {
-    return preset && (strcmp(preset, "edge_trace") == 0 ||
-        strcmp(preset, "chromatic_register") == 0 ||
-        strcmp(preset, "command_flash") == 0);
-}
-
 static UiElementType preset_target_type(const char *preset) {
-    if (preset && (button_effect_preset(preset) ||
-                   strcmp(preset, "button_reassemble") == 0))
-        return UI_ELE_BUTTON;
-    if (preset && strcmp(preset, "panel_register") == 0)
-        return UI_ELE_CONTAINER;
-    return UI_ELE_ANIMATION;
+    const UiEffectSpec *spec = ui_effect_spec_by_name(preset);
+    return spec ? spec->target_type : UI_ELE_ANIMATION;
 }
 
 static const char *first_layout_target_name(const UiWorkbench *workbench,
@@ -374,6 +365,35 @@ static const char *cycle_name(const char *current, const char *const *values,
     return values[0];
 }
 
+/* Effect cycling and default binding fields are driven by the effect registry,
+   so the inspector never hard-codes a preset list. */
+static const char *cycle_effect_name(const char *current, int direction) {
+    int count = ui_effect_count();
+    int index = -1;
+    if (count <= 0) return current;
+    for (int i = 0; i < count; i++)
+        if (strcmp(current, ui_effect_spec_at(i)->name) == 0) index = i;
+    if (index < 0) return ui_effect_spec_at(0)->name;
+    index = (index + (direction > 0 ? 1 : count - 1)) % count;
+    return ui_effect_spec_at(index)->name;
+}
+
+static const char *first_effect_trigger(unsigned int mask) {
+    if (mask & UI_EFFECT_TRIGGER_CONTEXT_ENTER) return "context_enter";
+    if (mask & UI_EFFECT_TRIGGER_CONTEXT_EXIT) return "context_exit";
+    if (mask & UI_EFFECT_TRIGGER_FOCUS) return "focus";
+    if (mask & UI_EFFECT_TRIGGER_ACTIVATE) return "activate";
+    if (mask & UI_EFFECT_TRIGGER_WHILE_VISIBLE) return "while_visible";
+    return "context_enter";
+}
+
+static const char *first_effect_orientation(unsigned int mask) {
+    if (mask & UI_EFFECT_ORIENT_HORIZONTAL) return "horizontal";
+    if (mask & UI_EFFECT_ORIENT_VERTICAL) return "vertical";
+    if (mask & UI_EFFECT_ORIENT_RADIAL) return "radial";
+    return "horizontal";
+}
+
 UiWorkbenchResult ui_workbench_begin_text(UiWorkbench *workbench) {
     UiElement *element = ui_workbench_current_element(workbench);
     const char *content;
@@ -479,8 +499,8 @@ static UiWorkbenchResult cycle_parent(UiWorkbench *workbench, UiElement *element
 }
 
 UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction) {
-    static const char *const button_styles[] = {"plain", "bracket", "inverse"};
-    static const char *const container_styles[] = {"plain", "frame"};
+    static const char *const button_styles[] = {"plain", "bracket", "inverse", "material"};
+    static const char *const container_styles[] = {"plain", "frame", "material"};
     static const char *const text_styles[] = {"plain", "bright"};
     static const char *const transitions[] = {
         "none", "center_out", "perimeter_burst", "local_glitch",
@@ -488,11 +508,6 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     };
     static const char *const effects[] = {
         "none", "focus_pulse", "focus_glitch", "input_hold_short"
-    };
-    static const char *const presets[] = {
-        "pause_glitch", "center_out", "perimeter_burst", "local_glitch",
-        "edge_trace", "chromatic_register", "command_flash",
-        "button_reassemble", "panel_register", "living_field"
     };
     static const char *const triggers[] = {
         "context_enter", "context_exit", "focus", "activate", "while_visible"
@@ -597,26 +612,25 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
             (void)snprintf(element->target, sizeof(element->target), "%s",
                            candidates[current]->name);
         } else if (workbench->property == UI_WORKBENCH_PROPERTY_PRESET) {
+            const UiEffectSpec *spec;
             (void)snprintf(old_value, sizeof(old_value), "%s", element->preset);
-            next = cycle_name(element->preset, presets,
-                              sizeof(presets) / sizeof(presets[0]), direction);
+            next = cycle_effect_name(element->preset, direction);
             (void)snprintf(element->preset, sizeof(element->preset), "%s", next);
-            if (preset_target_type(next) != UI_ELE_ANIMATION) {
-                UiElementType target_type = preset_target_type(next);
-                const char *target_name = first_layout_target_name(workbench, target_type);
+            spec = ui_effect_spec_by_name(next);
+            if (spec && spec->target_type != UI_ELE_ANIMATION) {
+                const char *target_name = first_layout_target_name(workbench, spec->target_type);
                 if (!target_name) {
                     *element = animation_original;
                     return UI_WORKBENCH_NO_CHANGE;
                 }
                 (void)snprintf(element->trigger, sizeof(element->trigger), "%s",
-                    button_effect_preset(next)
-                        ? (strcmp(next, "command_flash") == 0 ? "activate" : "focus")
-                        : "context_enter");
-                (void)snprintf(element->orientation, sizeof(element->orientation),
-                               button_effect_preset(next) ? "horizontal" : "radial");
+                               first_effect_trigger(spec->trigger_mask));
+                (void)snprintf(element->orientation, sizeof(element->orientation), "%s",
+                               first_effect_orientation(spec->orientation_mask));
                 (void)snprintf(element->target, sizeof(element->target), "%s", target_name);
-                element->loop = 0;
-                element->randomize = 0;
+                element->loop = spec->loop == UI_EFFECT_ANY_BOOL ? 0 : spec->loop;
+                element->randomize =
+                    spec->randomize == UI_EFFECT_ANY_BOOL ? 0 : spec->randomize;
             }
         } else if (workbench->property == UI_WORKBENCH_PROPERTY_TRIGGER) {
             (void)snprintf(old_value, sizeof(old_value), "%s", element->trigger);

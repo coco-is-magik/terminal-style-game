@@ -74,6 +74,7 @@ struct UiElement {
     char transition[UI_ELE_PRESET_MAX];
     char focus_effect[UI_ELE_PRESET_MAX];
     char preset[UI_ELE_PRESET_MAX];
+    char effect[UI_ELE_PRESET_MAX];
     char target[UI_ELE_NAME_MAX];
     char trigger[UI_ELE_PRESET_MAX];
     char orientation[UI_ELE_PRESET_MAX];

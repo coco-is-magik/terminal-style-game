@@ -1,5 +1,6 @@
 #include "ui_animation.h"
 
+#include "ui_effect.h"
 #include "ui_motion.h"
 #include "ui_theme.h"
 
@@ -333,14 +334,13 @@ static bool living_field_visible(int x, int y, const double *wave_x,
     return true;
 }
 
-/* Chromatic-aberration fringe: only the three additive primaries, chosen by the
-   direction of the void — red fringes left edges, blue right edges, green the
-   horizontal edges — the way a channel-offset display splits a white form into
-   R/G/B. The field never draws a secondary colour. */
-static int living_field_fringe_hue(int side) {
-    if (side == 0) return 0; /* red   */
-    if (side == 1) return 4; /* blue  */
-    return 2;                /* green */
+/* Chromatic-aberration fringe: the edge side maps to the shared RGB fringe
+   colour (red left, blue right, green horizontal), so the field and the menu
+   elements fringe by the same rule. */
+static UiChromaFringe living_field_fringe_edge(int side) {
+    if (side == 0) return UI_CHROMA_FRINGE_LEFT;
+    if (side == 1) return UI_CHROMA_FRINGE_RIGHT;
+    return UI_CHROMA_FRINGE_HORIZONTAL;
 }
 
 /*
@@ -375,7 +375,6 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
     static const double pi = 3.14159265358979323846;
     const UiThemeTokens *tokens = ui_theme_provisional_tokens();
-    const UiThemeColor *material = ui_theme_material_palette();
     UiThemeColor neutral;
     double wave_x[UI_LIVING_FIELD_TABLE];
     double wave_y[UI_LIVING_FIELD_TABLE];
@@ -395,7 +394,7 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     int last_y;
     int region_w;
     int region_h;
-    if (!grid || !grid->cells || !bounds || !tokens || !material ||
+    if (!grid || !grid->cells || !bounds || !tokens ||
         !isfinite(elapsed_ms) || elapsed_ms < 0.0)
         return false;
     period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
@@ -493,7 +492,8 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
                 run = along / UI_LIVING_FIELD_RUN;
                 if (living_field_unit((uint32_t)run, (uint32_t)side, 0x5f3aU) <
                     UI_LIVING_FIELD_FRINGE)
-                    fg = color(material[living_field_fringe_hue(side)]);
+                    fg = color(ui_theme_chroma_fringe(
+                        living_field_fringe_edge(side)));
             }
             if (!grid_set(grid, x, y, ramp[band], fg, background))
                 return false;
@@ -506,6 +506,7 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                         double elapsed_ms, bool reduced_motion, bool preview_loop,
                         UiAnimationEvent event) {
     const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    const UiEffectSpec *spec = ui_effect_spec_by_name(unit->preset);
     UiElement *target = find_element(layout, unit->target);
     UiElementLayout bounds;
     bool visible;
@@ -514,14 +515,10 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     int y;
     int width;
     int height;
+    if (!spec) return false;
     if (!target || !ui_ele_absolute_bounds(target, &x, &y, &width, &height)) return false;
-    if ((strcmp(unit->preset, "edge_trace") == 0 ||
-         strcmp(unit->preset, "chromatic_register") == 0 ||
-         strcmp(unit->preset, "command_flash") == 0 ||
-         strcmp(unit->preset, "button_reassemble") == 0) &&
-        target->type != UI_ELE_BUTTON) return false;
-    if (strcmp(unit->preset, "panel_register") == 0 &&
-        target->type != UI_ELE_CONTAINER) return false;
+    if (spec->target_type != UI_ELE_ANIMATION && target->type != spec->target_type)
+        return false;
     bounds = (UiElementLayout){x + unit->layout.x, y + unit->layout.y,
                                UI_COORD_ABSOLUTE,
                                unit->layout.width > 0 ? unit->layout.width : width,
@@ -540,55 +537,58 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
             event != UI_ANIMATION_EVENT_WHILE_VISIBLE) return true;
     }
     if (strcmp(unit->trigger, "focus") == 0 && !target->focused) return true;
-    if (strcmp(unit->preset, "command_flash") == 0 && !target->focused) return true;
+    if (spec->id == UI_EFFECT_COMMAND_FLASH && !target->focused) return true;
     if (!animation_progress(unit, elapsed_ms, preview_loop, &visible, &progress))
         return false;
     if (!visible) return true;
-    if (strcmp(unit->preset, "living_field") == 0)
-        return render_living_field(grid, &bounds, elapsed_ms, unit->orientation,
-                                   color(palette->canvas));
-    if (strcmp(unit->preset, "pause_glitch") == 0)
-        return render_pause_glitch(grid, set_grid, &bounds, unit->name,
-                                   unit->orientation, unit->randomize != 0,
-                                   progress, false);
-    if (strcmp(unit->preset, "center_out") == 0)
-        return render_center_out(grid, &bounds, progress,
-                                 color(palette->focus), color(palette->canvas));
-    if (strcmp(unit->preset, "perimeter_burst") == 0) {
-        int offset = 1 + (int)lround(progress * 3.0);
-        (void)grid_set(grid, bounds.x - offset, bounds.y, '*',
-                       color(palette->accent), color(palette->canvas));
-        (void)grid_set(grid, bounds.x + bounds.width - 1 + offset, bounds.y, '*',
-                       color(palette->accent), color(palette->canvas));
-        return true;
-    }
-    if (strcmp(unit->preset, "local_glitch") == 0) {
-        int offset = (int)((uint64_t)(elapsed_ms / 80.0) % 3U) - 1;
-        (void)grid_set(grid, bounds.x + bounds.width / 2 + offset, bounds.y - 1,
-                       ':', color(palette->accent), color(palette->canvas));
-        return true;
-    }
-    if (strcmp(unit->preset, "edge_trace") == 0)
-        return render_edge_trace(grid, &bounds, progress,
-                                 color(palette->accent), color(palette->focus),
-                                 color(palette->canvas));
-    if (strcmp(unit->preset, "chromatic_register") == 0)
-        return render_chromatic_register(grid, &bounds, progress,
-                                         color(palette->accent), color(palette->focus),
-                                         color(palette->canvas));
-    if (strcmp(unit->preset, "command_flash") == 0)
-        return render_command_flash(grid, &bounds, progress,
-                                    color(palette->accent), color(palette->focus),
-                                    color(palette->canvas));
-    if (strcmp(unit->preset, "button_reassemble") == 0)
-        return render_button_reassemble(grid, &bounds, progress,
-                                        color(palette->accent), color(palette->focus),
-                                        color(palette->canvas));
-    if (strcmp(unit->preset, "panel_register") == 0)
-        return render_panel_register(grid, &bounds, progress,
+    switch (spec->id) {
+        case UI_EFFECT_LIVING_FIELD:
+            return render_living_field(grid, &bounds, elapsed_ms,
+                                       unit->orientation, color(palette->canvas));
+        case UI_EFFECT_PAUSE_GLITCH:
+            return render_pause_glitch(grid, set_grid, &bounds, unit->name,
+                                       unit->orientation, unit->randomize != 0,
+                                       progress, false);
+        case UI_EFFECT_CENTER_OUT:
+            return render_center_out(grid, &bounds, progress,
+                                     color(palette->focus), color(palette->canvas));
+        case UI_EFFECT_PERIMETER_BURST: {
+            int offset = 1 + (int)lround(progress * 3.0);
+            (void)grid_set(grid, bounds.x - offset, bounds.y, '*',
+                           color(palette->accent), color(palette->canvas));
+            (void)grid_set(grid, bounds.x + bounds.width - 1 + offset, bounds.y, '*',
+                           color(palette->accent), color(palette->canvas));
+            return true;
+        }
+        case UI_EFFECT_LOCAL_GLITCH: {
+            int offset = (int)((uint64_t)(elapsed_ms / 80.0) % 3U) - 1;
+            (void)grid_set(grid, bounds.x + bounds.width / 2 + offset, bounds.y - 1,
+                           ':', color(palette->accent), color(palette->canvas));
+            return true;
+        }
+        case UI_EFFECT_EDGE_TRACE:
+            return render_edge_trace(grid, &bounds, progress,
                                      color(palette->accent), color(palette->focus),
                                      color(palette->canvas));
-    return false;
+        case UI_EFFECT_CHROMATIC_REGISTER:
+            return render_chromatic_register(grid, &bounds, progress,
+                                             color(palette->accent), color(palette->focus),
+                                             color(palette->canvas));
+        case UI_EFFECT_COMMAND_FLASH:
+            return render_command_flash(grid, &bounds, progress,
+                                        color(palette->accent), color(palette->focus),
+                                        color(palette->canvas));
+        case UI_EFFECT_BUTTON_REASSEMBLE:
+            return render_button_reassemble(grid, &bounds, progress,
+                                            color(palette->accent), color(palette->focus),
+                                            color(palette->canvas));
+        case UI_EFFECT_PANEL_REGISTER:
+            return render_panel_register(grid, &bounds, progress,
+                                         color(palette->accent), color(palette->focus),
+                                         color(palette->canvas));
+        default:
+            return false;
+    }
 }
 
 static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,

@@ -1,0 +1,6 @@
+name=ambient_field
+primitive=living_field
+orientation=radial
+trigger=while_visible
+loop=0
+randomize=0

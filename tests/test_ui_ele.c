@@ -11,6 +11,7 @@
 #include <cmocka.h>
 
 #include "../src/ui_ele.h"
+#include "../src/ui_effect.h"
 #include "../src/ui_theme.h"
 #include "../src/grid.h"
 
@@ -161,6 +162,55 @@ static void test_ui_cache_master_map(void **state) {
     assert_non_null(ui_cache_get(&cache, "main_menu_level_editor"));
     assert_non_null(ui_cache_get(&cache, "animation_main_field"));
 
+    ui_cache_destroy(&cache);
+}
+
+static void test_effect_registry_and_reusable_definitions(void **state) {
+    UiEffectDefinition def;
+    UiCache cache;
+    UiElement *field;
+    int i;
+    (void)state;
+
+    /* The registry is the single source of truth for effect identity: every
+       entry is self-consistent and reachable by name and id. */
+    assert_true(ui_effect_count() >= 10);
+    for (i = 0; i < ui_effect_count(); i++) {
+        const UiEffectSpec *spec = ui_effect_spec_at(i);
+        assert_non_null(spec);
+        assert_non_null(spec->name);
+        assert_ptr_equal(ui_effect_spec_by_name(spec->name), spec);
+        assert_ptr_equal(ui_effect_spec(spec->id), spec);
+        assert_true(ui_effect_name_is_valid(spec->name));
+    }
+    assert_false(ui_effect_name_is_valid("not_an_effect"));
+    assert_null(ui_effect_spec_by_name("not_an_effect"));
+    assert_true(ui_effect_spec_by_name("living_field")->backdrop);
+    assert_int_equal(ui_effect_spec_by_name("panel_register")->target_type,
+                     UI_ELE_CONTAINER);
+
+    /* A reusable effect definition is a named, parameterised primitive. */
+    assert_true(ui_effect_definition_load("ambient_field", &def));
+    assert_string_equal(def.primitive, "living_field");
+    assert_string_equal(def.orientation, "radial");
+    assert_int_equal(def.loop, 0);
+    assert_int_equal(def.randomize, 0);
+    assert_false(ui_effect_definition_load("no_such_effect", &def));
+
+    /* A menu can bind the shared effect and still override a single field: the
+       main menu uses ambient_field but overrides orientation to horizontal, so
+       pointing it at the pause menu's background is a one-line asset change. */
+    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+    ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
+    field = ui_cache_get(&cache, "animation_main_field");
+    assert_non_null(field);
+    assert_string_equal(field->effect, "ambient_field");
+    assert_string_equal(field->preset, "living_field");
+    assert_string_equal(field->orientation, "horizontal");
+    assert_string_equal(field->trigger, "while_visible");
+    assert_int_equal(field->loop, 0);
+    assert_int_equal(field->randomize, 0);
+    assert_true(ui_ele_animation_is_valid(field));
     ui_cache_destroy(&cache);
 }
 
@@ -687,6 +737,7 @@ int main(void) {
         cmocka_unit_test(test_ui_ele_render_wrap),
         cmocka_unit_test(test_ui_layout_load_and_substitute),
         cmocka_unit_test(test_ui_cache_master_map),
+        cmocka_unit_test(test_effect_registry_and_reusable_definitions),
         cmocka_unit_test(test_button_gallery_loads_and_renders_library),
         cmocka_unit_test(test_ui_layout_hud_overlay_slots),
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),

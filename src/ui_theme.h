@@ -99,6 +99,22 @@ const UiThemeTokens *ui_theme_provisional_tokens(void);
  */
 const UiThemeColor *ui_theme_material_palette(void);
 
+/**
+ * Chromatic-aberration fringe colour by edge side.
+ *
+ * The RGB fringe of the shared material: red fringes a left edge, blue a right
+ * edge, green a horizontal edge — the way a channel-offset display splits a
+ * white form into R/G/B. Returns an additive primary from the material palette,
+ * so every fringed surface shares one colour rule instead of inventing its own.
+ */
+typedef enum {
+    UI_CHROMA_FRINGE_LEFT = 0,
+    UI_CHROMA_FRINGE_RIGHT,
+    UI_CHROMA_FRINGE_HORIZONTAL
+} UiChromaFringe;
+
+UiThemeColor ui_theme_chroma_fringe(UiChromaFringe edge);
+
 /** Resolves RGBA over an opaque background; out_color is unchanged on failure. */
 bool ui_theme_composite_over(UiThemeColor foreground, UiThemeColor background,
                              UiThemeColor *out_color);

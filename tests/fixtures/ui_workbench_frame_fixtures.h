@@ -23,12 +23,15 @@ static const struct {
      * replaced the spatial hue ramp, then the white-dominant flowing fabric, and
      * finally the RGB-only substrate rework (the fringe draws only the three
      * additive primaries, a directional chromatic aberration, and the field
-     * fills behind text and controls instead of carving a margin around them);
-     * the main context gained its field too (MENU_MAIN and MENU_PAUSE
+     * fills behind text and controls instead of carving a margin around them),
+     * and the material menu rework (containers and buttons use the `material`
+     * style — a cell frame fringed red-left / blue-right — bound through the
+     * reusable `ambient_field` effect and the effect registry); the main context
+     * gained its field too (MENU_MAIN and MENU_PAUSE
      * only). */
-    {MENU_MAIN, 100, 15362479256814595514ULL},
-    {MENU_MAIN, 150, 12435983923953905082ULL},
-    {MENU_PAUSE, 100, 1381447575253963917ULL},
+    {MENU_MAIN, 100, 14960170154989664616ULL},
+    {MENU_MAIN, 150, 16659434589391894888ULL},
+    {MENU_PAUSE, 100, 5522287175377482171ULL},
     {MENU_SETTINGS, 100, 14648528100631133103ULL},
     {MENU_CONFIRM_QUIT, 100, 18405518230658705158ULL}
 };

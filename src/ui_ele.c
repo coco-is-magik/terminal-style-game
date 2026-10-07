@@ -3,6 +3,7 @@
  */
 
 #include "ui_ele.h"
+#include "ui_effect.h"
 #include "number_parse.h"
 #include "rgba_parse.h"
 #include "ui_theme.h"
@@ -104,8 +105,10 @@ bool ui_ele_style_is_valid(UiElementType type, const char *style) {
     if (!style) return false;
     if (strcmp(style, "plain") == 0) return true;
     if (type == UI_ELE_BUTTON)
-        return strcmp(style, "bracket") == 0 || strcmp(style, "inverse") == 0;
-    if (type == UI_ELE_CONTAINER) return strcmp(style, "frame") == 0;
+        return strcmp(style, "bracket") == 0 || strcmp(style, "inverse") == 0 ||
+               strcmp(style, "material") == 0;
+    if (type == UI_ELE_CONTAINER)
+        return strcmp(style, "frame") == 0 || strcmp(style, "material") == 0;
     if (type == UI_ELE_TEXT) return strcmp(style, "bright") == 0;
     return false;
 }
@@ -127,49 +130,12 @@ bool ui_ele_focus_effect_is_valid(const char *effect) {
 }
 
 bool ui_ele_animation_is_valid(const UiElement *element) {
-    bool button_effect;
-    bool context_transition;
-    bool ambient_field;
     if (!element) return false;
     if (element->type != UI_ELE_ANIMATION) return true;
-    button_effect = strcmp(element->preset, "edge_trace") == 0 ||
-                    strcmp(element->preset, "chromatic_register") == 0 ||
-                    strcmp(element->preset, "command_flash") == 0;
-    context_transition = strcmp(element->preset, "button_reassemble") == 0 ||
-                         strcmp(element->preset, "panel_register") == 0;
-    ambient_field = strcmp(element->preset, "living_field") == 0;
-    if (button_effect &&
-        (strcmp(element->orientation, "horizontal") != 0 || element->loop != 0 ||
-         element->randomize != 0))
-        return false;
-    if ((strcmp(element->preset, "edge_trace") == 0 ||
-         strcmp(element->preset, "chromatic_register") == 0) &&
-        strcmp(element->trigger, "focus") != 0) return false;
-    if (strcmp(element->preset, "command_flash") == 0 &&
-        strcmp(element->trigger, "activate") != 0) return false;
-    if (context_transition &&
-        ((strcmp(element->trigger, "context_enter") != 0 &&
-          strcmp(element->trigger, "context_exit") != 0) ||
-         strcmp(element->orientation, "radial") != 0 || element->loop != 0 ||
-         element->randomize != 0)) return false;
-    if (ambient_field &&
-        (strcmp(element->trigger, "while_visible") != 0 || element->loop != 0 ||
-         element->randomize != 0)) return false;
-    return (strcmp(element->preset, "pause_glitch") == 0 ||
-            strcmp(element->preset, "center_out") == 0 ||
-            strcmp(element->preset, "perimeter_burst") == 0 ||
-            strcmp(element->preset, "local_glitch") == 0 ||
-            button_effect || context_transition || ambient_field) &&
-        (strcmp(element->trigger, "context_enter") == 0 ||
-         strcmp(element->trigger, "context_exit") == 0 ||
-         strcmp(element->trigger, "focus") == 0 ||
-         strcmp(element->trigger, "activate") == 0 ||
-         strcmp(element->trigger, "while_visible") == 0) &&
-        (strcmp(element->orientation, "horizontal") == 0 ||
-         strcmp(element->orientation, "vertical") == 0 ||
-         strcmp(element->orientation, "radial") == 0) &&
-        element->target[0] != '\0' && element->loop >= 0 && element->loop <= 1 &&
-        element->randomize >= 0 && element->randomize <= 1;
+    /* Every preset constraint lives in the effect registry (src/ui_effect.c),
+       so adding an effect never means editing this validator. */
+    return ui_effect_binding_is_valid(ui_effect_spec_by_name(element->preset),
+                                      element);
 }
 
 static bool parse_color(const char *text, SDL_Color *out_color) {
@@ -274,6 +240,14 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
     (void)snprintf(element->trigger, sizeof(element->trigger), "context_enter");
     (void)snprintf(element->orientation, sizeof(element->orientation), "horizontal");
 
+    bool preset_set = false;
+    bool trigger_set = false;
+    bool orientation_set = false;
+    bool loop_set = false;
+    bool randomize_set = false;
+    char effect_name[UI_ELE_PRESET_MAX];
+    effect_name[0] = '\0';
+
     while (fgets(line, sizeof(line), f)) {
         char *eq;
         char *key;
@@ -335,21 +309,54 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
         } else if (strcmp(key, "preset") == 0) {
             if (strlen(val) >= sizeof(element->preset)) valid = false;
             else (void)snprintf(element->preset, sizeof(element->preset), "%s", val);
+            preset_set = true;
+        } else if (strcmp(key, "effect") == 0) {
+            if (strlen(val) >= sizeof(effect_name)) valid = false;
+            else (void)snprintf(effect_name, sizeof(effect_name), "%s", val);
         } else if (strcmp(key, "target") == 0) {
             if (strlen(val) >= sizeof(element->target)) valid = false;
             else (void)snprintf(element->target, sizeof(element->target), "%s", val);
         } else if (strcmp(key, "trigger") == 0) {
             if (strlen(val) >= sizeof(element->trigger)) valid = false;
             else (void)snprintf(element->trigger, sizeof(element->trigger), "%s", val);
+            trigger_set = true;
         } else if (strcmp(key, "orientation") == 0) {
             if (strlen(val) >= sizeof(element->orientation)) valid = false;
             else (void)snprintf(element->orientation, sizeof(element->orientation), "%s", val);
+            orientation_set = true;
         } else if (strcmp(key, "loop") == 0) {
             valid = number_parse_int(val, 0, 1, &element->loop);
+            loop_set = true;
         } else if (strcmp(key, "randomize") == 0) {
             valid = number_parse_int(val, 0, 1, &element->randomize);
+            randomize_set = true;
         }
         if (!valid) break;
+    }
+
+    /* An `effect=` binding names a reusable definition in assets/ui_effects;
+       the element's own fields win over the definition's, so a menu can point
+       at any effect and still override a parameter. */
+    if (valid && element->type == UI_ELE_ANIMATION && effect_name[0] != '\0') {
+        UiEffectDefinition definition;
+        if (!ui_effect_definition_load(effect_name, &definition)) {
+            valid = false;
+        } else {
+            if (!preset_set)
+                (void)snprintf(element->preset, sizeof(element->preset), "%s",
+                               definition.primitive);
+            if (!trigger_set && definition.trigger[0] != '\0')
+                (void)snprintf(element->trigger, sizeof(element->trigger), "%s",
+                               definition.trigger);
+            if (!orientation_set && definition.orientation[0] != '\0')
+                (void)snprintf(element->orientation, sizeof(element->orientation),
+                               "%s", definition.orientation);
+            if (!loop_set && definition.loop >= 0) element->loop = definition.loop;
+            if (!randomize_set && definition.randomize >= 0)
+                element->randomize = definition.randomize;
+            (void)snprintf(element->effect, sizeof(element->effect), "%s",
+                           effect_name);
+        }
     }
 
     read_failed = ferror(f) != 0;
@@ -519,6 +526,12 @@ static int emit_word_wrapped(Grid *grid, int x, int y, int width, int height,
     return row;
 }
 
+/* Theme token to draw colour, so element chrome can fringe with the field's
+   chromatic-aberration rule (ui_theme_chroma_fringe). */
+static SDL_Color theme_sdl(UiThemeColor value) {
+    return (SDL_Color){value.red, value.green, value.blue, value.alpha};
+}
+
 static void effective_colors(const UiElement *element, SDL_Color fg, SDL_Color bg,
                              SDL_Color *out_fg, SDL_Color *out_bg) {
     SDL_Color draw_fg = element->has_fg ? element->fg : fg;
@@ -554,8 +567,20 @@ static void render_element_self(UiElement *element, Grid *grid, int parent_x,
         emit_word_wrapped(grid, abs_x, abs_y,
                           element->layout.width, element->layout.height,
                           element->align, element->content, draw_fg, draw_bg);
-        if (element->type == UI_ELE_BUTTON && element->focused &&
+        if (element->type == UI_ELE_BUTTON &&
+            strcmp(element->style, "material") == 0 &&
             element->layout.width >= 2) {
+            /* Chromatic-aberration markers: a focused material button fringes
+               red on the left bracket and blue on the right, the shared rule. */
+            if (element->focused) {
+                SDL_Color left = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_LEFT));
+                SDL_Color right = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_RIGHT));
+                grid_set(grid, abs_x, abs_y, '>', left, draw_bg);
+                grid_set(grid, abs_x + element->layout.width - 1, abs_y,
+                         '<', right, draw_bg);
+            }
+        } else if (element->type == UI_ELE_BUTTON && element->focused &&
+                   element->layout.width >= 2) {
             grid_set(grid, abs_x, abs_y, '>', draw_fg, draw_bg);
             grid_set(grid, abs_x + element->layout.width - 1, abs_y,
                      '<', draw_fg, draw_bg);
@@ -582,6 +607,32 @@ static void render_element_self(UiElement *element, Grid *grid, int parent_x,
             grid_set(grid, abs_x, abs_y + y, '|', draw_fg, draw_bg);
             grid_set(grid, abs_x + element->layout.width - 1, abs_y + y,
                      '|', draw_fg, draw_bg);
+        }
+        grid_set(grid, abs_x, abs_y, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x + element->layout.width - 1, abs_y, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x, abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
+        grid_set(grid, abs_x + element->layout.width - 1,
+                 abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
+    }
+
+    if (strcmp(element->style, "material") == 0 && element->layout.width >= 2 &&
+        element->layout.height >= 2) {
+        /* A cell frame cut from the field's material: neutral horizontals, red
+           on the left edge and blue on the right — lateral chromatic
+           aberration, the same rule the field's edges use. */
+        SDL_Color left = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_LEFT));
+        SDL_Color right = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_RIGHT));
+        int x;
+        int y;
+        for (x = 0; x < element->layout.width; x++) {
+            grid_set(grid, abs_x + x, abs_y, '-', draw_fg, draw_bg);
+            grid_set(grid, abs_x + x, abs_y + element->layout.height - 1, '-',
+                     draw_fg, draw_bg);
+        }
+        for (y = 0; y < element->layout.height; y++) {
+            grid_set(grid, abs_x, abs_y + y, '|', left, draw_bg);
+            grid_set(grid, abs_x + element->layout.width - 1, abs_y + y, '|',
+                     right, draw_bg);
         }
         grid_set(grid, abs_x, abs_y, '+', draw_fg, draw_bg);
         grid_set(grid, abs_x + element->layout.width - 1, abs_y, '+', draw_fg, draw_bg);

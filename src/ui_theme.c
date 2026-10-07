@@ -48,6 +48,13 @@ const UiThemeColor *ui_theme_material_palette(void) {
     return material_palette;
 }
 
+UiThemeColor ui_theme_chroma_fringe(UiChromaFringe edge) {
+    const UiThemeColor *material = ui_theme_material_palette();
+    if (edge == UI_CHROMA_FRINGE_LEFT) return material[0];  /* red   */
+    if (edge == UI_CHROMA_FRINGE_RIGHT) return material[4]; /* blue  */
+    return material[2];                                     /* green */
+}
+
 static double srgb_to_linear(uint8_t channel) {
     double value = channel / 255.0;
     if (value <= 0.04045) return value / 12.92;

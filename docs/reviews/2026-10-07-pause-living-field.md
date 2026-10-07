@@ -165,6 +165,32 @@ reduced-motion no-op, blank-cell-only; `test-ui-animation` still asserts both ne
 cells are present and that all three primaries appear across sampled phases. The five recorded fixtures
 were refreshed with this change as their only cause (see Evidence).
 
+## Material menus and the reusable effect layer (2026-10-07)
+
+With the field integrated, the menu controls still read as plain text placed on top of it. Two changes
+make the whole menu one material and make effects reusable.
+
+- **Element styles cut from the material.** `ui_ele_style_is_valid` gains a `material` style for
+  Containers and Buttons, and `render_element_self` draws it: a Container renders a cell frame whose
+  vertical edges carry the shared chromatic-aberration fringe (red left, blue right, neutral
+  horizontals) and a focused Button fringes its `>`/`<` markers the same way. The colour rule now lives
+  once in the theme (`ui_theme_chroma_fringe`), so the field and the controls fringe identically. The
+  main and pause menus use `style=material`.
+- **One effect registry.** `src/ui_effect.c` is the single source of truth for effect identity: each
+  primitive's required target type, accepted triggers/orientations, loop/randomize, and whether it is a
+  backdrop. Element validation (`ui_ele.c`), the workbench chooser (`ui_workbench.c`), and the renderer
+  (`ui_animation.c`, now a `switch` on the registry id) all read it, so the previously duplicated rules
+  are gone and adding an effect is one registry row plus one render function.
+- **Reusable effect definitions.** `assets/ui_effects/<name>.txt` is a named, parameterised instance of
+  a primitive. An animation element binds one with `effect=<name>` instead of `preset=`; the element's
+  own fields override the definition. `animation_main_field` and `animation_living_field` both bind
+  `ambient_field`, and the main menu overrides `orientation` — so making the main menu use the pause
+  menu's background is a one-line asset change.
+
+Evidence: `test-ui-ele` adds `test_effect_registry_and_reusable_definitions` (registry self-consistency,
+effect-file load, and the shipped binding resolving through `ambient_field`). The frame and pixel
+fixtures were refreshed for the material menu styling as their only cause.
+
 ## Limitations and next
 
 - The material set is used only by the main and pause fields; it is not yet a general surface material.

@@ -573,9 +573,9 @@ static bool element_option_sample(Grid *sample, UiElement copy,
 
 bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *palette,
                                     const UiWorkbench *workbench, int width, int height) {
-    static const char *const button_styles[] = {"plain", "bracket", "inverse"};
+    static const char *const button_styles[] = {"plain", "bracket", "inverse", "material"};
     static const char *const text_styles[] = {"plain", "bright"};
-    static const char *const container_styles[] = {"plain", "frame"};
+    static const char *const container_styles[] = {"plain", "frame", "material"};
     static const char *const alignments[] = {"left", "center", "right"};
     static const char *const transitions[] = {
         "none", "center_out", "perimeter_burst", "local_glitch",

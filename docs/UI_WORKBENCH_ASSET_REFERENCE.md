@@ -49,6 +49,7 @@ visible=1
 z_index=-1
 align=left
 preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register|living_field>
+effect=<reusable effect from assets/ui_effects/, e.g. ambient_field>   # optional alternative to preset=
 target=<element name in the same active layout>
 trigger=<context_enter|context_exit|focus|activate|while_visible>
 orientation=<horizontal|vertical|radial>
@@ -62,6 +63,14 @@ content=
 
 Rules:
 
+- **Reusable effects.** `assets/ui_effects/<name>.txt` defines a named, parameterised effect
+  (`primitive=` plus optional `orientation`, `trigger`, `loop`, `randomize`). An animation element may
+  bind one with `effect=<name>` instead of `preset=`; the element's own fields override the definition,
+  so a menu can share an effect and still retune a value. `animation_main_field` and
+  `animation_living_field` both bind `ambient_field`, and the main menu overrides `orientation` — so
+  making the main menu use the pause menu's background is a one-line change. Effect identity and its
+  constraints live in one registry (`src/ui_effect.c`); adding a primitive is one registry row plus one
+  render function, and it appears in the workbench chooser automatically.
 - Workbench and normal run call the same evaluator.
 - Timings come from theme roles: enter 160 ms, exit 120 ms, focus/activation 80 ms,
   while-visible ambient treatment 1800 ms. Explicit looping repeats the corresponding role.
@@ -388,16 +397,24 @@ and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`)
 - `animation_panel_register.txt`
 - `animation_living_field.txt`
 - `animation_main_field.txt`
+- `assets/ui_effects/ambient_field.txt` — reusable effect definition (`primitive=living_field`,
+  bound by both field animations)
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 
 ### B1.1 button-template conventions
 
 The `btn_<style>_<role>.txt` prefix identifies reusable button templates. The checked-in templates
-use only the existing `plain`, `bracket`, and `inverse` renderer styles, existing focus effects, and
-the accepted palette values. When cloned into an editable menu, the workbench gives the clone a
-unique menu-owned name and reparents it to that menu's container; the source template remains
+use only the existing `plain`, `bracket`, `inverse`, and `material` renderer styles, existing focus
+effects, and the accepted palette values. When cloned into an editable menu, the workbench gives the
+clone a unique menu-owned name and reparents it to that menu's container; the source template remains
 unchanged.
+
+The `material` style cuts an element from the field's own language: a Container renders a cell frame
+whose vertical edges carry the shared chromatic-aberration fringe (red left, blue right, neutral
+horizontals), and a focused Button fringes its `>`/`<` markers the same way
+(`ui_theme_chroma_fringe`). The main and pause menus use `style=material`, so the controls read as
+part of the backdrop rather than elements placed on top of it.
 
 `assets/ui_layouts/button_gallery.txt` is a bounded diagnostic composition used by automated
 load/render checks. It is registered in `master_map.txt` so its source elements are preloaded and

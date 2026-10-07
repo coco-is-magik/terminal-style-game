@@ -242,7 +242,7 @@ SRC_MAP_LOADER    := src/map_loader.c
 SRC_ASSET_LOADER  := src/asset_loader.c
 SRC_DECAL_IO      := src/decal_io.c src/number_parse.c
 SRC_DECAL_PAINTER := src/decal_painter.c
-SRC_UI_ELE        := src/ui_ele.c src/number_parse.c
+SRC_UI_ELE        := src/ui_ele.c src/ui_effect.c src/number_parse.c
 SRC_RGBA_PARSE    := src/rgba_parse.c
 SRC_UI_THEME      := src/ui_theme.c
 SRC_UI_MOTION     := src/ui_motion.c
@@ -900,8 +900,8 @@ check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 	@set -e; for context in main pause settings confirm; do \
 		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
 		case " $$context " in \
-			*" main "*) expected=15362479256814595514 ;; \
-			*" pause "*) expected=1381447575253963917 ;; \
+			*" main "*) expected=14960170154989664616 ;; \
+			*" pause "*) expected=5522287175377482171 ;; \
 			*" settings "*) expected=14648528100631133103 ;; \
 			*" confirm "*) expected=18405518230658705158 ;; \
 		esac; \
