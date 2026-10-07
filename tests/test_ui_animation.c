@@ -662,9 +662,8 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
                                            UI_ANIMATION_EVENT_WHILE_VISIBLE));
     assert_memory_equal(grid->cells, reference->cells, 40U * 24U * sizeof(Cell));
 
-    /* Colour intermixes spatially and drifts with time, so sample several
-       phases to observe the chromatic material the field is allowed to draw
-       from. */
+    /* The chromatic fringe is a directional chromatic aberration and draws only
+       the three additive primaries; sample several phases to observe them. */
     for (int step = 0; step < 8; step++) {
         double t = (double)period * (double)step / 8.0;
         grid_clear(grid, bg);
@@ -685,7 +684,7 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
     }
     for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
         if (seen[m]) hue_seen++;
-    assert_true(hue_seen >= 4);
+    assert_true(hue_seen >= 3);
 
     release(&target);
     grid_destroy(reference);

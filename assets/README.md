@@ -196,9 +196,9 @@ presets require a Button target, `orientation=horizontal`, and `randomize=0`. `e
 context presets require `trigger=context_enter|context_exit`, `orientation=radial`, `loop=0`, and
 `randomize=0`. The ambient `living_field` requires `trigger=while_visible`, `loop=0`, and
 `randomize=0`; it is a white-dominant flowing fabric — coherent rectangular patches that travel over
-the 1800 ms ambient role, with saturated colour only as a chromatic-aberration fringe on the weave's
-edges (one hue per run) — that fills only empty cells inside its bounds and carves a margin around
-drawn content.
+the 1800 ms ambient role, with saturated colour only as an RGB chromatic-aberration fringe on the
+weave's edges (the three additive primaries, chosen by edge direction) — that paints only blank cells,
+so it fills behind text and controls and fringes against them.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

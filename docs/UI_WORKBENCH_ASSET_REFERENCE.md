@@ -354,14 +354,14 @@ A white-dominant flowing fabric travels across the bounded region over the 1800 
 drawn as a substrate beneath unchanged controls. Occupancy is the product of two travelling axis waves
 (so lit cells form coherent rectangular patches that migrate and breathe as one material) modulated by
 a slower diagonal fold wave; the structure stays a neutral tone (`text_secondary`). Saturated colour is
-**only a chromatic-aberration fringe** of the weave: it rides the *edges* of the lit forms — where the
-fabric meets a gap, the region border, or a carved margin — **one hue per short run**, left/up edges
-cool (green/cyan/blue) and right/down edges warm (red/yellow/magenta), the run hue drifting slowly over
-the loop, so colour reads as fringing dust on white edges and never as a fill, a spatial hue ramp, or
-per-cell confetti. The field **carves a one-cell margin around drawn content** (text, controls,
-borders, tracked as non-space glyphs), so it flows *around* the menu and the boundary is implied by the
-fabric's fringed edge. It fills only empty cells, draws nothing under Reduced Motion, and is bound to
-the main and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`) and
+**only an RGB chromatic-aberration fringe** of the weave: it rides the *edges* of the lit forms — where
+the fabric meets a gap, the region border, or a drawn glyph — and is **only the three additive
+primaries**, red on left edges, blue on right edges, green on the horizontal edges, so colour reads as
+fringing dust on white edges and never as a fill, a secondary colour, a spatial hue ramp, or per-cell
+confetti. The field is a **substrate**: it paints only blank cells, so it fills the surface *behind*
+text and controls and its fringes run up against the glyphs, keeping the menu one continuous material
+rather than elements on a black plate. It draws nothing under Reduced Motion and is bound to the main
+and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`) and
 `animation_living_field` (`assets/ui_layouts/pause_menu.txt`); see
 `docs/reviews/2026-10-07-pause-living-field.md`.
 

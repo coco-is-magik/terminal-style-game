@@ -21,13 +21,14 @@ static const struct {
      * context gained the living_field backdrop, then (2026-10-07) the decorative
      * chromatic material and the intermingled selective-colour model that
      * replaced the spatial hue ramp, then the white-dominant flowing fabric, and
-     * finally the chromatic-aberration fringe rework (saturated colour only on
-     * the weave's edges, one hue per run) with a carved margin around drawn
-     * content; the main context gained its field too (MENU_MAIN and MENU_PAUSE
+     * finally the RGB-only substrate rework (the fringe draws only the three
+     * additive primaries, a directional chromatic aberration, and the field
+     * fills behind text and controls instead of carving a margin around them);
+     * the main context gained its field too (MENU_MAIN and MENU_PAUSE
      * only). */
-    {MENU_MAIN, 100, 17206505380091137440ULL},
-    {MENU_MAIN, 150, 1538200801492471200ULL},
-    {MENU_PAUSE, 100, 17382040781361431038ULL},
+    {MENU_MAIN, 100, 15362479256814595514ULL},
+    {MENU_MAIN, 150, 12435983923953905082ULL},
+    {MENU_PAUSE, 100, 1381447575253963917ULL},
     {MENU_SETTINGS, 100, 14648528100631133103ULL},
     {MENU_CONFIRM_QUIT, 100, 18405518230658705158ULL}
 };

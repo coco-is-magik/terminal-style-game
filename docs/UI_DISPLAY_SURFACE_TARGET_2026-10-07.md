@@ -51,10 +51,10 @@ fixed; only the amount and behaviour differ per surface.
   coherent (§1.1). Context enter/exit is glyph reassembly — precision → controlled disorder →
   precision (§1.2). Today `main_menu` and `pause_menu` carry a `living_field` backdrop
   (`animation_main_field`, `animation_living_field`); `settings` and `confirm_quit` have no field.
-- **Chromatic treatment.** A white-dominant neutral weave with saturated primary/secondary material used
-  **only as a chromatic-aberration fringe** on the weave's edges (see §4) — never a monochrome wash and
-  never a colour fill. The field **carves a margin around drawn content**, so the menu boundary is
-  implied by the fabric's fringed edge rather than a hard cut.
+- **Chromatic treatment.** A white-dominant neutral weave whose saturated material appears **only as an
+  RGB chromatic-aberration fringe** on the weave's edges (see §4) — the three additive primaries chosen
+  by edge direction, never a secondary colour, never a monochrome wash, never a colour fill. The field is
+  a **substrate**: it fills *behind* text and controls, so the menu reads as one continuous material.
 - **Stays stable.** Button labels, the `>`/`<` focus markers, focus/selection state, hit targets, and
   interaction eligibility never move and are never obscured (§2.1, §4.4). Reduced motion draws no
   field and no displacement.
