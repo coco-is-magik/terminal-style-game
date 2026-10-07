@@ -499,15 +499,16 @@ static UiWorkbenchResult cycle_parent(UiWorkbench *workbench, UiElement *element
 }
 
 UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction) {
-    static const char *const button_styles[] = {"plain", "bracket", "inverse", "material"};
-    static const char *const container_styles[] = {"plain", "frame", "material"};
+    static const char *const button_styles[] = {"plain", "bracket", "inverse"};
+    static const char *const container_styles[] = {"plain", "frame"};
     static const char *const text_styles[] = {"plain", "bright"};
     static const char *const transitions[] = {
         "none", "center_out", "perimeter_burst", "local_glitch",
         "button_reassemble", "panel_register"
     };
     static const char *const effects[] = {
-        "none", "focus_pulse", "focus_glitch", "input_hold_short"
+        "none", "focus_pulse", "focus_glitch", "focus_perimeter",
+        "input_hold_short"
     };
     static const char *const triggers[] = {
         "context_enter", "context_exit", "focus", "activate", "while_visible"

@@ -525,11 +525,10 @@ static void test_runtime_pixel_fixtures(void **state) {
     /* Reviewed refresh 2026-10-07 (docs/reviews/2026-10-07-pause-living-field.md):
        MENU_MAIN and MENU_PAUSE changed; the living_field backdrop (fringe draws
        only the three additive primaries, field fills behind text) plus the
-       material menu styling (containers/buttons use the `material` cell frame
-       fringed red-left / blue-right), bound through the reusable `ambient_field`
-       effect, is the only cause. */
+       button focus rework (the '>'/'<' arrows are replaced by a focus_perimeter
+       frame around the focused button) is the only cause. */
     static const uint64_t expected[] = {
-        UINT64_C(17226448905828589619), UINT64_C(7555373083341974803),
+        UINT64_C(14608766307244119644), UINT64_C(7533341636264137784),
         UINT64_C(10554620073566262018), UINT64_C(4061093434513253306)
     };
     const size_t count = 2080U * 1280U;

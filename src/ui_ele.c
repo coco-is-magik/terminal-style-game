@@ -105,10 +105,8 @@ bool ui_ele_style_is_valid(UiElementType type, const char *style) {
     if (!style) return false;
     if (strcmp(style, "plain") == 0) return true;
     if (type == UI_ELE_BUTTON)
-        return strcmp(style, "bracket") == 0 || strcmp(style, "inverse") == 0 ||
-               strcmp(style, "material") == 0;
-    if (type == UI_ELE_CONTAINER)
-        return strcmp(style, "frame") == 0 || strcmp(style, "material") == 0;
+        return strcmp(style, "bracket") == 0 || strcmp(style, "inverse") == 0;
+    if (type == UI_ELE_CONTAINER) return strcmp(style, "frame") == 0;
     if (type == UI_ELE_TEXT) return strcmp(style, "bright") == 0;
     return false;
 }
@@ -126,6 +124,7 @@ bool ui_ele_focus_effect_is_valid(const char *effect) {
     return effect && (strcmp(effect, "none") == 0 ||
         strcmp(effect, "focus_pulse") == 0 ||
         strcmp(effect, "focus_glitch") == 0 ||
+        strcmp(effect, "focus_perimeter") == 0 ||
         strcmp(effect, "input_hold_short") == 0);
 }
 
@@ -567,20 +566,9 @@ static void render_element_self(UiElement *element, Grid *grid, int parent_x,
         emit_word_wrapped(grid, abs_x, abs_y,
                           element->layout.width, element->layout.height,
                           element->align, element->content, draw_fg, draw_bg);
-        if (element->type == UI_ELE_BUTTON &&
-            strcmp(element->style, "material") == 0 &&
-            element->layout.width >= 2) {
-            /* Chromatic-aberration markers: a focused material button fringes
-               red on the left bracket and blue on the right, the shared rule. */
-            if (element->focused) {
-                SDL_Color left = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_LEFT));
-                SDL_Color right = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_RIGHT));
-                grid_set(grid, abs_x, abs_y, '>', left, draw_bg);
-                grid_set(grid, abs_x + element->layout.width - 1, abs_y,
-                         '<', right, draw_bg);
-            }
-        } else if (element->type == UI_ELE_BUTTON && element->focused &&
-                   element->layout.width >= 2) {
+        if (element->type == UI_ELE_BUTTON && element->focused &&
+            element->layout.width >= 2 &&
+            strcmp(element->focus_effect, "focus_perimeter") != 0) {
             grid_set(grid, abs_x, abs_y, '>', draw_fg, draw_bg);
             grid_set(grid, abs_x + element->layout.width - 1, abs_y,
                      '<', draw_fg, draw_bg);
@@ -607,32 +595,6 @@ static void render_element_self(UiElement *element, Grid *grid, int parent_x,
             grid_set(grid, abs_x, abs_y + y, '|', draw_fg, draw_bg);
             grid_set(grid, abs_x + element->layout.width - 1, abs_y + y,
                      '|', draw_fg, draw_bg);
-        }
-        grid_set(grid, abs_x, abs_y, '+', draw_fg, draw_bg);
-        grid_set(grid, abs_x + element->layout.width - 1, abs_y, '+', draw_fg, draw_bg);
-        grid_set(grid, abs_x, abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
-        grid_set(grid, abs_x + element->layout.width - 1,
-                 abs_y + element->layout.height - 1, '+', draw_fg, draw_bg);
-    }
-
-    if (strcmp(element->style, "material") == 0 && element->layout.width >= 2 &&
-        element->layout.height >= 2) {
-        /* A cell frame cut from the field's material: neutral horizontals, red
-           on the left edge and blue on the right — lateral chromatic
-           aberration, the same rule the field's edges use. */
-        SDL_Color left = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_LEFT));
-        SDL_Color right = theme_sdl(ui_theme_chroma_fringe(UI_CHROMA_FRINGE_RIGHT));
-        int x;
-        int y;
-        for (x = 0; x < element->layout.width; x++) {
-            grid_set(grid, abs_x + x, abs_y, '-', draw_fg, draw_bg);
-            grid_set(grid, abs_x + x, abs_y + element->layout.height - 1, '-',
-                     draw_fg, draw_bg);
-        }
-        for (y = 0; y < element->layout.height; y++) {
-            grid_set(grid, abs_x, abs_y + y, '|', left, draw_bg);
-            grid_set(grid, abs_x + element->layout.width - 1, abs_y + y, '|',
-                     right, draw_bg);
         }
         grid_set(grid, abs_x, abs_y, '+', draw_fg, draw_bg);
         grid_set(grid, abs_x + element->layout.width - 1, abs_y, '+', draw_fg, draw_bg);
@@ -958,6 +920,79 @@ void ui_layout_render(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg) 
     }
 }
 
+/* Focus perimeter: an animated frame that runs around the focused element's
+   bounds. A dim cell frame is always present; a short chase of the shared
+   chromatic-aberration colours travels around it. Under Reduced Motion the full
+   frame is drawn without the chase, so focus is still shown by shape, not
+   motion. Only the focused element reaches here. */
+#define UI_FOCUS_PERIMETER_LAP_MS 1500.0
+#define UI_FOCUS_PERIMETER_CHASE 5
+
+static void focus_perimeter_point(int x0, int y0, int w, int h, int index,
+                                  int *px, int *py) {
+    if (index < w) {
+        *px = x0 + index;
+        *py = y0;
+        return;
+    }
+    index -= w;
+    if (index < h - 1) {
+        *px = x0 + w - 1;
+        *py = y0 + 1 + index;
+        return;
+    }
+    index -= h - 1;
+    if (index < w - 1) {
+        *px = x0 + w - 2 - index;
+        *py = y0 + h - 1;
+        return;
+    }
+    index -= w - 1;
+    *px = x0;
+    *py = y0 + h - 2 - index;
+}
+
+static void render_focus_perimeter(Grid *grid, int x, int y, int width, int height,
+                                   double now_ms, bool reduced_motion, SDL_Color bg) {
+    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    SDL_Color base = {palette->border.red, palette->border.green,
+                      palette->border.blue, palette->border.alpha};
+    int x0 = x - 1;
+    int y0 = y - 1;
+    int w = width + 2;
+    int h = height + 2;
+    int perimeter = 2 * w + 2 * h - 4;
+    int head = -1;
+    int i;
+    if (!reduced_motion && perimeter > 0) {
+        double lap = now_ms - (double)((uint64_t)(now_ms / UI_FOCUS_PERIMETER_LAP_MS)) *
+                                 UI_FOCUS_PERIMETER_LAP_MS;
+        head = (int)(lap / UI_FOCUS_PERIMETER_LAP_MS * (double)perimeter);
+        if (head >= perimeter) head = perimeter - 1;
+    }
+    for (i = 0; i < perimeter; i++) {
+        int px;
+        int py;
+        SDL_Color colour = base;
+        bool corner;
+        focus_perimeter_point(x0, y0, w, h, i, &px, &py);
+        if (head >= 0) {
+            int behind = (head - i + perimeter) % perimeter;
+            if (behind < UI_FOCUS_PERIMETER_CHASE) {
+                UiChromaFringe edge = behind % 3 == 0 ? UI_CHROMA_FRINGE_LEFT :
+                                      behind % 3 == 1 ? UI_CHROMA_FRINGE_RIGHT :
+                                                        UI_CHROMA_FRINGE_HORIZONTAL;
+                colour = theme_sdl(ui_theme_chroma_fringe(edge));
+            }
+        }
+        corner = (px == x0 || px == x0 + w - 1) &&
+                 (py == y0 || py == y0 + h - 1);
+        (void)grid_set(grid, px, py,
+                       corner ? '+' : (py == y0 || py == y0 + h - 1) ? '-' : '|',
+                       colour, bg);
+    }
+}
+
 bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,
                                    double now_ms, bool reduced_motion,
                                    SDL_Color pulse, SDL_Color glitch,
@@ -969,11 +1004,16 @@ bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid
     int height;
     if (!layout || !grid || !isfinite(now_ms) || now_ms < 0.0) return false;
     element = ui_layout_get_focused(layout, focus_index);
-    if (!element || !element->focused || reduced_motion ||
+    if (!element || !element->focused ||
         strcmp(element->focus_effect, "none") == 0 ||
         strcmp(element->focus_effect, "input_hold_short") == 0) return true;
     if (!ui_ele_absolute_bounds(element, &x, &y, &width, &height) ||
         width < 2 || height < 1) return false;
+    if (strcmp(element->focus_effect, "focus_perimeter") == 0) {
+        render_focus_perimeter(grid, x, y, width, height, now_ms, reduced_motion, bg);
+        return true;
+    }
+    if (reduced_motion) return true;
     if (strcmp(element->focus_effect, "focus_pulse") == 0) {
         if (((uint64_t)(now_ms / 160.0) % 2U) != 0U) {
             (void)grid_set(grid, x - 1, y, '*', pulse, bg);

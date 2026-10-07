@@ -202,9 +202,9 @@ so it fills behind text and controls and fringes against them.
 
 Animation units may bind a reusable effect from `assets/ui_effects/` with `effect=<name>` instead of
 `preset=`; `ambient_field` (primitive `living_field`) is shared by the main and pause backdrops. Menu
-Containers and Buttons use the `material` style — a cell frame fringed with the same RGB chromatic
-aberration (red left, blue right) — so the controls read as part of the field rather than elements
-placed on top of it. Effect identity and its constraints live in one registry (`src/ui_effect.c`).
+buttons use `focus_effect=focus_perimeter`: the hovered button gets a cell frame with a chase of the
+shared RGB chromatic-aberration colours running around its perimeter, replacing the `>`/`<` markers.
+Effect identity and its constraints live in one registry (`src/ui_effect.c`).
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

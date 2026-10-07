@@ -405,16 +405,17 @@ Use Ctrl+N in the workbench to clone any existing UI element or one of these ani
 ### B1.1 button-template conventions
 
 The `btn_<style>_<role>.txt` prefix identifies reusable button templates. The checked-in templates
-use only the existing `plain`, `bracket`, `inverse`, and `material` renderer styles, existing focus
-effects, and the accepted palette values. When cloned into an editable menu, the workbench gives the
-clone a unique menu-owned name and reparents it to that menu's container; the source template remains
+use only the existing `plain`, `bracket`, and `inverse` renderer styles, existing focus effects, and
+the accepted palette values. When cloned into an editable menu, the workbench gives the clone a
+unique menu-owned name and reparents it to that menu's container; the source template remains
 unchanged.
 
-The `material` style cuts an element from the field's own language: a Container renders a cell frame
-whose vertical edges carry the shared chromatic-aberration fringe (red left, blue right, neutral
-horizontals), and a focused Button fringes its `>`/`<` markers the same way
-(`ui_theme_chroma_fringe`). The main and pause menus use `style=material`, so the controls read as
-part of the backdrop rather than elements placed on top of it.
+`focus_perimeter` is a focus effect: the focused element gets a cell frame one cell outside its
+bounds, with a short chase of the shared chromatic-aberration colours (`ui_theme_chroma_fringe`)
+running around it, advancing with explicit time. Only the focused element is framed. The main and
+pause menu buttons use `focus_effect=focus_perimeter` in place of the `>`/`<` markers. Under Reduced
+Motion the full frame is drawn without the chase, so focus is communicated by shape rather than
+motion.
 
 `assets/ui_layouts/button_gallery.txt` is a bounded diagnostic composition used by automated
 load/render checks. It is registered in `master_map.txt` so its source elements are preloaded and

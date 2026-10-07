@@ -214,6 +214,62 @@ static void test_effect_registry_and_reusable_definitions(void **state) {
     ui_cache_destroy(&cache);
 }
 
+static void test_focus_perimeter_runs_around_focused_button(void **state) {
+    UiElement button = make_text_element("perimeter_btn", "GO", 4, 5, 10, 0);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 20);
+    SDL_Color bg = {0, 0, 0, 255};
+    SDL_Color fg = {255, 255, 255, 255};
+    Cell cell;
+    (void)state;
+    assert_non_null(grid);
+    button.type = UI_ELE_BUTTON;
+    button.layout.height = 1;
+    (void)snprintf(button.focus_effect, sizeof(button.focus_effect),
+                   "focus_perimeter");
+    layout.elements[0] = &button;
+    layout.element_count = 1;
+    ui_layout_set_focus(&layout, 0);
+    assert_true(button.focused);
+
+    /* The perimeter hugs the button bounds by one cell: (4,5,10,1) -> corners at
+       (3,4) and (14,6), top edge '-' and left edge '|'. */
+    grid_clear(grid, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 0.0, false, fg, fg, bg));
+    assert_true(grid_get(grid, 3, 4, &cell));
+    assert_int_equal(cell.glyph, '+');
+    assert_true(grid_get(grid, 14, 6, &cell));
+    assert_int_equal(cell.glyph, '+');
+    assert_true(grid_get(grid, 8, 4, &cell));
+    assert_int_equal(cell.glyph, '-');
+    assert_true(grid_get(grid, 3, 5, &cell));
+    assert_int_equal(cell.glyph, '|');
+
+    /* The chase is a pure function of explicit time: it advances with the clock
+       but the frame stays whole. */
+    grid_clear(grid, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 500.0, false, fg, fg, bg));
+    assert_true(grid_get(grid, 3, 4, &cell));
+    assert_int_equal(cell.glyph, '+');
+
+    /* Reduced Motion still shows the frame: focus is communicated by shape, not
+       motion. */
+    grid_clear(grid, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 0.0, true, fg, fg, bg));
+    assert_true(grid_get(grid, 3, 4, &cell));
+    assert_int_equal(cell.glyph, '+');
+
+    /* Only the focused element gets the perimeter. */
+    ui_layout_set_focus(&layout, -1);
+    grid_clear(grid, bg);
+    assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 0.0, false, fg, fg, bg));
+    assert_true(grid_get(grid, 3, 4, &cell));
+    assert_int_equal(cell.glyph, ' ');
+
+    release_stack_element(&button);
+    grid_destroy(grid);
+}
+
 static void test_button_gallery_loads_and_renders_library(void **state) {
     static const char *const names[] = {
         "btn_plain_technical", "btn_inverse_hero", "btn_bracket_command",
@@ -360,14 +416,18 @@ static void test_ui_layout_main_menu_focus_actions(void **state) {
     grid_clear(grid, bg);
     ui_layout_render(layout, grid, fg, bg);
     focused = ui_layout_get_focused(layout, 1);
-    assert_true(grid_get(grid, focused->parent->layout.x + focused->layout.x,
-                         focused->parent->layout.y + focused->layout.y, &cell));
-    assert_int_equal(cell.glyph, '>');
-    assert_true(grid_get(grid,
-                         focused->parent->layout.x + focused->layout.x +
-                             focused->layout.width - 1,
-                         focused->parent->layout.y + focused->layout.y, &cell));
-    assert_int_equal(cell.glyph, '<');
+    /* Focus is no longer communicated by '>'/'<' arrows: the focus effect draws
+       a perimeter frame around the focused button instead. */
+    assert_true(ui_layout_render_focus_effect(layout, 1, grid, 0.0, false,
+                                              fg, fg, bg));
+    {
+        int base_x = focused->parent->layout.x + focused->layout.x;
+        int base_y = focused->parent->layout.y + focused->layout.y;
+        assert_true(grid_get(grid, base_x - 1, base_y - 1, &cell));
+        assert_int_equal(cell.glyph, '+');
+        assert_true(grid_get(grid, base_x + focused->layout.width, base_y, &cell));
+        assert_int_equal(cell.glyph, '|');
+    }
 
     ui_layout_set_focus(layout, 99);
     for (int i = 0; i < 4; i++) {
@@ -738,6 +798,7 @@ int main(void) {
         cmocka_unit_test(test_ui_layout_load_and_substitute),
         cmocka_unit_test(test_ui_cache_master_map),
         cmocka_unit_test(test_effect_registry_and_reusable_definitions),
+        cmocka_unit_test(test_focus_perimeter_runs_around_focused_button),
         cmocka_unit_test(test_button_gallery_loads_and_renders_library),
         cmocka_unit_test(test_ui_layout_hud_overlay_slots),
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),

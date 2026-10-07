@@ -165,17 +165,20 @@ reduced-motion no-op, blank-cell-only; `test-ui-animation` still asserts both ne
 cells are present and that all three primaries appear across sampled phases. The five recorded fixtures
 were refreshed with this change as their only cause (see Evidence).
 
-## Material menus and the reusable effect layer (2026-10-07)
+## Menu focus treatment and the reusable effect layer (2026-10-07)
 
-With the field integrated, the menu controls still read as plain text placed on top of it. Two changes
-make the whole menu one material and make effects reusable.
+With the field integrated, the menu controls still read as plain text placed on top of it, and the
+`>`/`<` focus markers were weak. This change makes focus a deliberate, animated frame and makes
+effects reusable.
 
-- **Element styles cut from the material.** `ui_ele_style_is_valid` gains a `material` style for
-  Containers and Buttons, and `render_element_self` draws it: a Container renders a cell frame whose
-  vertical edges carry the shared chromatic-aberration fringe (red left, blue right, neutral
-  horizontals) and a focused Button fringes its `>`/`<` markers the same way. The colour rule now lives
-  once in the theme (`ui_theme_chroma_fringe`), so the field and the controls fringe identically. The
-  main and pause menus use `style=material`.
+- **Focus is a perimeter, not arrows.** The `>`/`<` markers are gone. A new `focus_perimeter` focus
+  effect draws a cell frame one cell outside the *focused* element's bounds with a short chase of the
+  shared chromatic-aberration colours (`ui_theme_chroma_fringe`) running around its perimeter,
+  advancing as a pure function of explicit time. Only the focused button is framed, so hover reads
+  clearly; under Reduced Motion the frame is drawn statically, keeping focus a non-colour, shape-based
+  cue. The main and pause menu buttons use `focus_effect=focus_perimeter`. (An earlier cut of this pass
+  framed Containers and fringed the arrows via a `material` element style; that was rejected on review
+  and removed, with the Containers returned to `plain`.)
 - **One effect registry.** `src/ui_effect.c` is the single source of truth for effect identity: each
   primitive's required target type, accepted triggers/orientations, loop/randomize, and whether it is a
   backdrop. Element validation (`ui_ele.c`), the workbench chooser (`ui_workbench.c`), and the renderer
@@ -188,8 +191,11 @@ make the whole menu one material and make effects reusable.
   menu's background is a one-line asset change.
 
 Evidence: `test-ui-ele` adds `test_effect_registry_and_reusable_definitions` (registry self-consistency,
-effect-file load, and the shipped binding resolving through `ambient_field`). The frame and pixel
-fixtures were refreshed for the material menu styling as their only cause.
+effect-file load, and the shipped binding resolving through `ambient_field`) and
+`test_focus_perimeter_runs_around_focused_button` (the frame geometry, its time-dependence, the
+reduced-motion static frame, and that an unfocused element gets none). The main-menu focus test now
+asserts the perimeter instead of the arrows. Frame and pixel fixtures were refreshed for these changes
+as their only cause.
 
 ## Limitations and next
 
