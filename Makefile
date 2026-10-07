@@ -900,8 +900,8 @@ check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 	@set -e; for context in main pause settings confirm; do \
 		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
 		case " $$context " in \
-			*" main "*) expected=10821154052634477536 ;; \
-			*" pause "*) expected=13042746718342089901 ;; \
+			*" main "*) expected=11098204912662601525 ;; \
+			*" pause "*) expected=3419473230861947814 ;; \
 			*" settings "*) expected=14648528100631133103 ;; \
 			*" confirm "*) expected=18405518230658705158 ;; \
 		esac; \

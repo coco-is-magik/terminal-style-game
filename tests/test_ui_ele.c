@@ -148,7 +148,7 @@ static void test_ui_cache_master_map(void **state) {
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
     assert_int_equal(cache.master_count, 6);
     assert_string_equal(cache.master_entries[0].layout, "main_menu");
-    assert_int_equal(cache.master_entries[0].cache_next_count, 6);
+    assert_int_equal(cache.master_entries[0].cache_next_count, 7);
     assert_string_equal(cache.master_entries[1].layout, "pause_menu");
     assert_string_equal(cache.master_entries[2].layout, "confirm_quit");
     assert_string_equal(cache.master_entries[3].layout, "settings");
@@ -159,6 +159,7 @@ static void test_ui_cache_master_map(void **state) {
     ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
     assert_non_null(ui_cache_get(&cache, "main_menu_container"));
     assert_non_null(ui_cache_get(&cache, "main_menu_level_editor"));
+    assert_non_null(ui_cache_get(&cache, "animation_main_field"));
 
     ui_cache_destroy(&cache);
 }

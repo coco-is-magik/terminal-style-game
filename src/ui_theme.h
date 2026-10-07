@@ -7,6 +7,7 @@
 
 #define UI_THEME_TEXT_MIN_CONTRAST 4.5
 #define UI_THEME_NON_TEXT_MIN_CONTRAST 3.0
+#define UI_THEME_MATERIAL_COLOR_COUNT 6
 
 typedef struct {
     uint8_t red;
@@ -87,6 +88,16 @@ typedef struct {
 
 /** Accepted D1/D6 values; function name is retained for source compatibility. */
 const UiThemeTokens *ui_theme_provisional_tokens(void);
+
+/**
+ * Decorative chromatic material (§1.1: saturated primary and secondary colours).
+ *
+ * Returns a static array of UI_THEME_MATERIAL_COLOR_COUNT opaque colors for
+ * decorative fields and material textures. This is decoration material only: it
+ * is never a semantic status colour and never a literal. Added 2026-10-07 under
+ * the change of direction (see UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §2.1, §3.4).
+ */
+const UiThemeColor *ui_theme_material_palette(void);
 
 /** Resolves RGBA over an opaque background; out_color is unchanged on failure. */
 bool ui_theme_composite_over(UiThemeColor foreground, UiThemeColor background,

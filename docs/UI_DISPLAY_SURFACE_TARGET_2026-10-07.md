@@ -49,8 +49,8 @@ fixed; only the amount and behaviour differ per surface.
 - **Material behaviour.** A coherent decorative field fills the surface behind the controls: shapes
   travel, patterns flow, and coloured traces separate and recombine while the larger forms stay
   coherent (§1.1). Context enter/exit is glyph reassembly — precision → controlled disorder →
-  precision (§1.2). Today only `pause_menu` carries a decorative unit (`animation_pause_glitch`); the
-  other menus use `transition=none` and have no field.
+  precision (§1.2). Today `main_menu` and `pause_menu` carry a `living_field` backdrop
+  (`animation_main_field`, `animation_living_field`); `settings` and `confirm_quit` have no field.
 - **Chromatic treatment.** Saturated primary/secondary material (see §4), not a monochrome wash.
 - **Stays stable.** Button labels, the `>`/`<` focus markers, focus/selection state, hit targets, and
   interaction eligibility never move and are never obscured (§2.1, §4.4). Reduced motion draws no
@@ -94,13 +94,18 @@ fixed; only the amount and behaviour differ per surface.
 ## 4. Chromatic rules
 
 - **Semantic roles are authoritative and never decorative.** `warning`, `error`, `success`,
-  `destructive` mean what they say (§2.1). Decorative chromatic channels use `accent` (#67F5C2) and
-  `focus` (#A8FFE1), reaching the secondary hues (`warning`/`success`/`destructive`) where a material
-  needs a second colour (see D-1).
+  `destructive` mean what they say (§2.1). Decorative chromatic channels use `accent`/`focus` or the
+  additive decorative chromatic-material tokens (`ui_theme_material_palette()`, §3.4) — never a
+  semantic hue and never a literal.
 - **Literal RGB is diagnostic material, not a token.** The single isolated red/cyan comparison stays in
   the approved motion specimen (§2.1).
 - **"Saturated primary and secondary colours" (§1.1)** means the material must reach the palette's
   brightest, most separated hues at full cell occupancy — crisp separated light, not a dim wash.
+- **Intermingled, not ordered.** A field is a neutral-dominant fabric carrying saturated traces; hue
+  must intermix at the cell scale and must **never** be laid out as a spatial gradient or ramp, which
+  reads as a literal rainbow rather than material (§1.1). The field's forms should be crisp
+  rectangular patches that travel and fold as one coherent material, not flat stripes or rings. The
+  `living_field` is the reference application.
 - **Every colour derives from tokens** (§2, §3.1). No literals on any surface. If a material needs more
   hues than the 16 roles provide, that is an additive `ui_theme` decision (D-1), never an inline
   literal.
@@ -165,17 +170,19 @@ the five-step protocol in
 | Need (§1) | Have today | Gap |
 |---|---|---|
 | Dense coordinated field | `living_field` shipped in the pause context (2026-10-07) | roll out to other surfaces |
-| Chromatic material | accent/focus used on one surface | chromatic roles barely used; no material set |
+| Chromatic material | six-colour decorative set drawn as sparse saturated specks on a white-dominant flowing fabric by the main/pause fields | roll the material out to other surfaces |
 | Material behaviours | none | no flow/ripple/churn/goop/drip |
-| Menus alive behind controls | only `pause_menu` | main/settings/confirm static, `transition=none` |
+| Menus alive behind controls | `main_menu` and `pause_menu` carry a field | settings/confirm still static; roll out |
 | World material behaviour | static 4-glyph materials | no behaviour per material |
 | Controls stable | yes | keep |
 
 ## 10. Open decisions (owner input required)
 
-- **D-1 — Chromatic material set.** Do the 16 §3.1 roles suffice as the full §1 "primary and secondary"
-  material, or do we add an additive `ui_theme` chromatic-material set for decorative fields? (Affects
-  §4 and every surface.)
+- **D-1 — Chromatic material set.** **Resolved 2026-10-07:** an additive six-colour decorative
+  chromatic-material set (`ui_theme_material_palette()`, §3.4) was added, and the `living_field` now
+  draws it as sparse saturated specks over a white-dominant flowing fabric (reworked 2026-10-07; see
+  the review record "Fabric rework"). (Was: do the 16 §3.1 roles suffice as the full §1 "primary and
+  secondary" material, or do we add an additive set for decorative fields?)
 - **D-2 — Motion budget under richness.** **Resolved 2026-10-07:** an additive
   `UI_THEME_MOTION_AMBIENT` role (1800 ms) was added, and `while_visible` now maps to it, so a
   continuously-flowing field has an in-vocabulary period. (Was: the 80/160/120/120 ms role set was

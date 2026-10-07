@@ -566,10 +566,15 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
     SDL_Color bg = {5, 8, 10, 255};
     SDL_Color fg = {242, 247, 248, 255};
     unsigned int period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
+    const UiThemeColor *material = ui_theme_material_palette();
+    const UiThemeColor neutral =
+        ui_theme_provisional_tokens()->palette.text_secondary;
     int lit = 0;
-    bool accent_seen = false;
-    bool focus_seen = false;
+    int lit_neutral = 0;
+    int hue_seen = 0;
+    bool seen[UI_THEME_MATERIAL_COLOR_COUNT] = {false};
     bool outside = false;
+    bool foreign = false;
     (void)state;
     assert_non_null(grid);
     assert_non_null(repeat);
@@ -610,14 +615,34 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
                 outside = true;
             } else {
                 lit++;
-                if (cell.fg.r == 0x67 && cell.fg.g == 0xf5) accent_seen = true;
-                if (cell.fg.r == 0xa8 && cell.fg.g == 0xff) focus_seen = true;
+                {
+                    bool known = false;
+                    for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+                        if (cell.fg.r == material[m].red &&
+                            cell.fg.g == material[m].green &&
+                            cell.fg.b == material[m].blue) {
+                            seen[m] = true;
+                            known = true;
+                        }
+                    if (cell.fg.r == neutral.red &&
+                        cell.fg.g == neutral.green &&
+                        cell.fg.b == neutral.blue) {
+                        lit_neutral++;
+                        known = true;
+                    }
+                    if (!known) foreign = true;
+                }
             }
         }
     }
     assert_false(outside);
+    assert_false(foreign);
     assert_true(lit > 60);
-    assert_true(accent_seen);
+    /* Selective colour over a neutral structure: the field mixes coloured
+       traces and neutral marks instead of ordering a full-spectrum ramp, so
+       both classes must be present. */
+    assert_true(lit_neutral > 0);
+    assert_true(lit_neutral < lit);
 
     grid_clear(repeat, bg);
     ui_layout_render(&layout, repeat, fg, bg);
@@ -637,9 +662,10 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
                                            UI_ANIMATION_EVENT_WHILE_VISIBLE));
     assert_memory_equal(grid->cells, reference->cells, 40U * 24U * sizeof(Cell));
 
-    /* The colour wave beats against the intensity wave, so sample several
-       phases to observe both decorative hues the field is allowed to use. */
-    for (int step = 1; step < 8 && !focus_seen; step++) {
+    /* Colour intermixes spatially and drifts with time, so sample several
+       phases to observe the chromatic material the field is allowed to draw
+       from. */
+    for (int step = 0; step < 8; step++) {
         double t = (double)period * (double)step / 8.0;
         grid_clear(grid, bg);
         ui_layout_render(&layout, grid, fg, bg);
@@ -650,11 +676,16 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
                 Cell cell;
                 assert_true(grid_get(grid, x, y, &cell));
                 if (cell.glyph == 0U || cell.glyph == ' ') continue;
-                if (cell.fg.r == 0xa8 && cell.fg.g == 0xff) focus_seen = true;
+                for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+                    if (cell.fg.r == material[m].red &&
+                        cell.fg.g == material[m].green &&
+                        cell.fg.b == material[m].blue) seen[m] = true;
             }
         }
     }
-    assert_true(focus_seen);
+    for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+        if (seen[m]) hue_seen++;
+    assert_true(hue_seen >= 4);
 
     release(&target);
     grid_destroy(reference);

@@ -39,6 +39,16 @@ static void test_provisional_tokens_are_exact_and_immutable(void **state) {
     assert_color(tokens->palette.error, 0xffU, 0x6bU, 0x7aU, 0xffU);
     assert_color(tokens->palette.success, 0x71U, 0xf7U, 0x9fU, 0xffU);
     assert_color(tokens->palette.destructive, 0xffU, 0x88U, 0x94U, 0xffU);
+    {
+        const UiThemeColor *material = ui_theme_material_palette();
+        assert_non_null(material);
+        assert_color(material[0], 0xffU, 0x2bU, 0x2bU, 0xffU);
+        assert_color(material[1], 0xffU, 0xe0U, 0x2bU, 0xffU);
+        assert_color(material[2], 0x2bU, 0xffU, 0x4fU, 0xffU);
+        assert_color(material[3], 0x2bU, 0xe8U, 0xffU, 0xffU);
+        assert_color(material[4], 0x2bU, 0x55U, 0xffU, 0xffU);
+        assert_color(material[5], 0xffU, 0x2bU, 0xd6U, 0xffU);
+    }
     assert_int_equal(tokens->geometry.base_space_cells, 1);
     assert_int_equal(tokens->geometry.ordinary_target_cells, 3);
     assert_int_equal(tokens->geometry.horizontal_label_padding_cells, 2);
@@ -273,6 +283,22 @@ static void test_motion_interruption_starts_from_current_value(void **state) {
         UI_THEME_MOTION_MAJOR_ENTER, 1.0, false, 0.0, 1.0, NULL));
 }
 
+static void test_material_palette_is_opaque_distinct_and_legible(void **state) {
+    const UiThemeColor *material = ui_theme_material_palette();
+    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    (void)state;
+    assert_non_null(material);
+    for (int i = 0; i < UI_THEME_MATERIAL_COLOR_COUNT; i++) {
+        assert_int_equal(material[i].alpha, 0xffU);
+        assert_true(ui_theme_pair_meets(material[i], palette->canvas,
+                                        UI_THEME_NON_TEXT_MIN_CONTRAST));
+        for (int j = i + 1; j < UI_THEME_MATERIAL_COLOR_COUNT; j++)
+            assert_false(material[i].red == material[j].red &&
+                         material[i].green == material[j].green &&
+                         material[i].blue == material[j].blue);
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_provisional_tokens_are_exact_and_immutable),
@@ -282,7 +308,8 @@ int main(void) {
         cmocka_unit_test(test_state_precedence),
         cmocka_unit_test(test_scaled_edges_are_deterministic_and_transactional),
         cmocka_unit_test(test_motion_roles_easing_and_reduced_motion),
-        cmocka_unit_test(test_motion_interruption_starts_from_current_value)
+        cmocka_unit_test(test_motion_interruption_starts_from_current_value),
+        cmocka_unit_test(test_material_palette_is_opaque_distinct_and_legible)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

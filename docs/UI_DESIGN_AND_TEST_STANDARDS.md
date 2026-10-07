@@ -120,7 +120,8 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - Text, focus markers, controls, hit targets, semantic status, and activation eligibility
   remain stable while nearby decorative cells or glyph layers move.
 - Warning, error, success, and destructive colors remain semantic. Decorative chromatic
-  channels use palette accent/focus roles; one literal-RGB comparison is permitted only in
+  channels use palette accent/focus roles or the additive decorative chromatic-material tokens
+  (§3.4 of the Reference of Record); one literal-RGB comparison is permitted only in
   the isolated diagnostic specimen and is not a reusable semantic token.
 - Motion sampling uses explicit elapsed time, stable IDs, deterministic paths, exact
   endpoints, and no hidden randomness or frame-count progression.

@@ -31,6 +31,23 @@ const UiThemeTokens *ui_theme_provisional_tokens(void) {
     return &provisional_tokens;
 }
 
+/* Decorative chromatic material (§1.1). Opaque, saturated primary and secondary
+   colours — crisp additive RGB, not pastel — so decorative specks read as
+   distinct primaries against the neutral weave. Never semantic, never a literal.
+   See ui_theme.h. */
+static const UiThemeColor material_palette[UI_THEME_MATERIAL_COLOR_COUNT] = {
+    {0xffU, 0x2bU, 0x2bU, 0xffU}, /* red     */
+    {0xffU, 0xe0U, 0x2bU, 0xffU}, /* yellow  */
+    {0x2bU, 0xffU, 0x4fU, 0xffU}, /* green   */
+    {0x2bU, 0xe8U, 0xffU, 0xffU}, /* cyan    */
+    {0x2bU, 0x55U, 0xffU, 0xffU}, /* blue    */
+    {0xffU, 0x2bU, 0xd6U, 0xffU}  /* magenta */
+};
+
+const UiThemeColor *ui_theme_material_palette(void) {
+    return material_palette;
+}
+
 static double srgb_to_linear(uint8_t channel) {
     double value = channel / 255.0;
     if (value <= 0.04045) return value / 12.92;

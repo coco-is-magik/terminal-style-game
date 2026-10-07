@@ -18,10 +18,15 @@ static const struct {
     /* Reviewed refresh: docs/reviews/2026-09-19-application-ui-editor-execution.md.
      * Legacy cell contract only; runtime fidelity uses compositor pixel evidence.
      * Reviewed refresh: docs/reviews/2026-10-07-pause-living-field.md — the pause
-     * context gained the living_field backdrop (MENU_PAUSE only). */
-    {MENU_MAIN, 100, 10821154052634477536ULL},
-    {MENU_MAIN, 150, 894376048979772384ULL},
-    {MENU_PAUSE, 100, 13042746718342089901ULL},
+     * context gained the living_field backdrop, then (2026-10-07) the decorative
+     * chromatic material and the intermingled selective-colour model that
+     * replaced the spatial hue ramp, and finally the white-dominant flowing
+     * fabric with sparse saturated specks that replaced the flat travelling
+     * bands; the main context gained its field too (MENU_MAIN and MENU_PAUSE
+     * only). */
+    {MENU_MAIN, 100, 11098204912662601525ULL},
+    {MENU_MAIN, 150, 17577477401565191989ULL},
+    {MENU_PAUSE, 100, 3419473230861947814ULL},
     {MENU_SETTINGS, 100, 14648528100631133103ULL},
     {MENU_CONFIRM_QUIT, 100, 18405518230658705158ULL}
 };

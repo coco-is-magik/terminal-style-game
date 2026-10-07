@@ -195,7 +195,9 @@ presets require a Button target, `orientation=horizontal`, and `randomize=0`. `e
 `button_reassemble` requires a Button target and `panel_register` requires a Container target. Both
 context presets require `trigger=context_enter|context_exit`, `orientation=radial`, `loop=0`, and
 `randomize=0`. The ambient `living_field` requires `trigger=while_visible`, `loop=0`, and
-`randomize=0`; it is a dense backdrop that fills only empty cells inside its bounds.
+`randomize=0`; it is a white-dominant flowing fabric — coherent rectangular patches that travel over
+the 1800 ms ambient role, carrying sparse saturated chromatic specks — that fills only empty cells
+inside its bounds.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

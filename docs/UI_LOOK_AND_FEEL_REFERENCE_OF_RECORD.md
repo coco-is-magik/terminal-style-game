@@ -274,6 +274,9 @@ stay true *while* it moves:
   decorative RGB trails.
 - Palette accent/focus traces are compared against exactly one isolated literal red/cyan sample;
   literal RGB is **diagnostic effect material, not a semantic token.**
+- Decorative chromatic material (the saturated primary/secondary set in §3.4) is an approved,
+  tokenised decorative channel: **never** a semantic status colour and **never** a literal.
+  (Added 2026-10-07, D-1.)
 - Explicit elapsed time, stable IDs, deterministic paths, exact endpoints, **no hidden randomness
   or frame-count progression.**
 - **Reduced motion is immediate and non-spatial** — no chromatic displacement, no delayed
@@ -347,6 +350,32 @@ small logical panel.**
 above so a continuously-flowing material field has an in-vocabulary period rather than a hidden
 constant. A `while_visible` animation unit now maps to this role. The 80/160/120/120 ms transition
 roles are unchanged.
+
+## 3.4 Decorative chromatic material (D-1)
+
+Added 2026-10-07 under the change of direction above. A six-colour, **decorative-only** material set
+for fields and material textures, per §1.1's "saturated primary and secondary colors." It is exposed
+by `ui_theme_material_palette()` and is **never** a semantic status colour and **never** a literal.
+`src/ui_theme.c` remains the single source of truth; this table is the reference copy.
+
+| Index | Name | Value | Role |
+|---|---|---|---|
+| 0 | red | `#FF2B2B` | saturated primary |
+| 1 | yellow | `#FFE02B` | saturated secondary |
+| 2 | green | `#2BFF4F` | saturated primary |
+| 3 | cyan | `#2BE8FF` | saturated secondary |
+| 4 | blue | `#2B55FF` | saturated primary |
+| 5 | magenta | `#FF2BD6` | saturated secondary |
+
+All six are opaque and meet the non-text contrast floor (≥ 3.0) against `canvas` (`test-ui-theme`).
+
+**Application (the `living_field`).** A field is a **white-dominant flowing fabric**: a neutral
+structural weave (`text_secondary`) whose rectangular forms travel and fold as one material, carrying
+**sparse** saturated specks — a minority of lit cells take a material hue, gathered into regions by a
+slow moving chroma wave so colour flows through the fabric and disperses rather than sitting still.
+Hues intermix at the cell scale and **no spatial hue ramp** appears. See
+`docs/reviews/2026-10-07-pause-living-field.md` ("Field rework", "Fabric rework"). The set is not
+required to be drawn as a full-spectrum sweep; the fabric, not the colour, is the structure.
 
 ---
 

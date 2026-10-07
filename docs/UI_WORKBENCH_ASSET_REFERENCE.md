@@ -67,8 +67,8 @@ Rules:
   while-visible ambient treatment 1800 ms. Explicit looping repeats the corresponding role.
 - `living_field` is an ambient backdrop (`trigger=while_visible`, `loop=0`, `randomize=0`, any
   orientation). It fills only empty cells within its bounded region, so it never obscures authored
-  text, a control, or a focus marker; `orientation` selects the travel axis (`radial` ripples from
-  the region centre).
+  text, a control, or a focus marker; `orientation` selects the axis its travelling waves emphasise
+  (`horizontal`, `vertical`, or `radial`, which folds them about the region centre).
 - `focus` runs only while the target Button is focused.
 - `activate` runs when an action in the containing layout activates; it never delays the action.
 - `context_exit` uses a bounded departing-menu snapshot while destination controls appear
@@ -350,10 +350,16 @@ focus_effect=none
 content=
 ```
 
-A dense, coordinated field of palette accent/focus glyphs travels across the bounded region over the
-1800 ms ambient role and is drawn as a backdrop beneath unchanged controls. It draws nothing under
-Reduced Motion. It is bound to the pause context as `animation_living_field` in
-`assets/ui_layouts/pause_menu.txt`; see `docs/reviews/2026-10-07-pause-living-field.md`.
+A white-dominant flowing fabric travels across the bounded region over the 1800 ms ambient role and is
+drawn as a substrate beneath unchanged controls. Occupancy is the product of two travelling axis waves
+(so lit cells form coherent rectangular patches that migrate and breathe as one material) modulated by
+a slower diagonal fold wave; the structure stays a neutral tone (`text_secondary`) and only a minority
+of lit cells take a **sparse** saturated `ui_theme_material_palette()` speck, gated by a slow moving
+chroma wave so colour flows through the fabric and disperses — **intermingled, not ordered**, never a
+spatial hue ramp. It fills only empty cells, draws nothing under Reduced Motion, and is bound to the
+main and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`) and
+`animation_living_field` (`assets/ui_layouts/pause_menu.txt`); see
+`docs/reviews/2026-10-07-pause-living-field.md`.
 
 ## Existing reusable templates
 
@@ -377,6 +383,7 @@ Reduced Motion. It is bound to the pause context as `animation_living_field` in
 - `animation_button_reassemble.txt`
 - `animation_panel_register.txt`
 - `animation_living_field.txt`
+- `animation_main_field.txt`
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 
