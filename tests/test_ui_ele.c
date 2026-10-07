@@ -154,7 +154,7 @@ static void test_ui_cache_master_map(void **state) {
     assert_string_equal(cache.master_entries[3].layout, "settings");
     assert_string_equal(cache.master_entries[4].layout, "hud_overlay");
     assert_string_equal(cache.master_entries[5].layout, "button_gallery");
-    assert_int_equal(cache.master_entries[5].cache_next_count, 14);
+    assert_int_equal(cache.master_entries[5].cache_next_count, 16);
 
     ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
     assert_non_null(ui_cache_get(&cache, "main_menu_container"));
@@ -182,7 +182,7 @@ static void test_button_gallery_loads_and_renders_library(void **state) {
     ui_cache_tick(&cache, "button_gallery", "assets/ui_elements");
     layout = ui_layout_load("assets/ui_layouts/button_gallery.txt", &cache);
     assert_non_null(layout);
-    assert_int_equal(layout->element_count, 13);
+    assert_int_equal(layout->element_count, 15);
     assert_int_equal(ui_layout_focusable_count(layout), 10);
 
     for (int i = 0; i < 10; i++) {
@@ -206,6 +206,10 @@ static void test_button_gallery_loads_and_renders_library(void **state) {
                         "chromatic_register");
     assert_string_equal(ui_cache_get(&cache, "animation_command_flash")->preset,
                         "command_flash");
+    assert_string_equal(ui_cache_get(&cache, "animation_button_reassemble")->preset,
+                        "button_reassemble");
+    assert_string_equal(ui_cache_get(&cache, "animation_panel_register")->preset,
+                        "panel_register");
 
     grid = grid_create(96, 56);
     assert_non_null(grid);

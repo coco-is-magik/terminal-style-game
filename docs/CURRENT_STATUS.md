@@ -195,7 +195,23 @@ labels, markers, bounds, actions, and hit targets remain stable; Reduced Motion 
 chromatic registration uses palette accent/focus material, not semantic state. Focused strict tests pass at
 animation 7/7, element/gallery 20/20, workbench 11/11, and app modules 6/6, and the strict application
 build passes. UI standards, workbench frame/policy gates, and focused ASan/leak and UBSan runs also
-pass. Native visual review remains unclaimed; B1.3 has not started.
+pass. Native visual review remains unclaimed; the following B1.3 slice builds on this foundation.
+
+**B1.3 bounded implementation update (2026-09-22).** The shared evaluator now supports
+`button_reassemble` and `panel_register` as deterministic context transitions using the accepted
+160 ms enter / 120 ms exit roles. Button fragments and panel registration corners converge around
+stable authored controls; exact endpoints are clean and Reduced Motion is immediate. Explicit units
+strictly require Button and Container targets respectively, while menu-level generated transitions
+skip incompatible element classes. Workbench selection normalizes constrained metadata and real clone
+flows retarget to the first compatible destination element transactionally. Focused suites pass at
+animation 9/9, element/gallery 20/20, workbench 12/12, and workbench interface 24/24. The interface
+frame oracle was refreshed only for the deterministic four-to-six transition-card expansion. Native
+visual review remains unclaimed.
+
+The B1.3 gate record also passes the strict application build, app modules 6/6, the full UI standards
+aggregate, workbench frame/policy gates, focused ASan with leak detection, focused UBSan, and
+`git diff --check`. No authored `.tui` or `LICENSE` file changed. Native visual acceptance remains
+unclaimed.
 
 The initial bounded asset scan found no non-ASCII runtime-authored asset file.
 `assets/README.md` contains non-ASCII documentation bytes and is classified separately;

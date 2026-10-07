@@ -523,8 +523,8 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
 
 static void test_runtime_pixel_fixtures(void **state) {
     static const uint64_t expected[] = {
-        UINT64_C(1972174810394524079), UINT64_C(1625212743618603965),
-        UINT64_C(14753538251050419893), UINT64_C(8134698366594751166)
+        UINT64_C(18335257384043785756), UINT64_C(7458632869555937036),
+        UINT64_C(10554620073566262018), UINT64_C(4061093434513253306)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));
@@ -748,10 +748,10 @@ static void test_menu_cards_render_visual_content_without_mutation(void **state)
     (void)snprintf(before, sizeof(before), "%s", workbench.layout->transition);
     workbench.property = UI_WORKBENCH_PROPERTY_TRANSITION;
     assert_true(ui_workbench_chrome_edit_panels(grid, &palette, &workbench, 260, 12));
-    for (int card = 0; card < 4; card++) {
+    for (int card = 0; card < 6; card++) {
         bool visible = false;
         for (int y = 2; y < 9; y++)
-            for (int x = card * 65 + 2; x < card * 65 + 63; x++) {
+            for (int x = card * 43 + 2; x < card * 43 + 41; x++) {
                 uint8_t glyph = grid->cells[y * grid->width + x].glyph;
                 if (glyph && glyph != ' ') visible = true;
             }

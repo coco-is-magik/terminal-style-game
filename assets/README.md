@@ -178,7 +178,8 @@ content=<text>                 # optional; may be empty
 
 Recognized style presets are `plain` for every class, `bracket`/`inverse` for buttons,
 `frame` for containers, and `bright` for text. Recognized transition presets are `none`,
-`center_out`, `perimeter_burst`, and `local_glitch`. Recognized focus/effect presets are
+`center_out`, `perimeter_burst`, `local_glitch`, `button_reassemble`, and `panel_register`.
+`button_reassemble` applies to Buttons; `panel_register` applies to Containers. Recognized focus/effect presets are
 `none`, `focus_pulse`, `focus_glitch`, and `input_hold_short`. Unknown and class-incompatible
 presets reject the element; `input_hold_short` is currently preview metadata only.
 
@@ -187,9 +188,13 @@ Their complete bounded schema and copyable examples are in
 `docs/UI_WORKBENCH_ASSET_REFERENCE.md`.
 
 Recognized animation presets are `pause_glitch`, `center_out`, `perimeter_burst`,
-`local_glitch`, `edge_trace`, `chromatic_register`, and `command_flash`. The three button-effect
+`local_glitch`, `edge_trace`, `chromatic_register`, `command_flash`, `button_reassemble`, and
+`panel_register`. The three button-effect
 presets require a Button target, `orientation=horizontal`, and `randomize=0`. `edge_trace` and
 `chromatic_register` require `trigger=focus`; `command_flash` requires `trigger=activate`.
+`button_reassemble` requires a Button target and `panel_register` requires a Container target. Both
+context presets require `trigger=context_enter|context_exit`, `orientation=radial`, `loop=0`, and
+`randomize=0`.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

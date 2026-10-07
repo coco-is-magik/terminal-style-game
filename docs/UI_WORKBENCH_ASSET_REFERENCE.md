@@ -48,7 +48,7 @@ height=<bounded region height>
 visible=1
 z_index=-1
 align=left
-preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash>
+preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register>
 target=<element name in the same active layout>
 trigger=<context_enter|context_exit|focus|activate|while_visible>
 orientation=<horizontal|vertical|radial>
@@ -79,6 +79,10 @@ Rules:
 - Choosing one of these button presets in the workbench normalizes its constrained metadata and
   selects a Button target. Cloning one into a menu targets that menu's first Button. A menu without a
   Button rejects the clone without creating a file.
+- `button_reassemble` requires a Button target; `panel_register` requires a Container target. Both
+  require `trigger=context_enter|context_exit`, `orientation=radial`, `loop=0`, and `randomize=0`.
+  Workbench preset selection normalizes them to `context_enter`; cloning selects the first compatible
+  target and rejects without creating a file when none exists.
 
 ## Copyable units
 
@@ -264,6 +268,59 @@ focus_effect=none
 content=
 ```
 
+### Button context reassembly
+
+```text
+name=my_button_reassemble
+type=animation
+x=0
+y=0
+coords=absolute
+width=20
+height=1
+visible=1
+z_index=-1
+align=left
+preset=button_reassemble
+target=my_button
+trigger=context_enter
+orientation=radial
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
+### Small-group panel registration
+
+```text
+name=my_panel_register
+type=animation
+x=0
+y=0
+coords=absolute
+width=40
+height=16
+visible=1
+z_index=-1
+align=left
+preset=panel_register
+target=my_container
+trigger=context_enter
+orientation=radial
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
+Both presets reverse deterministically for `context_exit`, end cleanly at 160/120 ms, use only
+palette accent/focus material, and draw nothing under Reduced Motion.
+
 ## Existing reusable templates
 
 - `btn_plain_technical.txt`
@@ -283,6 +340,8 @@ content=
 - `animation_edge_trace.txt`
 - `animation_chromatic_register.txt`
 - `animation_command_flash.txt`
+- `animation_button_reassemble.txt`
+- `animation_panel_register.txt`
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 
@@ -306,7 +365,8 @@ Current data-only limitations:
   single-button asset does not provide;
 - destructive meaning is not represented by decorative chromatic traces; a destructive template
   should be added only with an approved semantic-color treatment;
-- B1.1 adds no new renderer style, animation evaluator, transition, or authored `.tui` behavior.
+- B1.1 added no renderer behavior; B1.2/B1.3 add only shared evaluator presets and no authored `.tui`
+  behavior.
 
 ## Adding one new preset later
 

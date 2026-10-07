@@ -48,11 +48,21 @@ static bool button_effect_preset(const char *preset) {
         strcmp(preset, "command_flash") == 0);
 }
 
-static const char *first_layout_button_name(const UiWorkbench *workbench) {
+static UiElementType preset_target_type(const char *preset) {
+    if (preset && (button_effect_preset(preset) ||
+                   strcmp(preset, "button_reassemble") == 0))
+        return UI_ELE_BUTTON;
+    if (preset && strcmp(preset, "panel_register") == 0)
+        return UI_ELE_CONTAINER;
+    return UI_ELE_ANIMATION;
+}
+
+static const char *first_layout_target_name(const UiWorkbench *workbench,
+                                            UiElementType type) {
     if (!workbench) return NULL;
     for (int i = 0; i < workbench->element_count; i++) {
         const UiElement *candidate = workbench->elements[i];
-        if (candidate && candidate->type == UI_ELE_BUTTON) return candidate->name;
+        if (candidate && candidate->type == type) return candidate->name;
     }
     return NULL;
 }
@@ -473,14 +483,16 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     static const char *const container_styles[] = {"plain", "frame"};
     static const char *const text_styles[] = {"plain", "bright"};
     static const char *const transitions[] = {
-        "none", "center_out", "perimeter_burst", "local_glitch"
+        "none", "center_out", "perimeter_burst", "local_glitch",
+        "button_reassemble", "panel_register"
     };
     static const char *const effects[] = {
         "none", "focus_pulse", "focus_glitch", "input_hold_short"
     };
     static const char *const presets[] = {
         "pause_glitch", "center_out", "perimeter_burst", "local_glitch",
-        "edge_trace", "chromatic_register", "command_flash"
+        "edge_trace", "chromatic_register", "command_flash",
+        "button_reassemble", "panel_register"
     };
     static const char *const triggers[] = {
         "context_enter", "context_exit", "focus", "activate", "while_visible"
@@ -589,17 +601,20 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
             next = cycle_name(element->preset, presets,
                               sizeof(presets) / sizeof(presets[0]), direction);
             (void)snprintf(element->preset, sizeof(element->preset), "%s", next);
-            if (button_effect_preset(next)) {
-                const char *button_name = first_layout_button_name(workbench);
-                if (!button_name) {
+            if (preset_target_type(next) != UI_ELE_ANIMATION) {
+                UiElementType target_type = preset_target_type(next);
+                const char *target_name = first_layout_target_name(workbench, target_type);
+                if (!target_name) {
                     *element = animation_original;
                     return UI_WORKBENCH_NO_CHANGE;
                 }
                 (void)snprintf(element->trigger, sizeof(element->trigger), "%s",
-                    strcmp(next, "command_flash") == 0 ? "activate" : "focus");
+                    button_effect_preset(next)
+                        ? (strcmp(next, "command_flash") == 0 ? "activate" : "focus")
+                        : "context_enter");
                 (void)snprintf(element->orientation, sizeof(element->orientation),
-                               "horizontal");
-                (void)snprintf(element->target, sizeof(element->target), "%s", button_name);
+                               button_effect_preset(next) ? "horizontal" : "radial");
+                (void)snprintf(element->target, sizeof(element->target), "%s", target_name);
                 element->loop = 0;
                 element->randomize = 0;
             }
@@ -762,14 +777,18 @@ UiWorkbenchResult ui_workbench_confirm_add(UiWorkbench *workbench) {
     memset(clone.children, 0, sizeof(clone.children));
     clone.child_count = 0;
     if (clone.type == UI_ELE_ANIMATION) {
+        UiElementType target_type = preset_target_type(clone.preset);
         clone.parent_name[0] = '\0';
-        if (button_effect_preset(clone.preset)) {
-            const char *button_name = first_layout_button_name(workbench);
-            if (!button_name) {
-                set_status(workbench, "Add unavailable: this effect requires a button target in the current layout.");
+        if (target_type != UI_ELE_ANIMATION) {
+            const char *target_name = first_layout_target_name(workbench, target_type);
+            if (!target_name) {
+                set_status(workbench,
+                    target_type == UI_ELE_BUTTON
+                        ? "Add unavailable: this effect requires a button target in the current layout."
+                        : "Add unavailable: this effect requires a container target in the current layout.");
                 return UI_WORKBENCH_NO_CHANGE;
             }
-            (void)snprintf(clone.target, sizeof(clone.target), "%s", button_name);
+            (void)snprintf(clone.target, sizeof(clone.target), "%s", target_name);
         } else {
             (void)snprintf(clone.target, sizeof(clone.target), "%s", container);
         }

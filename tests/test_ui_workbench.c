@@ -102,6 +102,42 @@ static void test_invalid_operations_are_nonmutating(void **state) {
     ui_workbench_destroy(&workbench);
 }
 
+static void test_transition_cycle_includes_b1_3_vocabulary(void **state) {
+    char root[] = "build/tsg_ui_transition_cycle_XXXXXX";
+    char original[1024];
+    UiWorkbench workbench;
+    UiLayout layout = {0};
+    FILE *file;
+    (void)state;
+    assert_non_null(getcwd(original, sizeof(original)));
+    assert_non_null(mkdtemp(root));
+    assert_int_equal(chdir(root), 0);
+    assert_int_equal(mkdir("assets", 0700), 0);
+    assert_int_equal(mkdir("assets/ui_layouts", 0700), 0);
+    file = fopen("assets/ui_layouts/test.txt", "wb");
+    assert_non_null(file);
+    assert_true(fputs("name=test\ntype=layout\nelements=\ntransition=none\n", file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    ui_workbench_init(&workbench);
+    (void)snprintf(layout.name, sizeof(layout.name), "test");
+    (void)snprintf(layout.transition, sizeof(layout.transition), "none");
+    workbench.layout = &layout;
+    workbench.property = UI_WORKBENCH_PROPERTY_TRANSITION;
+    for (int i = 0; i < 4; i++)
+        assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_string_equal(workbench.layout->transition, "button_reassemble");
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_string_equal(workbench.layout->transition, "panel_register");
+    assert_int_equal(ui_workbench_cycle_value(&workbench, 1), UI_WORKBENCH_OK);
+    assert_string_equal(workbench.layout->transition, "none");
+    workbench.layout = NULL;
+    assert_int_equal(unlink("assets/ui_layouts/test.txt"), 0);
+    assert_int_equal(rmdir("assets/ui_layouts"), 0);
+    assert_int_equal(rmdir("assets"), 0);
+    assert_int_equal(chdir(original), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 static void test_coordinate_limits_preserve_edit(void **state) {
     UiWorkbench workbench;
     UiElement *element;
@@ -239,9 +275,14 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     char original[1024];
     UiWorkbench workbench;
     int source_index = -1;
+    int target_index = -1;
     int clone_index = -1;
     int animation_source_index = -1;
     int animation_clone_index = -1;
+    int reassemble_source_index = -1;
+    int reassemble_clone_index = -1;
+    int register_source_index = -1;
+    int register_clone_index = -1;
     FILE *file;
     char bytes[1024];
     size_t read_count;
@@ -261,6 +302,16 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
         "name=animation_edge_trace\ntype=animation\nx=0\ny=0\ncoords=absolute\n"
         "width=8\nheight=1\nvisible=1\nz_index=-1\nalign=left\n"
         "preset=edge_trace\ntarget=source_button\ntrigger=focus\norientation=horizontal\n"
+        "loop=0\nrandomize=0\nstyle=plain\ntransition=none\nfocus_effect=none\ncontent=\n");
+    write_fixture("assets/ui_elements/animation_button_reassemble.txt",
+        "name=animation_button_reassemble\ntype=animation\nx=0\ny=0\ncoords=absolute\n"
+        "width=8\nheight=1\nvisible=1\nz_index=-1\nalign=left\n"
+        "preset=button_reassemble\ntarget=source_button\ntrigger=context_enter\norientation=radial\n"
+        "loop=0\nrandomize=0\nstyle=plain\ntransition=none\nfocus_effect=none\ncontent=\n");
+    write_fixture("assets/ui_elements/animation_panel_register.txt",
+        "name=animation_panel_register\ntype=animation\nx=0\ny=0\ncoords=absolute\n"
+        "width=20\nheight=10\nvisible=1\nz_index=-1\nalign=left\n"
+        "preset=panel_register\ntarget=main_menu_container\ntrigger=context_enter\norientation=radial\n"
         "loop=0\nrandomize=0\nstyle=plain\ntransition=none\nfocus_effect=none\ncontent=\n");
     write_fixture("assets/ui_layouts/main_menu.txt",
         "name=main_menu\ntype=layout\nelements=source_button\n");
@@ -350,6 +401,83 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     assert_string_equal(ui_workbench_current_element(&workbench)->target, "source_button");
     assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
     assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
+    for (size_t i = 0U; i < workbench.catalog.count; i++) {
+        if (strcmp(workbench.catalog.entries[i].name,
+                   "animation_button_reassemble.txt") == 0)
+            reassemble_source_index = (int)i;
+        if (strcmp(workbench.catalog.entries[i].name,
+                   "animation_panel_register.txt") == 0)
+            register_source_index = (int)i;
+    }
+    assert_true(reassemble_source_index >= 0);
+    assert_true(register_source_index >= 0);
+    workbench.add_index = (size_t)reassemble_source_index;
+    assert_int_equal(ui_workbench_confirm_add(&workbench), UI_WORKBENCH_OK);
+    for (int i = 0; i < workbench.element_count; i++)
+        if (strcmp(workbench.elements[i]->name,
+                   "main_menu_animation_button_reassemble_1") == 0)
+            reassemble_clone_index = i;
+    assert_true(reassemble_clone_index >= 0);
+    workbench.element_index = reassemble_clone_index;
+    assert_string_equal(ui_workbench_current_element(&workbench)->target, "source_button");
+    assert_string_equal(ui_workbench_current_element(&workbench)->trigger, "context_enter");
+    assert_string_equal(ui_workbench_current_element(&workbench)->orientation, "radial");
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_begin_add(&workbench), UI_WORKBENCH_OK);
+    for (size_t i = 0U; i < workbench.catalog.count; i++)
+        if (strcmp(workbench.catalog.entries[i].name,
+                   "animation_panel_register.txt") == 0)
+            register_source_index = (int)i;
+    workbench.add_index = (size_t)register_source_index;
+    assert_int_equal(ui_workbench_confirm_add(&workbench), UI_WORKBENCH_OK);
+    for (int i = 0; i < workbench.element_count; i++)
+        if (strcmp(workbench.elements[i]->name,
+                   "main_menu_animation_panel_register_1") == 0)
+            register_clone_index = i;
+    assert_true(register_clone_index >= 0);
+    workbench.element_index = register_clone_index;
+    assert_string_equal(ui_workbench_current_element(&workbench)->target,
+                        "main_menu_container");
+    assert_string_equal(ui_workbench_current_element(&workbench)->trigger, "context_enter");
+    assert_string_equal(ui_workbench_current_element(&workbench)->orientation, "radial");
+    clone_index = -1;
+    target_index = -1;
+    for (int i = 0; i < workbench.element_count; i++) {
+        if (strcmp(workbench.elements[i]->name, "source_button") == 0)
+            target_index = i;
+        if (strcmp(workbench.elements[i]->name, "main_menu_source_button_1") == 0)
+            clone_index = i;
+    }
+    assert_true(target_index >= 0);
+    assert_true(clone_index >= 0);
+    workbench.element_index = target_index;
+    workbench.editing = true;
+    assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_NO_CHANGE);
+    reassemble_clone_index = -1;
+    for (int i = 0; i < workbench.element_count; i++)
+        if (strcmp(workbench.elements[i]->name,
+                   "main_menu_animation_button_reassemble_1") == 0)
+            reassemble_clone_index = i;
+    assert_true(reassemble_clone_index >= 0);
+    workbench.element_index = reassemble_clone_index;
+    assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
+    register_clone_index = -1;
+    clone_index = -1;
+    for (int i = 0; i < workbench.element_count; i++) {
+        if (strcmp(workbench.elements[i]->name,
+                   "main_menu_animation_panel_register_1") == 0)
+            register_clone_index = i;
+        if (strcmp(workbench.elements[i]->name, "main_menu_source_button_1") == 0)
+            clone_index = i;
+    }
+    assert_true(register_clone_index >= 0);
+    workbench.element_index = register_clone_index;
+    assert_int_equal(ui_workbench_toggle_editing(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_request_remove(&workbench), UI_WORKBENCH_OK);
+    assert_int_equal(ui_workbench_confirm_remove(&workbench), UI_WORKBENCH_OK);
     clone_index = -1;
     for (int i = 0; i < workbench.element_count; i++)
         if (strcmp(workbench.elements[i]->name, "main_menu_source_button_1") == 0)
@@ -373,7 +501,11 @@ static void test_add_and_remove_existing_unit_in_isolated_root(void **state) {
     ui_workbench_destroy(&workbench);
     assert_int_equal(unlink("assets/ui_elements/main_menu_source_button_1.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/main_menu_animation_edge_trace_1.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/main_menu_animation_button_reassemble_1.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/main_menu_animation_panel_register_1.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/animation_edge_trace.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/animation_button_reassemble.txt"), 0);
+    assert_int_equal(unlink("assets/ui_elements/animation_panel_register.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/source_button.txt"), 0);
     assert_int_equal(unlink("assets/ui_elements/main_menu_container.txt"), 0);
     assert_int_equal(unlink("assets/ui_layouts/main_menu.txt"), 0);
@@ -518,6 +650,7 @@ int main(void) {
         cmocka_unit_test(test_failed_reload_preserves_session),
         cmocka_unit_test(test_safe_navigation_and_unavailable_actions),
         cmocka_unit_test(test_invalid_operations_are_nonmutating),
+        cmocka_unit_test(test_transition_cycle_includes_b1_3_vocabulary),
         cmocka_unit_test(test_coordinate_limits_preserve_edit),
         cmocka_unit_test(test_value_cycle_is_not_move_mode_gated),
         cmocka_unit_test(test_animation_properties_and_modes),

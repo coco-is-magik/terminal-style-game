@@ -577,7 +577,10 @@ bool ui_workbench_chrome_edit_panels(Grid *grid, const UiAppWorkbenchPalette *pa
     static const char *const text_styles[] = {"plain", "bright"};
     static const char *const container_styles[] = {"plain", "frame"};
     static const char *const alignments[] = {"left", "center", "right"};
-    static const char *const transitions[] = {"none", "center_out", "perimeter_burst", "local_glitch"};
+    static const char *const transitions[] = {
+        "none", "center_out", "perimeter_burst", "local_glitch",
+        "button_reassemble", "panel_register"
+    };
     const UiElement *element = ui_workbench_current_element((UiWorkbench *)workbench);
     const char *const *names = NULL;
     size_t total = 1, active = 0, first, count;

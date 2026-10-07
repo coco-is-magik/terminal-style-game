@@ -202,6 +202,49 @@ static bool render_command_flash(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+static bool render_button_reassemble(Grid *grid, const UiElementLayout *bounds,
+                                     double progress, SDL_Color accent,
+                                     SDL_Color focus, SDL_Color background) {
+    static const uint8_t glyphs[] = {'[', ':', ']', '[', ':', ']'};
+    int center;
+    int spread;
+    if (!grid || !bounds || bounds->width < 1 || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0) return false;
+    center = bounds->x + (bounds->width - 1) / 2;
+    spread = 1 + (int)lround((1.0 - progress) * 5.0);
+    for (size_t i = 0U; i < sizeof(glyphs) / sizeof(glyphs[0]); i++) {
+        int side = i < 3U ? -1 : 1;
+        int rank = (int)(i % 3U);
+        int x = center + side * (spread + rank * 2);
+        int y = (i % 2U) == 0U ? bounds->y - 1 : bounds->y + bounds->height;
+        (void)grid_set(grid, x, y, glyphs[i],
+                       (i % 2U) == 0U ? accent : focus, background);
+    }
+    return true;
+}
+
+static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
+                                  double progress, SDL_Color accent,
+                                  SDL_Color focus, SDL_Color background) {
+    int inset;
+    int left;
+    int right;
+    int top;
+    int bottom;
+    if (!grid || !bounds || bounds->width < 1 || bounds->height < 1 ||
+        !isfinite(progress) || progress < 0.0 || progress > 1.0) return false;
+    inset = (int)lround((1.0 - progress) * 4.0);
+    left = bounds->x - 1 - inset;
+    right = bounds->x + bounds->width + inset;
+    top = bounds->y - 1 - inset;
+    bottom = bounds->y + bounds->height + inset;
+    (void)grid_set(grid, left, top, '+', accent, background);
+    (void)grid_set(grid, right, top, '+', focus, background);
+    (void)grid_set(grid, left, bottom, '+', focus, background);
+    (void)grid_set(grid, right, bottom, '+', accent, background);
+    return true;
+}
+
 static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                         double elapsed_ms, bool reduced_motion, bool preview_loop,
                         UiAnimationEvent event) {
@@ -217,8 +260,11 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     if (!target || !ui_ele_absolute_bounds(target, &x, &y, &width, &height)) return false;
     if ((strcmp(unit->preset, "edge_trace") == 0 ||
          strcmp(unit->preset, "chromatic_register") == 0 ||
-         strcmp(unit->preset, "command_flash") == 0) &&
+         strcmp(unit->preset, "command_flash") == 0 ||
+         strcmp(unit->preset, "button_reassemble") == 0) &&
         target->type != UI_ELE_BUTTON) return false;
+    if (strcmp(unit->preset, "panel_register") == 0 &&
+        target->type != UI_ELE_CONTAINER) return false;
     bounds = (UiElementLayout){x + unit->layout.x, y + unit->layout.y,
                                UI_COORD_ABSOLUTE,
                                unit->layout.width > 0 ? unit->layout.width : width,
@@ -274,6 +320,14 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
         return render_command_flash(grid, &bounds, progress,
                                     color(palette->accent), color(palette->focus),
                                     color(palette->canvas));
+    if (strcmp(unit->preset, "button_reassemble") == 0)
+        return render_button_reassemble(grid, &bounds, progress,
+                                        color(palette->accent), color(palette->focus),
+                                        color(palette->canvas));
+    if (strcmp(unit->preset, "panel_register") == 0)
+        return render_panel_register(grid, &bounds, progress,
+                                     color(palette->accent), color(palette->focus),
+                                     color(palette->canvas));
     return false;
 }
 
@@ -289,14 +343,21 @@ static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
         UiElement *cursor = element;
         while (cursor) {
             bool known = false;
+            const char *transition;
             for (int p = 0; p < processed_count; p++)
                 if (processed[p] == cursor) known = true;
+            transition = layout->transition[0] && strcmp(layout->transition, "none") != 0
+                ? layout->transition : cursor->transition;
             if (!known && (event == UI_ANIMATION_EVENT_CONTEXT_ENTER ||
                            event == UI_ANIMATION_EVENT_CONTEXT_EXIT ||
                            event == UI_ANIMATION_EVENT_PREVIEW) &&
                 cursor->type != UI_ELE_ANIMATION && cursor->visible &&
                 ((layout->transition[0] && strcmp(layout->transition, "none") != 0) ||
-                 strcmp(cursor->transition, "none") != 0)) {
+                 strcmp(cursor->transition, "none") != 0) &&
+                (strcmp(transition, "button_reassemble") != 0 ||
+                 cursor->type == UI_ELE_BUTTON) &&
+                (strcmp(transition, "panel_register") != 0 ||
+                 cursor->type == UI_ELE_CONTAINER)) {
             UiElement unit = {0};
             unit.type = UI_ELE_ANIMATION;
             unit.visible = 1;
@@ -304,9 +365,7 @@ static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
             unit.layout.x = 0;
             unit.layout.y = 0;
             (void)snprintf(unit.name, sizeof(unit.name), "%s", cursor->name);
-            (void)snprintf(unit.preset, sizeof(unit.preset), "%s",
-                layout->transition[0] && strcmp(layout->transition, "none") != 0
-                    ? layout->transition : cursor->transition);
+            (void)snprintf(unit.preset, sizeof(unit.preset), "%s", transition);
             (void)snprintf(unit.target, sizeof(unit.target), "%s", cursor->name);
             (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s",
                 event == UI_ANIMATION_EVENT_CONTEXT_EXIT ? "context_exit" : "context_enter");

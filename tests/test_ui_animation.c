@@ -200,6 +200,144 @@ static void test_button_effect_presets_are_deterministic_and_bounded(void **stat
     grid_destroy(grid);
 }
 
+static void test_context_transition_presets_are_deterministic_and_class_bounded(void **state) {
+    UiElement button = element("button", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement panel = element("panel", UI_ELE_CONTAINER, 8, 6, 12, 8);
+    UiElement unit = element("transition", UI_ELE_ANIMATION, 0, 0, 0, 0);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(32, 24);
+    Grid *repeat = grid_create(32, 24);
+    Grid *reference = grid_create(32, 24);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    Cell value;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(repeat);
+    assert_non_null(reference);
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_enter");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
+
+    layout.elements[0] = &button;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+    (void)snprintf(unit.preset, sizeof(unit.preset), "button_reassemble");
+    (void)snprintf(unit.target, sizeof(unit.target), "button");
+    assert_true(ui_ele_animation_is_valid(&unit));
+    unit.loop = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.loop = 0;
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "horizontal");
+    assert_false(ui_ele_animation_is_valid(&unit));
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_region_equal(grid, reference, 8, 8, 12, 1);
+    assert_true(grid_get(grid, 7, 7, &value));
+    assert_int_equal(value.glyph, '[');
+    grid_clear(repeat, bg);
+    ui_layout_render(&layout, repeat, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, repeat, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_memory_equal(grid->cells, repeat->cells, 32U * 24U * sizeof(Cell));
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 160.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_memory_equal(grid->cells, reference->cells, 32U * 24U * sizeof(Cell));
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 40.0, true, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_memory_equal(grid->cells, reference->cells, 32U * 24U * sizeof(Cell));
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_exit");
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_true(grid_get(grid, 12, 7, &value));
+    assert_int_equal(value.glyph, '[');
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 120.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_memory_equal(grid->cells, reference->cells, 32U * 24U * sizeof(Cell));
+
+    layout.elements[0] = &panel;
+    (void)snprintf(unit.preset, sizeof(unit.preset), "panel_register");
+    (void)snprintf(unit.target, sizeof(unit.target), "panel");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_enter");
+    assert_true(ui_ele_animation_is_valid(&unit));
+    unit.randomize = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.randomize = 0;
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_true(grid_get(grid, 3, 1, &value));
+    assert_int_equal(value.glyph, '+');
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_exit");
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_true(grid_get(grid, 7, 5, &value));
+    assert_int_equal(value.glyph, '+');
+
+    (void)snprintf(unit.preset, sizeof(unit.preset), "button_reassemble");
+    assert_false(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                            UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    (void)snprintf(unit.preset, sizeof(unit.preset), "panel_register");
+    (void)snprintf(unit.target, sizeof(unit.target), "button");
+    layout.elements[0] = &button;
+    assert_false(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                            UI_ANIMATION_EVENT_CONTEXT_EXIT));
+
+    release(&button);
+    grid_destroy(reference);
+    grid_destroy(repeat);
+    grid_destroy(grid);
+}
+
+static void test_generated_context_transitions_skip_incompatible_elements(void **state) {
+    UiElement button = element("button", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement panel = element("panel", UI_ELE_CONTAINER, 4, 4, 24, 12);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 28);
+    Grid *repeat = grid_create(40, 28);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(repeat);
+    button.parent = &panel;
+    layout.elements[0] = &button;
+    layout.element_count = 1;
+
+    (void)snprintf(layout.transition, sizeof(layout.transition), "button_reassemble");
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    (void)snprintf(layout.transition, sizeof(layout.transition), "panel_register");
+    grid_clear(repeat, bg);
+    ui_layout_render(&layout, repeat, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, repeat, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_false(memcmp(grid->cells, repeat->cells, 40U * 28U * sizeof(Cell)) == 0);
+
+    release(&button);
+    grid_destroy(repeat);
+    grid_destroy(grid);
+}
+
 static void test_pause_glitch_canvas_matches_layout_unit(void **state) {
     UiElement target = element("target", UI_ELE_CONTAINER, 30, 9, 24, 18);
     UiElement unit = element("pause_glitch", UI_ELE_ANIMATION, 0, 0, 24, 18);
@@ -421,6 +559,8 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_pause_glitch_canvas_matches_layout_unit),
         cmocka_unit_test(test_button_effect_presets_are_deterministic_and_bounded),
+        cmocka_unit_test(test_context_transition_presets_are_deterministic_and_class_bounded),
+        cmocka_unit_test(test_generated_context_transitions_skip_incompatible_elements),
         cmocka_unit_test(test_directed_trigger_endpoints),
         cmocka_unit_test(test_lifecycle_protects_authored_spaces_not_backdrop),
         cmocka_unit_test(test_center_out_and_reduced_motion),

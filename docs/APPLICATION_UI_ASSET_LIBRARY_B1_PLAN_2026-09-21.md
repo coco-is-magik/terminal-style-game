@@ -9,7 +9,7 @@ protocol), and §5.2 (drift alarm).
 
 ## Status and authority
 
-**Approved direction; B1.1 bounded gallery slice implemented and automatically verified.**
+**Approved direction; B1.1-B1.3 bounded button-library slices implemented and focused-verified.**
 
 The application UI workbench is generally approved for the current project place. It does what it
 needs to do now: bounded application-menu editing, immediate canonical saves, reusable element and
@@ -61,9 +61,11 @@ Current style/effect vocabulary is intentionally small:
 - button styles: `plain`, `bracket`, `inverse`;
 - container styles: `plain`, `frame`;
 - text styles: `plain`, `bright`;
-- transitions: `none`, `center_out`, `perimeter_burst`, `local_glitch`;
+- transitions: `none`, `center_out`, `perimeter_burst`, `local_glitch`, `button_reassemble`,
+  `panel_register`;
 - focus/effect presets: `none`, `focus_pulse`, `focus_glitch`, `input_hold_short`;
-- animation presets: `pause_glitch`, `center_out`, `perimeter_burst`, `local_glitch`;
+- animation presets: `pause_glitch`, `center_out`, `perimeter_burst`, `local_glitch`,
+  `edge_trace`, `chromatic_register`, `command_flash`, `button_reassemble`, `panel_register`;
 - animation triggers: `context_enter`, `context_exit`, `focus`, `activate`, `while_visible`;
 - animation orientations: `horizontal`, `vertical`, `radial`.
 
@@ -168,7 +170,7 @@ Known limitations retained rather than hidden by new rendering code:
 - segmented controls require coordinated multi-element interaction semantics;
 - a destructive button requires an approved semantic-color treatment and must not use decorative
   chromatic material as its meaning;
-- B1.2 is implemented below; no B1.3 transition has started.
+- B1.2 and B1.3 are implemented below.
 
 Automated evidence: the strict focused element suite passed 20/20 after adding gallery cache, parse,
 parent, focus-order, palette, and representative rendering assertions. The strict workbench suite
@@ -272,6 +274,39 @@ Candidate transition directions:
 
 These are not approved names or implementation promises. They are candidate behaviors to evaluate
 against the reference of record and the actual button assets.
+
+#### B1.3 implementation record — 2026-09-22
+
+This slice serves the binding reference of record §2.1 and §4.4: controlled glyph reassembly and
+registration around stable controls, explicit 160 ms enter / 120 ms exit roles, exact endpoints, and
+immediate non-spatial Reduced Motion.
+
+Implemented through the existing shared `src/ui_animation.c` evaluator:
+
+- `button_reassemble` — six deterministic bracket/registration fragments converge around a Button
+  while its cells, label, focus marker, action, bounds, and hit target remain unchanged;
+- `panel_register` — four palette-native registration corners converge around a Container or small
+  menu group without moving or obscuring its controls.
+
+Both presets are one-shot, radial, non-randomized context transitions. Explicit animation units may
+use `context_enter` or `context_exit`; workbench preset selection normalizes to `context_enter`,
+`orientation=radial`, `loop=0`, and `randomize=0`. `button_reassemble` strictly requires a Button
+target and `panel_register` strictly requires a Container target. Menu-level generated transitions
+apply only to compatible elements and skip incompatible classes, so a mixed layout remains valid.
+Cloning retargets to the first compatible destination element and rejects transactionally if none
+exists.
+
+The other candidates were evaluated and deferred rather than added as aliases: `button_release`
+duplicates the reversed lifecycle, `menu_resolve` lacks a distinct measurable behavior,
+`edge_cascade` requires sequencing metadata the current schema does not own, and
+`chromatic_settle` overlaps B1.2 registration without adding a separate transition role.
+
+Automated evidence passes at animation 9/9, element/gallery 20/20, workbench 12/12, workbench
+interface 24/24, and app modules 6/6. The strict application build, full UI standards aggregate, and
+workbench frame/policy gates pass. Focused ASan with leak detection and focused UBSan pass all four
+changed owners at the same counts. The interface pixel oracle changed only because the transition
+tray expanded from four to six cards; all four replacement hashes were identical across two runs.
+`git diff --check` passes. Native visual acceptance remains unclaimed.
 
 ## ASCII-art image-space proposal
 
