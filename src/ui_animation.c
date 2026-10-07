@@ -248,13 +248,15 @@ static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
 #define UI_LIVING_FIELD_TABLE 512
 
 /*
- * living_field material selection — a white-dominant flowing fabric.
+ * living_field material selection — a white-dominant flowing fabric fringed by
+ * chromatic aberration.
  *
  * The §1.1 reference (docs/inspiration_and_notes/light_and_motion) is a neutral
- * weave of light cells whose density folds and travels, carrying sparse
- * saturated primary/secondary specks. It is a substrate the display sits on,
- * not a colour show: the structure is neutral-dominant and only a minority of
- * cells are coloured.
+ * weave of light cells whose density folds and travels; saturated
+ * primary/secondary colour appears only as a thin *fringing* where the light
+ * meets empty space — a chromatic aberration of the weave's own edges, not a
+ * fill. The structure is therefore neutral-dominant and only edge cells are
+ * coloured.
  *
  * Occupancy is the product of two travelling axis waves — so lit cells form a
  * coherent grid of *rectangular* patches (the reference's clear rectangular
@@ -267,11 +269,11 @@ static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
 #define UI_LIVING_FIELD_PERIOD_X 14      /* horizontal travel (cells)          */
 #define UI_LIVING_FIELD_PERIOD_Y 11      /* vertical travel (cells)            */
 #define UI_LIVING_FIELD_PERIOD_D 16      /* diagonal fold (must divide TABLE)  */
-#define UI_LIVING_FIELD_PERIOD_C 32      /* chroma drift (must divide TABLE)   */
 #define UI_LIVING_FIELD_LIT_LEVEL 0.30   /* fabric density above this -> lit   */
 #define UI_LIVING_FIELD_FIELD_MAX 1.10   /* max of wave_x*wave_y*fold          */
-#define UI_LIVING_FIELD_CHROMA_BASE 0.08 /* speckle floor (fraction of lit)    */
-#define UI_LIVING_FIELD_CHROMA_GAIN 0.40 /* extra speckle where chroma high    */
+#define UI_LIVING_FIELD_RUN 5            /* cells per chromatic fringe run     */
+#define UI_LIVING_FIELD_FRINGE 0.55      /* fraction of fringe runs coloured   */
+#define UI_LIVING_FIELD_REGION_MAX 16384 /* content-mask cap, in cells         */
 
 /* Cheap deterministic 32-bit finalizer (SplitMix-style avalanche). Pure; used
    only to pick decorative material, never to drive layout or semantics. */
@@ -288,39 +290,92 @@ static double living_field_unit(uint32_t x, uint32_t y, uint32_t salt) {
     return (double)(living_field_mix(x, y, salt) >> 8) / 16777216.0;
 }
 
-/* Intermingled hue: colour is scattered cell-to-cell — never a spatial ramp —
-   so neighbouring lit cells seldom share a hue. */
-static int living_field_hue(uint32_t x, uint32_t y) {
-    return (int)(living_field_mix(x, y, 0x9e37U) %
-                 (uint32_t)UI_THEME_MATERIAL_COLOR_COUNT);
+/* Field density at one cell — a pure function of position and explicit phase.
+   Used both for the occupancy test and for neighbour lookups that decide
+   whether a lit cell sits on the field's edge. */
+static double living_field_density(int x, int y, const double *wave_x,
+                                   const double *wave_y, const double *fold,
+                                   bool radial, bool vertical, int centre_x,
+                                   int centre_y) {
+    int cx = x;
+    int cy = y;
+    if (radial) {
+        cx = x - centre_x; if (cx < 0) cx = -cx;
+        cy = y - centre_y; if (cy < 0) cy = -cy;
+    } else if (vertical) {
+        cx = y;
+        cy = x;
+    }
+    if (cx < 0) cx = 0;
+    if (cy < 0) cy = 0;
+    if (cx >= UI_LIVING_FIELD_TABLE) cx = UI_LIVING_FIELD_TABLE - 1;
+    if (cy >= UI_LIVING_FIELD_TABLE) cy = UI_LIVING_FIELD_TABLE - 1;
+    return wave_x[cx] * wave_y[cy] *
+           fold[(uint32_t)(cx + cy) & (UI_LIVING_FIELD_TABLE - 1U)];
 }
 
-/* True when this cell carries a saturated speck. Membership is gated by the
-   slow moving chroma wave (chroma in [0,1]), so specks gather into regions that
-   flow and disperse instead of sitting as a fixed scatter. */
-static bool living_field_is_chromatic(uint32_t x, uint32_t y, double chroma) {
-    double threshold = (double)UI_LIVING_FIELD_CHROMA_BASE +
-                       (double)UI_LIVING_FIELD_CHROMA_GAIN * chroma;
-    return living_field_unit(x, y, 0x3d75U) < threshold;
+/* True when the padded content mask (i,j) touches authored content, so the
+   field carves a clean margin around text, controls, and borders instead of
+   drawing through them. */
+static bool living_field_blocked(const uint8_t *content, int region_w, int i,
+                                 int j) {
+    for (int dj = -1; dj <= 1; dj++)
+        for (int di = -1; di <= 1; di++)
+            if (content[(j + dj) * region_w + (i + di)] != 0U) return true;
+    return false;
+}
+
+/* "Visible lit" = the weave is dense here and it is not carved by content; a
+   field edge is any visible-lit cell that touches a non-visible neighbour. */
+static bool living_field_visible(int x, int y, const double *wave_x,
+                                 const double *wave_y, const double *fold,
+                                 bool radial, bool vertical, int centre_x,
+                                 int centre_y, const uint8_t *content,
+                                 int region_w, int first_x, int first_y) {
+    if (living_field_density(x, y, wave_x, wave_y, fold, radial, vertical,
+                             centre_x, centre_y) <= UI_LIVING_FIELD_LIT_LEVEL)
+        return false;
+    if (content && living_field_blocked(content, region_w, x - first_x + 1,
+                                        y - first_y + 1))
+        return false;
+    return true;
+}
+
+/* Material index for one fringe run. Left/up edges take the cool set
+   (green/cyan/blue) and right/down edges the warm set (red/yellow/magenta) — a
+   consistent "light from the upper-left" chromatic offset — and `run + drift`
+   rotates which member of the set a run uses, so hue changes run to run and
+   rotates slowly over the loop. */
+static int living_field_fringe_hue(int side, int run, int drift) {
+    static const int cool[3] = {2, 3, 4}; /* green, cyan,   blue    */
+    static const int warm[3] = {0, 1, 5}; /* red,   yellow, magenta */
+    int pick = ((run + drift) % 3 + 3) % 3;
+    return (side == 0 || side == 2) ? cool[pick] : warm[pick];
 }
 
 /*
- * living_field — a white-dominant flowing fabric with sparse saturated specks.
+ * living_field — a white-dominant flowing fabric fringed by chromatic
+ * aberration.
  *
  * Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1.1 ("fluid
  * motion expressed through discrete cells", "coordinated patterns rather than
  * independent flicker"), §1.3; UI_DISPLAY_SURFACE_TARGET_2026-10-07.md §3.1,
  * §5. The reference is a neutral weave whose rectangular forms travel and fold
- * as one material, carrying scattered saturated specks: a substrate for the
- * display, not a colour show.
+ * as one material; saturated colour appears only as a thin fringing where the
+ * light meets a gap — a chromatic aberration of the weave's own edges — so the
+ * field is a substrate for the display, never a colour fill.
  *
  * Occupancy is `wave_x * wave_y * fold`, so lit cells form coherent rectangular
  * patches that migrate and breathe together (§1.1) with black gaps between
- * them. Only a minority of lit cells take a material hue, gated by a slow
- * moving chroma wave so specks gather into flowing regions and disperse. Motion
- * is a pure function of explicit time (phase = fmod(elapsed, AMBIENT)/AMBIENT),
- * loops seamlessly, and draws only approved decorative tokens plus a neutral
- * structural tone. Reduced motion never reaches here.
+ * them; the structure stays neutral. Saturated colour rides only the *edges* of
+ * those forms — one hue per short run, left/up edges cool and right/down edges
+ * warm — so it reads as fringes on white rather than per-cell confetti. The
+ * field also carves a clean margin around authored text, controls, and borders,
+ * so it flows *around* the content and fringes at that carved boundary instead
+ * of drawing through it. Motion is a pure function of explicit time
+ * (phase = fmod(elapsed, AMBIENT)/AMBIENT), loops seamlessly, and draws only
+ * approved decorative tokens plus a neutral structural tone. Reduced motion
+ * never reaches here.
  */
 static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
                                 double elapsed_ms, const char *orientation,
@@ -333,17 +388,22 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     double wave_x[UI_LIVING_FIELD_TABLE];
     double wave_y[UI_LIVING_FIELD_TABLE];
     double fold[UI_LIVING_FIELD_TABLE];
-    double chroma[UI_LIVING_FIELD_TABLE];
+    uint8_t content[UI_LIVING_FIELD_REGION_MAX];
+    const uint8_t *content_mask;
     unsigned int period;
     double phase;
+    int drift;
     int centre_x;
     int centre_y;
     bool radial;
     bool vertical;
+    bool content_aware;
     int first_x;
     int first_y;
     int last_x;
     int last_y;
+    int region_w;
+    int region_h;
     if (!grid || !grid->cells || !bounds || !tokens || !material ||
         !isfinite(elapsed_ms) || elapsed_ms < 0.0)
         return false;
@@ -351,16 +411,16 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     if (period == 0U) return false;
     neutral = tokens->palette.text_secondary;
     phase = fmod(elapsed_ms, (double)period) / (double)period * 2.0 * pi;
+    drift = (int)(phase / (2.0 * pi) * 3.0); /* 0..2, rotates over the loop */
     /* Build the travelling waves once per axis coordinate, so the per-cell cost
-       is a few multiplies, never per-cell trigonometry. The fold and chroma
-       tables are indexed by cell sums/differences modulo TABLE; that stays
-       continuous because both periods divide TABLE. */
+       is a few multiplies, never per-cell trigonometry. The fold table is
+       indexed by cell sums modulo TABLE; that stays continuous because the
+       period divides TABLE. */
     for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++) {
         double value = (double)coord;
         wave_x[coord] = 0.55 + 0.45 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_X) + phase);
         wave_y[coord] = 0.55 + 0.45 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_Y) + phase);
         fold[coord] = 0.80 + 0.30 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_D) - phase);
-        chroma[coord] = 0.5 + 0.5 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_C) + phase);
     }
     radial = orientation && strcmp(orientation, "radial") == 0;
     vertical = orientation && strcmp(orientation, "vertical") == 0;
@@ -372,51 +432,88 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     if (last_x > grid->width) last_x = grid->width;
     last_y = bounds->y + bounds->height;
     if (last_y > grid->height) last_y = grid->height;
+    if (last_x <= first_x || last_y <= first_y) return true;
+    /* Capture a one-cell-padded mask of *drawn* content (non-space glyphs) so
+       the field can carve a margin around text, controls, and borders — and
+       fringe at that carved boundary — instead of drawing straight through
+       them. Blank cells, including the backdrop's own cleared spaces, stay
+       fillable; the authored-cell restore handles a control's own interior. */
+    region_w = last_x - first_x + 2;
+    region_h = last_y - first_y + 2;
+    content_aware = region_w * region_h <= UI_LIVING_FIELD_REGION_MAX;
+    for (int j = 0; content_aware && j < region_h; j++) {
+        for (int i = 0; i < region_w; i++) {
+            Cell cell;
+            bool authored = grid_get(grid, first_x - 1 + i, first_y - 1 + j,
+                                     &cell) && cell.glyph != 0U &&
+                            cell.glyph != ' ';
+            content[j * region_w + i] = (uint8_t)(authored ? 1U : 0U);
+        }
+    }
+    content_mask = content_aware ? content : NULL;
     for (int y = first_y; y < last_y; y++) {
         for (int x = first_x; x < last_x; x++) {
-            int cx = x;
-            int cy = y;
             double field;
-            double chroma_value;
             int band;
             Cell occupied;
             SDL_Color fg;
-            if (radial) {
-                cx = x - centre_x; if (cx < 0) cx = -cx;
-                cy = y - centre_y; if (cy < 0) cy = -cy;
-            } else if (vertical) {
-                cx = y;
-                cy = x;
-            }
-            if (cx < 0) cx = 0;
-            if (cy < 0) cy = 0;
-            if (cx >= UI_LIVING_FIELD_TABLE) cx = UI_LIVING_FIELD_TABLE - 1;
-            if (cy >= UI_LIVING_FIELD_TABLE) cy = UI_LIVING_FIELD_TABLE - 1;
+            bool open_l;
+            bool open_r;
+            bool open_u;
+            bool open_d;
             /* Product of two travelling axis waves: lit cells bunch into
                rectangular patches that migrate and breathe as one material. */
-            field = wave_x[cx] * wave_y[cy] *
-                    fold[(uint32_t)(cx + cy) & (UI_LIVING_FIELD_TABLE - 1U)];
+            field = living_field_density(x, y, wave_x, wave_y, fold, radial,
+                                         vertical, centre_x, centre_y);
             if (field <= UI_LIVING_FIELD_LIT_LEVEL) continue;
+            /* Carve around authored content so the field flows around text,
+               controls, and borders rather than drawing through them. */
+            if (content_mask &&
+                living_field_blocked(content_mask, region_w, x - first_x + 1,
+                                     y - first_y + 1))
+                continue;
+            /* The field is a backdrop: it fills empty cells only, so it can
+               never obscure authored text, a control, or a focus marker, even
+               in the preview path that draws without an authored mask. */
+            if (grid_get(grid, x, y, &occupied) &&
+                occupied.glyph != 0U && occupied.glyph != ' ') continue;
             band = (int)((field - UI_LIVING_FIELD_LIT_LEVEL) /
                          (UI_LIVING_FIELD_FIELD_MAX - UI_LIVING_FIELD_LIT_LEVEL) *
                          6.0);
             if (band < 0) band = 0;
             if (band > 6) band = 6;
-            {
-                /* The field is a backdrop: it fills empty cells only, so it can
-                   never obscure authored text, a control, or a focus marker,
-                   even in the preview path that draws without an authored mask. */
-                if (grid_get(grid, x, y, &occupied) &&
-                    occupied.glyph != 0U && occupied.glyph != ' ') continue;
-                chroma_value =
-                    chroma[(uint32_t)(cx - cy) & (UI_LIVING_FIELD_TABLE - 1U)];
-                fg = living_field_is_chromatic((uint32_t)x, (uint32_t)y,
-                                               chroma_value)
-                    ? color(material[living_field_hue((uint32_t)x, (uint32_t)y)])
-                    : color(neutral);
-                if (!grid_set(grid, x, y, ramp[band], fg, background))
-                    return false;
+            /* A lit cell sits on the field's edge when a neighbour is not
+               visible-lit — a gap, carved content, or the region border. The
+               interior stays neutral; only edges take a chromatic fringe. */
+            open_l = x - 1 < first_x || !living_field_visible(
+                x - 1, y, wave_x, wave_y, fold, radial, vertical, centre_x,
+                centre_y, content_mask, region_w, first_x, first_y);
+            open_r = x + 1 >= last_x || !living_field_visible(
+                x + 1, y, wave_x, wave_y, fold, radial, vertical, centre_x,
+                centre_y, content_mask, region_w, first_x, first_y);
+            open_u = y - 1 < first_y || !living_field_visible(
+                x, y - 1, wave_x, wave_y, fold, radial, vertical, centre_x,
+                centre_y, content_mask, region_w, first_x, first_y);
+            open_d = y + 1 >= last_y || !living_field_visible(
+                x, y + 1, wave_x, wave_y, fold, radial, vertical, centre_x,
+                centre_y, content_mask, region_w, first_x, first_y);
+            fg = color(neutral);
+            if (open_l || open_r || open_u || open_d) {
+                int side;
+                int along;
+                int run;
+                if (open_l) { side = 0; along = y; }
+                else if (open_r) { side = 1; along = y; }
+                else if (open_u) { side = 2; along = x; }
+                else { side = 3; along = x; }
+                run = along / UI_LIVING_FIELD_RUN;
+                if (living_field_unit((uint32_t)run, (uint32_t)side, 0x5f3aU) <
+                    UI_LIVING_FIELD_FRINGE)
+                    fg = color(material[living_field_fringe_hue(side, run,
+                                                               drift)]);
             }
+            if (!grid_set(grid, x, y, ramp[band], fg, background))
+                return false;
         }
     }
     return true;

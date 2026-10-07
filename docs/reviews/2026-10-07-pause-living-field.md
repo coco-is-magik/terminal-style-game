@@ -60,15 +60,17 @@ shipping surfaces to carry the §1 character rather than a diagnostic specimen's
 ## Evidence
 
 - `make test-ui-standards` — all owners pass (added coverage above).
-- `make benchmark-ui-field` — **~0.6 ms** average over 200 iterations, under the 6 ms budget;
-  `--stability` identical over 1000 iterations.
-- Refreshed contract fixtures (main and pause), each citing this record:
-  - `tests/fixtures/ui_workbench_frame_fixtures.h`: `{MENU_MAIN,100}` → `11098204912662601525`,
-    `{MENU_MAIN,150}` → `17577477401565191989`, `{MENU_PAUSE,100}` → `3419473230861947814`.
-  - `Makefile` `check-ui-workbench-frame`: main → `11098204912662601525`,
-    pause → `3419473230861947814`.
-  - `tests/test_ui_workbench_chrome.c` `test_runtime_pixel_fixtures`: MENU_MAIN → `2816664593535307868`,
-    MENU_PAUSE → `9750079444698591704`.
+- `make benchmark-ui-field` — **~0.97 ms** average over 200 iterations, under the 6 ms budget;
+  `--stability` **~0.89 ms** over 1000 iterations. (The field now evaluates neighbours to find its edges
+  and reads the grid to carve around content, hence the small rise from ~0.6 ms.)
+- Refreshed contract fixtures (main and pause), each citing this record — values as of the
+  chromatic-aberration rework:
+  - `tests/fixtures/ui_workbench_frame_fixtures.h`: `{MENU_MAIN,100}` → `17206505380091137440`,
+    `{MENU_MAIN,150}` → `1538200801492471200`, `{MENU_PAUSE,100}` → `17382040781361431038`.
+  - `Makefile` `check-ui-workbench-frame`: main → `17206505380091137440`,
+    pause → `17382040781361431038`.
+  - `tests/test_ui_workbench_chrome.c` `test_runtime_pixel_fixtures`: MENU_MAIN → `6619548030883775964`,
+    MENU_PAUSE → `12825422410423937792`.
 - `tests/test_ui_workbench_frame.c` `test_preview_matches_normal_run_rendering` now skips focus-marker
   cells on both sides (the test's stated intent), because the preview's deliberate `-1` selection and
   the composed frame's selection differ only by markers.
@@ -129,6 +131,37 @@ The field was rebuilt to match:
 `test-ui-animation` still asserts determinism, boundedness, seamless loop, reduced-motion no-op, and
 that both neutral and chromatic lit cells are present. The five recorded fixtures were refreshed with
 this change as their only cause (see Evidence).
+
+## Chromatic-aberration rework (2026-10-07): colour on the edges, flow around content
+
+The "sparse saturated specks" model above still read as per-block rainbow confetti and the field barely
+related to the menu. Re-measuring the foundation footage (`docs/inspiration_and_notes/light_and_motion`)
+at cell scale, saturated colour is **tiny** against a huge neutral field (a few thousand pixels per hue
+against millions of neutral) and appears as a **one-cell chromatic-aberration fringe flanking white
+edges** — dust on the weave's edges, not fills, and never a per-cell scatter. The geometry also showed
+the weave should *contour* the content, not ring behind it.
+
+The field now:
+
+- **Colours only its edges.** The occupancy (two travelling axis waves × a slower diagonal fold) is
+  unchanged — the movement the direction approved. The interior of every lit form is neutral
+  (`text_secondary`); a lit cell takes a saturated hue only when a neighbour is not visible-lit — a gap,
+  the region border, or a carved margin. Hue is chosen **per run** (`UI_LIVING_FIELD_RUN` cells along an
+  edge share one hue), so colour reads as coherent fringes rather than confetti; left/up edges take the
+  cool set (green/cyan/blue) and right/down edges the warm set (red/yellow/magenta), and the run hue
+  drifts three steps over the loop. `UI_LIVING_FIELD_FRINGE` gates how many runs are coloured vs. left
+  neutral, keeping the surface neutral-dominant.
+- **Flows around drawn content.** A one-cell-padded mask of *drawn* glyphs (non-space; blank cells,
+  including the backdrop's own cleared spaces, stay fillable) makes the field **carve a margin** around
+  text, controls, and borders — so the fabric parts around the menu and its fringed edge *implies* the
+  boundary instead of the field ringing behind a hard cut.
+
+New named constants replace the chroma-wave gates: `UI_LIVING_FIELD_RUN`, `UI_LIVING_FIELD_FRINGE`,
+`UI_LIVING_FIELD_REGION_MAX`; `UI_LIVING_FIELD_PERIOD_C`, `UI_LIVING_FIELD_CHROMA_BASE/GAIN`, and the
+per-cell hue helpers are gone. All invariants hold: deterministic, explicit time, seamless over the
+AMBIENT loop, reduced-motion no-op, empty-cell-only; `test-ui-animation` still asserts both neutral and
+chromatic lit cells are present and that ≥4 of the six hues appear across sampled phases. The five
+recorded fixtures were refreshed with this change as their only cause (see Evidence).
 
 ## Limitations and next
 

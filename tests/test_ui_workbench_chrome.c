@@ -523,11 +523,12 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
 
 static void test_runtime_pixel_fixtures(void **state) {
     /* Reviewed refresh 2026-10-07 (docs/reviews/2026-10-07-pause-living-field.md):
-       MENU_MAIN and MENU_PAUSE changed; the living_field backdrop, reworked to a
-       white-dominant flowing fabric with sparse saturated specks instead of flat
-       travelling colour bands, is the only cause. */
+       MENU_MAIN and MENU_PAUSE changed; the living_field backdrop, reworked so
+       that saturated colour rides only the chromatic-aberration fringe of the
+       neutral weave (one hue per run) and the field carves a margin around
+       drawn content, is the only cause. */
     static const uint64_t expected[] = {
-        UINT64_C(2816664593535307868), UINT64_C(9750079444698591704),
+        UINT64_C(6619548030883775964), UINT64_C(12825422410423937792),
         UINT64_C(10554620073566262018), UINT64_C(4061093434513253306)
     };
     const size_t count = 2080U * 1280U;

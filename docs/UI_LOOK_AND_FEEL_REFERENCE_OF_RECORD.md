@@ -370,12 +370,17 @@ by `ui_theme_material_palette()` and is **never** a semantic status colour and *
 All six are opaque and meet the non-text contrast floor (≥ 3.0) against `canvas` (`test-ui-theme`).
 
 **Application (the `living_field`).** A field is a **white-dominant flowing fabric**: a neutral
-structural weave (`text_secondary`) whose rectangular forms travel and fold as one material, carrying
-**sparse** saturated specks — a minority of lit cells take a material hue, gathered into regions by a
-slow moving chroma wave so colour flows through the fabric and disperses rather than sitting still.
-Hues intermix at the cell scale and **no spatial hue ramp** appears. See
-`docs/reviews/2026-10-07-pause-living-field.md` ("Field rework", "Fabric rework"). The set is not
-required to be drawn as a full-spectrum sweep; the fabric, not the colour, is the structure.
+structural weave (`text_secondary`) whose rectangular forms travel and fold as one material. Saturated
+colour is **only a chromatic-aberration fringe** of that weave — it rides the *edges* of the lit forms
+(where the fabric meets a gap, the region border, or a margin it has carved around content), **one hue
+per short run**, with left/up edges taking the cool set (green/cyan/blue) and right/down edges the warm
+set (red/yellow/magenta), and the run hue drifting slowly over the loop. The interior stays neutral, so
+colour reads as fringing dust on white edges — never a fill, never a spatial hue ramp, never per-cell
+confetti. The field also **carves a margin around drawn content** (text, controls, borders) so it flows
+*around* them and the boundary is implied by the fabric's fringed edge. See
+`docs/reviews/2026-10-07-pause-living-field.md` ("Field rework", "Fabric rework", "Chromatic-aberration
+rework"). The set is not required to be drawn as a full-spectrum sweep; the fabric, not the colour, is
+the structure.
 
 ---
 
