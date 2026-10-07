@@ -48,7 +48,7 @@ height=<bounded region height>
 visible=1
 z_index=-1
 align=left
-preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register>
+preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register|living_field>
 target=<element name in the same active layout>
 trigger=<context_enter|context_exit|focus|activate|while_visible>
 orientation=<horizontal|vertical|radial>
@@ -64,7 +64,11 @@ Rules:
 
 - Workbench and normal run call the same evaluator.
 - Timings come from theme roles: enter 160 ms, exit 120 ms, focus/activation 80 ms,
-  while-visible relationship treatment 120 ms. Explicit looping repeats the corresponding role.
+  while-visible ambient treatment 1800 ms. Explicit looping repeats the corresponding role.
+- `living_field` is an ambient backdrop (`trigger=while_visible`, `loop=0`, `randomize=0`, any
+  orientation). It fills only empty cells within its bounded region, so it never obscures authored
+  text, a control, or a focus marker; `orientation` selects the travel axis (`radial` ripples from
+  the region centre).
 - `focus` runs only while the target Button is focused.
 - `activate` runs when an action in the containing layout activates; it never delays the action.
 - `context_exit` uses a bounded departing-menu snapshot while destination controls appear
@@ -321,6 +325,36 @@ content=
 Both presets reverse deterministically for `context_exit`, end cleanly at 160/120 ms, use only
 palette accent/focus material, and draw nothing under Reduced Motion.
 
+### Ambient living field
+
+```text
+name=animation_living_field
+type=animation
+x=-30
+y=-9
+coords=absolute
+width=80
+height=40
+visible=1
+z_index=-1
+align=left
+preset=living_field
+target=pause_menu_container
+trigger=while_visible
+orientation=radial
+loop=0
+randomize=0
+style=plain
+transition=none
+focus_effect=none
+content=
+```
+
+A dense, coordinated field of palette accent/focus glyphs travels across the bounded region over the
+1800 ms ambient role and is drawn as a backdrop beneath unchanged controls. It draws nothing under
+Reduced Motion. It is bound to the pause context as `animation_living_field` in
+`assets/ui_layouts/pause_menu.txt`; see `docs/reviews/2026-10-07-pause-living-field.md`.
+
 ## Existing reusable templates
 
 - `btn_plain_technical.txt`
@@ -342,6 +376,7 @@ palette accent/focus material, and draw nothing under Reduced Motion.
 - `animation_command_flash.txt`
 - `animation_button_reassemble.txt`
 - `animation_panel_register.txt`
+- `animation_living_field.txt`
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 

@@ -24,7 +24,7 @@ static const UiThemeTokens provisional_tokens = {
         {0x70U, 0xb7U, 0xffU, 0xffU}
     },
     {1, 3, 2, 2, 1, 2, 3, 1, 260, 160, 40, 15, 2},
-    {0U, 80U, 160U, 120U, 120U}
+    {0U, 80U, 160U, 120U, 120U, 1800U}
 };
 
 const UiThemeTokens *ui_theme_provisional_tokens(void) {

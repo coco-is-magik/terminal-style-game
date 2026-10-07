@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "../src/ui_animation.h"
+#include "../src/ui_theme.h"
 
 static UiElement element(const char *name, UiElementType type, int x, int y,
                          int width, int height) {
@@ -555,6 +556,112 @@ static void test_lifecycle_protects_authored_spaces_not_backdrop(void **state) {
     grid_destroy(grid);
 }
 
+static void test_living_field_is_deterministic_bounded_and_reduced(void **state) {
+    UiElement target = element("target", UI_ELE_CONTAINER, 8, 6, 20, 10);
+    UiElement unit = element("unit", UI_ELE_ANIMATION, 0, 0, 20, 10);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 24);
+    Grid *repeat = grid_create(40, 24);
+    Grid *reference = grid_create(40, 24);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    unsigned int period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
+    int lit = 0;
+    bool accent_seen = false;
+    bool focus_seen = false;
+    bool outside = false;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(repeat);
+    assert_non_null(reference);
+    assert_true(period > 0U);
+    (void)snprintf(unit.target, sizeof(unit.target), "target");
+    (void)snprintf(unit.preset, sizeof(unit.preset), "living_field");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "while_visible");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
+    layout.elements[0] = &target;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+
+    assert_true(ui_ele_animation_is_valid(&unit));
+    unit.randomize = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.randomize = 0;
+    unit.loop = 1;
+    assert_false(ui_ele_animation_is_valid(&unit));
+    unit.loop = 0;
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "context_enter");
+    assert_false(ui_ele_animation_is_valid(&unit));
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "while_visible");
+    assert_true(ui_ele_animation_is_valid(&unit));
+
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            Cell cell;
+            assert_true(grid_get(grid, x, y, &cell));
+            if (cell.glyph == 0U || cell.glyph == ' ') continue;
+            if (x < 8 || x >= 28 || y < 6 || y >= 16) {
+                outside = true;
+            } else {
+                lit++;
+                if (cell.fg.r == 0x67 && cell.fg.g == 0xf5) accent_seen = true;
+                if (cell.fg.r == 0xa8 && cell.fg.g == 0xff) focus_seen = true;
+            }
+        }
+    }
+    assert_false(outside);
+    assert_true(lit > 60);
+    assert_true(accent_seen);
+
+    grid_clear(repeat, bg);
+    ui_layout_render(&layout, repeat, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, repeat, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, repeat->cells, 40U * 24U * sizeof(Cell));
+
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)period, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, repeat->cells, 40U * 24U * sizeof(Cell));
+
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, true, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, reference->cells, 40U * 24U * sizeof(Cell));
+
+    /* The colour wave beats against the intensity wave, so sample several
+       phases to observe both decorative hues the field is allowed to use. */
+    for (int step = 1; step < 8 && !focus_seen; step++) {
+        double t = (double)period * (double)step / 8.0;
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, t, false, false,
+                                               UI_ANIMATION_EVENT_WHILE_VISIBLE));
+        for (int y = 6; y < 16; y++) {
+            for (int x = 8; x < 28; x++) {
+                Cell cell;
+                assert_true(grid_get(grid, x, y, &cell));
+                if (cell.glyph == 0U || cell.glyph == ' ') continue;
+                if (cell.fg.r == 0xa8 && cell.fg.g == 0xff) focus_seen = true;
+            }
+        }
+    }
+    assert_true(focus_seen);
+
+    release(&target);
+    grid_destroy(reference);
+    grid_destroy(repeat);
+    grid_destroy(grid);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_pause_glitch_canvas_matches_layout_unit),
@@ -565,7 +672,8 @@ int main(void) {
         cmocka_unit_test(test_lifecycle_protects_authored_spaces_not_backdrop),
         cmocka_unit_test(test_center_out_and_reduced_motion),
         cmocka_unit_test(test_focus_trigger_and_ordinary_transition),
-        cmocka_unit_test(test_trigger_filter_and_random_bounds)
+        cmocka_unit_test(test_trigger_filter_and_random_bounds),
+        cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

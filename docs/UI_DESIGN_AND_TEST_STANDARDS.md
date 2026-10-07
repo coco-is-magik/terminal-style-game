@@ -108,6 +108,13 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 
 ### Accepted motion vocabulary and integration boundary
 
+> **2026-10-07 change of direction.** The Reference of Record §1 is now the target for the whole
+> product; the diagnostic specimens are no longer the thing to match. The boundaries below are the
+> *floor* (determinism, non-flicker, control stability), not a ceiling on richness. Dense
+> *coordinated* chromatic activity is expected in menus, the HUD, the world, and visualizations. See
+> [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) and
+> [`UI_DISPLAY_SURFACE_TARGET_2026-10-07.md`](UI_DISPLAY_SURFACE_TARGET_2026-10-07.md).
+
 - The motion vocabulary is controlled display registration and glyph reassembly, not a
   persistent or global glitch effect.
 - Text, focus markers, controls, hit targets, semantic status, and activation eligibility

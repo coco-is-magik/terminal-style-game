@@ -188,13 +188,14 @@ Their complete bounded schema and copyable examples are in
 `docs/UI_WORKBENCH_ASSET_REFERENCE.md`.
 
 Recognized animation presets are `pause_glitch`, `center_out`, `perimeter_burst`,
-`local_glitch`, `edge_trace`, `chromatic_register`, `command_flash`, `button_reassemble`, and
-`panel_register`. The three button-effect
+`local_glitch`, `edge_trace`, `chromatic_register`, `command_flash`, `button_reassemble`,
+`panel_register`, and `living_field`. The three button-effect
 presets require a Button target, `orientation=horizontal`, and `randomize=0`. `edge_trace` and
 `chromatic_register` require `trigger=focus`; `command_flash` requires `trigger=activate`.
 `button_reassemble` requires a Button target and `panel_register` requires a Container target. Both
 context presets require `trigger=context_enter|context_exit`, `orientation=radial`, `loop=0`, and
-`randomize=0`.
+`randomize=0`. The ambient `living_field` requires `trigger=while_visible`, `loop=0`, and
+`randomize=0`; it is a dense backdrop that fills only empty cells inside its bounds.
 
 Containers use `x`/`y` as their absolute screen position; children with
 `coords=relative` are offset from the parent.  Example:

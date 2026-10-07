@@ -107,7 +107,7 @@ static bool animation_progress(const UiElement *unit, double elapsed_ms,
     if (strcmp(unit->trigger, "context_exit") == 0) role = UI_THEME_MOTION_MAJOR_EXIT;
     else if (strcmp(unit->trigger, "focus") == 0 || strcmp(unit->trigger, "activate") == 0)
         role = UI_THEME_MOTION_FEEDBACK;
-    else if (strcmp(unit->trigger, "while_visible") == 0) role = UI_THEME_MOTION_RELATIONSHIP;
+    else if (strcmp(unit->trigger, "while_visible") == 0) role = UI_THEME_MOTION_AMBIENT;
     duration = (double)ui_theme_motion_duration_ms(role, false);
     *visible = true;
     if (unit->loop || preview_loop || strcmp(unit->trigger, "while_visible") == 0)
@@ -245,6 +245,97 @@ static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+#define UI_LIVING_FIELD_TABLE 512
+
+/*
+ * living_field — a dense, coordinated, chromatic display field.
+ *
+ * Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1.1, §1.3;
+ * UI_DISPLAY_SURFACE_TARGET_2026-10-07.md §3.1, §5. A coherent travelling
+ * pattern fills the bounded region; a second wave at a different spatial
+ * frequency separates and recombines the accent/focus traces (§1.1). Glyph
+ * occupancy is driven by the intensity wave, giving dense bands with negative
+ * space between them. Motion is a pure function of explicit time, loops
+ * seamlessly over the AMBIENT role, and is drawn from palette accent/focus
+ * only. Reduced motion never reaches this function.
+ */
+static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
+                                double elapsed_ms, const char *orientation,
+                                SDL_Color accent, SDL_Color focus,
+                                SDL_Color background) {
+    static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
+    static const double pi = 3.14159265358979323846;
+    static const double intensity_period = 10.0;
+    static const double colour_period = 17.0;
+    static const double threshold = 0.6;
+    double wave_intensity[UI_LIVING_FIELD_TABLE];
+    double wave_colour[UI_LIVING_FIELD_TABLE];
+    unsigned int period;
+    double phase;
+    int centre_x;
+    int centre_y;
+    bool radial;
+    bool vertical;
+    int first_x;
+    int first_y;
+    int last_x;
+    int last_y;
+    if (!grid || !grid->cells || !bounds || !isfinite(elapsed_ms) || elapsed_ms < 0.0)
+        return false;
+    period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
+    if (period == 0U) return false;
+    phase = fmod(elapsed_ms, (double)period) / (double)period * 2.0 * pi;
+    for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++) {
+        double value = (double)coord;
+        wave_intensity[coord] = sin(value * (2.0 * pi / intensity_period) - phase);
+        wave_colour[coord] = sin(value * (2.0 * pi / colour_period) - phase);
+    }
+    radial = orientation && strcmp(orientation, "radial") == 0;
+    vertical = orientation && strcmp(orientation, "vertical") == 0;
+    centre_x = bounds->x + bounds->width / 2;
+    centre_y = bounds->y + bounds->height / 2;
+    first_x = bounds->x < 0 ? 0 : bounds->x;
+    first_y = bounds->y < 0 ? 0 : bounds->y;
+    last_x = bounds->x + bounds->width;
+    if (last_x > grid->width) last_x = grid->width;
+    last_y = bounds->y + bounds->height;
+    if (last_y > grid->height) last_y = grid->height;
+    for (int y = first_y; y < last_y; y++) {
+        for (int x = first_x; x < last_x; x++) {
+            int coord;
+            double intensity;
+            int band;
+            if (radial) {
+                double dx = (double)(x - centre_x);
+                double dy = (double)(y - centre_y);
+                coord = (int)lround(sqrt(dx * dx + dy * dy));
+            } else {
+                coord = vertical ? y : x;
+            }
+            if (coord < 0) coord = 0;
+            if (coord >= UI_LIVING_FIELD_TABLE) coord = UI_LIVING_FIELD_TABLE - 1;
+            intensity = wave_intensity[coord] < 0.0
+                ? -wave_intensity[coord] : wave_intensity[coord];
+            if (intensity < threshold) continue;
+            band = (int)((intensity - threshold) / (1.0 - threshold) * 6.0);
+            if (band < 0) band = 0;
+            if (band > 6) band = 6;
+            {
+                /* The field is a backdrop: it fills empty cells only, so it can
+                   never obscure authored text, a control, or a focus marker,
+                   even in the preview path that draws without an authored mask. */
+                Cell occupied;
+                if (grid_get(grid, x, y, &occupied) &&
+                    occupied.glyph != 0U && occupied.glyph != ' ') continue;
+            }
+            if (!grid_set(grid, x, y, ramp[band],
+                          wave_colour[coord] >= 0.0 ? accent : focus, background))
+                return false;
+        }
+    }
+    return true;
+}
+
 static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                         double elapsed_ms, bool reduced_motion, bool preview_loop,
                         UiAnimationEvent event) {
@@ -287,6 +378,10 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     if (!animation_progress(unit, elapsed_ms, preview_loop, &visible, &progress))
         return false;
     if (!visible) return true;
+    if (strcmp(unit->preset, "living_field") == 0)
+        return render_living_field(grid, &bounds, elapsed_ms, unit->orientation,
+                                   color(palette->accent), color(palette->focus),
+                                   color(palette->canvas));
     if (strcmp(unit->preset, "pause_glitch") == 0)
         return render_pause_glitch(grid, set_grid, &bounds, unit->name,
                                    unit->orientation, unit->randomize != 0,

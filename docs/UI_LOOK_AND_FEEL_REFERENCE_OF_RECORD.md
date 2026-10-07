@@ -38,6 +38,40 @@ Related authority:
 - [`UI_WORKBENCH_ASSET_REFERENCE.md`](UI_WORKBENCH_ASSET_REFERENCE.md) — application-UI asset and
   workbench control reference.
 
+## Change of direction recorded 2026-10-07 — §1 is the target for the whole product
+
+The project owner has authorized a deliberate change of this document. §2 and §4 had drifted into
+treating the diagnostic specimens (`make ui-theme-demo`, `make ui-motion-demo`) as the thing the
+product must match, and into reading §4.2's "white-dominant" rule as applying to the shipped menus.
+The direction now in force:
+
+1. **The primary references in §1 are the target — for the whole product, not only the app UI.**
+   The authored menus, the in-game HUD, the game world, and the editor visualizations are all
+   governed by §1.1, §1.2, and §1.3.
+2. **The approved specimens are diagnostics, not the target.** `ui-theme-demo` and `ui-motion-demo`
+   remain valid instruments for exercising the palette and the motion vocabulary. They are no longer
+   the thing the product "must look and move like." Their sparseness is a property of a diagnostic
+   probe, not of the product.
+3. **Menus and display surfaces are dense, chromatic, and alive.** The "white-dominant, selectively
+   coloured" rule in §4.2 is **scoped to the editor interface only** (the tool's own panes, footers,
+   tooltips, and status text). It never applied, and does not apply, to authored menus, the HUD, the
+   world, or visualizations — which §4.2 already exempted as "the preview, the live tool feedback,
+   and the visualizations."
+4. **"No glitch" means no independent flicker, not no richness.** §2.1, §4.4, and §5.2.5 continue to
+   forbid *independent flicker* and *filters laid over the interface*. They do **not** forbid
+   **coordinated, coherent, dense chromatic activity**, which §1.1 explicitly wants ("shapes can
+   travel, patterns can flow, and colored traces can separate and recombine, but the larger forms
+   should remain coherent"). The test is **coordinated pattern versus independent flicker**, not
+   **sparse versus dense**.
+5. **Both halves of §1.1 remain binding.** "Keep the controls dependable. Let the display feel
+   alive." Richness goes into decorative material and display surfaces; controls, focus markers, hit
+   targets, and semantic status stay crisp, stable, and immediate (§2.1, §4.4).
+
+Nothing here relaxes determinism, explicit time, stable IDs, exact endpoints, reduced-motion
+immediacy and non-spatiality, the palette/geometry tokens (§3), or the single shared evaluator (§2).
+The concrete per-surface obligations are in
+[`UI_DISPLAY_SURFACE_TARGET_2026-10-07.md`](UI_DISPLAY_SURFACE_TARGET_2026-10-07.md).
+
 ## Rule of engagement
 
 1. Before beginning any phase, and before approving any change that touches colour, motion,
@@ -219,7 +253,7 @@ directions to respect and extend. They must not be forked, bypassed, or re-imple
 | Shared UI scale preferences | [`../src/ui_preferences.h`](../src/ui_preferences.h) / `.c` | `default_user.ini` / `user.ini`, 100/125/150/200, same precedence and persistence as normal run. |
 | Shared animation evaluator | [`../src/ui_animation.h`](../src/ui_animation.h) / `.c` | **One evaluator for normal run and editor. A workbench-only renderer is forbidden.** |
 | Application UI model + atomic persistence | [`../src/ui_ele.h`](../src/ui_ele.h), [`../src/ui_workbench_store.h`](../src/ui_workbench_store.h), `platform_fs` | Validated same-directory temp file, flush, sync, atomic replace. Failure preserves both the file and the in-memory edit. |
-| Accepted diagnostic specimens | `make ui-theme-demo`, `make ui-motion-demo` ([`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md), [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)) | **Manually approved** palette and D6 motion references. The editor must look and move like these. |
+| Accepted diagnostic specimens | `make ui-theme-demo`, `make ui-motion-demo` ([`reviews/2026-09-16-v1-1-full-palette-demo.md`](reviews/2026-09-16-v1-1-full-palette-demo.md), [`reviews/2026-09-16-v1-1-ui-motion-demo.md`](reviews/2026-09-16-v1-1-ui-motion-demo.md)) | **Manually approved** palette and D6 motion references — **diagnostics, not the target** (see the 2026-10-07 change of direction above). Use them to exercise the palette and the motion vocabulary; do not treat their sparseness as the product's look. |
 | Live application-UI editor | `make ui-workbench` ([`reviews/2026-09-17-ui-workbench-i1.md`](reviews/2026-09-17-ui-workbench-i1.md)) | The proven host pattern: adapter palette, offscreen canvas, one composited layer, dedicated footer rows. Scale treatment is corrected in §4.7 — the I1 host left the editor interface at a fixed 100%, which is superseded. |
 | Determinism harness pattern | `tests/benchmark_*.c`, `benchmark-*` / `stability-*` make targets | Determinism is proven by checksums and snapshots, never by prose. Reuse this pattern for frame gates. |
 | Visual direction source | [`inspiration_and_notes/`](inspiration_and_notes/) | The primary references in section 1. |
@@ -227,6 +261,11 @@ directions to respect and extend. They must not be forked, bypassed, or re-imple
 ## 2.1 The accepted motion boundary (from the approved motion specimen)
 
 These boundaries were manually approved on 2026-09-16 and remain binding:
+
+**Scope note (2026-10-07).** They are the *floor* — determinism, non-flicker, and control stability —
+not a ceiling on richness. Per the change of direction above, dense *coordinated* chromatic activity
+is expected in menus, the HUD, the world, and visualizations. The bullets below describe what must
+stay true *while* it moves:
 
 - Controlled display registration and glyph reassembly — **not** persistent or global glitch.
 - **Stable** text, focus markers, controls, hit targets, semantic state, and interaction
@@ -302,6 +341,12 @@ small logical panel.**
 | `UI_THEME_MOTION_MAJOR_ENTER` | 160 ms | Major context enter |
 | `UI_THEME_MOTION_MAJOR_EXIT` | 120 ms | Major context exit |
 | `UI_THEME_MOTION_RELATIONSHIP` | 120 ms | Relationship cues |
+| `UI_THEME_MOTION_AMBIENT` | 1800 ms | Ambient looping material field (`living_field`); added 2026-10-07 |
+
+**Ambient role (2026-10-07).** `UI_THEME_MOTION_AMBIENT` was added under the change of direction
+above so a continuously-flowing material field has an in-vocabulary period rather than a hidden
+constant. A `while_visible` animation unit now maps to this role. The 80/160/120/120 ms transition
+roles are unchanged.
 
 ---
 
@@ -327,6 +372,11 @@ Editor-interface colour is restrained. `text_primary` carries the emphasis; `acc
 used selectively for state, not as decoration. Rich chromatic activity belongs to the **preview, the
 live tool feedback, and the visualizations** — not to the editor interface.
 
+**Scope (2026-10-07).** This clause governs the **editor interface only**. Authored menus, the HUD,
+the world, and visualizations are *display surfaces* and are governed by §1: they may be dense,
+chromatic, and alive. See the change of direction above and
+[`UI_DISPLAY_SURFACE_TARGET_2026-10-07.md`](UI_DISPLAY_SURFACE_TARGET_2026-10-07.md).
+
 ## 4.3 Preview-first, panes by progressive disclosure
 
 The faithful preview is the primary surface. Hierarchy and inspector panes appear when editing and
@@ -343,6 +393,9 @@ that feels alive; a permanently pane-cluttered editor sacrifices the first for n
 - Reduced motion: immediate and non-spatial.
 - **Forbidden:** persistent/global glitch, random flicker, decorative trails, particle bursts used
   in place of a real transformation, and any animation that reads as a filter over the interface.
+  Coordinated, coherent, dense chromatic activity is **not** a "filter over the interface" and is not
+  forbidden here; only *independent flicker* and *overlays laid over controls* are. See the 2026-10-07
+  change of direction.
 
 ## 4.5 Guidance lives inside the editor
 
@@ -429,9 +482,12 @@ isolation:
 1. A change touching colour, motion, animation, transition, or interface feel with **no §
    citation**.
 2. A new hardcoded colour in the editor interface.
-3. A new motion treatment outside the bounded vocabulary or outside the 80/160/120/120 ms roles.
+3. A new motion treatment outside the bounded vocabulary or outside the §3.3 role durations
+   (0/80/160/120/120/1800 ms; the ambient role was added 2026-10-07).
 4. Any motion that displaces, obscures, or delays a control, focus marker, or hit target.
 5. Any animation that reads as a global/persistent glitch or as a filter over the interface.
+   Coordinated, dense chromatic activity is **not** this; the alarm targets *independent flicker* and
+   *overlays that read as a filter over controls*. See the 2026-10-07 change of direction.
 6. A parity or equivalence claim proven by calling the same function twice.
 7. An interface claim with no composed-frame artifact.
 8. A requirement marked "met" without a named test or artifact behind it.

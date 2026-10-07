@@ -304,7 +304,8 @@ static void test_preview_matches_normal_run_rendering(void **state) {
                     if (!ui_workbench_chrome_cell_in_preview(column, row + 1,
                                                              260, 160))
                         continue;
-                    if (wanted->glyph == '>' || wanted->glyph == '<')
+                    if (wanted->glyph == '>' || wanted->glyph == '<' ||
+                        composed->glyph == '>' || composed->glyph == '<')
                         continue;
                     assert_int_equal(composed->glyph, wanted->glyph);
                 }

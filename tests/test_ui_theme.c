@@ -204,7 +204,7 @@ static void test_scaled_edges_are_deterministic_and_transactional(void **state) 
 }
 
 static void test_motion_roles_easing_and_reduced_motion(void **state) {
-    static const unsigned int expected_durations[] = {0U, 80U, 160U, 120U, 120U};
+    static const unsigned int expected_durations[] = {0U, 80U, 160U, 120U, 120U, 1800U};
     const UiThemeTokens *tokens = ui_theme_provisional_tokens();
     double output;
     (void)state;
@@ -213,6 +213,7 @@ static void test_motion_roles_easing_and_reduced_motion(void **state) {
     assert_int_equal(ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false), 160U);
     assert_int_equal(ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false), 120U);
     assert_int_equal(ui_theme_motion_duration_ms(UI_THEME_MOTION_RELATIONSHIP, false), 120U);
+    assert_int_equal(ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false), 1800U);
     assert_memory_equal(tokens->motion_duration_ms, expected_durations,
                         sizeof(tokens->motion_duration_ms));
     assert_true(ui_theme_motion_progress(

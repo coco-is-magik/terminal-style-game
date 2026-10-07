@@ -129,6 +129,7 @@ TEST_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/test-editor-highlight
 BENCH_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/benchmark-editor-highlight
 BENCH_SURFACE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-surface-render
 BENCH_COLORED_LIGHTING_RUNNER := $(BUILD_DIR)/benchmark-colored-lighting
+BENCH_UI_FIELD_RUNNER         := $(BUILD_DIR)/benchmark-ui-field
 TEST_EDITOR_DOMAIN_RUNNER    := $(BUILD_DIR)/test-editor-domain
 TEST_UNIFIED_EDITOR_RUNNER   := $(BUILD_DIR)/test-unified-editor
 TEST_INPUT_RUNNER            := $(BUILD_DIR)/test-input
@@ -207,7 +208,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke
+.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke
 .PHONY: ui-motion-demo ui-workbench ui-editor
 
 
@@ -826,6 +827,11 @@ $(TEST_UI_ANIMATION_RUNNER): tests/test_ui_animation.c $(SRC_UI_ANIMATION) $(TES
 		$(TEST_UI_ELE_SRC) $(SRC_UI_MOTION) $(SRC_UI_CANVAS) \
 		-o $(TEST_UI_ANIMATION_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(BENCH_UI_FIELD_RUNNER): tests/benchmark_ui_field.c $(SRC_UI_ANIMATION) $(TEST_UI_ELE_SRC) $(SRC_UI_MOTION) $(SRC_UI_CANVAS) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/benchmark_ui_field.c $(SRC_UI_ANIMATION) \
+		$(TEST_UI_ELE_SRC) $(SRC_UI_MOTION) $(SRC_UI_CANVAS) \
+		-o $(BENCH_UI_FIELD_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_UI_ANIMATION_PLAYBACK_RUNNER): tests/test_ui_animation_playback.c $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_THEME) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_animation_playback.c \
 		$(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_THEME) \
@@ -895,7 +901,7 @@ check-ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 		actual=$$($(UI_WORKBENCH_FRAME_TOOL) --context $$context --scale 100 --elapsed-ms 0 --checksum-only | sed 's/checksum=//'); \
 		case " $$context " in \
 			*" main "*) expected=10821154052634477536 ;; \
-			*" pause "*) expected=11912315341095897809 ;; \
+			*" pause "*) expected=13042746718342089901 ;; \
 			*" settings "*) expected=14648528100631133103 ;; \
 			*" confirm "*) expected=18405518230658705158 ;; \
 		esac; \
@@ -1603,7 +1609,7 @@ verification-environment:
 benchmark-headless: verification-environment benchmark-editor-highlight benchmark-surface-render \
 	benchmark-colored-lighting benchmark-sprite-render \
 	benchmark-optical-runtime-view benchmark-heightfield-selective \
-	benchmark-optical-render benchmark-r9-mirror-trace
+	benchmark-optical-render benchmark-r9-mirror-trace benchmark-ui-field
 
 stability: $(APP)
 	./$(APP) --stability-test 30
@@ -1621,6 +1627,12 @@ stability-editor-highlight: $(BENCH_EDITOR_HIGHLIGHT_RUNNER)
 
 benchmark-surface-render: $(BENCH_SURFACE_RENDER_RUNNER)
 	./$(BENCH_SURFACE_RENDER_RUNNER)
+
+benchmark-ui-field: $(BENCH_UI_FIELD_RUNNER)
+	./$(BENCH_UI_FIELD_RUNNER)
+
+stability-ui-field: $(BENCH_UI_FIELD_RUNNER)
+	./$(BENCH_UI_FIELD_RUNNER) --stability
 
 benchmark-colored-lighting: $(BENCH_COLORED_LIGHTING_RUNNER)
 	./$(BENCH_COLORED_LIGHTING_RUNNER)

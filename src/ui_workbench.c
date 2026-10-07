@@ -492,7 +492,7 @@ UiWorkbenchResult ui_workbench_cycle_value(UiWorkbench *workbench, int direction
     static const char *const presets[] = {
         "pause_glitch", "center_out", "perimeter_burst", "local_glitch",
         "edge_trace", "chromatic_register", "command_flash",
-        "button_reassemble", "panel_register"
+        "button_reassemble", "panel_register", "living_field"
     };
     static const char *const triggers[] = {
         "context_enter", "context_exit", "focus", "activate", "while_visible"
