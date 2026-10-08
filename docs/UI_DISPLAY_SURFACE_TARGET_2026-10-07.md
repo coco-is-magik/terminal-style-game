@@ -55,6 +55,11 @@ fixed; only the amount and behaviour differ per surface.
   RGB chromatic-aberration fringe** on the weave's edges (see §4) — the three additive primaries chosen
   by edge direction, never a secondary colour, never a monochrome wash, never a colour fill. The field is
   a **substrate**: it fills *behind* text and controls, so the menu reads as one continuous material.
+- **Layer over the frame behind it.** A menu opens over the frame that was on screen when it opened,
+  recessed through the theme's overlay response (`dim` 45 / `grey` 60), so pausing reads as a layer over
+  the paused game rather than a takeover. Each layout chooses with `underlay=<dim|none>`
+  (`src/ui_underlay.c`); see `reviews/2026-10-08-menu-underlay.md`. The recessed frame is decoration and
+  never moves a control, a glyph, or a hit target.
 - **Stays stable.** Button labels, the `>`/`<` focus markers, focus/selection state, hit targets, and
   interaction eligibility never move and are never obscured (§2.1, §4.4). Reduced motion draws no
   field and no displacement.

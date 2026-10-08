@@ -232,7 +232,13 @@ A screen composed of a list of element names.  The names reference files in
 name=<layout name>
 type=layout
 elements=<comma-separated element names>
+underlay=<dim|none>
 ```
+
+`underlay` is optional and defaults to `dim`: the surface keeps the frame that was on screen when it
+opened and recesses it (dimmed and greyed by the theme's overlay response), which is how a menu reads
+as a layer over a paused game. `underlay=none` paints the plain background, which is what the main
+menu does because it is never reached over a live frame. An unknown value fails the load.
 
 Example:
 

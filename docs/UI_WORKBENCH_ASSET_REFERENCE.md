@@ -97,6 +97,30 @@ Rules:
   Workbench preset selection normalizes them to `context_enter`; cloning selects the first compatible
   target and rejects without creating a file when none exists.
 
+## Layout fields
+
+A screen is a list of element names (see `assets/README.md` for the file shape):
+
+```text
+name=<layout name>
+type=layout
+elements=<comma-separated element names>
+transition=none
+underlay=<dim|none>
+```
+
+- `transition` selects a layout-level presentation effect; absent means `none`.
+- `underlay` chooses what sits behind the surface. `dim` (the default) keeps the frame that was on
+  screen when the surface opened and recesses it through the theme's overlay response, so a menu can
+  read as a layer over a paused game; `none` paints the plain background, exactly as before. An
+  unknown value fails the load rather than silently reverting. The response is decoration only: it
+  never moves a control, a glyph, or a hit target, and it takes no time input, so reduced motion
+  needs no special case. `src/ui_underlay.c` applies it with the `dim_percent`/`grey_percent`
+  strengths from `ui_theme`; the frame is captured once, when the surface opens, and forgotten when
+  the last surface closes.
+- The workbench has no control for `underlay` yet. It rewrites the `elements=` line and preserves
+  other lines, so a hand-authored value survives a save, but it cannot be changed from the editor.
+
 ## Copyable units
 
 ### Reuse the exact pause glitch

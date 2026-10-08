@@ -790,6 +790,67 @@ static void test_production_focus_effects_are_deterministic_and_nonstructural(vo
     release_stack_element(&button);
 }
 
+/* A layout chooses what sits behind its surface: `underlay=dim` keeps the frame
+   that was on screen when it opened and recesses it, `underlay=none` paints the
+   plain background. Absent means dim, and an unknown value fails the load rather
+   than silently reverting to a default. */
+static void test_ui_layout_underlay_default_and_opt_out(void **state) {
+    UiUnderlayMode mode = UI_UNDERLAY_NONE;
+    const char *rejected_path = "/tmp/tsg_ui_layout_underlay_rejected.txt";
+    UiCache cache;
+    UiLayout *layout;
+    FILE *file;
+
+    (void)state;
+    assert_true(ui_ele_underlay_parse("dim", &mode));
+    assert_int_equal(mode, UI_UNDERLAY_DIM);
+    assert_true(ui_ele_underlay_parse("none", &mode));
+    assert_int_equal(mode, UI_UNDERLAY_NONE);
+    assert_false(ui_ele_underlay_parse("blur", &mode));
+    assert_int_equal(mode, UI_UNDERLAY_NONE);
+    assert_false(ui_ele_underlay_parse(NULL, &mode));
+    assert_false(ui_ele_underlay_parse("dim", NULL));
+
+    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+
+    ui_cache_tick(&cache, "pause_menu", "assets/ui_elements");
+    layout = ui_layout_load("assets/ui_layouts/pause_menu.txt", &cache);
+    assert_non_null(layout);
+    assert_int_equal(layout->underlay, UI_UNDERLAY_DIM);
+    ui_layout_destroy(layout);
+
+    ui_cache_tick(&cache, "settings", "assets/ui_elements");
+    layout = ui_layout_load("assets/ui_layouts/settings.txt", &cache);
+    assert_non_null(layout);
+    assert_int_equal(layout->underlay, UI_UNDERLAY_DIM);
+    ui_layout_destroy(layout);
+
+    ui_cache_tick(&cache, "confirm_quit", "assets/ui_elements");
+    layout = ui_layout_load("assets/ui_layouts/confirm_quit.txt", &cache);
+    assert_non_null(layout);
+    assert_int_equal(layout->underlay, UI_UNDERLAY_DIM);
+    ui_layout_destroy(layout);
+
+    /* The main menu is never reached over a live frame, so it opts out. */
+    ui_cache_tick(&cache, "main_menu", "assets/ui_elements");
+    layout = ui_layout_load("assets/ui_layouts/main_menu.txt", &cache);
+    assert_non_null(layout);
+    assert_int_equal(layout->underlay, UI_UNDERLAY_NONE);
+    ui_layout_destroy(layout);
+
+    file = fopen(rejected_path, "w");
+    assert_non_null(file);
+    assert_true(fprintf(file, "name=rejected\ntype=layout\nelements=\n"
+                              "underlay=blur\n") > 0);
+    assert_int_equal(fclose(file), 0);
+    layout = ui_layout_load(rejected_path, &cache);
+    assert_null(layout);
+    assert_int_equal(unlink(rejected_path), 0);
+
+    ui_cache_destroy(&cache);
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ui_ele_load_text),
@@ -803,6 +864,7 @@ int main(void) {
         cmocka_unit_test(test_ui_layout_hud_overlay_slots),
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),
         cmocka_unit_test(test_ui_layout_remaining_menu_focus_actions),
+        cmocka_unit_test(test_ui_layout_underlay_default_and_opt_out),
         cmocka_unit_test(test_confirm_quit_layout_is_centered),
         cmocka_unit_test(test_ui_ele_hidden_not_rendered),
         cmocka_unit_test(test_ui_ele_center_align),

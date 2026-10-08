@@ -120,6 +120,22 @@ bool ui_ele_transition_is_valid(const char *transition) {
         strcmp(transition, "panel_register") == 0);
 }
 
+/* A layout's `underlay=` value names what sits behind the surface: `dim` keeps
+   the frame that was on screen and recesses it, `none` paints the plain
+   background. Unknown values fail the load rather than silently reverting. */
+bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode) {
+    if (!name || !out_mode) return false;
+    if (strcmp(name, "dim") == 0) {
+        *out_mode = UI_UNDERLAY_DIM;
+        return true;
+    }
+    if (strcmp(name, "none") == 0) {
+        *out_mode = UI_UNDERLAY_NONE;
+        return true;
+    }
+    return false;
+}
+
 bool ui_ele_focus_effect_is_valid(const char *effect) {
     return effect && (strcmp(effect, "none") == 0 ||
         strcmp(effect, "focus_pulse") == 0 ||
@@ -744,6 +760,8 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
     }
     basename_no_ext(path, layout->name, sizeof(layout->name));
     (void)snprintf(layout->transition, sizeof(layout->transition), "none");
+    /* layout->underlay already holds UI_UNDERLAY_DIM from calloc: a surface
+       recesses the frame behind it unless its layout opts out. */
 
     while (fgets(line, sizeof(line), f)) {
         char *eq;
@@ -769,6 +787,12 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
                 return NULL;
             }
             (void)snprintf(layout->transition, sizeof(layout->transition), "%s", val);
+        } else if (strcmp(key, "underlay") == 0) {
+            if (!ui_ele_underlay_parse(val, &layout->underlay)) {
+                fclose(f);
+                free(layout);
+                return NULL;
+            }
         } else if (strcmp(key, "elements") == 0) {
             char names[UI_LAYOUT_MAX_ELEMS][UI_ELE_NAME_MAX];
             int count = split_csv(names, UI_LAYOUT_MAX_ELEMS, val);

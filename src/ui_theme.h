@@ -80,10 +80,24 @@ typedef enum {
     UI_THEME_MOTION_ROLE_COUNT
 } UiThemeMotionRole;
 
+/**
+ * Overlay response for a surface shown over a frozen frame.
+ *
+ * `dim_percent` darkens the frozen frame; `grey_percent` desaturates it toward
+ * its own luminance. These are strengths, not colours: the response is applied
+ * to whatever was already on screen, so one rule covers every surface instead of
+ * a literal per layout. 0/0 is an exact restore (see ui_underlay_apply).
+ */
+typedef struct {
+    uint8_t dim_percent;
+    uint8_t grey_percent;
+} UiThemeOverlay;
+
 typedef struct {
     UiThemePalette palette;
     UiThemeGeometry geometry;
     unsigned int motion_duration_ms[UI_THEME_MOTION_ROLE_COUNT];
+    UiThemeOverlay overlay;
 } UiThemeTokens;
 
 /** Accepted D1/D6 values; function name is retained for source compatibility. */

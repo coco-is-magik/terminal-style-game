@@ -34,6 +34,7 @@
 #include "ui_motion_demo_runtime.h"
 #include "ui_animation.h"
 #include "ui_theme.h"
+#include "ui_underlay.h"
 #include "ui_theme_demo_runtime.h"
 #include "ui_workbench_runtime.h"
 #include "ui_editor_runtime.h"
@@ -85,10 +86,13 @@ typedef struct {
     UiCanvas *footer;
     UiCanvas *feedback;
     UiCanvas *crosshair;
+    /* Frozen frame behind a layered surface, captured when a menu opens. */
+    UiUnderlay underlay;
 } AppUiResources;
 
 static void app_ui_resources_destroy(AppUiResources *ui) {
     if (!ui) return;
+    ui_underlay_destroy(&ui->underlay);
     ui_canvas_destroy(ui->crosshair);
     ui_canvas_destroy(ui->feedback);
     ui_canvas_destroy(ui->footer);
@@ -108,6 +112,11 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
     }
     memset(ui, 0, sizeof(*ui));
     ui->staging = grid_create(grid_width, grid_height);
+    if (!ui->staging ||
+        !ui_underlay_init(&ui->underlay, grid_width, grid_height)) {
+        app_ui_resources_destroy(ui);
+        return false;
+    }
     ui->menu = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
     ui->menu_exit = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
     ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
@@ -144,6 +153,23 @@ static bool app_add_ui_layer(UiLayerList *layers, int role, const UiCanvas *canv
         z_order, true, 0
     };
     return ui_layer_list_add(layers, &layer);
+}
+
+/* Repaints the frame that was on screen behind a surface, recessed by the
+   ui_theme overlay response. Returns false when the layout asked for the plain
+   background or no frame was captured, so the caller paints its normal
+   background instead. */
+static bool app_apply_underlay(AppUiResources *ui, Grid *grid,
+                               const UiLayout *layout) {
+    const UiThemeTokens *tokens;
+
+    if (!ui || !grid || !layout) return false;
+    if (layout->underlay != UI_UNDERLAY_DIM) return false;
+    if (!ui_underlay_has_frame(&ui->underlay)) return false;
+    tokens = ui_theme_provisional_tokens();
+    if (!tokens) return false;
+    return ui_underlay_apply(&ui->underlay, grid, (int)tokens->overlay.dim_percent,
+                             (int)tokens->overlay.grey_percent) == UI_UNDERLAY_OK;
 }
 
 static bool benchmark_is_layered_ui(const char *scenario) {
@@ -991,7 +1017,17 @@ int app_main(int argc, char* argv[]) {
         }
 
         double delta_time_sec = delta_time_ms / 1000.0;
-        active_menu = menu_stack_peek(&ms);
+        /* Capture the frame that is on screen when a surface opens, while it is
+           still the live one, and forget it when no surface is open so the next
+           session captures its own. Capturing once per session keeps a later
+           frame from quietly replacing the frozen one. */
+        if (active_menu != MENU_NONE) {
+            if (!ui_underlay_has_frame(&ui_resources.underlay)) {
+                (void)ui_underlay_capture(&ui_resources.underlay, grid);
+            }
+        } else {
+            ui_underlay_forget(&ui_resources.underlay);
+        }
 
         double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
                                (double)SDL_GetPerformanceFrequency();
@@ -1059,7 +1095,11 @@ int app_main(int argc, char* argv[]) {
             SDL_Color mbg = {0, 0, 0, 255};
             UiLayout *active_layout = ((int)active_menu >= 0 && (int)active_menu < MENU_ID_COUNT)
                                       ? menu_layouts[(int)active_menu] : NULL;
-            grid_clear(grid, mbg);
+            /* A surface whose layout asks for it sits over the frame that was on
+               screen when it opened; otherwise it paints its own background. */
+            if (!app_apply_underlay(&ui_resources, grid, active_layout)) {
+                grid_clear(grid, mbg);
+            }
             (void)grid_clear_region_zero(
                 ui_resources.staging,
                 (grid->width - APP_UI_MENU_WIDTH) / 2,

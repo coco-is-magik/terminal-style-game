@@ -41,6 +41,19 @@ typedef enum {
     UI_ALIGN_RIGHT
 } UiAlign;
 
+/**
+ * What a layout puts behind its own surface.
+ *
+ * UI_UNDERLAY_DIM keeps the frame that was on screen when the surface opened and
+ * recesses it through the ui_theme overlay response, so a menu can read as a
+ * layer over a paused game. UI_UNDERLAY_NONE paints the plain background. Zero
+ * is the dim case, so a zero-initialised layout is the friendly default.
+ */
+typedef enum {
+    UI_UNDERLAY_DIM = 0,
+    UI_UNDERLAY_NONE
+} UiUnderlayMode;
+
 typedef struct UiElement UiElement;
 
 typedef struct {
@@ -88,6 +101,9 @@ bool ui_ele_transition_is_valid(const char *transition);
 bool ui_ele_focus_effect_is_valid(const char *effect);
 bool ui_ele_animation_is_valid(const UiElement *element);
 
+/** Parses a layout `underlay=` value; unknown values leave `out_mode` alone. */
+bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode);
+
 typedef struct {
     char layout[UI_ELE_NAME_MAX];
     char cache_next[UI_LAYOUT_MAX_ELEMS][UI_ELE_NAME_MAX];
@@ -111,6 +127,8 @@ typedef struct {
     UiElement *slot_elements[UI_LAYOUT_MAX_SLOTS];
     int slot_count;
     char transition[32];
+    /* Defaults to UI_UNDERLAY_DIM (zero); `underlay=none` opts a layout out. */
+    UiUnderlayMode underlay;
 } UiLayout;
 
 /* ---- Element API ---- */
