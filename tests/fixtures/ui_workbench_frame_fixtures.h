@@ -26,14 +26,16 @@ static const struct {
      * fills behind text and controls instead of carving a margin around them),
      * and the button focus rework (the '>'/'<' arrows are replaced by an
      * animated perimeter frame drawn by the `focus_perimeter` focus effect, so
-     * only the focused button is framed); the main context
-     * gained its field too (MENU_MAIN and MENU_PAUSE
-     * only). */
-    {MENU_MAIN, 100, 15362479256814595514ULL},
-    {MENU_MAIN, 150, 12435983923953905082ULL},
-    {MENU_PAUSE, 100, 1381447575253963917ULL},
-    {MENU_SETTINGS, 100, 14648528100631133103ULL},
-    {MENU_CONFIRM_QUIT, 100, 18405518230658705158ULL}
+     * only the focused button is framed), the menu unification (menu transitions
+     * dropped; settings and confirm_quit given the same `ambient_field` backdrop
+     * and focus_perimeter buttons as main/pause), and the neutral menu-highlight
+     * scheme that replaces the old green selection fill. All four contexts have
+     * a field; the main context gained its field first. */
+    {MENU_MAIN, 100, 400111428113086016ULL},
+    {MENU_MAIN, 150, 7904515782195885632ULL},
+    {MENU_PAUSE, 100, 13351390405367802751ULL},
+    {MENU_SETTINGS, 100, 11344500466658108935ULL},
+    {MENU_CONFIRM_QUIT, 100, 363908982040506698ULL}
 };
 
 static const size_t ui_workbench_frame_contract_fixture_count =

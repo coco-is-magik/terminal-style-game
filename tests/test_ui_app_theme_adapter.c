@@ -20,10 +20,37 @@ static void test_menu_palette_maps_exact_provisional_roles(void **state) {
     UiAppMenuPalette palette;
     (void)state;
     assert_true(ui_app_theme_menu_palette(&palette));
-    assert_color(palette.selected_foreground, 0xa8U, 0xffU, 0xe1U, 0xffU);
-    assert_color(palette.selected_background, 0x12U, 0x3dU, 0x32U, 0xffU);
+    /* Default scheme BRIGHT: the hovered label brightens, with no fill. */
+    assert_color(palette.selected_foreground, 0xf2U, 0xf7U, 0xf8U, 0xffU);
+    assert_color(palette.selected_background, 0x05U, 0x08U, 0x0aU, 0xffU);
     assert_color(palette.unselected_foreground, 0xa8U, 0xb4U, 0xb8U, 0xffU);
     assert_color(palette.unselected_background, 0x05U, 0x08U, 0x0aU, 0xffU);
+}
+
+static void test_menu_highlight_schemes_are_neutral_and_distinct(void **state) {
+    UiAppMenuPalette palette;
+    const UiThemePalette *tokens = &ui_theme_provisional_tokens()->palette;
+    int scheme;
+    (void)state;
+    assert_false(ui_app_theme_menu_palette_for(NULL, UI_MENU_HIGHLIGHT_PLAIN));
+    assert_false(ui_app_theme_menu_palette_for(&palette, UI_MENU_HIGHLIGHT_COUNT));
+    for (scheme = 0; scheme < UI_MENU_HIGHLIGHT_COUNT; scheme++) {
+        assert_true(ui_app_theme_menu_palette_for(&palette, (UiMenuHighlight)scheme));
+        /* No scheme re-introduces the old green selection fill. */
+        assert_false(palette.selected_background.r == 0x12U &&
+                     palette.selected_background.g == 0x3dU &&
+                     palette.selected_background.b == 0x32U);
+        /* Unselected is identical in every scheme. */
+        assert_color(palette.unselected_foreground, 0xa8U, 0xb4U, 0xb8U, 0xffU);
+        assert_color(palette.unselected_background, 0x05U, 0x08U, 0x0aU, 0xffU);
+        assert_int_equal(palette.selected_foreground.a, 255U);
+        assert_int_equal(palette.selected_background.a, 255U);
+    }
+    /* INVERSE is the only scheme that fills, and it fills with the text colour. */
+    assert_true(ui_app_theme_menu_palette_for(&palette, UI_MENU_HIGHLIGHT_INVERSE));
+    assert_color(palette.selected_background, tokens->text_primary.red,
+                 tokens->text_primary.green, tokens->text_primary.blue,
+                 tokens->text_primary.alpha);
 }
 
 static void test_menu_palette_is_stable_and_preserves_alpha(void **state) {
@@ -96,6 +123,7 @@ static void test_workbench_palette_maps_all_chrome_roles(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_menu_palette_maps_exact_provisional_roles),
+        cmocka_unit_test(test_menu_highlight_schemes_are_neutral_and_distinct),
         cmocka_unit_test(test_menu_palette_is_stable_and_preserves_alpha),
         cmocka_unit_test(test_menu_palette_rejects_null_output),
         cmocka_unit_test(test_workbench_palette_maps_all_chrome_roles)

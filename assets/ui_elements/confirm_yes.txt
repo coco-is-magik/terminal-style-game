@@ -9,3 +9,6 @@ height=1
 align=center
 action=confirm_quit
 content=YES
+style=plain
+transition=none
+focus_effect=focus_perimeter

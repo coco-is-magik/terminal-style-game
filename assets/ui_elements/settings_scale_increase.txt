@@ -12,5 +12,5 @@ align=center
 action=ui_scale_increase
 style=plain
 transition=none
-focus_effect=none
+focus_effect=focus_perimeter
 content=UI SCALE +

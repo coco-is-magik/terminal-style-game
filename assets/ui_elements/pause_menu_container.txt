@@ -9,6 +9,6 @@ visible=1
 z_index=0
 align=left
 style=plain
-transition=center_out
+transition=none
 focus_effect=none
 content=

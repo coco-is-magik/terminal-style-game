@@ -12,5 +12,5 @@ align=center
 action=toggle_reduced_motion
 style=plain
 transition=none
-focus_effect=none
+focus_effect=focus_perimeter
 content=TOGGLE REDUCED MOTION

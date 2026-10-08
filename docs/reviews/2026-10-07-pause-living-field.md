@@ -197,6 +197,49 @@ reduced-motion static frame, and that an unfocused element gets none). The main-
 asserts the perimeter instead of the arrows. Frame and pixel fixtures were refreshed for these changes
 as their only cause.
 
+## Menu unification, the highlight scheme, and the backdrop/scale finding (2026-10-07)
+
+Follow-ups after the focus rework.
+
+- **Menu transitions dropped.** `pause_menu_container` returned to `transition=none` and
+  `animation_pause_glitch` was unbound from `pause_menu` (the element file is kept, unbound, for later);
+  layout `transition` stays `none`. The context enter/exit presets stay in the registry for when a
+  transition direction is chosen, but nothing uses them now.
+- **All menus share the treatment.** `settings` and `confirm_quit` gained the same backdrop as
+  main/pause: new `animation_settings_field` / `animation_confirm_field` elements bind the shared
+  `ambient_field` effect, and every button in all four menus carries `focus_effect=focus_perimeter`.
+  Titles use `style=bright`.
+- **Neutral menu highlight (replaces the old green fill).** The selected button used
+  `selected_background = selection_background` (`#123d32`) — the green that reads as the old palette.
+  The highlight is now a swappable, deliberately neutral choice in `ui_app_theme_adapter`:
+  `UI_MENU_HIGHLIGHT_PLAIN` (no change; the perimeter alone marks focus), `UI_MENU_HIGHLIGHT_BRIGHT`
+  (the hovered label brightens), `UI_MENU_HIGHLIGHT_INVERSE` (a solid block), and `UI_MENU_HIGHLIGHT_BED`
+  (a neutral bed). Switch with `UI_MENU_HIGHLIGHT_DEFAULT`; unselected buttons are identical in every
+  scheme. Current default: BRIGHT.
+
+Evidence: `test-ui-app-theme-adapter` adds `test_menu_highlight_schemes_are_neutral_and_distinct` (every
+scheme avoids the old green, shares the unselected colours, and only INVERSE fills). Frame and pixel
+fixtures were refreshed for all four contexts.
+
+### Finding (investigated, not yet fixed): the backdrop is menu-sized and scales with the UI
+
+The ambient backdrop is an element *inside* the authored layout, and the whole authored layout is a
+single compositor layer — `APP_UI_ROLE_MENU`, an 80x40 canvas (`APP_UI_MENU_WIDTH/HEIGHT`), anchored
+CENTER with `UI_SCALE_INHERIT_GLOBAL`. Consequences:
+
+- the backdrop is clipped to the 80x40 menu canvas and can never fill the screen; and
+- `UI_SCALE_INHERIT_GLOBAL` makes the whole layer — backdrop included — scale with the UI-scale
+  preference, so raising the scale grows the backdrop too.
+
+This is **not backdrop-specific**: every authored element (title, buttons, focus perimeter, backdrop)
+lives in that one layer with one scale policy, so there is no way today to scale "the things the user
+interacts with" separately from the backdrop. Independent scaling is already used elsewhere — the HUD
+and footer are separate layers with their own scale policies, and the workbench composites the preview
+at `authored_scale_percent` and the footer at `workbench_scale_percent`. Fixing this is a layering
+change (a full-screen backdrop layer at a fixed scale, or a screen-space backdrop pass), affecting
+`app.c` layer construction, the workbench frame/runtime preview paths, and the asset model that ties the
+backdrop's bounds to a menu container.
+
 ## Limitations and next
 
 - The material set is used only by the main and pause fields; it is not yet a general surface material.

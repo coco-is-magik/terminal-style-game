@@ -397,8 +397,10 @@ and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`)
 - `animation_panel_register.txt`
 - `animation_living_field.txt`
 - `animation_main_field.txt`
+- `animation_settings_field.txt`
+- `animation_confirm_field.txt`
 - `assets/ui_effects/ambient_field.txt` — reusable effect definition (`primitive=living_field`,
-  bound by both field animations)
+  bound by all four menu backdrops)
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 

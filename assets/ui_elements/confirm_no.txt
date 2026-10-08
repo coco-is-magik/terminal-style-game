@@ -9,3 +9,6 @@ height=1
 align=center
 action=cancel
 content=NO
+style=plain
+transition=none
+focus_effect=focus_perimeter

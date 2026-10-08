@@ -523,13 +523,14 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
 
 static void test_runtime_pixel_fixtures(void **state) {
     /* Reviewed refresh 2026-10-07 (docs/reviews/2026-10-07-pause-living-field.md):
-       MENU_MAIN and MENU_PAUSE changed; the living_field backdrop (fringe draws
-       only the three additive primaries, field fills behind text) plus the
-       button focus rework (the '>'/'<' arrows are replaced by a focus_perimeter
-       frame around the focused button) is the only cause. */
+       all four contexts changed; the living_field backdrop, the button focus
+       rework (focus_perimeter replaces the '>'/'<' arrows), the menu unification
+       (transitions dropped; settings/confirm_quit given the same backdrop and
+       focus treatment), and the neutral menu-highlight scheme are the only
+       cause. */
     static const uint64_t expected[] = {
-        UINT64_C(14608766307244119644), UINT64_C(7533341636264137784),
-        UINT64_C(10554620073566262018), UINT64_C(4061093434513253306)
+        UINT64_C(17696683696828423766), UINT64_C(8892851495263054950),
+        UINT64_C(1483198470862397086), UINT64_C(10733127462819339601)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));
