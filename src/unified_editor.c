@@ -12,6 +12,8 @@
 #include "ui_editor_action.h"
 #include "ui_editor_host.h"
 #include "ui_editor_presentation.h"
+#include "ui_app_theme_adapter.h"
+#include "ui_ele.h"
 #include "asset_refresh.h"
 #include "editor_domain.h"
 #include "editor_highlight.h"
@@ -32,7 +34,6 @@
 #include <unistd.h>
 
 #define EDITOR_PICKER_VISIBLE 4
-#define EDITOR_MAP_CHOOSER_VISIBLE 10
 #define EDITOR_LIGHT_PICK_RADIUS 0.50
 #define EDITOR_SPRITE_PICK_RADIUS 0.5
 #define EDITOR_LIGHT_REPEAT_DELAY_SECONDS 0.35
@@ -5303,6 +5304,119 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
     return;
 }
 
+/* ---- Scene browser panel (the editor's OPEN SCENE / IMPORT LEGACY MAP list) ----
+ *
+ * A modal surface over the editor: a framed panel with a title, the hint and the
+ * catalog rows, replacing the ragged column-1 list. Every colour is a
+ * ui_app_theme_workbench_palette() role -- replacing the editor interface's
+ * literals with tokens is the sanctioned work of
+ * UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §5.1 (§2, §3.1, §4.2) -- and the
+ * selected row takes the shared focus perimeter in its shape-only form, so a
+ * selected row reads the way an authored button does without bringing chromatic
+ * motion into the editor interface (§4.2). This extends the existing overlay
+ * renderer rather than adding a pane renderer (§5.2 rejection 9).
+ */
+#define EDITOR_BROWSER_COLUMNS 60
+#define EDITOR_BROWSER_VISIBLE 9
+#define EDITOR_BROWSER_ROW_STEP 2
+#define EDITOR_BROWSER_FIRST_ROW 4
+
+static void editor_browser_panel(Grid *grid, int x, int y, int columns, int rows,
+                                 const UiAppWorkbenchPalette *palette) {
+    int row;
+    int column;
+    for (row = 0; row < rows; row++) {
+        for (column = 0; column < columns; column++) {
+            const bool horizontal = row == 0 || row == rows - 1;
+            const bool vertical = column == 0 || column == columns - 1;
+            uint8_t glyph = ' ';
+            SDL_Color fg = palette->panel;
+            if (horizontal || vertical) {
+                fg = palette->border;
+                glyph = (horizontal && vertical) ? '+' : horizontal ? '-' : '|';
+            }
+            (void)grid_set(grid, x + column, y + row, glyph, fg, palette->panel);
+        }
+    }
+}
+
+static void editor_browser_put(Grid *grid, int x, int y, int columns,
+                               const char *text, SDL_Color fg,
+                               const UiAppWorkbenchPalette *palette) {
+    int column;
+    if (!text || columns <= 0) return;
+    for (column = 0; text[column] != '\0' && column < columns; column++)
+        (void)grid_set(grid, x + column, y, (uint8_t)text[column], fg,
+                       palette->panel);
+}
+
+static void editor_browser_put_right(Grid *grid, int right_column, int row,
+                                     const char *text, SDL_Color fg,
+                                     const UiAppWorkbenchPalette *palette) {
+    int columns = (int)strlen(text);
+    editor_browser_put(grid, right_column - columns, row, columns, text, fg, palette);
+}
+
+static void editor_render_scene_browser(Grid *grid, const UnifiedEditorState *editor,
+                                        const UiAppWorkbenchPalette *palette) {
+    const bool native = editor->chooser_kind == EDITOR_CHOOSER_NATIVE_OPEN;
+    const size_t total = editor->map_catalog.count;
+    const int columns = EDITOR_BROWSER_COLUMNS;
+    /* The panel fits its content: an empty catalog gets the message row, a short
+       catalog gets its own rows, a long one gets the visible window. */
+    const int listed = total == 0U ? 1
+                      : total < (size_t)EDITOR_BROWSER_VISIBLE ? (int)total
+                                                               : EDITOR_BROWSER_VISIBLE;
+    const int rows = EDITOR_BROWSER_FIRST_ROW + listed * EDITOR_BROWSER_ROW_STEP + 2;
+    const int x = (UNIFIED_EDITOR_INTERFACE_COLUMNS - columns) / 2;
+    const int y = (UNIFIED_EDITOR_INTERFACE_ROWS - rows) / 2;
+    const int title_row = y + 1;
+    const int hint_row = y + 2;
+    size_t start = 0U;
+    size_t i;
+    char count_text[32];
+
+    editor_browser_panel(grid, x, y, columns, rows, palette);
+    (void)snprintf(count_text, sizeof(count_text), "%lu / %lu",
+                   (unsigned long)(total == 0U ? 0U : editor->map_chooser_index + 1U),
+                   (unsigned long)total);
+    editor_browser_put(grid, x + 2, title_row, columns - 8,
+                       native ? "OPEN SCENE" : "IMPORT LEGACY MAP",
+                       palette->primary_text, palette);
+    editor_browser_put_right(grid, x + columns - 3, title_row, count_text,
+                             palette->secondary_text, palette);
+    editor_browser_put(grid, x + 2, hint_row, columns - 4,
+                       native ? "Up/Down  Enter=open  Ctrl+I=import  Esc=cancel"
+                              : "Up/Down  Enter=import  Ctrl+O=open  Esc=cancel",
+                       palette->secondary_text, palette);
+
+    if (total == 0U) {
+        editor_browser_put(grid, x + 3, y + EDITOR_BROWSER_FIRST_ROW, columns - 6,
+                           native ? "(no .tscene files found)"
+                                  : "(no legacy .txt files found)",
+                           palette->secondary_text, palette);
+        return;
+    }
+    if (editor->map_chooser_index >= EDITOR_BROWSER_VISIBLE)
+        start = editor->map_chooser_index - (EDITOR_BROWSER_VISIBLE - 1);
+    if (start + EDITOR_BROWSER_VISIBLE > total && total >= EDITOR_BROWSER_VISIBLE)
+        start = total - EDITOR_BROWSER_VISIBLE;
+
+    for (i = 0U; i < EDITOR_BROWSER_VISIBLE && start + i < total; i++) {
+        const size_t index = start + i;
+        const int row = y + EDITOR_BROWSER_FIRST_ROW + (int)i * EDITOR_BROWSER_ROW_STEP;
+        const MapCatalogEntry *entry = map_catalog_get(&editor->map_catalog, index);
+        const bool selected = index == editor->map_chooser_index;
+        editor_browser_put(grid, x + 3, row, columns - 6,
+                           entry ? entry->name : "?",
+                           selected ? palette->focus : palette->secondary_text,
+                           palette);
+        if (selected)
+            ui_ele_focus_perimeter_draw(grid, x + 2, row, columns - 4, 1,
+                                        palette->focus, palette->panel);
+    }
+}
+
 void unified_editor_render_text_overlay(
     const UnifiedEditorState *editor,
     Grid *grid
@@ -5312,13 +5426,30 @@ void unified_editor_render_text_overlay(
     }
 
     {
-        SDL_Color fg = {220, 220, 220, 255};
-        SDL_Color bg = {0, 0, 0, 255};
-        SDL_Color dim = {160, 160, 160, 255};
-        SDL_Color warn = {220, 180, 80, 255};
-        SDL_Color hi = {120, 220, 160, 255};
+        /* Every editor-interface colour is a ui_app_theme_workbench_palette()
+           role. Replacing the editor's literals with tokens is the sanctioned
+           work of UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §5.1 (§2, §3.1, §4.2);
+           a new hardcoded colour in the editor interface is an automatic
+           rejection (§5.2). The locals keep their old names because the whole
+           overlay below already speaks fg/bg/dim/warn/hi. */
+        UiAppWorkbenchPalette palette;
+        SDL_Color fg;
+        SDL_Color bg;
+        SDL_Color dim;
+        SDL_Color warn;
+        SDL_Color hi;
         char line[160];
         int row;
+
+        if (!ui_app_theme_workbench_palette(&palette)) return;
+        fg = palette.primary_text;
+        bg = palette.canvas;
+        dim = palette.secondary_text;
+        warn = palette.warning;
+        /* Selection is a state, so a selected row takes the focus role rather
+           than a hue of its own (§4.2: accent and focus are state, not
+           decoration). No green selection fill, no literal. */
+        hi = palette.focus;
 
         if (editor->ui_menu_workspace.active) {
             editor_render_ui_menu_workspace(editor, grid);
@@ -6147,43 +6278,9 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row + 1,
                        "Reload scene? Enter=yes  Esc=cancel", warn, bg);
         } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
-            size_t start = 0;
-            size_t i;
-            const bool native =
-                editor->chooser_kind == EDITOR_CHOOSER_NATIVE_OPEN;
-
-            grid_print(grid, 1, row++,
-                       native
-                           ? "OPEN SCENE  Up/Down  Enter=open  Ctrl+I=import  Esc=cancel"
-                           : "IMPORT LEGACY MAP  Up/Down  Enter=import  Ctrl+O=open  Esc=cancel",
-                       warn, bg);
-            if (editor->map_catalog.count == 0) {
-                grid_print(grid, 1, row++,
-                           native
-                               ? "  (no .tscene files found)"
-                               : "  (no legacy .txt files found)",
-                           dim, bg);
-            } else {
-                if (editor->map_chooser_index >= EDITOR_MAP_CHOOSER_VISIBLE) {
-                    start = editor->map_chooser_index -
-                            (EDITOR_MAP_CHOOSER_VISIBLE - 1);
-                }
-                if (start + EDITOR_MAP_CHOOSER_VISIBLE > editor->map_catalog.count &&
-                    editor->map_catalog.count >= EDITOR_MAP_CHOOSER_VISIBLE) {
-                    start = editor->map_catalog.count - EDITOR_MAP_CHOOSER_VISIBLE;
-                }
-                for (i = 0; i < EDITOR_MAP_CHOOSER_VISIBLE &&
-                            start + i < editor->map_catalog.count; i++) {
-                    size_t index = start + i;
-                    const MapCatalogEntry *entry =
-                        map_catalog_get(&editor->map_catalog, index);
-                    snprintf(line, sizeof(line), " %s %s",
-                             index == editor->map_chooser_index ? ">" : " ",
-                             entry ? entry->name : "?");
-                    grid_print(grid, 1, row++, line,
-                               index == editor->map_chooser_index ? hi : dim, bg);
-                }
-            }
+            /* The browser is a panel, so it does not append to the status text
+               and does not advance `row`. */
+            editor_render_scene_browser(grid, editor, &palette);
         } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
             int c;
             grid_print(grid, 1, row++,

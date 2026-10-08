@@ -33,6 +33,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/*
+ * The editor interface surface: the region of the frame the editor draws its
+ * own interface into (the application composites exactly this region). The
+ * editor owns the size so its panels can lay themselves out inside it.
+ */
+#define UNIFIED_EDITOR_INTERFACE_COLUMNS 100
+#define UNIFIED_EDITOR_INTERFACE_ROWS 40
+
 typedef enum {
     EDITOR_MODE_WALK = 0,
     EDITOR_MODE_EDIT

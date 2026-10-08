@@ -118,6 +118,18 @@ bool ui_ele_transition_is_valid(const char *transition);
 bool ui_ele_focus_effect_is_valid(const char *effect);
 bool ui_ele_animation_is_valid(const UiElement *element);
 
+/**
+ * Draws the shared focus perimeter around a bounds rect.
+ *
+ * This is the shape-only form: the frame without the travelling chromatic
+ * fringe, which stays a display-surface treatment (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md
+ * §4.2). Editor-side surfaces mark focus with it so a selected row reads the
+ * same way an authored button does, without adding chromatic motion to the
+ * editor interface. `frame` is normally the `focus` role.
+ */
+void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height,
+                                 SDL_Color frame, SDL_Color bg);
+
 /** Parses a layout `underlay=` value; unknown values leave `out_mode` alone. */
 bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode);
 

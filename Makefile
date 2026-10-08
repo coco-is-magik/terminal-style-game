@@ -561,6 +561,11 @@ TEST_EDITOR_DOMAIN_SRC := \
 	$(SRC_MAP_LOADER) \
 	$(SRC_CONFIG)
 
+# The editor overlay draws the shared focus perimeter and reads the workbench
+# palette, so ui_ele.c/ui_effect.c and the palette adapter are linked here too.
+# They are listed directly rather than via SRC_UI_ELE because SRC_UI_ELE also
+# carries number_parse.c, which SRC_DECAL_IO below already provides, and a
+# duplicate source file on one link line is a multiple-definition error.
 TEST_UNIFIED_EDITOR_SRC := \
 	$(SRC_CHECKED_SIZE) \
 	$(SRC_RGBA_PARSE) \
@@ -589,6 +594,8 @@ TEST_UNIFIED_EDITOR_SRC := \
     $(SRC_UI_SCENE_ANIMATION_RENDERER) \
     $(SRC_UI_MOTION) \
     $(SRC_UI_THEME) \
+    $(SRC_UI_APP_THEME_ADAPTER) \
+    src/ui_ele.c src/ui_effect.c \
     $(SRC_UI_UNDERLAY) \
     $(SRC_UI_INTERACTION) \
     $(SRC_UI_MENU_RUNTIME) \

@@ -129,6 +129,11 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   channels use palette accent/focus roles or the additive decorative chromatic-material tokens
   (§3.4 of the Reference of Record); one literal-RGB comparison is permitted only in
   the isolated diagnostic specimen and is not a reusable semantic token.
+- Editor-interface colour comes from `ui_app_theme_workbench_palette()` roles only: a literal in the
+  editor interface is an automatic rejection (Reference of Record §5.2), and selection is a state, so
+  it takes the `focus` role rather than a hue of its own. A list or pane marks its focused row with the
+  shared perimeter in its shape-only form, never with chromatic motion. See
+  [`reviews/2026-10-08-editor-scene-browser.md`](reviews/2026-10-08-editor-scene-browser.md).
 - Motion sampling uses explicit elapsed time, stable IDs, deterministic paths, exact
   endpoints, and no hidden randomness or frame-count progression.
 - Reduced motion resolves immediately and non-spatially, with no chromatic displacement or

@@ -994,11 +994,14 @@ static void focus_perimeter_point(int x0, int y0, int w, int h, int index,
     *py = y0 + h - 2 - index;
 }
 
-static void render_focus_perimeter(Grid *grid, int x, int y, int width, int height,
-                                   double now_ms, bool reduced_motion, SDL_Color bg) {
-    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
-    SDL_Color base = {palette->border.red, palette->border.green,
-                      palette->border.blue, palette->border.alpha};
+/* Shared perimeter core. `chroma_chase` gates the travelling chromatic fringe;
+   false draws the frame alone, which is the shape-only form used where
+   chromatic motion does not belong (the editor interface, §4.2) and under
+   Reduced Motion. Only the focused element reaches the chasing form. */
+static void focus_perimeter_draw_core(Grid *grid, int x, int y, int width, int height,
+                                      double now_ms, bool chroma_chase,
+                                      bool reduced_motion, SDL_Color frame,
+                                      SDL_Color bg) {
     int x0 = x - 1;
     int y0 = y - 1;
     int w = width + 2;
@@ -1006,7 +1009,7 @@ static void render_focus_perimeter(Grid *grid, int x, int y, int width, int heig
     int perimeter = 2 * w + 2 * h - 4;
     int head = -1;
     int i;
-    if (!reduced_motion && perimeter > 0) {
+    if (chroma_chase && !reduced_motion && perimeter > 0) {
         double lap = now_ms - (double)((uint64_t)(now_ms / UI_FOCUS_PERIMETER_LAP_MS)) *
                                  UI_FOCUS_PERIMETER_LAP_MS;
         head = (int)(lap / UI_FOCUS_PERIMETER_LAP_MS * (double)perimeter);
@@ -1015,7 +1018,7 @@ static void render_focus_perimeter(Grid *grid, int x, int y, int width, int heig
     for (i = 0; i < perimeter; i++) {
         int px;
         int py;
-        SDL_Color colour = base;
+        SDL_Color colour = frame;
         bool corner;
         focus_perimeter_point(x0, y0, w, h, i, &px, &py);
         if (head >= 0) {
@@ -1033,6 +1036,22 @@ static void render_focus_perimeter(Grid *grid, int x, int y, int width, int heig
                        corner ? '+' : (py == y0 || py == y0 + h - 1) ? '-' : '|',
                        colour, bg);
     }
+}
+
+static void render_focus_perimeter(Grid *grid, int x, int y, int width, int height,
+                                   double now_ms, bool reduced_motion, SDL_Color bg) {
+    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    SDL_Color base = {palette->border.red, palette->border.green,
+                      palette->border.blue, palette->border.alpha};
+
+    focus_perimeter_draw_core(grid, x, y, width, height, now_ms, true,
+                              reduced_motion, base, bg);
+}
+
+void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height,
+                                 SDL_Color frame, SDL_Color bg) {
+    focus_perimeter_draw_core(grid, x, y, width, height, 0.0, false, false,
+                              frame, bg);
 }
 
 bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,

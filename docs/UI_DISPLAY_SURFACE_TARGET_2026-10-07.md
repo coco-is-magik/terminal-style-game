@@ -100,7 +100,13 @@ fixed; only the amount and behaviour differ per surface.
 ### 3.5 Editor interface (the tool itself) — restrained
 
 - Per §4.2 as scoped on 2026-10-07: `text_primary` carries emphasis; `accent`/`focus` are state, not
-  decoration. This is the **only** surface that stays white-dominant. Nothing here changes.
+  decoration. This is the **only** surface that stays white-dominant. The direction does not change.
+- **First surface rebuilt 2026-10-08:** the scene browser (OPEN SCENE / IMPORT LEGACY MAP) is a framed
+  panel whose colours are all `ui_app_theme_workbench_palette()` roles and whose selected row takes the
+  shared focus perimeter in its shape-only form. The editor overlay's colour literals are retired; the
+  selection no longer uses a hue of its own. See
+  [`reviews/2026-10-08-editor-scene-browser.md`](reviews/2026-10-08-editor-scene-browser.md). The
+  remaining editor surfaces are unchanged and share the same palette now.
 
 ---
 

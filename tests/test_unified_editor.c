@@ -28,6 +28,7 @@
 
 #include "../src/unified_editor.h"
 #include "../src/unified_editor_test.h"
+#include "../src/ui_app_theme_adapter.h"
 #include "../src/unified_editor_internal.h"
 #include "../src/asset_refresh.h"
 
@@ -414,6 +415,100 @@ static int prepare_catalog_maps(char *first, size_t first_size,
     if (write_text_file(first, VALID_MAP) != 0) return -1;
     if (write_text_file(second, SECOND_MAP) != 0) return -1;
     return 0;
+}
+
+static bool colour_is_one_of(const SDL_Color *colour, const SDL_Color *roles,
+                             size_t role_count) {
+    size_t i;
+    for (i = 0U; i < role_count; i++) {
+        if (colour->r == roles[i].r && colour->g == roles[i].g &&
+            colour->b == roles[i].b && colour->a == roles[i].a)
+            return true;
+    }
+    return false;
+}
+
+/* Mirrors the browser's content-fitted row count. */
+static int ed_listed_rows(size_t total) {
+    if (total == 0U) return 1;
+    return total < 9U ? (int)total : 9;
+}
+
+/* The scene browser is a framed panel over the editor, and the editor interface
+   carries no literals: every colour inside it is a ui_app_theme_workbench_palette()
+   role, the selected row takes the shared focus perimeter, and the panel holds
+   the title, the hint and the list. See docs/reviews/2026-10-08-editor-scene-browser.md. */
+static void test_scene_browser_panel_is_palette_driven(void **state) {
+    static const int browser_columns = 60;
+    UnifiedEditorState ed;
+    UiAppWorkbenchPalette palette;
+    SDL_Color roles[6];
+    Grid *grid;
+    char first[512];
+    char second[512];
+    const int x = (UNIFIED_EDITOR_INTERFACE_COLUMNS - browser_columns) / 2;
+    int browser_rows;
+    int y;
+    int selected_row;
+    int row;
+    int column;
+
+    (void)state;
+    assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
+                                          sizeof(second)), 0);
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_begin_legacy_import(&ed, g_tmpdir),
+                     MAP_CATALOG_OK);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+
+    /* The panel fits its content, so the test derives the same geometry the
+       renderer does. */
+    browser_rows = 4 + ed_listed_rows(ed.map_catalog.count) * 2 + 2;
+    y = (UNIFIED_EDITOR_INTERFACE_ROWS - browser_rows) / 2;
+    selected_row = y + 4;
+
+    unified_editor_render_text_overlay(&ed, grid);
+
+    /* Frame and contents. */
+    assert_int_equal(grid->cells[y * grid->width + x].glyph, (uint8_t)'+');
+    assert_int_equal(grid->cells[y * grid->width + x + browser_columns - 1].glyph,
+                     (uint8_t)'+');
+    assert_int_equal(grid->cells[(y + browser_rows - 1) * grid->width + x].glyph,
+                     (uint8_t)'+');
+    assert_memory_equal(&grid->cells[y * grid->width + x].fg, &palette.border,
+                        sizeof(SDL_Color));
+    assert_memory_equal(&grid->cells[y * grid->width + x].bg, &palette.panel,
+                        sizeof(SDL_Color));
+    assert_true(grid_contains_text(grid, "IMPORT LEGACY MAP"));
+    assert_true(grid_contains_text(grid, "Esc=cancel"));
+
+    /* The selected row is a focus-role label inside the shared perimeter. */
+    assert_memory_equal(&grid->cells[selected_row * grid->width + x + 3].fg,
+                        &palette.focus, sizeof(SDL_Color));
+    assert_int_equal(grid->cells[(selected_row - 1) * grid->width + x + 1].glyph,
+                     (uint8_t)'+');
+    assert_memory_equal(&grid->cells[(selected_row - 1) * grid->width + x + 1].fg,
+                        &palette.focus, sizeof(SDL_Color));
+
+    /* Drift alarm 2: no colour inside the panel is outside the palette. */
+    roles[0] = palette.primary_text;
+    roles[1] = palette.secondary_text;
+    roles[2] = palette.focus;
+    roles[3] = palette.border;
+    roles[4] = palette.panel;
+    roles[5] = palette.warning;
+    for (row = y; row < y + browser_rows; row++) {
+        for (column = x; column < x + browser_columns; column++) {
+            Cell cell;
+            assert_true(grid_get(grid, column, row, &cell));
+            assert_true(colour_is_one_of(&cell.fg, roles, 6U));
+            assert_true(colour_is_one_of(&cell.bg, roles, 6U));
+        }
+    }
+    grid_destroy(grid);
+    unified_editor_destroy(&ed);
 }
 
 static void test_initial_chooser_load_and_escape(void **state) {
@@ -1413,9 +1508,17 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_true(pattern_y < load_y && load_y < edit_y && edit_y < remove_y);
     assert_int_not_equal(grid->cells[pattern_y * grid->width + pattern_x - 1].glyph,
                          (uint8_t)'>');
-    assert_int_equal(grid->cells[pattern_y * grid->width + pattern_x].fg.g, 220U);
-    assert_int_equal(grid->cells[edit_y * grid->width + 4].glyph, (uint8_t)'>');
-    assert_int_equal(grid->cells[edit_y * grid->width + 4].fg.g, 220U);
+    {
+        /* The selected row takes the workbench palette's focus role (§4.2:
+           focus is state), not the old editor literal. */
+        UiAppWorkbenchPalette palette;
+        assert_true(ui_app_theme_workbench_palette(&palette));
+        assert_memory_equal(&grid->cells[pattern_y * grid->width + pattern_x].fg,
+                            &palette.focus, sizeof(SDL_Color));
+        assert_int_equal(grid->cells[edit_y * grid->width + 4].glyph, (uint8_t)'>');
+        assert_memory_equal(&grid->cells[edit_y * grid->width + 4].fg,
+                            &palette.focus, sizeof(SDL_Color));
+    }
     grid_destroy(grid);
 
     zero_input(&in);
@@ -5736,6 +5839,7 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
 int main(void) {
     const struct CMUnitTest tests[] = {
         /* R0 current-map open/switch workflow */
+        cmocka_unit_test(test_scene_browser_panel_is_palette_driven),
         cmocka_unit_test(test_initial_chooser_load_and_escape),
         cmocka_unit_test(test_ctrl_o_and_catalog_failure_preserve_document),
         cmocka_unit_test(test_native_open_and_legacy_import_chooser_switch),

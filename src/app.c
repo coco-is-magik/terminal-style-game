@@ -58,8 +58,6 @@
    so a menu fills the same viewport at the same cell size. */
 #define APP_UI_HUD_WIDTH 64
 #define APP_UI_HUD_HEIGHT 20
-#define APP_UI_EDITOR_WIDTH 100
-#define APP_UI_EDITOR_HEIGHT 40
 #define APP_UI_FOOTER_WIDTH 160
 #define APP_UI_FEEDBACK_WIDTH 80
 #define APP_UI_FEEDBACK_FRAMES 180
@@ -108,7 +106,7 @@ static void app_ui_resources_destroy(AppUiResources *ui) {
 static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
                                     int grid_height) {
     if (!ui || grid_width < APP_UI_FOOTER_WIDTH ||
-        grid_height < APP_UI_EDITOR_HEIGHT + 2) {
+        grid_height < UNIFIED_EDITOR_INTERFACE_ROWS + 2) {
         return false;
     }
     memset(ui, 0, sizeof(*ui));
@@ -121,7 +119,7 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
     ui->menu = ui_canvas_create(grid_width, grid_height);
     ui->menu_exit = ui_canvas_create(grid_width, grid_height);
     ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
-    ui->editor = ui_canvas_create(APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
+    ui->editor = ui_canvas_create(UNIFIED_EDITOR_INTERFACE_COLUMNS, UNIFIED_EDITOR_INTERFACE_ROWS);
     ui->footer = ui_canvas_create(APP_UI_FOOTER_WIDTH, 2);
     ui->feedback = ui_canvas_create(APP_UI_FEEDBACK_WIDTH, 1);
     ui->crosshair = ui_canvas_create(1, 1);
@@ -1169,7 +1167,7 @@ int app_main(int argc, char* argv[]) {
 
         } else if (app_state == APP_STATE_EDITOR) {
             (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
-                                         APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
+                                         UNIFIED_EDITOR_INTERFACE_COLUMNS, UNIFIED_EDITOR_INTERFACE_ROWS);
             (void)grid_clear_region_zero(ui_resources.staging, 0, grid->height - 2,
                                          APP_UI_FOOTER_WIDTH, 2);
             if (ued.active) {
