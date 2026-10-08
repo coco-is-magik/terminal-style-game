@@ -94,6 +94,12 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   the supported logical resolutions and 100%, 125%, 150%, and 200% UI presets.
 - The center crosshair and world scale remain independent from UI accessibility
   scale.
+- A decorative surface and the controls it sits behind share one cell size: a menu
+  backdrop is part of its menu, never a layer scaled differently from it. A
+  backdrop may be bounded (`extent=box`) or fill the surface (`extent=surface`),
+  and a menu surface is the whole display, so a menu fills the same viewport as
+  the world and the editor. See
+  [`reviews/2026-10-08-menu-surface.md`](reviews/2026-10-08-menu-surface.md).
 
 ### Interaction and accessibility
 

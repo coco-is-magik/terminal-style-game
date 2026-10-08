@@ -73,6 +73,42 @@ static UiElement make_element(const char *name, UiElementType type,
     return value;
 }
 
+/* Times one field configuration, verifying that every phase reproduces its
+   reference cells. Returns false if a phase is not deterministic. */
+static bool measure_field(UiLayout *layout, Grid *grid, const double *phase_time,
+                          uint64_t iterations, SDL_Color background,
+                          SDL_Color foreground, double *out_average) {
+    uint64_t reference[FIELD_PHASES];
+    double total = 0.0;
+
+    for (unsigned int phase = 0U; phase < FIELD_PHASES; phase++) {
+        (void)grid_clear(grid, background);
+        ui_layout_render(layout, grid, foreground, background);
+        if (!ui_animation_render_layout(layout, grid, phase_time[phase], false,
+                                        false, UI_ANIMATION_EVENT_WHILE_VISIBLE))
+            return false;
+        reference[phase] = grid_checksum(grid);
+    }
+
+    for (uint64_t i = 0U; i < iterations; i++) {
+        unsigned int phase = (unsigned int)(i % FIELD_PHASES);
+        double start;
+        double end;
+        (void)grid_clear(grid, background);
+        ui_layout_render(layout, grid, foreground, background);
+        start = now_ms();
+        if (!ui_animation_render_layout(layout, grid, phase_time[phase], false,
+                                        false, UI_ANIMATION_EVENT_WHILE_VISIBLE))
+            return false;
+        end = now_ms();
+        if (start < 0.0 || end < start || grid_checksum(grid) != reference[phase])
+            return false;
+        total += end - start;
+    }
+    *out_average = total / (double)iterations;
+    return true;
+}
+
 int main(int argc, char **argv) {
     bool stability = argc == 2 && strcmp(argv[1], "--stability") == 0;
     uint64_t iterations = stability ? STABILITY_ITERATIONS : BENCHMARK_ITERATIONS;
@@ -88,11 +124,9 @@ int main(int argc, char **argv) {
     SDL_Color background = {5, 8, 10, 255};
     SDL_Color foreground = {242, 247, 248, 255};
     double phase_time[FIELD_PHASES];
-    uint64_t reference[FIELD_PHASES];
     unsigned int period;
-    double total = 0.0;
-    double average;
-    bool deterministic = true;
+    double bounded_average = 0.0;
+    double surface_average = 0.0;
     int result = 1;
 
     if (argc > 2 || (argc == 2 && !stability)) {
@@ -128,41 +162,24 @@ int main(int argc, char **argv) {
 
     if (!ui_ele_animation_is_valid(&field)) goto cleanup;
 
-    for (unsigned int phase = 0U; phase < FIELD_PHASES; phase++) {
+    for (unsigned int phase = 0U; phase < FIELD_PHASES; phase++)
         phase_time[phase] = (double)period * (double)phase / (double)FIELD_PHASES;
-        (void)grid_clear(grid, background);
-        ui_layout_render(&layout, grid, foreground, background);
-        if (!ui_animation_render_layout(&layout, grid, phase_time[phase], false,
-                                        false, UI_ANIMATION_EVENT_WHILE_VISIBLE))
-            goto cleanup;
-        reference[phase] = grid_checksum(grid);
-    }
 
-    for (uint64_t i = 0U; i < iterations; i++) {
-        unsigned int phase = (unsigned int)(i % FIELD_PHASES);
-        double start;
-        double end;
-        (void)grid_clear(grid, background);
-        ui_layout_render(&layout, grid, foreground, background);
-        start = now_ms();
-        if (!ui_animation_render_layout(&layout, grid, phase_time[phase], false,
-                                        false, UI_ANIMATION_EVENT_WHILE_VISIBLE)) {
-            deterministic = false;
-            break;
-        }
-        end = now_ms();
-        if (start < 0.0 || end < start || grid_checksum(grid) != reference[phase]) {
-            deterministic = false;
-            break;
-        }
-        total += end - start;
-    }
-    if (!deterministic) goto cleanup;
+    /* Both authorable shapes are measured: a bounded backdrop region (`box`) and
+       the shipped surface-filling backdrop (`surface`, the production shape). */
+    if (!measure_field(&layout, grid, phase_time, iterations, background, foreground,
+                       &bounded_average)) goto cleanup;
+    field.extent = UI_EXTENT_SURFACE;
+    if (!ui_ele_animation_is_valid(&field)) goto cleanup;
+    if (!measure_field(&layout, grid, phase_time, iterations, background, foreground,
+                       &surface_average)) goto cleanup;
 
-    average = total / (double)iterations;
-    printf("ui-field: living_field %.3f ms over %llu iterations (budget %.1f ms)\n",
-           average, (unsigned long long)iterations, SURFACE_RENDER_PASS_MS);
-    result = average < SURFACE_RENDER_PASS_MS ? 0 : 1;
+    printf("ui-field: living_field bounded %.3f ms, surface %.3f ms over %llu iterations "
+           "(budget %.1f ms)\n",
+           bounded_average, surface_average, (unsigned long long)iterations,
+           SURFACE_RENDER_PASS_MS);
+    result = bounded_average < SURFACE_RENDER_PASS_MS &&
+             surface_average < SURFACE_RENDER_PASS_MS ? 0 : 1;
 
 cleanup:
     free(title.content);

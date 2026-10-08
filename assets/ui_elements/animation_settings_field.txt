@@ -1,10 +1,12 @@
 name=animation_settings_field
 type=animation
-x=-26
-y=-7
+# extent=surface fills the whole menu surface; x/y/width/height are then unused.
+x=0
+y=0
 coords=absolute
-width=80
-height=40
+width=0
+height=0
+extent=surface
 visible=1
 z_index=-1
 align=left

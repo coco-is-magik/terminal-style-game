@@ -851,6 +851,38 @@ static void test_ui_layout_underlay_default_and_opt_out(void **state) {
 }
 
 
+/* An element's `extent=` chooses a bounded region or the whole surface. Every
+   production backdrop asks for the surface, so a menu fills the display rather
+   than a box inside it, and no asset carries a grid size. */
+static void test_ui_element_extent_parsing_and_production_fields(void **state) {
+    static const char *const surface_fields[] = {
+        "animation_main_field", "animation_living_field",
+        "animation_settings_field", "animation_confirm_field"
+    };
+    UiExtent extent = UI_EXTENT_BOX;
+    UiCache cache;
+    size_t index;
+
+    (void)state;
+    assert_true(ui_ele_extent_parse("box", &extent));
+    assert_int_equal(extent, UI_EXTENT_BOX);
+    assert_true(ui_ele_extent_parse("surface", &extent));
+    assert_int_equal(extent, UI_EXTENT_SURFACE);
+    assert_false(ui_ele_extent_parse("stretch", &extent));
+    assert_int_equal(extent, UI_EXTENT_SURFACE);
+    assert_false(ui_ele_extent_parse(NULL, &extent));
+    assert_false(ui_ele_extent_parse("box", NULL));
+
+    ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+    for (index = 0U; index < sizeof(surface_fields) / sizeof(surface_fields[0]); index++) {
+        UiElement *field = ui_cache_load(&cache, surface_fields[index], "assets/ui_elements");
+        assert_non_null(field);
+        assert_int_equal(field->extent, UI_EXTENT_SURFACE);
+    }
+    ui_cache_destroy(&cache);
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ui_ele_load_text),
@@ -865,6 +897,7 @@ int main(void) {
         cmocka_unit_test(test_ui_layout_main_menu_focus_actions),
         cmocka_unit_test(test_ui_layout_remaining_menu_focus_actions),
         cmocka_unit_test(test_ui_layout_underlay_default_and_opt_out),
+        cmocka_unit_test(test_ui_element_extent_parsing_and_production_fields),
         cmocka_unit_test(test_confirm_quit_layout_is_centered),
         cmocka_unit_test(test_ui_ele_hidden_not_rendered),
         cmocka_unit_test(test_ui_ele_center_align),

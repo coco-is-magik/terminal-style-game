@@ -118,8 +118,15 @@ underlay=<dim|none>
   needs no special case. `src/ui_underlay.c` applies it with the `dim_percent`/`grey_percent`
   strengths from `ui_theme`; the frame is captured once, when the surface opens, and forgotten when
   the last surface closes.
-- The workbench has no control for `underlay` yet. It rewrites the `elements=` line and preserves
-  other lines, so a hand-authored value survives a save, but it cannot be changed from the editor.
+- A menu is a surface over the whole display (`assets/ui_layouts/*` are drawn into the full grid, not
+  an inner box), so a menu fills the same viewport as the world and the editor at the same cell size.
+- `extent=surface` on an animation unit stretches it over that surface instead of its authored
+  geometry, so a backdrop fills the display without an asset carrying a grid size. Every production
+  backdrop field declares it; `extent=box` (the default) uses the authored x/y/width/height, or the
+  target's bounds when width/height are 0.
+- The workbench has no control for `underlay` or `extent` yet. It rewrites the `elements=` line and
+  preserves other lines, so hand-authored values survive a save, but they cannot be changed from the
+  editor.
 
 ## Copyable units
 

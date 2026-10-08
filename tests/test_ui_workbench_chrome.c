@@ -522,15 +522,13 @@ static void test_edit_panels_progressive_and_scaled(void **state) {
 }
 
 static void test_runtime_pixel_fixtures(void **state) {
-    /* Reviewed refresh 2026-10-07 (docs/reviews/2026-10-07-pause-living-field.md):
-       all four contexts changed; the living_field backdrop, the button focus
-       rework (focus_perimeter replaces the '>'/'<' arrows), the menu unification
-       (transitions dropped; settings/confirm_quit given the same backdrop and
-       focus treatment), and the neutral menu-highlight scheme are the only
-       cause. */
+    /* Reviewed refresh 2026-10-08 (docs/reviews/2026-10-08-menu-surface.md):
+       all four contexts changed because a menu is now a surface over the whole
+       display instead of an 80x40 centred canvas, and the backdrop field fills
+       that surface (element `extent=surface`). Nothing else re-tuned. */
     static const uint64_t expected[] = {
-        UINT64_C(17696683696828423766), UINT64_C(8892851495263054950),
-        UINT64_C(1483198470862397086), UINT64_C(10733127462819339601)
+        UINT64_C(4594411236743001354), UINT64_C(7128938155756202966),
+        UINT64_C(9440602223055106050), UINT64_C(11330631336630635389)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));

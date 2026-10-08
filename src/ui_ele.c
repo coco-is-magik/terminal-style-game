@@ -136,6 +136,22 @@ bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode) {
     return false;
 }
 
+/* An element's `extent=` value names how it takes its extent: `box` uses the
+   authored geometry, `surface` stretches it over the surface it renders into.
+   Unknown values fail the load rather than silently reverting. */
+bool ui_ele_extent_parse(const char *name, UiExtent *out_extent) {
+    if (!name || !out_extent) return false;
+    if (strcmp(name, "box") == 0) {
+        *out_extent = UI_EXTENT_BOX;
+        return true;
+    }
+    if (strcmp(name, "surface") == 0) {
+        *out_extent = UI_EXTENT_SURFACE;
+        return true;
+    }
+    return false;
+}
+
 bool ui_ele_focus_effect_is_valid(const char *effect) {
     return effect && (strcmp(effect, "none") == 0 ||
         strcmp(effect, "focus_pulse") == 0 ||
@@ -292,6 +308,8 @@ UiElement *ui_ele_load(const char *path, UiCache *cache) {
             valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.width);
         } else if (strcmp(key, "height") == 0) {
             valid = number_parse_int(val, INT_MIN, INT_MAX, &element->layout.height);
+        } else if (strcmp(key, "extent") == 0) {
+            valid = ui_ele_extent_parse(val, &element->extent);
         } else if (strcmp(key, "parent") == 0) {
             strncpy(element->parent_name, val, sizeof(element->parent_name) - 1);
         } else if (strcmp(key, "children") == 0) {

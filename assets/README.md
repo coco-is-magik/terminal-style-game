@@ -166,6 +166,7 @@ x=<integer>
 y=<integer>
 width=<integer>
 height=<integer>
+extent=<box|surface>           # optional; defaults to box (authored x/y/width/height)
 align=<left|center|right>     # text/button only
 fg=R,G,B,A                    # optional
 bg=R,G,B,A                    # optional

@@ -692,6 +692,70 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
     grid_destroy(grid);
 }
 
+/* An element's `extent=` chooses whether a backdrop is a bounded region or the
+   whole surface. The bounded case follows its target; the surface case fills the
+   frame it renders into, so a menu backdrop covers the display without an asset
+   carrying a grid size. */
+static bool painted_outside(Grid *grid, int x0, int y0, int x1, int y1) {
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            Cell value;
+            if (!grid_get(grid, x, y, &value)) continue;
+            if (value.glyph == 0U || value.glyph == ' ') continue;
+            if (x < x0 || x >= x1 || y < y0 || y >= y1) return true;
+        }
+    }
+    return false;
+}
+
+static void test_surface_extent_fills_the_frame_unless_bounded(void **state) {
+    static const double elapsed_ms[] = {0.0, 300.0, 600.0, 900.0, 1200.0, 1500.0};
+    UiElement target = element("target", UI_ELE_CONTAINER, 120, 71, 24, 16);
+    UiElement unit = element("unit", UI_ELE_ANIMATION, 0, 0, 0, 0);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(260, 160);
+    bool escaped = false;
+    (void)state;
+    assert_non_null(grid);
+    (void)snprintf(unit.preset, sizeof(unit.preset), "%s", "living_field");
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s", "while_visible");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "%s", "horizontal");
+    (void)snprintf(unit.target, sizeof(unit.target), "%s", "target");
+    layout.elements[0] = &target;
+    layout.elements[1] = &unit;
+    layout.element_count = 2;
+
+    /* Bounded (the default): the region follows the target, so nothing escapes. */
+    assert_int_equal(unit.extent, UI_EXTENT_BOX);
+    for (size_t i = 0U; i < sizeof(elapsed_ms) / sizeof(elapsed_ms[0]); i++) {
+        assert_true(grid_clear_region_zero(grid, 0, 0, 260, 160));
+        assert_true(ui_animation_render_layout(&layout, grid, elapsed_ms[i], false, false,
+                                              UI_ANIMATION_EVENT_WHILE_VISIBLE));
+        assert_false(painted_outside(grid, 120, 71, 144, 87));
+    }
+
+    /* Surface: the same unit fills the frame it renders into. */
+    unit.extent = UI_EXTENT_SURFACE;
+    for (size_t i = 0U; i < sizeof(elapsed_ms) / sizeof(elapsed_ms[0]); i++) {
+        assert_true(grid_clear_region_zero(grid, 0, 0, 260, 160));
+        assert_true(ui_animation_render_layout(&layout, grid, elapsed_ms[i], false, false,
+                                              UI_ANIMATION_EVENT_WHILE_VISIBLE));
+        if (painted_outside(grid, 120, 71, 144, 87)) escaped = true;
+    }
+    assert_true(escaped);
+
+    /* Reduced motion draws no field at any extent. */
+    assert_true(grid_clear_region_zero(grid, 0, 0, 260, 160));
+    assert_true(ui_animation_render_layout(&layout, grid, 600.0, true, false,
+                                          UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_false(painted_outside(grid, 0, 0, 260, 160));
+
+    release(&unit);
+    release(&target);
+    grid_destroy(grid);
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_pause_glitch_canvas_matches_layout_unit),
@@ -703,7 +767,8 @@ int main(void) {
         cmocka_unit_test(test_center_out_and_reduced_motion),
         cmocka_unit_test(test_focus_trigger_and_ordinary_transition),
         cmocka_unit_test(test_trigger_filter_and_random_bounds),
-        cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced)
+        cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced),
+        cmocka_unit_test(test_surface_extent_fills_the_frame_unless_bounded)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

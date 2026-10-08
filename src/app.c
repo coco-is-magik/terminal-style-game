@@ -53,8 +53,9 @@
 #include <stdbool.h>
 #include <SDL3/SDL.h>
 
-#define APP_UI_MENU_WIDTH 80
-#define APP_UI_MENU_HEIGHT 40
+/* A menu is a surface over the display, not a small canvas in the middle of it:
+   the menu canvases are the whole grid, exactly like the world and the editor,
+   so a menu fills the same viewport at the same cell size. */
 #define APP_UI_HUD_WIDTH 64
 #define APP_UI_HUD_HEIGHT 20
 #define APP_UI_EDITOR_WIDTH 100
@@ -117,8 +118,8 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
         app_ui_resources_destroy(ui);
         return false;
     }
-    ui->menu = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
-    ui->menu_exit = ui_canvas_create(APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
+    ui->menu = ui_canvas_create(grid_width, grid_height);
+    ui->menu_exit = ui_canvas_create(grid_width, grid_height);
     ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
     ui->editor = ui_canvas_create(APP_UI_EDITOR_WIDTH, APP_UI_EDITOR_HEIGHT);
     ui->footer = ui_canvas_create(APP_UI_FOOTER_WIDTH, 2);
@@ -1069,11 +1070,8 @@ int app_main(int argc, char* argv[]) {
         if (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
             animation_event_layout && animation_event_menu != MENU_NONE &&
             motion_now_ms - animation_event_start_ms <= 160.0) {
-            (void)grid_clear_region_zero(
-                ui_resources.staging,
-                (grid->width - APP_UI_MENU_WIDTH) / 2,
-                (grid->height - APP_UI_MENU_HEIGHT) / 2,
-                APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
+            (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
+                                         grid->width, grid->height);
             (void)draw_data_menu(ui_resources.staging, animation_event_layout,
                                  menu_selected[(int)animation_event_menu],
                                  motion_now_ms, reduced_motion);
@@ -1081,10 +1079,7 @@ int app_main(int argc, char* argv[]) {
                 animation_event_layout, ui_resources.staging,
                 motion_now_ms - animation_event_start_ms, reduced_motion, false,
                 UI_ANIMATION_EVENT_CONTEXT_EXIT);
-            ui_canvas_copy_grid_region(
-                ui_resources.menu_exit, ui_resources.staging,
-                (grid->width - APP_UI_MENU_WIDTH) / 2,
-                (grid->height - APP_UI_MENU_HEIGHT) / 2);
+            ui_canvas_copy_grid_region(ui_resources.menu_exit, ui_resources.staging, 0, 0);
             (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_MENU,
                                    ui_resources.menu_exit, UI_ANCHOR_CENTER,
                                    UI_SCALE_INHERIT_GLOBAL, 18,
@@ -1100,11 +1095,8 @@ int app_main(int argc, char* argv[]) {
             if (!app_apply_underlay(&ui_resources, grid, active_layout)) {
                 grid_clear(grid, mbg);
             }
-            (void)grid_clear_region_zero(
-                ui_resources.staging,
-                (grid->width - APP_UI_MENU_WIDTH) / 2,
-                (grid->height - APP_UI_MENU_HEIGHT) / 2,
-                APP_UI_MENU_WIDTH, APP_UI_MENU_HEIGHT);
+            (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
+                                         grid->width, grid->height);
             if (!draw_data_menu(ui_resources.staging, active_layout,
                                 menu_selected[(int)active_menu], motion_now_ms,
                                 reduced_motion)) {
@@ -1143,10 +1135,7 @@ int app_main(int argc, char* argv[]) {
                 fprintf(stderr, "TSG-UI-BUG-0004: triggered animation failed\n");
                 input.quit = true;
             }
-            ui_canvas_copy_grid_region(
-                ui_resources.menu, ui_resources.staging,
-                (grid->width - APP_UI_MENU_WIDTH) / 2,
-                (grid->height - APP_UI_MENU_HEIGHT) / 2);
+            ui_canvas_copy_grid_region(ui_resources.menu, ui_resources.staging, 0, 0);
             (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_MENU, ui_resources.menu,
                                    UI_ANCHOR_CENTER, UI_SCALE_INHERIT_GLOBAL, 20,
                                    grid->width * 8, grid->height * 8);

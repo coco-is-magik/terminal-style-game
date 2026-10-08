@@ -54,6 +54,20 @@ typedef enum {
     UI_UNDERLAY_NONE
 } UiUnderlayMode;
 
+/**
+ * How an element takes its extent.
+ *
+ * UI_EXTENT_BOX uses the authored x/y/width/height. UI_EXTENT_SURFACE stretches
+ * the element over the whole surface it is rendered into — the display in normal
+ * run, the authored preview surface in the workbench — so a backdrop can fill
+ * the surface without hardcoding a grid size in an asset. Zero is the box case,
+ * so a zero-initialised element keeps its authored geometry.
+ */
+typedef enum {
+    UI_EXTENT_BOX = 0,
+    UI_EXTENT_SURFACE
+} UiExtent;
+
 typedef struct UiElement UiElement;
 
 typedef struct {
@@ -68,6 +82,9 @@ struct UiElement {
     char name[UI_ELE_NAME_MAX];
     UiElementType type;
     UiElementLayout layout;
+    /* UI_EXTENT_SURFACE stretches the element over the render surface; its
+       authored x/y/width/height are then unused. */
+    UiExtent extent;
     char parent_name[UI_ELE_NAME_MAX];
     UiElement *parent;
     char child_names[UI_ELE_MAX_CHILDREN][UI_ELE_NAME_MAX];
@@ -103,6 +120,9 @@ bool ui_ele_animation_is_valid(const UiElement *element);
 
 /** Parses a layout `underlay=` value; unknown values leave `out_mode` alone. */
 bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode);
+
+/** Parses an element `extent=` value; unknown values leave `out_extent` alone. */
+bool ui_ele_extent_parse(const char *name, UiExtent *out_extent);
 
 typedef struct {
     char layout[UI_ELE_NAME_MAX];

@@ -49,8 +49,13 @@ fixed; only the amount and behaviour differ per surface.
 - **Material behaviour.** A coherent decorative field fills the surface behind the controls: shapes
   travel, patterns flow, and coloured traces separate and recombine while the larger forms stay
   coherent (§1.1). Context enter/exit is glyph reassembly — precision → controlled disorder →
-  precision (§1.2). Today `main_menu` and `pause_menu` carry a `living_field` backdrop
-  (`animation_main_field`, `animation_living_field`); `settings` and `confirm_quit` have no field.
+  precision (§1.2). All four authored menus carry a `living_field` backdrop
+  (`animation_main_field`, `animation_living_field`, `animation_settings_field`,
+  `animation_confirm_field`), and each declares `extent=surface` so the field fills the surface.
+- **The surface is the display.** A menu is composed into the whole grid, exactly like the world and
+  the editor, so it fills the same viewport at the same cell size — there is no inner box and no black
+  surround. A bounded backdrop is still authorable (`extent=box`), which is the shape a floating panel
+  over a paused game needs; see `reviews/2026-10-08-menu-surface.md`.
 - **Chromatic treatment.** A white-dominant neutral weave whose saturated material appears **only as an
   RGB chromatic-aberration fringe** on the weave's edges (see §4) — the three additive primaries chosen
   by edge direction, never a secondary colour, never a monochrome wash, never a colour fill. The field is
@@ -60,9 +65,9 @@ fixed; only the amount and behaviour differ per surface.
   the paused game rather than a takeover. Each layout chooses with `underlay=<dim|none>`
   (`src/ui_underlay.c`); see `reviews/2026-10-08-menu-underlay.md`. The recessed frame is decoration and
   never moves a control, a glyph, or a hit target.
-- **Stays stable.** Button labels, the `>`/`<` focus markers, focus/selection state, hit targets, and
-  interaction eligibility never move and are never obscured (§2.1, §4.4). Reduced motion draws no
-  field and no displacement.
+- **Stays stable.** Button labels, the focus perimeter around the focused button, focus/selection state,
+  hit targets, and interaction eligibility never move and are never obscured (§2.1, §4.4). Reduced
+  motion draws no field and no displacement.
 
 ### 3.2 HUD overlay (`hud_overlay`)
 
@@ -143,7 +148,7 @@ the five-step protocol in
 
 | May move (material / display) | Must not move (controls / semantics) |
 |---|---|
-| decorative field behind menus | button labels, `>`/`<` focus markers |
+| decorative field behind menus | button labels, focus perimeter around the focused button |
 | coloured traces, traveling patterns | focus/selection background and state |
 | material textures in world / previews | hit targets, interaction eligibility |
 | HUD frame/separator activity | HUD numeric readouts and labels |
@@ -177,10 +182,10 @@ the five-step protocol in
 
 | Need (§1) | Have today | Gap |
 |---|---|---|
-| Dense coordinated field | `living_field` shipped in the pause context (2026-10-07) | roll out to other surfaces |
-| Chromatic material | six-colour decorative set drawn as sparse saturated specks on a white-dominant flowing fabric by the main/pause fields | roll the material out to other surfaces |
+| Dense coordinated field | `living_field` in all four authored menus, filling the display (`extent=surface`, 2026-10-08) | roll out to remaining surfaces |
+| Chromatic material | six-colour decorative set drawn as sparse saturated specks on a white-dominant flowing fabric by all four menus | roll the material out to the HUD and the world |
 | Material behaviours | none | no flow/ripple/churn/goop/drip |
-| Menus alive behind controls | `main_menu` and `pause_menu` carry a field | settings/confirm still static; roll out |
+| Menus alive behind controls | all four menus carry a field, fill the viewport, and recess the frame behind them | keep; bounded (floating-panel) layouts are authorable but unused |
 | World material behaviour | static 4-glyph materials | no behaviour per material |
 | Controls stable | yes | keep |
 

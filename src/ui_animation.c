@@ -523,6 +523,12 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                                UI_COORD_ABSOLUTE,
                                unit->layout.width > 0 ? unit->layout.width : width,
                                unit->layout.height > 0 ? unit->layout.height : height};
+    /* A surface-extent unit fills the surface it renders into (the display in
+       normal run, the authored surface in the preview), so its authored
+       geometry is not used and no asset carries a grid size. */
+    if (unit->extent == UI_EXTENT_SURFACE) {
+        bounds = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE, grid->width, grid->height};
+    }
     if (reduced_motion) return true;
     if (!preview_loop && event != UI_ANIMATION_EVENT_PREVIEW) {
         if (strcmp(unit->trigger, "context_enter") == 0 &&

@@ -30,12 +30,17 @@ static const struct {
      * dropped; settings and confirm_quit given the same `ambient_field` backdrop
      * and focus_perimeter buttons as main/pause), and the neutral menu-highlight
      * scheme that replaces the old green selection fill. All four contexts have
-     * a field; the main context gained its field first. */
-    {MENU_MAIN, 100, 400111428113086016ULL},
-    {MENU_MAIN, 150, 7904515782195885632ULL},
-    {MENU_PAUSE, 100, 13351390405367802751ULL},
-    {MENU_SETTINGS, 100, 11344500466658108935ULL},
-    {MENU_CONFIRM_QUIT, 100, 363908982040506698ULL}
+     * a field; the main context gained its field first.
+     * Reviewed refresh: docs/reviews/2026-10-08-menu-surface.md — a menu is now a
+     * surface over the whole display rather than an 80x40 centred canvas
+     * (APP_UI_MENU_WIDTH/HEIGHT removed), and every backdrop field declares
+     * `extent=surface`, so the field fills that surface instead of an authored
+     * box. All four contexts changed; nothing else re-tuned. */
+    {MENU_MAIN, 100, 12788386773026097164ULL},
+    {MENU_MAIN, 150, 8822537883753028476ULL},
+    {MENU_PAUSE, 100, 10582059475855600612ULL},
+    {MENU_SETTINGS, 100, 12207819633615769261ULL},
+    {MENU_CONFIRM_QUIT, 100, 5199418223914077754ULL}
 };
 
 static const size_t ui_workbench_frame_contract_fixture_count =
