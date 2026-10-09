@@ -165,6 +165,24 @@ motion; submenus normally change immediately within their stable parent. Exact m
 tokens, context roles, timings, and reduced-motion equivalents remain V1-1/V1-3 Q1 work,
 not decisions to duplicate in this inventory.
 
+### Palette hues outside the locked display identity — **Owner decision needed**
+
+The display-surface identity was locked on 2026-10-09 as *black, white, red, green, blue and flowy,
+smooth motion* (see the change of direction in
+[`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md)). Two things in the
+shipped tokens sit outside it, and neither is a defect yet — they are decisions waiting to be taken:
+
+- the editor-interface roles still name hues the identity does not: `accent` `#67F5C2`, `focus`
+  `#A8FFE1`, `warning` `#FFD166`, `success` `#71F79F`, `error` `#FF6B7A`, `destructive` `#FF8894`,
+  `selection_background` `#123D32`, `editor_selection` `#70B7FF`;
+- the **menus' focus perimeter and the tide's wake draw `accent`/`focus`**, so a display surface
+  currently shows a mint hue that the identity does not include.
+
+Closing this means either retiring those roles from display surfaces (and drawing the focus marker from
+black/white/primaries) or re-deriving them inside the identity, with the same record discipline as every
+other look change. The three secondary material colours (yellow, cyan, magenta) are already
+editor-visualization tokens and are not drawn on a display surface.
+
 ### Theme and interface color customization — **Small feature after token contract**
 
 Changing the main interface color is desirable, but should be implemented through the

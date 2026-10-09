@@ -120,3 +120,16 @@ Three intermediate versions were built, captured and rejected on evidence, not o
 *(Both were built later the same day: see `docs/reviews/2026-10-09-state-transitions.md`. Stage B's
 tide is authored as elements in the four menu layouts; Stage C's settle is asked for by name by the
 runner, because which transition plays is a fact about the destination.)*
+
+## Follow-up (same day): the rate is a setting
+
+The owner found the material a little fast and asked for its speed to be a value they could try rather
+than a constant. Nothing about the material changed. The ambient loop the wave advances over is now
+`backdrop_period_ms` in `config.ini` (default **2600 ms**; the theme's token value remains 1800 ms),
+applied once at startup through `ui_theme_set_ambient_period_ms`. Because the wave advances a whole
+number of wavelengths per loop, one loop still lands on exactly the same surface and phase 0 is the
+same surface at *any* period — which is what makes the value safe to try, and why the recorded frame
+fixtures (rendered at phase 0) do not move. `test_ui_animation` proves both properties,
+`test_config` bounds the value to 400..60000 ms and refuses a whole file outside it, and every other
+motion role and duration is untouched.
+

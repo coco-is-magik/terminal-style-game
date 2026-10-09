@@ -54,7 +54,9 @@ bool config_validate(const EngineConfig *config) {
            config->side_shadow_attenuation <= 1.0 &&
            config->default_material_id >= 1 && config->default_material_id <= ASSET_ID_MAX &&
            config->default_palette_id >= 1 && config->default_palette_id <= ASSET_ID_MAX &&
-           config->asset_canvas_cols > 0 && config->asset_canvas_rows > 0;
+           config->asset_canvas_cols > 0 && config->asset_canvas_rows > 0 &&
+           config->backdrop_period_ms >= CONFIG_BACKDROP_PERIOD_MIN_MS &&
+           config->backdrop_period_ms <= CONFIG_BACKDROP_PERIOD_MAX_MS;
 }
 
 /* ===================================================================
@@ -118,6 +120,9 @@ void config_init_defaults(void) {
 
     /* ---- Debug ---- */
     g_config.debug_display_enabled = true;
+
+    /* ---- UI motion ---- */
+    g_config.backdrop_period_ms = 2600;
 }
 
 /* ===================================================================
@@ -209,6 +214,15 @@ static bool parse_line(char *line, EngineConfig *candidate) {
     PARSE_POSITIVE_INT("asset_canvas_cols", asset_canvas_cols)
     PARSE_POSITIVE_INT("asset_canvas_rows", asset_canvas_rows)
 #undef PARSE_POSITIVE_INT
+
+    /* The backdrop's speed is a tuning value, so it is bounded by what is still
+       recognisable as motion rather than by "positive". */
+    if (strcmp(key, "backdrop_period_ms") == 0) {
+        if (!parse_int_range(val, CONFIG_BACKDROP_PERIOD_MIN_MS,
+                             CONFIG_BACKDROP_PERIOD_MAX_MS, &parsed_int)) return false;
+        candidate->backdrop_period_ms = parsed_int;
+        return true;
+    }
 
     if (strcmp(key, "cell_width") == 0 || strcmp(key, "cell_height") == 0) {
         if (!parse_int_range(val, 8, 8, &parsed_int)) return false;

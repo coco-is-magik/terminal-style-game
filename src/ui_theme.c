@@ -34,6 +34,21 @@ const UiThemeTokens *ui_theme_provisional_tokens(void) {
     return &provisional_tokens;
 }
 
+/* The ambient loop is the one motion value the runtime retunes (see ui_theme.h):
+   zero means "the theme's own value", so the tables above stay the single source
+   of every accepted duration while the backdrop's speed is a setting. */
+static unsigned int ambient_period_override_ms = 0U;
+
+unsigned int ui_theme_ambient_period_ms(void) {
+    return ambient_period_override_ms != 0U
+        ? ambient_period_override_ms
+        : provisional_tokens.motion_duration_ms[UI_THEME_MOTION_AMBIENT];
+}
+
+void ui_theme_set_ambient_period_ms(unsigned int period_ms) {
+    ambient_period_override_ms = period_ms;
+}
+
 /* Decorative chromatic material (§1.1). Opaque, saturated primary and secondary
    colours — crisp additive RGB, not pastel — so decorative specks read as
    distinct primaries against the neutral weave. Never semantic, never a literal.
@@ -134,6 +149,7 @@ unsigned int ui_theme_motion_duration_ms(UiThemeMotionRole role,
                                          bool reduced_motion) {
     if (reduced_motion || role < UI_THEME_MOTION_IMMEDIATE ||
         role >= UI_THEME_MOTION_ROLE_COUNT) return 0U;
+    if (role == UI_THEME_MOTION_AMBIENT) return ui_theme_ambient_period_ms();
     return provisional_tokens.motion_duration_ms[role];
 }
 

@@ -20,7 +20,8 @@ only a small set of documents should be treated as current authority.
   migration, and native Windows verification boundaries for W2-W4.
 - [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) — **binding
   look-and-feel authority.** The guiding star for every colour, animation, transition, and motion
-  decision. Cited by every phase that touches interface feel.
+  decision. Cited by every phase that touches interface feel. Carries the **locked visual identity**
+  (2026-10-09): *black, white, red, green, blue and flowy, smooth motion*.
 - [`APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md`](APPLICATION_UI_EDITOR_REQUIREMENTS_AND_IMPLEMENTATION_PLAN_2026-09-18.md)
   — active Step 1 plan: evolve `make ui-workbench` into a complete, readable, palette- and
   motion-directed application-UI editor; includes the anti-drift testing gates. Step 2 (reuse for the

@@ -545,6 +545,10 @@ int app_main(int argc, char* argv[]) {
     config_init_defaults();
     config_load_from_file("config.ini");
     const EngineConfig *cfg = config_get();
+    /* The backdrop's speed is configuration, not a literal: the material is
+       otherwise identical, so one value retunes how fast it advances without
+       touching the wave. Reduced motion still draws no material at all. */
+    ui_theme_set_ambient_period_ms((unsigned int)cfg->backdrop_period_ms);
 
     if (options.mode == RUN_MODE_SMOKE) {
         return run_headless_smoke();

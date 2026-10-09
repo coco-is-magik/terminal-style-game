@@ -31,6 +31,13 @@ fixed; only the amount and behaviour differ per surface.
 - **The invariant.** *"Keep the controls dependable. Let the display feel alive."* (§1.1). Richness
   goes into material and display fields; controls, focus markers, hit targets, and semantic status stay
   stable (§2.1).
+- **The identity (locked 2026-10-09).** **Black, white, red, green, blue, and flowy, smooth motion.** A
+  black `canvas` surface, white `text_primary`, the neutral `text_secondary` material, and the three
+  additive primaries — red `#FF2B2B`, green `#2BFF4F`, blue `#2B55FF` — as chromatic aberration and
+  nothing else. Movement is one continuous material: waves travel across the fabric, and a state change
+  surges in and retraces out rather than cutting between two pictures. See the change of direction
+  recorded 2026-10-09 in
+  [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md).
 
 ## 2. Surfaces at a glance
 
@@ -133,6 +140,10 @@ fixed; only the amount and behaviour differ per surface.
   semantic hue and never a literal.
 - **Literal RGB is diagnostic material, not a token.** The single isolated red/cyan comparison stays in
   the approved motion specimen (§2.1).
+- **Black and white are the field; three primaries are the whole of the colour (locked 2026-10-09).** On
+  a display surface the colour *is* the chromatic aberration: red `#FF2B2B`, green `#2BFF4F`, blue
+  `#2B55FF` over a black `#05080A` surface, with `text_primary` white and `text_secondary` as the
+  material. The decorative set's yellow, cyan and magenta are **not drawn** by a display surface.
 - **"Saturated primary and secondary colours" (§1.1)** means the material must reach the palette's
   brightest, most separated hues at full cell occupancy — crisp separated light, not a dim wash.
 - **Intermingled, not ordered.** A field is a neutral-dominant fabric carrying saturated traces; hue
@@ -204,7 +215,7 @@ the five-step protocol in
 | Need (§1) | Have today | Gap |
 |---|---|---|
 | Dense coordinated field | `living_field` in all four authored menus, filling the display (`extent=surface`, 2026-10-08) | roll out to remaining surfaces |
-| Chromatic material | six-colour decorative set drawn as sparse saturated specks on a white-dominant flowing fabric by all four menus | roll the material out to the HUD and the world |
+| Chromatic material | the three additive primaries (red, green, blue) drawn as chromatic aberration by all four menus, over a black surface with white text | roll the material out to the HUD and the world |
 | Material behaviours | none | no flow/ripple/churn/goop/drip |
 | Menus alive behind controls | all four menus carry a field, fill the viewport, and recess the frame behind them | keep; bounded (floating-panel) layouts are authorable but unused |
 | World material behaviour | static 4-glyph materials | no behaviour per material |
@@ -217,6 +228,12 @@ the five-step protocol in
   draws it as sparse saturated specks over a white-dominant flowing fabric (reworked 2026-10-07; see
   the review record "Fabric rework"). (Was: do the 16 §3.1 roles suffice as the full §1 "primary and
   secondary" material, or do we add an additive set for decorative fields?)
+  **Narrowed and locked 2026-10-09:** the display surfaces draw the **three additive primaries only** —
+  red, green, blue — as chromatic aberration; the other three colours of the set are
+  editor-visualization tokens and are not drawn on a display surface. The identity that locks this is
+  recorded in
+  [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) ("Change of
+  direction recorded 2026-10-09 — the visual identity, locked").
 - **D-2 — Motion budget under richness.** **Resolved 2026-10-07:** an additive
   `UI_THEME_MOTION_AMBIENT` role (1800 ms) was added, and `while_visible` now maps to it, so a
   continuously-flowing field has an in-vocabulary period. (Was: the 80/160/120/120 ms role set was

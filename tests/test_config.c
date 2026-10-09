@@ -32,12 +32,47 @@ static void test_defaults_and_valid_override(void **state) {
     (void)state;
     config_init_defaults();
     assert_int_equal(config_get()->grid_width, 260);
+    assert_int_equal(config_get()->backdrop_period_ms, 2600);
     write_config("grid_width = 80\nambient_light = 0.35\n"
+                 "backdrop_period_ms = 3200\n"
                  "debug_display_enabled = 0\nunknown_key = retained_compatibility\n");
     assert_true(config_load_from_file(path));
     assert_int_equal(config_get()->grid_width, 80);
     assert_float_equal(config_get()->ambient_light, 0.35, 0.000001);
+    assert_int_equal(config_get()->backdrop_period_ms, 3200);
     assert_false(config_get()->debug_display_enabled);
+    assert_int_equal(remove(path), 0);
+    reset_path();
+}
+
+static void test_backdrop_period_is_bounded(void **state) {
+    EngineConfig before;
+    (void)state;
+    config_init_defaults();
+    before = *config_get();
+    /* Both ends of the practical range are accepted... */
+    write_config("backdrop_period_ms = 400\n");
+    assert_true(config_load_from_file(path));
+    assert_int_equal(config_get()->backdrop_period_ms, 400);
+    assert_int_equal(remove(path), 0);
+    reset_path();
+    write_config("backdrop_period_ms = 60000\n");
+    assert_true(config_load_from_file(path));
+    assert_int_equal(config_get()->backdrop_period_ms, 60000);
+    assert_int_equal(remove(path), 0);
+    reset_path();
+    /* ... and a strobe or a standstill is refused whole, leaving the active
+       configuration untouched. */
+    config_init_defaults();
+    before = *config_get();
+    write_config("grid_width = 80\nbackdrop_period_ms = 10\n");
+    assert_false(config_load_from_file(path));
+    assert_memory_equal(config_get(), &before, sizeof(before));
+    assert_int_equal(remove(path), 0);
+    reset_path();
+    write_config("backdrop_period_ms = 60001\n");
+    assert_false(config_load_from_file(path));
+    assert_memory_equal(config_get(), &before, sizeof(before));
     assert_int_equal(remove(path), 0);
     reset_path();
 }
@@ -82,6 +117,7 @@ static void test_missing_and_invalid_set_preserve_active_config(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_defaults_and_valid_override),
+        cmocka_unit_test(test_backdrop_period_is_bounded),
         cmocka_unit_test(test_invalid_and_overlong_files_are_transactional),
         cmocka_unit_test(test_missing_and_invalid_set_preserve_active_config)
     };

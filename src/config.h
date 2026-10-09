@@ -53,7 +53,22 @@ typedef struct {
 
     /* ---- Debug ---- */
     bool debug_display_enabled;       /* Show HUD overlay (default true) */
+
+    /* ---- UI motion ---- */
+    /* The ambient loop the backdrop's travelling wave advances over, in
+       milliseconds: how long one crossing of the surface takes. This is the
+       material's speed and nothing else — the wave, its wavelengths, its
+       direction and the chromatic wake are unchanged — so it is a taste value
+       rather than a literal. Default 2600, which is slower than the shipped theme
+       value (1800) on the owner's direction recorded 2026-10-09; larger is slower. */
+    int backdrop_period_ms;
 } EngineConfig;
+
+/* The practical range for `backdrop_period_ms`: slow enough to read as material
+   rather than as a strobe, quick enough to still be motion. Below the floor the
+   wave would not be a wave, above the ceiling it would not visibly move. */
+#define CONFIG_BACKDROP_PERIOD_MIN_MS 400
+#define CONFIG_BACKDROP_PERIOD_MAX_MS 60000
 
 /* ---- Configuration API ---- */
 

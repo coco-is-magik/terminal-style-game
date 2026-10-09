@@ -198,6 +198,14 @@ motion model, and motion specimen are implemented and verified. The application 
 the B1.2 diagnostic button gallery consume the shared application-UI evaluator. Authored `.tui`
 Menu animation remains separately owned and is not changed by B1.2.
 
+**Display-surface identity (locked 2026-10-09).** The authored menus, the HUD, the transitions and the
+world are **black, white, red, green, blue and flowy, smooth motion**: black `canvas`, white
+`text_primary`, the neutral `text_secondary` material, the three additive primaries as chromatic
+aberration and nothing else, and one continuous material — waves travel, and a state change surges in
+and retraces out. The editor interface remains the white-dominant, selectively coloured surface of §4.2
+in [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md), and the hues its
+roles name outside the identity are recorded there as open reconciliations.
+
 When a rule is accepted, add it here first as a measurable invariant, identify one
 focused runner, add normal/boundary/failure coverage, and only then include it in
 `make test-ui-standards`. Do not enforce subjective appearance through brittle

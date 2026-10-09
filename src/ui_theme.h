@@ -148,6 +148,26 @@ UiThemeState ui_theme_resolve_state(uint32_t flags);
 unsigned int ui_theme_motion_duration_ms(UiThemeMotionRole role,
                                          bool reduced_motion);
 
+/**
+ * The period of the ambient loop, and the one motion value the runtime retunes.
+ *
+ * The ambient loop is how long the backdrop's travelling wave takes to cross the
+ * surface, so it *is* the speed of the material: the wave, its wavelengths, its
+ * direction and the aberration are all unchanged by it, and a full loop lands on
+ * exactly the same phase whatever the period. It is settable because the rate is
+ * a matter of taste rather than of the vocabulary, and it is set from
+ * `backdrop_period_ms` in configuration so the material can be tried at different
+ * speeds without a recompile (owner direction recorded 2026-10-09 in
+ * UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1.2, item 2).
+ *
+ * Zero restores the theme's own value; the practical range is the configuration
+ * setting's business, not this table's, so there is nothing here to validate.
+ */
+void ui_theme_set_ambient_period_ms(unsigned int period_ms);
+
+/** The ambient loop currently in force, in milliseconds. */
+unsigned int ui_theme_ambient_period_ms(void);
+
 /** Resolves normalized ease-out progress transactionally. */
 bool ui_theme_motion_progress(UiThemeMotionRole role, double elapsed_ms,
                               bool reduced_motion, double *out_progress);

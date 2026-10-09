@@ -1,5 +1,17 @@
 # Current Status
 
+## Locked visual identity
+
+**Black, White, Red, Green, Blue and flowy, smooth motion** — locked 2026-10-09 in
+[`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) ("Change of
+direction recorded 2026-10-09 — the visual identity, locked"). Display surfaces — the authored menus,
+the HUD, the transitions and the world — are a black `canvas` (`#05080A`) with white `text_primary`
+(`#F2F7F8`), the neutral `text_secondary` fabric (`#A8B4B8`), and the three additive primaries — red
+`#FF2B2B`, green `#2BFF4F`, blue `#2B55FF` — as chromatic aberration and nothing else. Motion is one
+continuous material: waves travel across the fabric, and a state change surges in and retraces out
+instead of cutting between two pictures. Hues the editor-interface roles name outside that identity are
+recorded as open reconciliations in that document and in [`TODO.md`](TODO.md).
+
 ## Current verified foundation
 
 R12 is Verified and closed as of 2026-09-11. R0–R12 are verified roadmap

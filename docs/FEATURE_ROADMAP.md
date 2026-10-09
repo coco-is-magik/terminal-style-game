@@ -326,6 +326,14 @@ vocabulary are manually approved. Application-menu focus/selection colors consum
 adapter, and the pure D6 model plus `make ui-motion-demo` are verified. Remaining V1-1
 decisions retain their own gates; no real-context motion integration has begun.
 
+**Locked since (2026-10-09):** the display surfaces have a locked identity — *black, white, red,
+green, blue and flowy, smooth motion*: black `canvas`, white `text_primary`, the neutral
+`text_secondary` fabric, the three additive primaries as chromatic aberration and nothing else, and one
+continuous material whose waves travel and whose state changes surge and retrace. See the change of
+direction in [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). Hues
+the editor-interface roles name outside it are recorded there as open reconciliations
+([`TODO.md`](TODO.md)).
+
 **Purpose:** Convert visual inspiration into reusable, enforceable UI rules without
 merging editor UI and authored game UI.
 

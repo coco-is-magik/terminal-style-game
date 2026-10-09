@@ -923,6 +923,203 @@ static bool settle_ramp_glyph(uint8_t glyph) {
    and then thins away, so the live frame underneath is left uncovered. The rule it
    serves is recorded in the reference of record (2026-10-09 direction, item 4,
    Stage C). */
+/* Cells the tide has painted: the material's own neutral, or one of the three
+   additive primaries its edge and wake are drawn in. */
+static bool tide_painted(SDL_Color c) {
+    const UiThemeColor *material = ui_theme_material_palette();
+    UiThemeColor neutral = ui_theme_provisional_tokens()->palette.text_secondary;
+    if (c.r == neutral.red && c.g == neutral.green && c.b == neutral.blue) return true;
+    for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+        if ((m == 0 || m == 2 || m == 4) && c.r == material[m].red &&
+            c.g == material[m].green && c.b == material[m].blue)
+            return true;
+    return false;
+}
+
+static int tide_painted_cells(Grid *grid) {
+    int count = 0;
+    for (int i = 0; i < grid->width * grid->height; i++)
+        if (tide_painted(grid->cells[i].fg)) count++;
+    return count;
+}
+
+static void tide_render(UiLayout *layout, Grid *grid, double elapsed_ms,
+                        UiAnimationEvent event) {
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    grid_clear(grid, bg);
+    ui_layout_render(layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(layout, grid, elapsed_ms, false, false, event));
+}
+
+/* The time at which a direction has painted `target` cells, by bisection: the cover
+   is monotone through each window, so the two halves can be compared at the same
+   cover rather than at the same elapsed time. */
+static double tide_time_for_cover(UiLayout *layout, Grid *grid, UiAnimationEvent event,
+                                  unsigned int window_ms, int target) {
+    double low = 0.0;
+    double high = (double)window_ms;
+    for (int step = 0; step < 24; step++) {
+        double mid = (low + high) / 2.0;
+        bool above;
+        tide_render(layout, grid, mid, event);
+        above = tide_painted_cells(grid) >= target;
+        if (event == UI_ANIMATION_EVENT_CONTEXT_ENTER) {
+            /* The reveal opens covered and drains, so it is monotone downwards. */
+            if (above) low = mid; else high = mid;
+        } else if (above) {
+            high = mid;
+        } else {
+            low = mid;
+        }
+    }
+    return (low + high) / 2.0;
+}
+
+/* The tide has to read as water arriving, not as a wipe: an edge that swells and
+   travels, a woven sheet rather than one flat stripe, one continuous motion across
+   the handover, and a reveal that unwinds exactly what the cover wound. The first
+   attempt failed all four — the owner's report was "the wave straightens and freezes
+   for a moment ... more like a stutter between things" — because its edge was a
+   straight anti-diagonal, a constant band lift clamped every cell to one glyph, and
+   its phase came from the ambient clock, which over a 120 ms window barely moves and
+   does not line up across the handover. */
+static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
+    UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 120, 80);
+    UiElement label = element("label", UI_ELE_BUTTON, 40, 20, 24, 1);
+    UiElement cover = element("cover", UI_ELE_ANIMATION, 0, 0, 120, 80);
+    UiElement reveal = element("reveal", UI_ELE_ANIMATION, 0, 0, 120, 80);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(120, 80);
+    Grid *exit_frame = grid_create(120, 80);
+    Grid *enter_frame = grid_create(120, 80);
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    unsigned int ambient = ui_theme_ambient_period_ms();
+    const size_t cells = 120U * 80U;
+    int changed;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(exit_frame);
+    assert_non_null(enter_frame);
+    (void)snprintf(cover.target, sizeof(cover.target), "target");
+    (void)snprintf(cover.preset, sizeof(cover.preset), "tide_cover");
+    (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
+    (void)snprintf(cover.orientation, sizeof(cover.orientation), "horizontal");
+    cover.extent = UI_EXTENT_SURFACE;
+    (void)snprintf(reveal.target, sizeof(reveal.target), "target");
+    (void)snprintf(reveal.preset, sizeof(reveal.preset), "tide_reveal");
+    (void)snprintf(reveal.trigger, sizeof(reveal.trigger), "context_enter");
+    (void)snprintf(reveal.orientation, sizeof(reveal.orientation), "horizontal");
+    reveal.extent = UI_EXTENT_SURFACE;
+    layout.elements[0] = &target;
+    layout.elements[1] = &label;
+    layout.elements[2] = &cover;
+    layout.elements[3] = &reveal;
+    layout.element_count = 4;
+
+    /* The handover: the runner drops the exit overlay on the frame the unit ends and
+       the incoming surface's reveal starts on that frame. One material, so those two
+       frames are nearly the same surface — 0.12% of the surface apart when measured,
+       against 82% for the ambient-clock phase, which is the stutter. */
+    tide_render(&layout, exit_frame, (double)exit_ms - 1.0,
+                UI_ANIMATION_EVENT_CONTEXT_EXIT);
+    tide_render(&layout, enter_frame, 0.0, UI_ANIMATION_EVENT_CONTEXT_ENTER);
+    changed = 0;
+    for (size_t i = 0; i < cells; i++)
+        if (memcmp(&exit_frame->cells[i], &enter_frame->cells[i], sizeof(Cell)) != 0)
+            changed++;
+    if (changed > (int)(cells / 100U))
+        fprintf(stderr, "FAIL-PRODUCT: handover differs in %d of %zu cells\n", changed,
+                cells);
+    assert_true(changed <= (int)(cells / 100U));
+
+    /* The reveal retraces the cover: at the same cover the two directions compose the
+       same surface, because the phase is the cover and not a clock. */
+    {
+        double exit_t = tide_time_for_cover(&layout, grid, UI_ANIMATION_EVENT_CONTEXT_EXIT,
+                                            exit_ms, (int)(cells / 2U));
+        double enter_t = tide_time_for_cover(&layout, grid,
+                                             UI_ANIMATION_EVENT_CONTEXT_ENTER, enter_ms,
+                                             (int)(cells / 2U));
+        tide_render(&layout, exit_frame, exit_t, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+        tide_render(&layout, enter_frame, enter_t, UI_ANIMATION_EVENT_CONTEXT_ENTER);
+        changed = 0;
+        for (size_t i = 0; i < cells; i++)
+            if (memcmp(&exit_frame->cells[i], &enter_frame->cells[i], sizeof(Cell)) != 0)
+                changed++;
+        if (changed > (int)(cells / 100U))
+            fprintf(stderr,
+                    "FAIL-PRODUCT: at half cover the two directions differ in %d of %zu "
+                    "cells (exit t=%.1f, enter t=%.1f)\n",
+                    changed, cells, exit_t, enter_t);
+        assert_true(changed <= (int)(cells / 100U));
+    }
+
+    /* The edge swells, and the sheet under it is woven: a straight edge gives one
+       value of (edge + y) per row (the wipe the owner rejected), and a clamped band
+       gives one glyph (the flat stripe). */
+    {
+        double mid = tide_time_for_cover(&layout, grid, UI_ANIMATION_EVENT_CONTEXT_EXIT,
+                                         exit_ms, (int)(cells / 2U));
+        int low = 1 << 30;
+        int high = -(1 << 30);
+        int rows = 0;
+        int distinct = 0;
+        bool seen[256] = {false};
+        tide_render(&layout, grid, mid, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+        for (int y = 0; y < 80; y++) {
+            int edge = -1;
+            for (int x = 0; x < 120; x++) {
+                Cell cell;
+                if (!grid_get(grid, x, y, &cell)) continue;
+                if (tide_painted(cell.fg) && cell.glyph != 0U && cell.glyph != ' ') {
+                    edge = x;
+                    if (!seen[cell.glyph]) {
+                        seen[cell.glyph] = true;
+                        distinct++;
+                    }
+                }
+            }
+            if (edge <= 0) continue;
+            if (edge + y < low) low = edge + y;
+            if (edge + y > high) high = edge + y;
+            rows++;
+        }
+        assert_true(rows > 20);
+        if (high - low < 3)
+            fprintf(stderr, "FAIL-PRODUCT: the flood's edge is straight (spread %d)\n",
+                    high - low);
+        assert_true(high - low >= 3);
+        if (distinct < 3)
+            fprintf(stderr, "FAIL-PRODUCT: the flood is one flat stripe (%d glyphs)\n",
+                    distinct);
+        assert_true(distinct >= 3);
+    }
+
+    /* A transition is not the backdrop: the speed of the ambient loop does not touch
+       it, or slowing the backdrop would silently slow every state change with it. */
+    {
+        double t = (double)exit_ms / 2.0;
+        tide_render(&layout, exit_frame, t, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+        ui_theme_set_ambient_period_ms(ambient * 2U);
+        tide_render(&layout, enter_frame, t, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+        assert_memory_equal(exit_frame->cells, enter_frame->cells,
+                            cells * sizeof(Cell));
+    }
+
+    release(&reveal);
+    release(&cover);
+    release(&label);
+    release(&target);
+    grid_destroy(enter_frame);
+    grid_destroy(exit_frame);
+    grid_destroy(grid);
+    ui_theme_set_ambient_period_ms(ambient);
+}
+
+
+
 static void test_settle_condenses_to_the_lattice_then_resolves(void **state) {
     UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 40, 24);
     UiElement label = element("label", UI_ELE_BUTTON, 8, 8, 12, 1);
@@ -1044,6 +1241,190 @@ static void test_settle_condenses_to_the_lattice_then_resolves(void **state) {
     grid_destroy(grid);
 }
 
+/*
+ * The backdrop's speed is a setting, not a constant. Retuning the ambient loop
+ * changes how fast the material advances and nothing else: the same phase composes
+ * the same surface at any period, and one whole loop lands back on it, because the
+ * wave advances a whole number of wavelengths per loop. That is what makes the
+ * speed safe to try at different values from configuration.
+ */
+static void test_backdrop_period_retunes_the_speed_of_the_field(void **state) {
+    UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 24, 12);
+    UiElement field = element("field", UI_ELE_ANIMATION, 0, 0, 24, 12);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(24, 12);
+    Grid *reference = grid_create(24, 12);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    const size_t cells = 24U * 12U;
+    unsigned int base;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(reference);
+    (void)snprintf(field.target, sizeof(field.target), "target");
+    (void)snprintf(field.preset, sizeof(field.preset), "living_field");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "while_visible");
+    field.extent = UI_EXTENT_SURFACE;
+    layout.elements[0] = &target;
+    layout.elements[1] = &field;
+    layout.element_count = 2;
+    ui_theme_set_ambient_period_ms(0U);
+    base = ui_theme_ambient_period_ms();
+    assert_int_equal(base, ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false));
+
+    /* Phase zero at the theme's own period: the surface to compare against. */
+    grid_clear(reference, bg);
+    ui_layout_render(&layout, reference, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, reference, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+
+    /* The same phase at twice the period is the same surface: only the rate
+       differs, which is the whole of what the setting changes. */
+    ui_theme_set_ambient_period_ms(base * 2U);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, reference->cells, cells * sizeof(Cell));
+
+    /* Under the slower setting the same elapsed time is only part of the way
+       through — the material is identical, it simply takes longer to cross. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)base, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_true(memcmp(grid->cells, reference->cells, cells * sizeof(Cell)) != 0);
+    /* A whole loop is a whole loop at any period: two of the slower ones land back
+       on the surface the window started from. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)base * 2.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, reference->cells, cells * sizeof(Cell));
+
+    /* The same two properties at the theme's own period. */
+    ui_theme_set_ambient_period_ms(0U);
+    assert_int_equal(ui_theme_ambient_period_ms(), base);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)base / 2.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_true(memcmp(grid->cells, reference->cells, cells * sizeof(Cell)) != 0);
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)base, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+    assert_memory_equal(grid->cells, reference->cells, cells * sizeof(Cell));
+
+    /* Restoring the theme's own value is what every other test relies on. */
+    ui_theme_set_ambient_period_ms(0U);
+    assert_int_equal(ui_theme_ambient_period_ms(), base);
+    release(&field);
+    release(&target);
+    grid_destroy(reference);
+    grid_destroy(grid);
+}
+
+
+/*
+ * The application does not load the element catalogue the way the workbench does.
+ * It preloads a fixed list per layout from `assets/ui_layouts/master_map.txt`
+ * (`cache_next=`) and then resolves each layout's `elements=` line against that
+ * cache; a name the cache does not hold becomes a NULL slot without a word
+ * (`ui_layout_load`, `src/ui_ele.c`). An authored element can therefore silently
+ * stop existing — which is exactly what happened to the menu transitions: the
+ * tide cover and reveal were authored into the four menus but never added to the
+ * preload lists, so no application run ever played a transition, while every test
+ * passed because the workbench loads the whole catalogue.
+ *
+ * This is the guard for that: resolve each menu the way `src/app.c` does and
+ * require that the resolved surface can cover itself on the way out and reveal
+ * itself on the way in.
+ */
+static void test_application_menu_layouts_play_their_authored_transition(void **state) {
+    static const char *const menus[] = {"main_menu", "pause_menu", "settings",
+                                        "confirm_quit"};
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    Grid *grid = grid_create(260, 160);
+    Grid *authored = grid_create(260, 160);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    const size_t cells = 260U * 160U;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(authored);
+    assert_true(exit_ms > 0U);
+    assert_true(enter_ms > 0U);
+    for (size_t menu = 0; menu < sizeof(menus) / sizeof(menus[0]); menu++) {
+        char path[64];
+        UiCache cache;
+        UiLayout *layout;
+        int changed;
+        ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
+        ui_cache_tick(&cache, menus[menu], "assets/ui_elements");
+        assert_true(snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt",
+                             menus[menu]) < (int)sizeof(path));
+        layout = ui_layout_load(path, &cache);
+        assert_non_null(layout);
+        assert_true(layout->element_count > 0);
+        /* Every authored element resolved: no silent hole in the layout. */
+        for (int e = 0; e < layout->element_count; e++) {
+            if (!layout->elements[e])
+                fprintf(stderr, "FAIL-PRODUCT: %s: element %d is unresolved\n",
+                        menus[menu], e);
+            assert_non_null(layout->elements[e]);
+        }
+        /* Children resolve through the same cache, so walk them as well — up the
+           parent chain, because a layout's containers are reached as parents
+           rather than listed as elements. A missing child is reported by the
+           loader but fails nothing, so only a test keeps it honest. */
+        for (int e = 0; e < layout->element_count; e++) {
+            for (UiElement *level = layout->elements[e]; level; level = level->parent) {
+                for (int c = 0; c < level->child_count; c++) {
+                    if (!level->children[c])
+                        fprintf(stderr,
+                                "FAIL-PRODUCT: %s: child %d of '%s' is unresolved\n",
+                                menus[menu], c, level->name);
+                    assert_non_null(level->children[c]);
+                }
+            }
+        }
+        /* The surface as authored, to compare the transition against. */
+        grid_clear(grid, bg);
+        ui_layout_render(layout, grid, fg, bg);
+        memcpy(authored->cells, grid->cells, cells * sizeof(Cell));
+        /* On the way out the material covers the surface... */
+        assert_true(ui_animation_render_layout(layout, grid, (double)exit_ms - 1.0,
+                                               false, false,
+                                               UI_ANIMATION_EVENT_CONTEXT_EXIT));
+        changed = 0;
+        for (size_t i = 0; i < cells; i++)
+            if (grid->cells[i].glyph != authored->cells[i].glyph) changed++;
+        if (changed <= (int)(cells / 4U))
+            fprintf(stderr, "FAIL-PRODUCT: %s: exit covered %d of %zu cells\n",
+                    menus[menu], changed, cells);
+        assert_true(changed > (int)(cells / 4U));
+        /* ... and on the way in it is fully covered before the reveal drains. */
+        grid_clear(grid, bg);
+        ui_layout_render(layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
+                                               UI_ANIMATION_EVENT_CONTEXT_ENTER));
+        changed = 0;
+        for (size_t i = 0; i < cells; i++)
+            if (grid->cells[i].glyph != authored->cells[i].glyph) changed++;
+        if (changed <= (int)(cells / 4U))
+            fprintf(stderr, "FAIL-PRODUCT: %s: reveal covered %d of %zu cells\n",
+                    menus[menu], changed, cells);
+        assert_true(changed > (int)(cells / 4U));
+        ui_layout_destroy(layout);
+        ui_cache_destroy(&cache);
+    }
+    grid_destroy(authored);
+    grid_destroy(grid);
+}
+
+
 static bool painted_outside(Grid *grid, int x0, int y0, int x1, int y1) {
     for (int y = 0; y < grid->height; y++) {
         for (int x = 0; x < grid->width; x++) {
@@ -1118,6 +1499,9 @@ int main(void) {
         cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced),
         cmocka_unit_test(test_tide_covers_the_surface_then_restores_it),
         cmocka_unit_test(test_settle_condenses_to_the_lattice_then_resolves),
+        cmocka_unit_test(test_backdrop_period_retunes_the_speed_of_the_field),
+        cmocka_unit_test(test_tide_reads_as_a_tide_not_a_wipe),
+        cmocka_unit_test(test_application_menu_layouts_play_their_authored_transition),
         cmocka_unit_test(test_surface_extent_fills_the_frame_unless_bounded)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -533,10 +533,19 @@ static void test_runtime_pixel_fixtures(void **state) {
        UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). The frame is a settled preview —
        `ui_workbench_runtime_preview` never plays a transition, so no tide is in
        it — and the field is sampled at phase 0, so the frame is deterministic.
-       No other rendering path changed. */
+       No other rendering path changed.
+       Reverted, not refreshed 2026-10-09 (state transitions): these four values
+       moved when the menus gained their tide elements, and were re-recorded at
+       the time. That was wrong. The chrome builds a full-surface specimen of the
+       layout and plays the enter on it before copying rows out for the tray, so
+       the first surface-extent element to arrive flooded the specimen and every
+       tray row taken from it — `ui_workbench_chrome.c` now skips surface-extent
+       units in a specimen, and the frames are exactly what they were before the
+       tide existed. The fixture caught the artifact; it should not have been
+       re-recorded over. */
     static const uint64_t expected[] = {
-        UINT64_C(7203581474663606094), UINT64_C(13010573139777026658),
-        UINT64_C(4422575597582354321), UINT64_C(18210401330973498897)
+        UINT64_C(7273567102547718950), UINT64_C(18159151064839384890),
+        UINT64_C(2216372606294381406), UINT64_C(12825855358401564365)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));

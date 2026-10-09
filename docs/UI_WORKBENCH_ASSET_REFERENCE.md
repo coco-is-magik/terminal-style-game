@@ -400,7 +400,12 @@ primaries**, red on left edges, blue on right edges, green on the horizontal edg
 fringing dust on white edges and never as a fill, a secondary colour, a spatial hue ramp, or per-cell
 confetti. The field is a **substrate**: it paints only blank cells, so it fills the surface *behind*
 text and controls and its fringes run up against the glyphs, keeping the menu one continuous material
-rather than elements on a black plate. It draws nothing under Reduced Motion and is bound to the main
+rather than elements on a black plate. **Identity (locked 2026-10-09): black, white, red, green, blue
+and flowy, smooth motion** — black `canvas`, white
+`text_primary`, the neutral `text_secondary` material, and those three primaries as the only colour —
+drawn as aberration, never as a fill. See
+[`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) ("the visual
+identity, locked"). It draws nothing under Reduced Motion and is bound to the main
 and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`) and
 `animation_living_field` (`assets/ui_layouts/pause_menu.txt`); see
 `docs/reviews/2026-10-07-pause-living-field.md`.

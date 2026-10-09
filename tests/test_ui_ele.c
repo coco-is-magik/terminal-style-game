@@ -149,7 +149,14 @@ static void test_ui_cache_master_map(void **state) {
     ui_cache_init(&cache, "assets/ui_layouts/master_map.txt");
     assert_int_equal(cache.master_count, 6);
     assert_string_equal(cache.master_entries[0].layout, "main_menu");
-    assert_int_equal(cache.master_entries[0].cache_next_count, 7);
+    /* Reviewed refresh 2026-10-09: the four menus' lists gained their tide cover
+       and reveal. The application preloads exactly these lists and resolves each
+       layout's `elements=` against the result, so an element authored into a layout
+       but missing here is dropped without a word — which is what had happened to
+       every transition (`docs/reviews/2026-10-09-state-transitions.md`, "Defect
+       found after the fact"). Counts are recorded; the elements themselves are
+       asserted below. */
+    assert_int_equal(cache.master_entries[0].cache_next_count, 9);
     assert_string_equal(cache.master_entries[1].layout, "pause_menu");
     assert_string_equal(cache.master_entries[2].layout, "confirm_quit");
     assert_string_equal(cache.master_entries[3].layout, "settings");
@@ -161,6 +168,10 @@ static void test_ui_cache_master_map(void **state) {
     assert_non_null(ui_cache_get(&cache, "main_menu_container"));
     assert_non_null(ui_cache_get(&cache, "main_menu_level_editor"));
     assert_non_null(ui_cache_get(&cache, "animation_main_field"));
+    /* The transition, in both directions: the list has to hold what the layout
+       authors, or the menu changes state instantly. */
+    assert_non_null(ui_cache_get(&cache, "animation_main_tide_cover"));
+    assert_non_null(ui_cache_get(&cache, "animation_main_tide_reveal"));
 
     ui_cache_destroy(&cache);
 }

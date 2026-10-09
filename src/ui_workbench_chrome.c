@@ -494,6 +494,12 @@ static bool menu_option_sample(Grid *sample, const UiWorkbench *workbench,
         if (!layout.elements[i]) continue;
         copies[i] = *layout.elements[i];
         copies[i].child_count = 0;
+        /* A surface-extent unit is drawn for the surface it belongs to, not for a
+           specimen of the layout: the menu's tide would flood this whole specimen
+           and every row copied out of it, which is how the tray came to show the
+           material of a transition instead of the furniture of the layout. The
+           chrome wants the furniture. */
+        if (copies[i].extent == UI_EXTENT_SURFACE) copies[i].visible = 0;
         if (copies[i].type == UI_ELE_BUTTON) {
             copies[i].focused = false;
             ui_ele_set_colors(&copies[i], menu.unselected_foreground, menu.unselected_background);

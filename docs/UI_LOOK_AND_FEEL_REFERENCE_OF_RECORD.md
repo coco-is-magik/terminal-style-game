@@ -100,7 +100,13 @@ simple; the behavior should carry the richness" — and is recorded as follows.
    the surface's bottom-right corner to its top-left at different wavelengths, and their beat is the
    flag-like lift and settle. Both advance an **integer** number of wavelengths per `AMBIENT` loop, so
    the material loops seamlessly on any surface size and no geometry is hidden in a constant.
-   `AMBIENT` stays 1800 ms; no motion role or duration changed.
+   **The rate is a setting, the material is not:** the ambient loop defaults to the token value of
+   1800 ms and is retuned by `backdrop_period_ms` in `config.ini` (default 2600 ms — the owner found
+   the material a little fast, recorded 2026-10-09). Because the wave advances whole wavelengths per
+   loop, the same phase composes the same surface at any period and one loop always lands back on it,
+   so the speed can be tried at different values without the look moving: the wavelengths, the
+   direction, the density curve, the grain and the chromatic wake are untouched, and no motion role or
+   other duration changed.
 3. **The aberration follows the wave.** The three additive primaries ride the **wake** behind every
    main crest as a sparse speckle, in addition to the existing directional fringe where the fabric
    meets a control or the region border. Colour stays decoration only: never a fill, never a secondary
@@ -117,6 +123,17 @@ simple; the behavior should carry the richness" — and is recorded as follows.
      incoming reveal begins on the frame the outgoing cover completes, so the two halves are one
      continuous motion with no frame where the surface is neither. No transition duration is written
      down anywhere as a literal.
+   - **A transition is driven by its own window, never by the ambient clock.** The tide's wave advances
+     over the cover it is crossing — an exit ends and the reveal that follows begins on the same cover,
+     so they share one phase and the material never jumps at the handover — and the reveal retraces the
+     cover exactly: the characters leave the way they arrived (owner direction 2026-10-09, after a first
+     attempt driven by the ambient clock read as "a straight edge sweeping a still sheet ... more like a
+     stutter between things"). Consequently the backdrop's speed is a setting
+     (`backdrop_period_ms`) that no state change follows.
+   - **A transition is the fabric, not a stripe.** The flood's edge rides the backdrop's anti-diagonal
+     fold, so it arrives as a travelling swell rather than a straight line, and its body is the same
+     woven sheet as the backdrop: the wave's band *plus* the per-cell weave, mapped into the top of the
+     ramp, where a constant lift would clamp every cell to one glyph and read as a flat stripe.
    - **The cover is a sanction, and a narrow one.** `tide_cover`, `tide_reveal` and `settle`
      declare `covers_content` in the effect registry, which is what allows them to pass over authored
      content; the evaluator withholds the restore of authored cells only while such a primitive is
@@ -135,6 +152,42 @@ simple; the behavior should carry the richness" — and is recorded as follows.
 Nothing here relaxes determinism, explicit time, stable IDs, exact endpoints, reduced-motion immediacy
 and non-spatiality, the palette/geometry tokens (§3), the 6 ms surface budget, or the single shared
 evaluator (§2). Reduced motion still draws no fabric and no displacement.
+
+## Change of direction recorded 2026-10-09 — the visual identity, locked
+
+> Black, White, Red, Green, Blue and flowy, smooth motion.
+
+That is the identity, in the owner's words, and it is **locked** here. It is not a starting point to be
+re-derived and not a palette to be extended in passing: every display surface — the authored menus, the
+HUD, the transitions, the world — is measured against it.
+
+- **Black and white first.** The surface is `canvas` `#05080A`: black, and the space behind everything.
+  Text is `text_primary` `#F2F7F8`: white. The shared material is `text_secondary` `#A8B4B8`, a neutral
+  light grey, so the fabric reads as *light on black* rather than as a wash. A selected control is the
+  inverse — `text_primary` behind `canvas`-coloured text. Emphasis is carried by brightness and by
+  movement, never by hue.
+- **The only colour is the three additive primaries.** `ui_theme_material_palette()` indices 0, 2 and 4:
+  red `#FF2B2B`, green `#2BFF4F`, blue `#2B55FF`. They appear **only** as the chromatic aberration of
+  the material — the speckle in the wake of a crest, the directional fringe where the fabric meets a
+  control, the region border, or a gap (red left, blue right, green horizontal), the tide's advancing
+  edge, the settle's crest. Never a fill, never a background, never a semantic status colour, never a
+  spatial hue ramp, never a secondary hue (§3.4). The material set's other three colours — yellow
+  `#FFE02B`, cyan `#2BE8FF`, magenta `#FF2BD6` — are **not part of this identity**: they exist as
+  tokens and no display surface draws them.
+- **Flowy, smooth motion.** One material, moving as one thing: waves travelling across the fabric, and
+  state changes that surge and retrace as a single continuous motion instead of a cut between two
+  pictures (§1.1–§1.3, and the transitions recorded above). Coordinated, never independent: no cuts, no
+  flicker, no particles, no trails, no filters laid over the interface (§4.4).
+
+**What this locks and what it exposes.** This note records the identity; it changes no code, and it is
+the reference for anything that follows. Two things in the shipped tokens sit outside it and are
+recorded here as **open reconciliations, not precedent**: the editor-interface roles carry hues the
+identity does not name (`accent` `#67F5C2`, `focus` `#A8FFE1`, `warning` `#FFD166`, `success` `#71F79F`,
+`error` `#FF6B7A`, `destructive` `#FF8894`, `selection_background` `#123D32`, `editor_selection`
+`#70B7FF`); and **the menus' focus perimeter draws `accent`/`focus`**, so a display surface currently
+shows a hue outside the identity. Retiring those hues or re-deriving them from black, white and the
+primaries is a decision to take deliberately, under the same record discipline as everything else here —
+not a silent edit. `test-ui-theme`'s contrast floors continue to apply to whatever survives.
 
 ## Rule of engagement
 
@@ -357,6 +410,14 @@ truth**; this table is the reference copy.
 
 ## 3.1 Palette roles
 
+**Scope (2026-10-09).** These are the *editor interface* roles. The **display surfaces** — authored
+menus, the HUD, the transitions and the world — follow the locked identity instead: black `canvas`,
+white `text_primary`, neutral `text_secondary`, and the three additive primaries of §3.4 as aberration,
+and nothing else (see the change of direction recorded 2026-10-09). The roles below that name a hue the
+identity does not — `accent`, `focus`, `warning`, `success`, `error`, `destructive`,
+`selection_background`, `editor_selection` — are editor-interface state, and are the open
+reconciliation recorded there.
+
 | Role | Value | Intended use |
 |---|---|---|
 | `canvas` | `#05080A` | Editor-interface backdrop; the space behind everything |
@@ -415,6 +476,13 @@ above so a continuously-flowing material field has an in-vocabulary period rathe
 constant. A `while_visible` animation unit now maps to this role. The 80/160/120/120 ms transition
 roles are unchanged.
 
+**Backdrop speed (2026-10-09).** The token above stays 1800 ms. The loop the backdrop actually advances
+over is `backdrop_period_ms` in `config.ini` (default **2600 ms**, range 400..60000), applied once at
+startup through `ui_theme_set_ambient_period_ms()` so the material's rate can be tried without a
+recompile. It is the backdrop's speed and nothing else: because the wave advances a whole number of
+wavelengths per loop, phase 0 is the same surface at any period. **A state change no longer follows it
+at all** — a transition is driven by its own window (see the transitions recorded 2026-10-09).
+
 ## 3.4 Decorative chromatic material (D-1)
 
 Added 2026-10-07 under the change of direction above. A six-colour, **decorative-only** material set
@@ -451,6 +519,12 @@ continuous material rather than elements on a black plate. See
 `docs/reviews/2026-10-07-pause-living-field.md` ("Field rework", "Fabric rework", "Chromatic-aberration
 rework") and `docs/reviews/2026-10-09-backdrop-fabric.md`. The set is not required to be drawn as a
 full-spectrum sweep; the fabric, not the colour, is the structure.
+
+**Locked scope (2026-10-09).** On a display surface this is the *whole* of the colour: black and white
+with the three additive primaries, and nothing else (change of direction recorded 2026-10-09). The
+set's three secondary colours — yellow, cyan, magenta — are tokens for the editor's visualizations;
+**no display surface draws them**, and a surface that wants a fourth hue is out of direction rather
+than under-specified.
 
 ---
 
@@ -492,6 +566,10 @@ that feels alive; a permanently pane-cluttered editor sacrifices the first for n
 - Context enter/exit: `MAJOR_ENTER` 160 ms / `MAJOR_EXIT` 120 ms, glyph reassembly.
 - Focus move and small feedback: `FEEDBACK` 80 ms.
 - Relationship cues: `RELATIONSHIP` 120 ms.
+- **Flowy and smooth is the standard, and it is locked (2026-10-09).** Display-surface motion is one
+  continuous material: waves travel across the fabric, and a state change surges in and then retraces
+  out as a single motion — the reveal unwinds exactly what the cover wound — rather than cutting between
+  two pictures. What moves is the material; what stands still is the furniture.
 - **Nothing in motion may move, displace, obscure, or delay a control, a focus marker, or a hit
   target.** The material moves; the controls do not.
 - Reduced motion: immediate and non-spatial.

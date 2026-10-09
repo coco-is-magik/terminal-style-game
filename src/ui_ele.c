@@ -816,7 +816,19 @@ UiLayout *ui_layout_load(const char *path, UiCache *cache) {
             int count = split_csv(names, UI_LAYOUT_MAX_ELEMS, val);
             for (int i = 0; i < count; i++) {
                 if (layout->element_count < UI_LAYOUT_MAX_ELEMS) {
-                    layout->elements[layout->element_count++] = ui_cache_get(cache, names[i]);
+                    UiElement *element = ui_cache_get(cache, names[i]);
+                    /* A name the cache does not hold used to become a NULL slot in
+                       silence, so an element authored into the layout simply stopped
+                       being drawn wherever the caller had not preloaded it — the
+                       application preloads a fixed list per layout, so the menu
+                       transitions disappeared while every test, which loads the whole
+                       catalogue, kept passing. Say so, the way a missing parent or
+                       child already does; `test_ui_animation` requires that every
+                       authored element resolves on the application's own path. */
+                    if (!element && cache)
+                        fprintf(stderr, "ui_ele: element '%s' not found for layout '%s'\n",
+                                names[i], layout->name);
+                    layout->elements[layout->element_count++] = element;
                 }
             }
         } else if (strncmp(key, "slot_", 5) == 0 && layout->slot_count < UI_LAYOUT_MAX_SLOTS) {
