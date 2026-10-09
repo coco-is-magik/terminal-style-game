@@ -345,14 +345,23 @@ EditorInputConsumption unified_editor_update(
     int viewport_rows
 );
 
+/* The editor interface takes explicit time and the session's reduced-motion
+   setting: its surfaces carry the shared material and focus treatments, which
+   must be as deterministic and as explicit as the authored ones. */
 void unified_editor_render_overlay(
     const UnifiedEditorState *editor,
-    Grid *grid
+    Grid *grid,
+    double now_ms,
+    bool reduced_motion
 );
 void unified_editor_render_text_overlay(
     const UnifiedEditorState *editor,
-    Grid *grid
+    Grid *grid,
+    double now_ms,
+    bool reduced_motion
 );
+/* True while the scene browser is the surface on screen. */
+bool unified_editor_scene_browser_active(const UnifiedEditorState *editor);
 bool unified_editor_crosshair_visible(const UnifiedEditorState *editor);
 
 CommandResult unified_editor_set_wall_material(

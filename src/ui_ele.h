@@ -119,16 +119,15 @@ bool ui_ele_focus_effect_is_valid(const char *effect);
 bool ui_ele_animation_is_valid(const UiElement *element);
 
 /**
- * Draws the shared focus perimeter around a bounds rect.
- *
- * This is the shape-only form: the frame without the travelling chromatic
- * fringe, which stays a display-surface treatment (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md
- * §4.2). Editor-side surfaces mark focus with it so a selected row reads the
- * same way an authored button does, without adding chromatic motion to the
- * editor interface. `frame` is normally the `focus` role.
+ * Draws the shared focus perimeter around a bounds rect: a `frame`-coloured cell
+ * frame plus the travelling chromatic chase of the shared material. This is the
+ * same treatment an authored focused button gets, so an editor-side list can mark
+ * focus exactly the way the authored UI does. Under Reduced Motion the frame is
+ * drawn without the chase, so focus is still shown by shape rather than motion.
  */
 void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height,
-                                 SDL_Color frame, SDL_Color bg);
+                                 double now_ms, bool reduced_motion, SDL_Color frame,
+                                 SDL_Color bg);
 
 /** Parses a layout `underlay=` value; unknown values leave `out_mode` alone. */
 bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode);

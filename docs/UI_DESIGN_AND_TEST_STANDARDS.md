@@ -131,9 +131,17 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   the isolated diagnostic specimen and is not a reusable semantic token.
 - Editor-interface colour comes from `ui_app_theme_workbench_palette()` roles only: a literal in the
   editor interface is an automatic rejection (Reference of Record §5.2), and selection is a state, so
-  it takes the `focus` role rather than a hue of its own. A list or pane marks its focused row with the
-  shared perimeter in its shape-only form, never with chromatic motion. See
-  [`reviews/2026-10-08-editor-scene-browser.md`](reviews/2026-10-08-editor-scene-browser.md).
+  it takes the `focus` role rather than a hue of its own. The editor's *editing* surfaces (panes,
+  footers, tooltips, status text) mark their focused row with the shared perimeter in its shape-only
+  form, never with chromatic motion. A **mode-selection display surface** — the editor's scene browser,
+  which is built on the menus' form (full-display `living_field` material, one centred block, the
+  perimeter *with* its chase, exactly as an authored focused button draws it) — is governed by §1
+  instead. See
+  [`reviews/2026-10-08-editor-scene-browser.md`](reviews/2026-10-08-editor-scene-browser.md) for the
+  colour work and
+  [`reviews/2026-10-09-editor-scene-browser-display-surface.md`](reviews/2026-10-09-editor-scene-browser-display-surface.md)
+  for the classification and the centred-block rule (a surface larger than the frame is centred and
+  cropped, so a line authored at its foot is not visible).
 - Motion sampling uses explicit elapsed time, stable IDs, deterministic paths, exact
   endpoints, and no hidden randomness or frame-count progression.
 - Reduced motion resolves immediately and non-spatially, with no chromatic displacement or

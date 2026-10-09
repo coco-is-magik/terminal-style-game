@@ -29,6 +29,7 @@
 #include "../src/unified_editor.h"
 #include "../src/unified_editor_test.h"
 #include "../src/ui_app_theme_adapter.h"
+#include "../src/ui_theme.h"
 #include "../src/unified_editor_internal.h"
 #include "../src/asset_refresh.h"
 
@@ -428,30 +429,72 @@ static bool colour_is_one_of(const SDL_Color *colour, const SDL_Color *roles,
     return false;
 }
 
+/* True when a colour is one of the theme's role values or one of the additive
+   decorative material tokens: the allowed sources for any editor-interface
+   colour (§2, §3.1, §5.2 rejection 2). */
+static bool colour_is_token(UiThemeColor colour) {
+    const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
+    const UiThemeColor *material = ui_theme_material_palette();
+    const UiThemeColor *roles[16];
+    size_t count = 0U;
+    size_t i;
+
+    roles[count++] = &palette->canvas;
+    roles[count++] = &palette->panel;
+    roles[count++] = &palette->elevated;
+    roles[count++] = &palette->text_primary;
+    roles[count++] = &palette->text_secondary;
+    roles[count++] = &palette->border;
+    roles[count++] = &palette->accent;
+    roles[count++] = &palette->focus;
+    roles[count++] = &palette->selection_background;
+    roles[count++] = &palette->disabled_text;
+    roles[count++] = &palette->disabled_background;
+    roles[count++] = &palette->warning;
+    roles[count++] = &palette->error;
+    roles[count++] = &palette->success;
+    roles[count++] = &palette->destructive;
+    roles[count++] = &palette->editor_selection;
+    for (i = 0U; i < count; i++) {
+        if (colour.red == roles[i]->red && colour.green == roles[i]->green &&
+            colour.blue == roles[i]->blue && colour.alpha == roles[i]->alpha)
+            return true;
+    }
+    for (i = 0U; i < UI_THEME_MATERIAL_COLOR_COUNT; i++) {
+        if (colour.red == material[i].red && colour.green == material[i].green &&
+            colour.blue == material[i].blue && colour.alpha == material[i].alpha)
+            return true;
+    }
+    return false;
+}
+
 /* Mirrors the browser's content-fitted row count. */
 static int ed_listed_rows(size_t total) {
     if (total == 0U) return 1;
     return total < 9U ? (int)total : 9;
 }
 
-/* The scene browser is a framed panel over the editor, and the editor interface
-   carries no literals: every colour inside it is a ui_app_theme_workbench_palette()
-   role, the selected row takes the shared focus perimeter, and the panel holds
-   the title, the hint and the list. See docs/reviews/2026-10-08-editor-scene-browser.md. */
+/* The scene browser is a display surface laid out like an authored menu screen:
+   the living-field material fills the display, the focused entry brightens and
+   takes the shared focus perimeter, and every colour in it is a theme role or a
+   material token. See docs/reviews/2026-10-08-editor-scene-browser.md. */
 static void test_scene_browser_panel_is_palette_driven(void **state) {
-    static const int browser_columns = 60;
     UnifiedEditorState ed;
     UiAppWorkbenchPalette palette;
-    SDL_Color roles[6];
     Grid *grid;
     char first[512];
     char second[512];
-    const int x = (UNIFIED_EDITOR_INTERFACE_COLUMNS - browser_columns) / 2;
-    int browser_rows;
-    int y;
-    int selected_row;
+    const MapCatalogEntry *selected_entry;
+    int listed;
+    int block;
+    int title_row;
+    int first_row;
+    int label_columns;
+    int label_x;
+    int hint_row;
     int row;
     int column;
+    bool material = false;
 
     (void)state;
     assert_int_equal(prepare_catalog_maps(first, sizeof(first), second,
@@ -463,50 +506,73 @@ static void test_scene_browser_panel_is_palette_driven(void **state) {
     grid = grid_create(260, 160);
     assert_non_null(grid);
 
-    /* The panel fits its content, so the test derives the same geometry the
-       renderer does. */
-    browser_rows = 4 + ed_listed_rows(ed.map_catalog.count) * 2 + 2;
-    y = (UNIFIED_EDITOR_INTERFACE_ROWS - browser_rows) / 2;
-    selected_row = y + 4;
+    /* The screen geometry the renderer uses. */
+    listed = ed_listed_rows(ed.map_catalog.count);
+    block = listed * 3;
+    title_row = grid->height / 2 - (block + 4) / 2;
+    first_row = title_row + 3;
+    hint_row = title_row + block + 2;
 
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
 
-    /* Frame and contents. */
-    assert_int_equal(grid->cells[y * grid->width + x].glyph, (uint8_t)'+');
-    assert_int_equal(grid->cells[y * grid->width + x + browser_columns - 1].glyph,
-                     (uint8_t)'+');
-    assert_int_equal(grid->cells[(y + browser_rows - 1) * grid->width + x].glyph,
-                     (uint8_t)'+');
-    assert_memory_equal(&grid->cells[y * grid->width + x].fg, &palette.border,
-                        sizeof(SDL_Color));
-    assert_memory_equal(&grid->cells[y * grid->width + x].bg, &palette.panel,
-                        sizeof(SDL_Color));
+    /* Title, count and hint are on the surface. */
     assert_true(grid_contains_text(grid, "IMPORT LEGACY MAP"));
     assert_true(grid_contains_text(grid, "Esc=cancel"));
+    assert_memory_equal(&grid->cells[title_row * grid->width + 130 -
+                                     (int)strlen("IMPORT LEGACY MAP") / 2].fg,
+                        &palette.primary_text, sizeof(SDL_Color));
 
-    /* The selected row is a focus-role label inside the shared perimeter. */
-    assert_memory_equal(&grid->cells[selected_row * grid->width + x + 3].fg,
-                        &palette.focus, sizeof(SDL_Color));
-    assert_int_equal(grid->cells[(selected_row - 1) * grid->width + x + 1].glyph,
-                     (uint8_t)'+');
-    assert_memory_equal(&grid->cells[(selected_row - 1) * grid->width + x + 1].fg,
+    /* The hint is part of the centred block, not a footer line: a display surface
+       larger than the screen is centred and cropped by the compositor, so a hint
+       authored at the surface's foot would be cut off. It must stay within the
+       middle band with the title and the entries, centred on the hint row. */
+    assert_true(hint_row < grid->height * 3 / 4);
+    {
+        const char *hint = "Up/Down  Enter=import  Ctrl+O=open  Esc=cancel";
+        const int hint_x = 130 - (int)strlen(hint) / 2;
+        int i;
+        for (i = 0; hint[i] != '\0'; i++)
+            assert_int_equal(grid->cells[hint_row * grid->width + hint_x + i].glyph,
+                             (uint8_t)hint[i]);
+        assert_memory_equal(&grid->cells[hint_row * grid->width + hint_x].fg,
+                            &palette.secondary_text, sizeof(SDL_Color));
+    }
+
+    /* The focused entry brightens and takes the perimeter. At now_ms 0 the chase
+       sits at the perimeter's first cells, so the bottom-right corner is the
+       frame's own focus-coloured corner. */
+    selected_entry = map_catalog_get(&ed.map_catalog, ed.map_chooser_index);
+    assert_non_null(selected_entry);
+    label_columns = (int)strlen(selected_entry->name) + 2;
+    label_x = 130 - label_columns / 2;
+    assert_memory_equal(&grid->cells[first_row * grid->width + 130 -
+                                     (int)strlen(selected_entry->name) / 2].fg,
+                        &palette.primary_text, sizeof(SDL_Color));
+    assert_int_equal(grid->cells[(first_row + 1) * grid->width + label_x +
+                                 label_columns].glyph, (uint8_t)'+');
+    assert_memory_equal(&grid->cells[(first_row + 1) * grid->width + label_x +
+                                     label_columns].fg,
                         &palette.focus, sizeof(SDL_Color));
 
-    /* Drift alarm 2: no colour inside the panel is outside the palette. */
-    roles[0] = palette.primary_text;
-    roles[1] = palette.secondary_text;
-    roles[2] = palette.focus;
-    roles[3] = palette.border;
-    roles[4] = palette.panel;
-    roles[5] = palette.warning;
-    for (row = y; row < y + browser_rows; row++) {
-        for (column = x; column < x + browser_columns; column++) {
-            Cell cell;
-            assert_true(grid_get(grid, column, row, &cell));
-            assert_true(colour_is_one_of(&cell.fg, roles, 6U));
-            assert_true(colour_is_one_of(&cell.bg, roles, 6U));
+    /* Every colour on the surface is a theme role or a material token, and the
+       material is actually present. */
+    for (row = 0; row < grid->height; row++) {
+        for (column = 0; column < grid->width; column++) {
+            const Cell *cell = &grid->cells[row * grid->width + column];
+            /* Untouched cells are the empty frame; drawn cells must be tokens. */
+            if (cell->glyph == 0U) continue;
+            assert_true(colour_is_token((UiThemeColor){cell->fg.r, cell->fg.g,
+                                                       cell->fg.b, cell->fg.a}));
+            assert_true(colour_is_token((UiThemeColor){cell->bg.r, cell->bg.g,
+                                                       cell->bg.b, cell->bg.a}));
+            if (cell->glyph != ' ' &&
+                !colour_is_one_of(&cell->fg, &palette.primary_text, 1U) &&
+                !colour_is_one_of(&cell->fg, &palette.secondary_text, 1U) &&
+                !colour_is_one_of(&cell->fg, &palette.focus, 1U))
+                material = true;
         }
     }
+    assert_true(material);
     grid_destroy(grid);
     unified_editor_destroy(&ed);
 }
@@ -636,7 +702,7 @@ static void test_native_open_and_legacy_import_chooser_switch(void **state) {
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "OPEN SCENE"));
     assert_true(grid_contains_text(grid, "open_a.tscene"));
     grid_destroy(grid);
@@ -725,7 +791,7 @@ static void save_pathless_document_through_shortcut(UnifiedEditorState *ed,
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(ed, grid);
+    unified_editor_render_text_overlay(ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "SAVE SCENE"));
     assert_true(grid_contains_text(grid, "Backspace=delete"));
     grid_destroy(grid);
@@ -779,7 +845,7 @@ static void test_save_menu_backspace_and_empty_name_feedback(void **state) {
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Status: Invalid scene name"));
     grid_destroy(grid);
     unified_editor_destroy(&ed);
@@ -876,7 +942,7 @@ static void test_save_menu_overwrite_and_cancel_are_visible(void **state) {
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "File exists:"));
     assert_true(grid_contains_text(grid, "> Overwrite"));
     grid_destroy(grid);
@@ -999,7 +1065,7 @@ static void test_light_hover_selection_uses_stable_id(void **state) {
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Select light:11"));
     assert_true(grid_contains_text(grid, "Inspector: light"));
     assert_true(grid_contains_text(grid, "> X"));
@@ -1151,7 +1217,7 @@ static void test_light_inspector_numeric_entry_commit_cancel_and_validation(void
     assert_true(ed.light_value_editing);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "[2.5_]"));
     assert_true(grid_contains_text(grid, "RGBA weights colored surface illumination"));
     grid_destroy(grid);
@@ -1223,7 +1289,7 @@ static void test_overlay_includes_new_scene_shortcut(void **state) {
     assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
     grid = grid_create(260, 20);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Ctrl+N=new"));
     assert_true(grid_contains_text(grid, "L=place light"));
     grid_destroy(grid);
@@ -1495,7 +1561,7 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
 
     grid = grid_create(160, 160);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Pattern..."));
     assert_true(grid_contains_text(grid, "Load existing..."));
     assert_true(grid_contains_text(grid, "Edit/Paint"));
@@ -1762,7 +1828,7 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
 
     grid = grid_create(160, 160);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Pattern..."));
     assert_true(grid_contains_text(grid, "SPRITE PAINT"));
     assert_true(grid_contains_text(grid, "previous"));
@@ -1982,7 +2048,7 @@ static void test_object_sprite_picker_assignment_and_undo(void **state) {
     assert_int_equal(editor.document.objects[0].sprite_asset, 1U);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Sprite"));
     assert_true(grid_contains_text(grid, "Remove"));
     assert_false(grid_contains_text(grid, "Create def"));
@@ -2036,7 +2102,7 @@ static void test_trigger_place_inspect_runtime_remove_and_round_trip(void **stat
     assert_true(ed.document.triggers[0].min_x == 3.0);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Inspector: trigger"));
     assert_true(grid_contains_text(grid, "Min X"));
     grid_destroy(grid);
@@ -2189,7 +2255,7 @@ static void test_decal_surface_menu_selects_stable_id(void **state) {
     assert_int_equal(ed.decal_menu_stage, EDITOR_DECAL_MENU_LIST);
     grid = grid_create(260, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Add decal..."));
     assert_true(grid_contains_text(grid, "decal:"));
     grid_destroy(grid);
@@ -2615,7 +2681,7 @@ static void test_overlay_marks_unloaded_selected_material_missing(void **state) 
 
     grid = grid_create(100, 30);
     assert_non_null(grid);
-    unified_editor_render_overlay(&ed, grid);
+    unified_editor_render_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "mat:3 (missing)"));
 
     grid_destroy(grid);
@@ -2776,7 +2842,7 @@ static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **s
 
     grid = grid_create(260, 80);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Height      0.25"));
     assert_true(grid_contains_text(grid, "Surface     removed"));
     assert_true(grid_contains_text(grid, "MOVEMENT"));
@@ -3242,7 +3308,7 @@ static void test_picker_next_prev_and_confirm(void **state) {
     assert_int_equal(unified_editor_set_wall_material(&ed, 1), CMD_RESULT_OK);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Inspector: wall surface"));
     assert_true(grid_contains_text(grid, "Up/Down=choose"));
     grid_destroy(grid);
@@ -3304,7 +3370,7 @@ static void test_material_shortlist_prefix_search(void **state) {
     assert_int_equal(ed.highlighted_material, 2);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Search: mat2_"));
     assert_true(grid_contains_text(grid, "mat2"));
     grid_destroy(grid);
@@ -3338,7 +3404,7 @@ static void test_material_picker_renders_only_four_rows(void **state) {
     ed.material_picker_open = true;
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     has_mat1 = grid_contains_text(grid, "mat1");
     has_mat2 = grid_contains_text(grid, "mat2");
     has_row3 = grid_contains_text(grid, "row3");
@@ -3396,7 +3462,7 @@ static void test_material_search_empty_creates_saves_and_applies(void **state) {
     assert_int_equal(ed.material_search_result_count, 0U);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Create new material..."));
     grid_destroy(grid);
     zero_input(&in);
@@ -3531,7 +3597,7 @@ static void test_material_collision_load_and_no(void **state) {
     enter_material_collision(&ed, &cam);
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(
         grid, "Material 'existing_disk' already exists in assets. Load material?"));
     assert_true(grid_contains_text(
@@ -3852,7 +3918,7 @@ static void test_exit_save_failure_blocks_exit(void **state) {
 
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&ed, grid);
+    unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "TSG-SCENE-ENV-0003"));
     assert_true(grid_contains_text(grid, "temporary file creation failed"));
     grid_destroy(grid);
@@ -4376,7 +4442,7 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     editor.inspector_open = true;
     editor.surface_field = EDITOR_SURFACE_FIELD_CONSTRUCTION;
     editor.material_picker_open = true;
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Inspector: floor surface"));
     assert_true(grid_contains_text(grid, "> Place Wall"));
     assert_true(grid_contains_text(grid, "Ambient"));
@@ -4452,7 +4518,7 @@ static void test_r4_increment_d_empty_missing_and_runtime_failure_atomic(void **
     editor.material_picker_open = true;
     grid = grid_create(260, 30);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Material   1 (missing)"));
     assert_true(grid_contains_text(grid, "Create new material..."));
     grid_destroy(grid);
@@ -4757,7 +4823,7 @@ static void test_r9_i6_optical_submenu_input_and_overlay(void **state) {
     assert_int_equal(extension.override_mask, 0U);
     grid = grid_create(160, 80);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "OPTICS"));
     assert_true(grid_contains_text(grid, "Scope: cell override"));
     grid_destroy(grid);
@@ -4822,7 +4888,7 @@ static void test_r9_transparency_submenu_master_custom_undo_and_round_trip(void 
 
     grid = grid_create(160, 80);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "TRANSPARENCY"));
     assert_true(grid_contains_text(grid, "Transparency   Custom"));
     grid_destroy(grid);
@@ -4880,7 +4946,7 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_false(unified_editor_crosshair_visible(&editor));
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "GAME FLOW"));
     assert_true(grid_contains_text(grid, "Start"));
     assert_true(grid_contains_text(grid, "Scene: mission"));
@@ -4925,7 +4991,7 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_CLOSE_PROMPT);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Unsaved flow changes"));
     grid_destroy(grid);
     zero_input(&input); input.editor_next_pressed = true;
@@ -4947,7 +5013,7 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_false(editor.flow_workspace.active);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "G=game flow"));
     grid_destroy(grid);
     unified_editor_destroy(&editor);
@@ -5030,7 +5096,7 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
         flow_workspace_target_count(&editor.flow_workspace) - 1U;
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "+ Menu:testmenu"));
     grid_destroy(grid);
     zero_input(&input); input.editor_confirm_pressed = true;
@@ -5041,7 +5107,7 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     assert_int_equal(editor.flow_workspace.document.node_count, 3U);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "would leave a node unreachable"));
     grid_destroy(grid);
     zero_input(&input); input.editor_cancel_pressed = true;
@@ -5057,7 +5123,7 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     editor.flow_workspace.node_index = 1U;
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "No flow ports: author an exit_flow trigger"));
     grid_destroy(grid);
     editor.flow_workspace.node_index = 2U;
@@ -5119,7 +5185,7 @@ static void test_r12_checked_in_main_menu_test_reports_scene_only(void **state) 
     assert_int_equal(editor.history.count, scene_history_count);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "TARGET: Scene:testscene"));
     assert_true(grid_contains_text(grid, "reported only"));
     grid_destroy(grid);
@@ -5154,7 +5220,7 @@ static void test_r12_i11_catalog_failure_opens_retained_graph_visibly(void **sta
     assert_null(editor.flow_workspace.catalog);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Flow catalog failed"));
     grid_destroy(grid);
     assert_int_equal(editor.document.current_state, scene_state);
@@ -5205,7 +5271,7 @@ static void test_r12_i12_visual_menu_workspace_edit_discard_and_create(void **st
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "AUTHORED MENU WORKSPACE"));
     assert_true(grid_contains_text(grid, "Button:play"));
     assert_true(grid_contains_text(grid, ">LAY"));
@@ -5296,7 +5362,7 @@ static void test_r12_i13_menu_element_actions_text_remove_and_undo(void **state)
     assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_ACTIONS);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Add Container"));
     assert_true(grid_contains_text(grid, "Add Text"));
     grid_destroy(grid);
@@ -5337,7 +5403,7 @@ static void test_r12_i13_menu_element_actions_text_remove_and_undo(void **state)
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "HELLO"));
     grid_destroy(grid);
     zero_input(&input); input.editor_next_pressed = true;
@@ -5347,7 +5413,7 @@ static void test_r12_i13_menu_element_actions_text_remove_and_undo(void **state)
     assert_int_equal(editor.ui_menu_workspace.mode, UI_MENU_WORKSPACE_REMOVE_PROMPT);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Remove text_1?"));
     grid_destroy(grid);
     zero_input(&input); input.editor_confirm_pressed = true;
@@ -5415,7 +5481,7 @@ static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Rename"));
     assert_true(grid_contains_text(grid, "Reparent"));
     assert_true(grid_contains_text(grid, "Move Earlier"));
@@ -5425,7 +5491,7 @@ static void test_r12_i14_menu_hierarchy_actions_route_and_render(void **state) {
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "RENAME ELEMENT"));
     grid_destroy(grid);
     for (i = 0U; i < 5U; i++) {
@@ -5521,7 +5587,7 @@ static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **
         UI_DOCUMENT_ALIGN_CENTER);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "H Anchor"));
     assert_true(grid_contains_text(grid, "Alignment"));
     assert_true(grid_contains_text(grid, "Center"));
@@ -5534,7 +5600,7 @@ static void test_r12_i15_menu_visual_properties_route_render_and_isolate(void **
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Reparent (none)"));
     grid_destroy(grid);
     zero_input(&input); input.editor_undo_pressed = true;
@@ -5591,7 +5657,7 @@ static void test_r12_menu_edit_preview_uses_authored_root_colors(void **state) {
     update_with(&editor, &camera, &input);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_get(grid, 40, 3, &preview));
     assert_int_equal(preview.glyph, '.');
     assert_memory_equal(&preview.fg, &expected_fg, sizeof(preview.fg));
@@ -5672,7 +5738,7 @@ static void test_r12_i16_menu_pointer_move_resize_cancel_and_isolate(void **stat
 
     grid = grid_create(260, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_get(grid, 52, 10, &handle));
     assert_int_equal(handle.glyph, '+');
     grid_destroy(grid);
@@ -5792,7 +5858,7 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
     assert_int_equal(editor.ui_menu_test_runtime.viewport_height, 20);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "60x20@100% TEST"));
     assert_true(grid_contains_text(grid, "FLOW: OK"));
     assert_true(grid_contains_text(grid, ">LAY"));
@@ -5805,7 +5871,7 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
     assert_string_equal(editor.ui_menu_test_target_name, "other");
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "TARGET: Menu:other"));
     assert_true(grid_contains_text(grid, "reported only"));
     grid_destroy(grid);
@@ -5819,7 +5885,7 @@ static void test_r12_i17_menu_preview_test_target_and_stale_reference(void **sta
     assert_false(editor.ui_menu_test_target_valid);
     grid = grid_create(160, 40);
     assert_non_null(grid);
-    unified_editor_render_text_overlay(&editor, grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "FLOW: missing/stale port"));
     grid_destroy(grid);
     assert_int_equal(flow_document_load(&flow_after, flow_path), FLOW_DOCUMENT_OK);

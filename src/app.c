@@ -119,7 +119,7 @@ static bool app_ui_resources_create(AppUiResources *ui, int grid_width,
     ui->menu = ui_canvas_create(grid_width, grid_height);
     ui->menu_exit = ui_canvas_create(grid_width, grid_height);
     ui->hud = ui_canvas_create(APP_UI_HUD_WIDTH, APP_UI_HUD_HEIGHT);
-    ui->editor = ui_canvas_create(UNIFIED_EDITOR_INTERFACE_COLUMNS, UNIFIED_EDITOR_INTERFACE_ROWS);
+    ui->editor = ui_canvas_create(grid_width, grid_height);
     ui->footer = ui_canvas_create(APP_UI_FOOTER_WIDTH, 2);
     ui->feedback = ui_canvas_create(APP_UI_FEEDBACK_WIDTH, 1);
     ui->crosshair = ui_canvas_create(1, 1);
@@ -1166,10 +1166,11 @@ int app_main(int argc, char* argv[]) {
 #endif
 
         } else if (app_state == APP_STATE_EDITOR) {
-            (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
-                                         UNIFIED_EDITOR_INTERFACE_COLUMNS, UNIFIED_EDITOR_INTERFACE_ROWS);
-            (void)grid_clear_region_zero(ui_resources.staging, 0, grid->height - 2,
-                                         APP_UI_FOOTER_WIDTH, 2);
+            /* The editor's interface surface is the frame: its workspace panel is
+               top-left, and the scene browser is a display surface over all of it,
+               so the whole staging area is cleared and composited. */
+            (void)grid_clear_region_zero(ui_resources.staging, 0, 0, grid->width,
+                                         grid->height);
             if (ued.active) {
                 Map *ed_map = unified_editor_has_document(&ued)
                     ? scene_document_get_map_for_runtime(&ued.document)
@@ -1216,18 +1217,29 @@ int app_main(int argc, char* argv[]) {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);
                 }
-                unified_editor_render_text_overlay(&ued, ui_resources.staging);
+                unified_editor_render_text_overlay(&ued, ui_resources.staging,
+                                                  motion_now_ms, reduced_motion);
                 ui_canvas_copy_grid_region(ui_resources.editor, ui_resources.staging, 0, 0);
-                ui_canvas_copy_grid_region(ui_resources.footer, ui_resources.staging,
-                                           0, grid->height - 2);
+                /* The scene browser is a display surface, so it is composited the
+                   way a menu is (centred, so its content stays on screen when the
+                   surface is cropped), the workspace panel stays top-left, and the
+                   footer copy is not shown: it would place the surface's own bottom
+                   rows at the frame's bottom-left, unaligned with a centred
+                   surface. The browser draws every line it needs. */
                 (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_EDITOR,
-                                       ui_resources.editor, UI_ANCHOR_TOP_LEFT,
+                                       ui_resources.editor,
+                                       unified_editor_scene_browser_active(&ued)
+                                           ? UI_ANCHOR_CENTER : UI_ANCHOR_TOP_LEFT,
                                        UI_SCALE_INHERIT_GLOBAL, 10,
                                        grid->width * 8, grid->height * 8);
-                (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_FOOTER,
-                                       ui_resources.footer, UI_ANCHOR_BOTTOM_LEFT,
-                                       UI_SCALE_INHERIT_GLOBAL, 11,
-                                       grid->width * 8, grid->height * 8);
+                if (!unified_editor_scene_browser_active(&ued)) {
+                    ui_canvas_copy_grid_region(ui_resources.footer, ui_resources.staging,
+                                               0, grid->height - 2);
+                    (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_FOOTER,
+                                           ui_resources.footer, UI_ANCHOR_BOTTOM_LEFT,
+                                           UI_SCALE_INHERIT_GLOBAL, 11,
+                                           grid->width * 8, grid->height * 8);
+                }
                 if (unified_editor_crosshair_visible(&ued)) {
                     int center_x = grid->width / 2;
                     int center_y = grid->height / 2;

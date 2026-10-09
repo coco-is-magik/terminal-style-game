@@ -1,5 +1,14 @@
 # Editor scene browser: the first editor-interface surface rebuilt
 
+> **Superseded 2026-10-09.** This document records the 2026-10-08 framed-panel design and its decision
+> to draw the browser's focused row with the focus perimeter in its *shape-only* form. The browser is now
+> a **display surface** (full-display living-field material, one centred block of title, count, rows and
+> hint, and the perimeter with its chromatic chase, as an authored focused button draws it), so the
+> panel geometry and the shape-only rule below no longer describe the implementation. The colour-token
+> work recorded here — retiring the editor overlay's literals for
+> `ui_app_theme_workbench_palette()` roles — stands. See
+> [`2026-10-09-editor-scene-browser-display-surface.md`](2026-10-09-editor-scene-browser-display-surface.md).
+
 Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §2 and §3.1 (all colour from tokens),
 §4.2 (white-dominant, selectively coloured editor interface; accent and focus are state, not
 decoration), §4.4 (nothing in motion displaces or obscures a control), §5.1 (the sanctioned

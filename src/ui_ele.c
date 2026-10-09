@@ -1049,9 +1049,10 @@ static void render_focus_perimeter(Grid *grid, int x, int y, int width, int heig
 }
 
 void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height,
-                                 SDL_Color frame, SDL_Color bg) {
-    focus_perimeter_draw_core(grid, x, y, width, height, 0.0, false, false,
-                              frame, bg);
+                                 double now_ms, bool reduced_motion, SDL_Color frame,
+                                 SDL_Color bg) {
+    focus_perimeter_draw_core(grid, x, y, width, height, now_ms, true,
+                              reduced_motion, frame, bg);
 }
 
 bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,

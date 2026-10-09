@@ -107,6 +107,17 @@ fixed; only the amount and behaviour differ per surface.
   selection no longer uses a hue of its own. See
   [`reviews/2026-10-08-editor-scene-browser.md`](reviews/2026-10-08-editor-scene-browser.md). The
   remaining editor surfaces are unchanged and share the same palette now.
+- **The browser is a display surface, not a pane (2026-10-09).** The framed panel above was presented
+  beside the authored menus and did not match them, so the browser was rebuilt on the menu's own form:
+  the living-field material fills the frame through a `living_field` element with `extent = surface`,
+  and title, entry count, rows and hint form one centred block over it, with the focused row taking the
+  shared focus perimeter **with** its chromatic chase — the same treatment an authored focused button
+  gets. It is classified as a **mode-selection display surface** (the family that contains the main,
+  pause and settings menus), so §4.2's white-dominant restraint remains scoped to the editor's editing
+  surfaces — its panes, footers, tooltips and status text — which are unchanged. The surface is centred
+  on the frame while it is open, which is what keeps a block on a surface larger than the screen inside
+  the visible band; the frame's footer copy is suppressed for it. See
+  [`reviews/2026-10-09-editor-scene-browser-display-surface.md`](reviews/2026-10-09-editor-scene-browser-display-surface.md).
 
 ---
 

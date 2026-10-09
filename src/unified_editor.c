@@ -5304,41 +5304,25 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
     return;
 }
 
-/* ---- Scene browser panel (the editor's OPEN SCENE / IMPORT LEGACY MAP list) ----
+/* ---- Scene browser surface (the editor's OPEN SCENE / IMPORT LEGACY MAP list) ----
  *
- * A modal surface over the editor: a framed panel with a title, the hint and the
- * catalog rows, replacing the ragged column-1 list. Every colour is a
- * ui_app_theme_workbench_palette() role -- replacing the editor interface's
- * literals with tokens is the sanctioned work of
- * UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §5.1 (§2, §3.1, §4.2) -- and the
- * selected row takes the shared focus perimeter in its shape-only form, so a
- * selected row reads the way an authored button does without bringing chromatic
- * motion into the editor interface (§4.2). This extends the existing overlay
- * renderer rather than adding a pane renderer (§5.2 rejection 9).
+ * A display surface over the editor, in the family of the authored menus: the
+ * surface-extent living-field material fills the frame and a centred block of
+ * title, count, rows and hint sits on it, replacing the ragged column-1 list.
+ * Every colour is a ui_app_theme_workbench_palette() role -- replacing the editor
+ * interface's literals with tokens is the sanctioned work of
+ * UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §5.1 (§2, §3.1, §4.2, and its
+ * 2026-10-07 scope note, under which a mode-selection display surface is governed
+ * by §1 while the editor's editing panes stay white-dominant) -- and the selected
+ * row takes the shared focus perimeter with its chase, exactly as an authored
+ * focused button does. This extends the existing overlay renderer rather than
+ * adding a pane renderer (§5.2 rejection 9). See
+ * docs/reviews/2026-10-09-editor-scene-browser-display-surface.md.
  */
-#define EDITOR_BROWSER_COLUMNS 60
 #define EDITOR_BROWSER_VISIBLE 9
-#define EDITOR_BROWSER_ROW_STEP 2
-#define EDITOR_BROWSER_FIRST_ROW 4
-
-static void editor_browser_panel(Grid *grid, int x, int y, int columns, int rows,
-                                 const UiAppWorkbenchPalette *palette) {
-    int row;
-    int column;
-    for (row = 0; row < rows; row++) {
-        for (column = 0; column < columns; column++) {
-            const bool horizontal = row == 0 || row == rows - 1;
-            const bool vertical = column == 0 || column == columns - 1;
-            uint8_t glyph = ' ';
-            SDL_Color fg = palette->panel;
-            if (horizontal || vertical) {
-                fg = palette->border;
-                glyph = (horizontal && vertical) ? '+' : horizontal ? '-' : '|';
-            }
-            (void)grid_set(grid, x + column, y + row, glyph, fg, palette->panel);
-        }
-    }
-}
+/* The authored menu's rhythm: one row per entry, entries three rows apart, so the
+   shared focus perimeter lands on the blank rows either side. */
+#define EDITOR_BROWSER_ROW_STEP 3
 
 static void editor_browser_put(Grid *grid, int x, int y, int columns,
                                const char *text, SDL_Color fg,
@@ -5347,54 +5331,111 @@ static void editor_browser_put(Grid *grid, int x, int y, int columns,
     if (!text || columns <= 0) return;
     for (column = 0; text[column] != '\0' && column < columns; column++)
         (void)grid_set(grid, x + column, y, (uint8_t)text[column], fg,
-                       palette->panel);
+                       palette->canvas);
 }
 
-static void editor_browser_put_right(Grid *grid, int right_column, int row,
-                                     const char *text, SDL_Color fg,
-                                     const UiAppWorkbenchPalette *palette) {
+static void editor_browser_put_centred(Grid *grid, int center_x, int row,
+                                       int max_columns, const char *text,
+                                       SDL_Color fg,
+                                       const UiAppWorkbenchPalette *palette) {
     int columns = (int)strlen(text);
-    editor_browser_put(grid, right_column - columns, row, columns, text, fg, palette);
+    if (columns > max_columns) columns = max_columns;
+    editor_browser_put(grid, center_x - columns / 2, row, columns, text, fg, palette);
 }
 
+/* The browser is a display surface, so its material is the same surface-extent
+   living_field the authored menus use: one shared evaluator, the field covering
+   the whole display, no editor-only material and no asset carrying a size. */
+static bool editor_browser_field(Grid *grid, double now_ms, bool reduced_motion) {
+    UiElement container = {0};
+    UiElement field = {0};
+    UiLayout layout = {0};
+
+    (void)snprintf(container.name, sizeof(container.name), "%s", "editor_scene_browser");
+    container.type = UI_ELE_CONTAINER;
+    container.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE,
+                                         grid->width, grid->height};
+    container.visible = 1;
+    container.align = UI_ALIGN_LEFT;
+    (void)snprintf(container.style, sizeof(container.style), "%s", "plain");
+    (void)snprintf(container.transition, sizeof(container.transition), "%s", "none");
+    (void)snprintf(container.focus_effect, sizeof(container.focus_effect), "%s", "none");
+
+    (void)snprintf(field.name, sizeof(field.name), "%s", "editor_scene_browser_field");
+    field.type = UI_ELE_ANIMATION;
+    /* extent=surface: the surface is the display, exactly as for a menu. */
+    field.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE, 0, 0};
+    field.extent = UI_EXTENT_SURFACE;
+    field.visible = 1;
+    field.z_index = -1;
+    field.align = UI_ALIGN_LEFT;
+    (void)snprintf(field.preset, sizeof(field.preset), "%s", "living_field");
+    (void)snprintf(field.target, sizeof(field.target), "%s", "editor_scene_browser");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "%s", "while_visible");
+    (void)snprintf(field.orientation, sizeof(field.orientation), "%s", "horizontal");
+    (void)snprintf(field.style, sizeof(field.style), "%s", "plain");
+    (void)snprintf(field.transition, sizeof(field.transition), "%s", "none");
+    (void)snprintf(field.focus_effect, sizeof(field.focus_effect), "%s", "none");
+
+    (void)snprintf(layout.name, sizeof(layout.name), "%s", "editor_scene_browser");
+    (void)snprintf(layout.transition, sizeof(layout.transition), "%s", "none");
+    layout.elements[0] = &container;
+    layout.elements[1] = &field;
+    layout.element_count = 2;
+    return ui_animation_render_layout(&layout, grid, now_ms, reduced_motion, false,
+                                      UI_ANIMATION_EVENT_WHILE_VISIBLE);
+}
+
+/* The scene browser laid out the way an authored menu screen is: the field fills
+   the display, and title, count, entries and hint form one centred block -- the
+   title above the middle, the entries at the menu's three-row rhythm with the
+   shared focus perimeter hugging the focused row, the hint below them. The block
+   stays near the middle because a display surface cannot always be shown whole:
+   the compositor centres a surface larger than the screen (a 260x160 surface at
+   a raised UI scale) and crops its edges, so a line authored at the surface's
+   foot, like a footer row, would be cut off. Behaviour (keys, catalog, selection)
+   is untouched. */
 static void editor_render_scene_browser(Grid *grid, const UnifiedEditorState *editor,
-                                        const UiAppWorkbenchPalette *palette) {
+                                        const UiAppWorkbenchPalette *palette,
+                                        double now_ms, bool reduced_motion) {
     const bool native = editor->chooser_kind == EDITOR_CHOOSER_NATIVE_OPEN;
     const size_t total = editor->map_catalog.count;
-    const int columns = EDITOR_BROWSER_COLUMNS;
-    /* The panel fits its content: an empty catalog gets the message row, a short
-       catalog gets its own rows, a long one gets the visible window. */
+    const int center_x = grid->width / 2;
     const int listed = total == 0U ? 1
                       : total < (size_t)EDITOR_BROWSER_VISIBLE ? (int)total
                                                                : EDITOR_BROWSER_VISIBLE;
-    const int rows = EDITOR_BROWSER_FIRST_ROW + listed * EDITOR_BROWSER_ROW_STEP + 2;
-    const int x = (UNIFIED_EDITOR_INTERFACE_COLUMNS - columns) / 2;
-    const int y = (UNIFIED_EDITOR_INTERFACE_ROWS - rows) / 2;
-    const int title_row = y + 1;
-    const int hint_row = y + 2;
+    const int block = listed * EDITOR_BROWSER_ROW_STEP;
+    /* The block is the two header rows, the entry rows and the hint row. */
+    const int title_row = grid->height / 2 - (block + 4) / 2;
+    const int first_row = title_row + EDITOR_BROWSER_ROW_STEP;
+    const int hint_row = title_row + block + 2;
+    char count_text[32];
     size_t start = 0U;
     size_t i;
-    char count_text[32];
 
-    editor_browser_panel(grid, x, y, columns, rows, palette);
+    /* The material goes down first and the labels over it: the field fills only
+       blank cells, so the text keeps its interior spaces and stays crisp while
+       the material fills behind it. */
+    (void)editor_browser_field(grid, now_ms, reduced_motion);
+
+    editor_browser_put_centred(grid, center_x, title_row, grid->width - 8,
+                               native ? "OPEN SCENE" : "IMPORT LEGACY MAP",
+                               palette->primary_text, palette);
     (void)snprintf(count_text, sizeof(count_text), "%lu / %lu",
                    (unsigned long)(total == 0U ? 0U : editor->map_chooser_index + 1U),
                    (unsigned long)total);
-    editor_browser_put(grid, x + 2, title_row, columns - 8,
-                       native ? "OPEN SCENE" : "IMPORT LEGACY MAP",
-                       palette->primary_text, palette);
-    editor_browser_put_right(grid, x + columns - 3, title_row, count_text,
-                             palette->secondary_text, palette);
-    editor_browser_put(grid, x + 2, hint_row, columns - 4,
-                       native ? "Up/Down  Enter=open  Ctrl+I=import  Esc=cancel"
-                              : "Up/Down  Enter=import  Ctrl+O=open  Esc=cancel",
-                       palette->secondary_text, palette);
+    editor_browser_put_centred(grid, center_x, title_row + 1, grid->width - 8,
+                               count_text, palette->secondary_text, palette);
+    editor_browser_put_centred(grid, center_x, hint_row, grid->width - 8,
+                               native ? "Up/Down  Enter=open  Ctrl+I=import  Esc=cancel"
+                                      : "Up/Down  Enter=import  Ctrl+O=open  Esc=cancel",
+                               palette->secondary_text, palette);
 
     if (total == 0U) {
-        editor_browser_put(grid, x + 3, y + EDITOR_BROWSER_FIRST_ROW, columns - 6,
-                           native ? "(no .tscene files found)"
-                                  : "(no legacy .txt files found)",
-                           palette->secondary_text, palette);
+        editor_browser_put_centred(grid, center_x, first_row, grid->width - 8,
+                                   native ? "(no .tscene files found)"
+                                          : "(no legacy .txt files found)",
+                                   palette->secondary_text, palette);
         return;
     }
     if (editor->map_chooser_index >= EDITOR_BROWSER_VISIBLE)
@@ -5404,22 +5445,31 @@ static void editor_render_scene_browser(Grid *grid, const UnifiedEditorState *ed
 
     for (i = 0U; i < EDITOR_BROWSER_VISIBLE && start + i < total; i++) {
         const size_t index = start + i;
-        const int row = y + EDITOR_BROWSER_FIRST_ROW + (int)i * EDITOR_BROWSER_ROW_STEP;
+        const int row = first_row + (int)i * EDITOR_BROWSER_ROW_STEP;
         const MapCatalogEntry *entry = map_catalog_get(&editor->map_catalog, index);
+        const char *label = entry ? entry->name : "?";
         const bool selected = index == editor->map_chooser_index;
-        editor_browser_put(grid, x + 3, row, columns - 6,
-                           entry ? entry->name : "?",
-                           selected ? palette->focus : palette->secondary_text,
-                           palette);
+        /* The perimeter hugs the label the way it hugs an authored button. */
+        const int columns = (int)strlen(label) + 2;
+
+        /* The focused entry brightens the way an authored focused button does;
+           the perimeter marks it as well. */
+        editor_browser_put_centred(grid, center_x, row, grid->width - 8, label,
+                                   selected ? palette->primary_text
+                                            : palette->secondary_text,
+                                   palette);
         if (selected)
-            ui_ele_focus_perimeter_draw(grid, x + 2, row, columns - 4, 1,
-                                        palette->focus, palette->panel);
+            ui_ele_focus_perimeter_draw(grid, center_x - columns / 2, row, columns, 1,
+                                        now_ms, reduced_motion, palette->focus,
+                                        palette->canvas);
     }
 }
 
 void unified_editor_render_text_overlay(
     const UnifiedEditorState *editor,
-    Grid *grid
+    Grid *grid,
+    double now_ms,
+    bool reduced_motion
 ) {
     if (!editor || !editor->active || !grid) {
         return;
@@ -5450,6 +5500,15 @@ void unified_editor_render_text_overlay(
            than a hue of its own (§4.2: accent and focus are state, not
            decoration). No green selection fill, no literal. */
         hi = palette.focus;
+
+        /* The scene browser is a display surface: while it is open it is the
+           screen, exactly like a menu, so it takes the frame rather than
+           appending to the workspace text. */
+        if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
+            editor_render_scene_browser(grid, editor, &palette, now_ms,
+                                        reduced_motion);
+            return;
+        }
 
         if (editor->ui_menu_workspace.active) {
             editor_render_ui_menu_workspace(editor, grid);
@@ -6277,10 +6336,6 @@ void unified_editor_render_text_overlay(
         } else if (editor->modal == EDITOR_MODAL_RELOAD_PROMPT) {
             grid_print(grid, 1, row + 1,
                        "Reload scene? Enter=yes  Esc=cancel", warn, bg);
-        } else if (editor->modal == EDITOR_MODAL_MAP_CHOOSER) {
-            /* The browser is a panel, so it does not append to the status text
-               and does not advance `row`. */
-            editor_render_scene_browser(grid, editor, &palette);
         } else if (editor->modal == EDITOR_MODAL_DIRTY_OPEN_PROMPT) {
             int c;
             grid_print(grid, 1, row++,
@@ -6369,6 +6424,13 @@ void unified_editor_render_text_overlay(
 
 }
 
+/* True while the scene browser is the surface on screen. The application uses it
+   to composite that surface the way it composites a menu (centred), because the
+   browser is a display surface rather than the editor's workspace panel. */
+bool unified_editor_scene_browser_active(const UnifiedEditorState *editor) {
+    return editor && editor->active && editor->modal == EDITOR_MODAL_MAP_CHOOSER;
+}
+
 bool unified_editor_crosshair_visible(const UnifiedEditorState *editor) {
     return editor && editor->active && unified_editor_has_document(editor) &&
            !editor->flow_workspace.active &&
@@ -6380,8 +6442,9 @@ bool unified_editor_crosshair_visible(const UnifiedEditorState *editor) {
            editor->modal != EDITOR_MENU_SAVE;
 }
 
-void unified_editor_render_overlay(const UnifiedEditorState *editor, Grid *grid) {
-    unified_editor_render_text_overlay(editor, grid);
+void unified_editor_render_overlay(const UnifiedEditorState *editor, Grid *grid,
+                                   double now_ms, bool reduced_motion) {
+    unified_editor_render_text_overlay(editor, grid, now_ms, reduced_motion);
     if (unified_editor_crosshair_visible(editor)) {
         editor_crosshair_render(grid);
     }
