@@ -525,10 +525,18 @@ static void test_runtime_pixel_fixtures(void **state) {
     /* Reviewed refresh 2026-10-08 (docs/reviews/2026-10-08-menu-surface.md):
        all four contexts changed because a menu is now a surface over the whole
        display instead of an 80x40 centred canvas, and the backdrop field fills
-       that surface (element `extent=surface`). Nothing else re-tuned. */
+       that surface (element `extent=surface`). Nothing else re-tuned.
+       Reviewed refresh 2026-10-09 (docs/reviews/2026-10-09-backdrop-fabric.md):
+       all four contexts changed because the `living_field` backdrop became a
+       solid fabric carried by one travelling diagonal wave with a chromatic
+       wake (change of direction recorded 2026-10-09 in
+       UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). The frame is a settled preview —
+       `ui_workbench_runtime_preview` never plays a transition, so no tide is in
+       it — and the field is sampled at phase 0, so the frame is deterministic.
+       No other rendering path changed. */
     static const uint64_t expected[] = {
-        UINT64_C(4594411236743001354), UINT64_C(7128938155756202966),
-        UINT64_C(9440602223055106050), UINT64_C(11330631336630635389)
+        UINT64_C(7203581474663606094), UINT64_C(13010573139777026658),
+        UINT64_C(4422575597582354321), UINT64_C(18210401330973498897)
     };
     const size_t count = 2080U * 1280U;
     uint32_t *pixels = malloc(count * sizeof(*pixels));
@@ -549,6 +557,14 @@ static void test_runtime_pixel_fixtures(void **state) {
         for (size_t i = 0; i < count * sizeof(*pixels); i++) {
             hash ^= bytes[i];
             hash *= UINT64_C(1099511628211);
+        }
+        /* A mismatch has to name the checksum it computed: that is the whole
+           workflow for refreshing a recorded frame, and the same contract the
+           `check-ui-workbench-frame` gate keeps. */
+        if (hash != expected[context - MENU_MAIN]) {
+            fprintf(stderr, "FAIL-PRODUCT: menu-context %d checksum=%llu expected=%llu\n",
+                    context, (unsigned long long)hash,
+                    (unsigned long long)expected[context - MENU_MAIN]);
         }
         assert_true(hash == expected[context - MENU_MAIN]);
     }
@@ -639,6 +655,34 @@ static void test_exit_overlay_preserves_incoming_and_endpoints(void **state) {
     grid_destroy(staging);
 }
 
+/* The one primitive sanctioned to pass over authored content is the tide, and
+   only for as long as it reports a cover. It paints from its own ramp, so a
+   covered authored cell always carries one of these glyphs — never a blank and
+   never a field glyph. */
+static bool tide_cover_glyph(uint8_t glyph) {
+    static const char ramp[] = ". :-=+*#";
+    for (size_t i = 0; i < sizeof(ramp) - 1U; i++)
+        if (glyph == (uint8_t)ramp[i]) return true;
+    return false;
+}
+
+/* The window a context event animates over, from the theme's own durations. */
+static uint32_t event_window_ms(UiAnimationEvent event) {
+    UiThemeMotionRole role = UI_THEME_MOTION_MAJOR_ENTER;
+    switch (event) {
+        case UI_ANIMATION_EVENT_CONTEXT_EXIT:
+            role = UI_THEME_MOTION_MAJOR_EXIT;
+            break;
+        case UI_ANIMATION_EVENT_FOCUS:
+        case UI_ANIMATION_EVENT_ACTIVATE:
+            role = UI_THEME_MOTION_FEEDBACK;
+            break;
+        default:
+            break;
+    }
+    return ui_theme_motion_duration_ms(role, false);
+}
+
 static void test_lifecycle_keeps_authored_cells_stable(void **state) {
     UiWorkbench workbench;
     UiAppWorkbenchPalette palette;
@@ -655,23 +699,68 @@ static void test_lifecycle_keeps_authored_cells_stable(void **state) {
     assert_true(ui_app_theme_workbench_palette(&palette));
     ui_workbench_init(&workbench);
     for (int context = MENU_MAIN; context <= MENU_CONFIRM_QUIT; context++) {
+        bool saved_visible[UI_LAYOUT_MAX_ELEMS];
+        int saved_count = 0;
         assert_int_equal(ui_workbench_open(&workbench, (MenuId)context), UI_WORKBENCH_OK);
         assert_true(grid_clear_region_zero(expected, 0, 0, 260, 160));
         ui_layout_set_focus(workbench.layout, -1);
+        /* The reference is the authored layout alone: its own animation elements
+           are hidden while it is rendered, so "authored" means a glyph a text or
+           control element owns, and never a cell the surface's material filled. */
+        for (int e = 0; e < workbench.layout->element_count &&
+                        saved_count < UI_LAYOUT_MAX_ELEMS; e++) {
+            UiElement *element = workbench.layout->elements[e];
+            if (!element || element->type != UI_ELE_ANIMATION) continue;
+            saved_visible[saved_count++] = element->visible;
+            element->visible = false;
+        }
         ui_layout_render(workbench.layout, expected, palette.secondary_text, palette.canvas);
+        for (int e = 0, restored = 0; e < workbench.layout->element_count &&
+                                      restored < saved_count; e++) {
+            UiElement *element = workbench.layout->elements[e];
+            if (!element || element->type != UI_ELE_ANIMATION) continue;
+            element->visible = saved_visible[restored++];
+        }
         ui_canvas_copy_grid_region(reference, expected, 0, 0);
+        bool cover_seen = false;
         for (int event = UI_ANIMATION_EVENT_CONTEXT_ENTER;
              event <= UI_ANIMATION_EVENT_WHILE_VISIBLE; event++) {
+            bool settled_event = event == UI_ANIMATION_EVENT_WHILE_VISIBLE;
+            uint32_t window = settled_event ? 0U : event_window_ms((UiAnimationEvent)event);
             for (size_t t = 0; t < sizeof(times) / sizeof(times[0]); t++) {
+                bool settled = settled_event || times[t] >= (double)window;
                 assert_true(ui_workbench_runtime_preview_event(canvas, actual, &workbench,
                     &palette, (UiAnimationEvent)event, times[t], false));
-                for (size_t i = 0; i < 260U * 160U; i++)
-                    if (reference->touched[i])
-                        assert_memory_equal(&actual->cells[i], &reference->cells[i], sizeof(Cell));
+                /* Authored cells are the ones the layout drew a glyph into. The
+                   surface's own material may pass over them only for as long as
+                   the sanctioned cover lasts: inside a transition window a
+                   covered cell carries the tide's own ramp, and every settled
+                   frame — the looping field, and any moment after a window has
+                   closed — is byte-identical to the authored layout, so no
+                   control is ever left under water. */
+                for (size_t i = 0; i < 260U * 160U; i++) {
+                    if (!reference->touched[i] || reference->cells[i].glyph == 0U ||
+                        reference->cells[i].glyph == ' ') continue;
+                    if (memcmp(&actual->cells[i], &reference->cells[i],
+                               sizeof(Cell)) == 0) continue;
+                    if (settled) {
+                        fprintf(stderr, "FAIL-PRODUCT: context %d event %d t=%.0f left "
+                                "authored cell (%zu,%zu) as '%c'\n", context, event,
+                                times[t], i % 260U, i / 260U, actual->cells[i].glyph);
+                        assert_memory_equal(&actual->cells[i], &reference->cells[i],
+                                            sizeof(Cell));
+                    }
+                    assert_true(tide_cover_glyph(actual->cells[i].glyph));
+                    cover_seen = true;
+                }
                 assert_int_equal(workbench.context, context);
                 assert_int_equal(workbench.element_index, 0);
             }
         }
+        /* The exception has to actually happen, or the rule above proves nothing:
+           opening a context really does flood the authored surface and then give
+           it back. */
+        assert_true(cover_seen);
     }
     ui_workbench_destroy(&workbench);
     ui_canvas_destroy(reference);

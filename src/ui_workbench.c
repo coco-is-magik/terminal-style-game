@@ -124,7 +124,12 @@ static UiWorkbenchResult load_context(UiWorkbench *workbench, MenuId context) {
         if (length <= 4U || length - 4U >= sizeof(stem)) continue;
         memcpy(stem, filename, length - 4U);
         stem[length - 4U] = '\0';
-        (void)ui_cache_load(&workbench->cache, stem, "assets/ui_elements");
+        if (!ui_cache_load(&workbench->cache, stem, "assets/ui_elements") &&
+            workbench->cache.count >= UI_CACHE_MAX) {
+            set_status(workbench,
+                       "Load failed: element cache full; current edit preserved. Retry.");
+            return UI_WORKBENCH_LOAD_FAILED;
+        }
     }
     if (snprintf(path, sizeof(path), "assets/ui_layouts/%s.txt", name) >=
         (int)sizeof(path)) return UI_WORKBENCH_LOAD_FAILED;

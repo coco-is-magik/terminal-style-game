@@ -1,0 +1,6 @@
+name=settle
+primitive=settle
+orientation=radial
+trigger=context_exit
+loop=0
+randomize=0

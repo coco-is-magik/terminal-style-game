@@ -35,12 +35,18 @@ static const struct {
      * surface over the whole display rather than an 80x40 centred canvas
      * (APP_UI_MENU_WIDTH/HEIGHT removed), and every backdrop field declares
      * `extent=surface`, so the field fills that surface instead of an authored
-     * box. All four contexts changed; nothing else re-tuned. */
-    {MENU_MAIN, 100, 12788386773026097164ULL},
-    {MENU_MAIN, 150, 8822537883753028476ULL},
-    {MENU_PAUSE, 100, 10582059475855600612ULL},
-    {MENU_SETTINGS, 100, 12207819633615769261ULL},
-    {MENU_CONFIRM_QUIT, 100, 5199418223914077754ULL}
+     * box. All four contexts changed; nothing else re-tuned.
+     * Reviewed refresh: docs/reviews/2026-10-09-backdrop-fabric.md — the
+     * living_field backdrop became a solid fabric carried by one travelling
+     * diagonal wave with a chromatic wake (change of direction recorded
+     * 2026-10-09 in UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md). All four contexts
+     * changed because all four preview that field; no other rendering path
+     * changed, and the field's own property test was not weakened. */
+    {MENU_MAIN, 100, 17003074168874086762ULL},
+    {MENU_MAIN, 150, 17572781851138171188ULL},
+    {MENU_PAUSE, 100, 4898326502503355042ULL},
+    {MENU_SETTINGS, 100, 159227487763334266ULL},
+    {MENU_CONFIRM_QUIT, 100, 8736121274262613089ULL}
 };
 
 static const size_t ui_workbench_frame_contract_fixture_count =

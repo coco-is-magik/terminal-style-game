@@ -28,6 +28,9 @@ typedef enum {
     UI_EFFECT_COMMAND_FLASH,
     UI_EFFECT_BUTTON_REASSEMBLE,
     UI_EFFECT_PANEL_REGISTER,
+    UI_EFFECT_TIDE_COVER,
+    UI_EFFECT_TIDE_REVEAL,
+    UI_EFFECT_SETTLE,
     UI_EFFECT_COUNT
 } UiEffectId;
 
@@ -61,6 +64,13 @@ typedef struct {
     int loop;                     /* required value, or UI_EFFECT_ANY_BOOL       */
     int randomize;                /* required value, or UI_EFFECT_ANY_BOOL       */
     bool backdrop;                /* paints a substrate behind other content     */
+    /* The primitive may pass over authored content for the duration of a context
+       transition. Two primitives declare it — the tide, which covers the surface
+       between two surfaces, and the settle, which condenses the surface into its
+       lattice on the way out to the world frame. Both rules are recorded in the
+       reference of record (2026-10-09 direction, item 4). Everything else keeps
+       the guarantee that motion never overwrites a control. */
+    bool covers_content;
 } UiEffectSpec;
 
 int ui_effect_count(void);

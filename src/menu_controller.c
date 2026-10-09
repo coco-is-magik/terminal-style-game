@@ -64,3 +64,8 @@ bool menu_controller_focus_identity_changed(int active_menu, int focus_index,
     *tracked_focus_index = focus_index;
     return changed;
 }
+
+bool menu_controller_transition_owns_input(double now_ms, double exit_until_ms,
+                                          double enter_until_ms) {
+    return now_ms < exit_until_ms || now_ms < enter_until_ms;
+}

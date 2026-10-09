@@ -94,6 +94,21 @@ static void test_focus_identity_change_is_explicit_and_transactional(void **stat
     assert_int_equal(tracked_focus, 1);
 }
 
+static void test_transition_owns_input_until_the_new_state_is_live(void **state) {
+    (void)state;
+
+    /* No transition: no deadline, so the menu is interactive. */
+    assert_false(menu_controller_transition_owns_input(1000.0, 0.0, 0.0));
+    /* Inside the outgoing cover the menu is not interactive... */
+    assert_true(menu_controller_transition_owns_input(1000.0, 1120.0, 0.0));
+    /* ... nor while the incoming surface is still revealing itself. */
+    assert_true(menu_controller_transition_owns_input(1000.0, 0.0, 1160.0));
+    /* A passed deadline releases input, and the later deadline governs. */
+    assert_false(menu_controller_transition_owns_input(1120.0, 1120.0, 0.0));
+    assert_true(menu_controller_transition_owns_input(1159.0, 1120.0, 1160.0));
+    assert_false(menu_controller_transition_owns_input(1160.0, 1120.0, 1160.0));
+}
+
 static void test_scenario_dispatch(void **state) {
     (void)state;
     Grid *grid = grid_create(2, 2);
@@ -118,6 +133,7 @@ int main(void) {
         cmocka_unit_test(test_session_option_toggle_is_immediate_and_transactional),
         cmocka_unit_test(test_application_state_transitions),
         cmocka_unit_test(test_focus_identity_change_is_explicit_and_transactional),
+        cmocka_unit_test(test_transition_owns_input_until_the_new_state_is_live),
         cmocka_unit_test(test_scenario_dispatch),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

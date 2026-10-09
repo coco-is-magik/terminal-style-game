@@ -72,6 +72,70 @@ immediacy and non-spatiality, the palette/geometry tokens (§3), or the single s
 The concrete per-surface obligations are in
 [`UI_DISPLAY_SURFACE_TARGET_2026-10-07.md`](UI_DISPLAY_SURFACE_TARGET_2026-10-07.md).
 
+## Change of direction recorded 2026-10-09 — the backdrop fabric and the state transitions
+
+The project owner directed that the backdrop motion and the state transitions be reworked:
+
+> For the motion of the backdrop, lets try a solid field that is rippling gently. A smooth wave that
+> goes from the bottom right corner up to the top left as the main centerpiece motion on a loop. Our
+> rgb abberation follows in the wake of the wave and when it hits the menu elements. The 'wave' should
+> be an effect on the 'fabric' of the backdrop. We can take inspiration from the way a flag or gentle
+> water surface might move.
+>
+> For the transition, all the characters should surge in and cover the menu like a receding tide, then
+> flow back out to their original place revealing the new menu elements. If we are going from
+> menu -> game instead, they should instead flow out to grid positions and flicker through characters
+> before settling on revealing the actual frame.
+>
+> The UI should feel flowy and fluid, and transitions should feel like a hologram changing smoothly
+> between states with our RGB chromatic abberation to accent it.
+
+This is authorized under §1.1 and §1.3 — "ripples should travel and settle", "the marks should be
+simple; the behavior should carry the richness" — and is recorded as follows.
+
+1. **The backdrop is a solid fabric, not a weave of patches.** `living_field` draws every blank cell
+   in its region from the density ramp, so the material is continuous; its structure comes from that
+   ramp, a static per-cell grain and a bottom-heavy density curve, never from gaps between shapes.
+2. **One travelling wave is the centrepiece.** A main wave and a finer ripple ride the diagonal from
+   the surface's bottom-right corner to its top-left at different wavelengths, and their beat is the
+   flag-like lift and settle. Both advance an **integer** number of wavelengths per `AMBIENT` loop, so
+   the material loops seamlessly on any surface size and no geometry is hidden in a constant.
+   `AMBIENT` stays 1800 ms; no motion role or duration changed.
+3. **The aberration follows the wave.** The three additive primaries ride the **wake** behind every
+   main crest as a sparse speckle, in addition to the existing directional fringe where the fabric
+   meets a control or the region border. Colour stays decoration only: never a fill, never a secondary
+   colour, never a spatial hue ramp (§3.4).
+4. **State changes become a tide, and a menu→world change a settle.** Between menus the material
+   surges in from the bottom-right corner and covers the surface, and the incoming surface drains the
+   same material back out revealing its elements; going from a menu into the world the material flows
+   out to grid positions, cycles through glyphs where the wave crosses it, and thins away so the live
+   frame underneath is uncovered. Both are accented by the same chromatic wake, and **which transition
+   plays is a fact about the destination** — the layout being left cannot know whether it is handing
+   over to another surface or to the frame. The per-surface obligations, recorded as each was built
+   (`docs/reviews/2026-10-09-state-transitions.md`):
+   - **The windows come from the theme.** An exit runs `MAJOR_EXIT` and an enter `MAJOR_ENTER`; the
+     incoming reveal begins on the frame the outgoing cover completes, so the two halves are one
+     continuous motion with no frame where the surface is neither. No transition duration is written
+     down anywhere as a literal.
+   - **The cover is a sanction, and a narrow one.** `tide_cover`, `tide_reveal` and `settle`
+     declare `covers_content` in the effect registry, which is what allows them to pass over authored
+     content; the evaluator withholds the restore of authored cells only while such a primitive is
+     *currently reporting a cover*, which ends with its window. Every other primitive keeps §4.4's
+     guarantee that motion never obscures a control, and the props hold at every settled moment
+     (`test_lifecycle_keeps_authored_cells_stable`).
+   - **Colour stays decoration.** The tide's advancing edge and the settle's crest carry the same
+     directional prismatic fringe and speckle as the backdrop's wake: never a fill, never a spatial hue
+     ramp (§3.4).
+   - **Nothing is a literal and nothing is hidden in a constant.** The materials are driven by the
+     window they occupy; the backdrop's wave is advanced over its `AMBIENT` loop when it is at rest and
+     over the transition window when it is a transient.
+   - **Reduced motion is immediacy.** Both transitions draw nothing at all, which is the recorded
+     no-motion response: the new state is simply there.
+
+Nothing here relaxes determinism, explicit time, stable IDs, exact endpoints, reduced-motion immediacy
+and non-spatiality, the palette/geometry tokens (§3), the 6 ms surface budget, or the single shared
+evaluator (§2). Reduced motion still draws no fabric and no displacement.
+
 ## Rule of engagement
 
 1. Before beginning any phase, and before approving any change that touches colour, motion,
@@ -369,19 +433,24 @@ by `ui_theme_material_palette()` and is **never** a semantic status colour and *
 
 All six are opaque and meet the non-text contrast floor (≥ 3.0) against `canvas` (`test-ui-theme`).
 
-**Application (the `living_field`).** A field is a **white-dominant flowing fabric**: a neutral
-structural weave (`text_secondary`) whose rectangular forms travel and fold as one material. Saturated
-colour is **only a chromatic-aberration fringe** of that weave — it rides the *edges* of the lit forms
-(where the fabric meets a gap, the region border, or a drawn glyph) and is **only the three additive
-primaries**, chosen by direction: red on left edges, blue on right edges, green on the horizontal edges,
-the way a channel-offset display splits a white form into R/G/B. The interior stays neutral, so colour
-reads as fringing dust on white edges — never a fill, never a secondary colour, never a spatial hue ramp,
-never per-cell confetti. The field is a **substrate**: it paints only blank cells, so it fills the
-surface *behind* text and controls and its fringes run up against the glyphs, keeping the menu one
+**Application (the `living_field`).** A field is a **solid fabric**: a neutral sheet of light cells
+(`text_secondary`) drawn in every blank cell of its region, whose glyph density is carried by one
+**travelling wave** — a main wave and a finer ripple riding the diagonal from the surface's
+bottom-right corner to its top-left — plus a slow anti-diagonal fold and a static per-cell grain, so
+the whole sheet lifts and settles the way a flag or a water surface does (change of direction recorded
+2026-10-09). The density curve is bottom-heavy, so the fabric stays dim and quiet between crests and
+the wave reads as *light moving through the material*. Saturated colour is **only a
+chromatic-aberration fringe**: it rides the **wake** behind every main crest, and the *edges* where the
+fabric meets a control, the region border, or a gap — and it is **only the three additive primaries**,
+chosen by direction (red left, blue right, green horizontal) or by how far behind the crest it sits,
+the way a channel-offset display splits a white form into R/G/B. The body of the sheet stays neutral,
+so colour reads as fringing dust on the light — never a fill, never a secondary colour, never a spatial
+hue ramp, never per-cell confetti. The field is a **substrate**: it paints only blank cells, so it fills
+the surface *behind* text and controls and its fringes run up against the glyphs, keeping the menu one
 continuous material rather than elements on a black plate. See
 `docs/reviews/2026-10-07-pause-living-field.md` ("Field rework", "Fabric rework", "Chromatic-aberration
-rework"). The set is not required to be drawn as a full-spectrum sweep; the fabric, not the colour, is
-the structure.
+rework") and `docs/reviews/2026-10-09-backdrop-fabric.md`. The set is not required to be drawn as a
+full-spectrum sweep; the fabric, not the colour, is the structure.
 
 ---
 

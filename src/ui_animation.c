@@ -249,32 +249,76 @@ static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
 #define UI_LIVING_FIELD_TABLE 512
 
 /*
- * living_field material selection — a white-dominant flowing fabric fringed by
- * chromatic aberration.
+ * living_field constants — a solid fabric carried by one travelling wave.
  *
- * The §1.1 reference (docs/inspiration_and_notes/light_and_motion) is a neutral
- * weave of light cells whose density folds and travels; saturated
- * primary/secondary colour appears only as a thin *fringing* where the light
- * meets empty space — a chromatic aberration of the weave's own edges, not a
- * fill. The structure is therefore neutral-dominant and only edge cells are
- * coloured.
+ * The §1.1 reference (docs/inspiration_and_notes/light_and_motion) is light cells
+ * that move as one material the way a flag or a water surface does; saturated
+ * colour appears only as a thin *fringing* where the light meets empty space, a
+ * chromatic aberration rather than a fill, so the sheet is neutral-dominant and
+ * only fringe cells are coloured.
  *
- * Occupancy is the product of two travelling axis waves — so lit cells form a
- * coherent grid of *rectangular* patches (the reference's clear rectangular
- * forms) that migrate and breathe as one material — modulated by a slower
- * diagonal wave that folds it. It is never a flat stripe, a spatial hue ramp, a
- * ring, or per-cell flicker. All selection is a pure function of position and
- * explicit time, so the field is deterministic and loops seamlessly over the
- * AMBIENT role.
+ * The density is one diagonal wave plus a finer ripple at a different wavelength
+ * — `WAVE_*` and `RIPPLE_*`, both advancing an integer number of wavelengths per
+ * AMBIENT loop, which is what makes the loop seamless on any surface size —
+ * curved through `BAND_GAMMA` so the sheet stays dim between crests, spread by a
+ * static `GRAIN_BANDS` weave so it never reads as bands of one glyph, and folded
+ * by the anti-diagonal `FOLD_*`. It is never a flat stripe, a spatial hue ramp, a
+ * ring, a grid, or per-cell flicker: all selection is a pure function of position
+ * and explicit time.
  */
-#define UI_LIVING_FIELD_PERIOD_X 14      /* horizontal travel (cells)          */
-#define UI_LIVING_FIELD_PERIOD_Y 11      /* vertical travel (cells)            */
-#define UI_LIVING_FIELD_PERIOD_D 16      /* diagonal fold (must divide TABLE)  */
-#define UI_LIVING_FIELD_LIT_LEVEL 0.30   /* fabric density above this -> lit   */
-#define UI_LIVING_FIELD_FIELD_MAX 1.10   /* max of wave_x*wave_y*fold          */
+#define UI_LIVING_FIELD_BASE 0.30        /* fabric density between crests      */
+#define UI_LIVING_FIELD_WAVE_CELLS 48    /* main wave wavelength along travel  */
+#define UI_LIVING_FIELD_WAVE_CYCLES 3    /* main wave crests crossing per loop */
+#define UI_LIVING_FIELD_WAVE_GAIN 0.20   /* main wave lift                     */
+#define UI_LIVING_FIELD_RIPPLE_CELLS 17  /* fine ripple wavelength             */
+#define UI_LIVING_FIELD_RIPPLE_CYCLES 1  /* fine ripple crests crossing per loop */
+#define UI_LIVING_FIELD_RIPPLE_GAIN 0.07 /* fine ripple lift                   */
+#define UI_LIVING_FIELD_FOLD_CELLS 43    /* anti-diagonal fold wavelength      */
+#define UI_LIVING_FIELD_FOLD_CYCLES 2    /* fold crests crossing per loop      */
+#define UI_LIVING_FIELD_FOLD_BANDS 1.0   /* how much the fold lifts the fabric */
+#define UI_LIVING_FIELD_BAND_GAMMA 3.0   /* keeps the fabric dim below its crest */
+#define UI_LIVING_FIELD_GRAIN_BANDS 0.7  /* per-cell glyph spread, in bands    */
+#define UI_LIVING_FIELD_MAX 0.60         /* highest density the fabric reaches */
 #define UI_LIVING_FIELD_RUN 5            /* cells per chromatic fringe run     */
-#define UI_LIVING_FIELD_FRINGE 0.55      /* fraction of fringe runs coloured   */
+#define UI_LIVING_FIELD_FRINGE 0.55      /* fraction of edge runs coloured     */
+#define UI_LIVING_FIELD_WAKE 5           /* chromatic wake trailing a crest    */
+#define UI_LIVING_FIELD_WAKE_SPECKLE 0.18 /* fraction of wake cells coloured   */
 #define UI_LIVING_FIELD_REGION_MAX 16384 /* content-mask cap, in cells         */
+
+/*
+ * tide_cover / tide_reveal — the fabric arriving over the surface and leaving it
+ * again. The flood travels along the same diagonal as the backdrop wave (from the
+ * bottom-right corner up to the top-left one) so a state change reads as the same
+ * material moving, not as an unrelated effect (§1.1, §1.2). `UI_TIDE_TRAIL` is how
+ * far the flood over-travels past the far corner, so the surface is completely
+ * covered at the end of an exit; `UI_TIDE_FRONT` is the prismatic edge that trails
+ * the flood's front, the aberration the wave carries with it.
+ */
+#define UI_TIDE_TRAIL 28  /* cells of over-travel past the far corner          */
+#define UI_TIDE_FRONT 6   /* cells of chromatic front edge                     */
+#define UI_TIDE_LIFT 1.5  /* how much denser the flood sits than the calm fabric */
+
+/*
+ * settle — the transition a surface takes when it hands over to the *world* frame
+ * instead of to another surface: the characters that were on screen flow out to
+ * lattice positions, cycle through the fabric's glyphs as the wave crosses them,
+ * and then the lattice thins away, resolving onto the live frame underneath
+ * (2026-10-09 direction record, item 4, Stage C). It rides the same diagonal as
+ * the backdrop and carries the same prismatic wake, so a menu leaving for the
+ * world reads as the same material changing state.
+ *
+ * The wave advances over the *transition window* rather than over the AMBIENT
+ * loop: a settle is a transient, not a surface at rest, so its material crosses
+ * the screen once while the window runs (§1.2). `UI_SETTLE_HOLD` is the window
+ * fraction after which the material stops advancing — the last quarter is the
+ * settle itself, where the characters are still before the frame is uncovered.
+ */
+#define UI_SETTLE_LATTICE 4       /* cells between lattice positions               */
+#define UI_SETTLE_CYCLE 2.0       /* band at which the wave takes a character over */
+#define UI_SETTLE_TAKEOVER 0.3    /* condensation by which the wave may take over  */
+#define UI_SETTLE_HOLD 0.75       /* window fraction after which the material holds */
+#define UI_SETTLE_THIN_SALT 0x2b7fU    /* stable order the lattice thins in        */
+#define UI_SETTLE_SPECKLE_SALT 0x6c13U /* chromatic speckle in the wake            */
 
 /* Cheap deterministic 32-bit finalizer (SplitMix-style avalanche). Pure; used
    only to pick decorative material, never to drive layout or semantics. */
@@ -291,47 +335,73 @@ static double living_field_unit(uint32_t x, uint32_t y, uint32_t salt) {
     return (double)(living_field_mix(x, y, salt) >> 8) / 16777216.0;
 }
 
-/* Field density at one cell — a pure function of position and explicit phase.
-   Used both for the occupancy test and for neighbour lookups that decide
-   whether a lit cell sits on the field's edge. */
-static double living_field_density(int x, int y, const double *wave_x,
-                                   const double *wave_y, const double *fold,
-                                   bool radial, bool vertical, int centre_x,
-                                   int centre_y) {
-    int cx = x;
-    int cy = y;
-    if (radial) {
-        cx = x - centre_x; if (cx < 0) cx = -cx;
-        cy = y - centre_y; if (cy < 0) cy = -cy;
-    } else if (vertical) {
-        cx = y;
-        cy = x;
-    }
-    if (cx < 0) cx = 0;
-    if (cy < 0) cy = 0;
-    if (cx >= UI_LIVING_FIELD_TABLE) cx = UI_LIVING_FIELD_TABLE - 1;
-    if (cy >= UI_LIVING_FIELD_TABLE) cy = UI_LIVING_FIELD_TABLE - 1;
-    return wave_x[cx] * wave_y[cy] *
-           fold[(uint32_t)(cx + cy) & (UI_LIVING_FIELD_TABLE - 1U)];
+/* The distance a cell sits from the surface's bottom-right corner, in cells, for
+   each authored direction, so the main wave travels from that corner up to the
+   top-left one. */
+static double living_field_distance(int x, int y, bool radial, bool vertical,
+                                    int last_x, int last_y) {
+    double dx = (double)(last_x - 1 - x);
+    double dy = (double)(last_y - 1 - y);
+    if (dx < 0.0) dx = 0.0;
+    if (dy < 0.0) dy = 0.0;
+    if (vertical) return dy;
+    if (radial) return dx > dy ? dx : dy;
+    return dx + dy;
 }
 
-/* A cell is "field-present" when the weave is dense there *and* the cell is
-   blank, since the field only ever draws blank cells. A field edge is a
-   field-present cell that touches something which is not — a gap, the region
-   border, or a drawn glyph — so the weave fringes *against* text and controls
-   rather than carving a margin around them. */
-static bool living_field_visible(int x, int y, const double *wave_x,
-                                 const double *wave_y, const double *fold,
-                                 bool radial, bool vertical, int centre_x,
-                                 int centre_y, const uint8_t *fillable,
-                                 int region_w, int first_x, int first_y) {
-    if (living_field_density(x, y, wave_x, wave_y, fold, radial, vertical,
-                             centre_x, centre_y) <= UI_LIVING_FIELD_LIT_LEVEL)
-        return false;
-    if (fillable &&
-        fillable[(y - first_y + 1) * region_w + (x - first_x + 1)] == 0U)
-        return false;
-    return true;
+/* The travelling wave, sampled once per distance coordinate so the per-cell cost
+   is a table lookup rather than trigonometry. A main wave and a finer ripple ride
+   the same diagonal at different wavelengths, and their beat is what makes the
+   sheet lift and settle the way a flag does. Both advance an *integer* number of
+   wavelengths per loop, so the material loops seamlessly on any surface without
+   the geometry being known to the wave. */
+static double living_field_wave(double distance, double phase) {
+    static const double two_pi = 6.28318530717958647692;
+    double crest = 0.5 + 0.5 * cos(two_pi *
+        (distance / (double)UI_LIVING_FIELD_WAVE_CELLS -
+         (double)UI_LIVING_FIELD_WAVE_CYCLES * phase));
+    double ripple = 0.5 + 0.5 * cos(two_pi *
+        (distance / (double)UI_LIVING_FIELD_RIPPLE_CELLS -
+         (double)UI_LIVING_FIELD_RIPPLE_CYCLES * phase));
+    return UI_LIVING_FIELD_BASE + UI_LIVING_FIELD_WAVE_GAIN * crest +
+           UI_LIVING_FIELD_RIPPLE_GAIN * ripple;
+}
+
+/* The anti-diagonal fold: a slow breathing across the direction of travel, so the
+   sheet lifts and settles the way a flag does. */
+static double living_field_fold(double across, double phase) {
+    static const double two_pi = 6.28318530717958647692;
+    return 0.5 + 0.5 * cos(two_pi * (across / (double)UI_LIVING_FIELD_FOLD_CELLS +
+                                     (double)UI_LIVING_FIELD_FOLD_CYCLES * phase));
+}
+
+/* The glyph band a density maps to. The curve is deliberately bottom-heavy: the
+   fabric stays dim and quiet between crests, so the wave reads as light moving
+   through the material rather than as an evenly lit field. It is sampled once per
+   distance coordinate with the wave. */
+static double living_field_band(double wave) {
+    double ratio = wave / UI_LIVING_FIELD_MAX;
+    if (ratio < 0.0) ratio = 0.0;
+    if (ratio > 1.0) ratio = 1.0;
+    return pow(ratio, UI_LIVING_FIELD_BAND_GAMMA) * 6.0;
+}
+
+/* The weave: a static per-cell spread of the glyph band, so the sheet reads as
+   woven light cells with visible gaps rather than as bands of one glyph (§1.1).
+   It is a pure function of position and carries no block structure, so it never
+   draws a grid, and it never flickers. */
+static double living_field_weave(int x, int y) {
+    double jitter = living_field_unit((uint32_t)x, (uint32_t)y, 0x5f3aU);
+    return (jitter - 0.5) * UI_LIVING_FIELD_GRAIN_BANDS;
+}
+
+/* True when a cell can carry fabric: inside the region and blank. The fabric is a
+   substrate, so it fills only cells that nothing else has drawn into — which is
+   what makes its fringes run up against text and controls. */
+static bool living_field_blank(const uint8_t *fillable, int region_w,
+                               int first_x, int first_y, int x, int y) {
+    if (!fillable) return true;
+    return fillable[(y - first_y + 1) * region_w + (x - first_x + 1)] != 0U;
 }
 
 /* Chromatic-aberration fringe: the edge side maps to the shared RGB fringe
@@ -343,48 +413,71 @@ static UiChromaFringe living_field_fringe_edge(int side) {
     return UI_CHROMA_FRINGE_HORIZONTAL;
 }
 
+/* How far a cell sits behind the nearest crest of the main wave, in cells, so the
+   chromatic wake can trail every crest rather than only one. */
+static double living_field_behind(double distance, double phase) {
+    double travel = (double)UI_LIVING_FIELD_WAVE_CELLS *
+                    (double)UI_LIVING_FIELD_WAVE_CYCLES * phase;
+    double behind = fmod(distance - travel, (double)UI_LIVING_FIELD_WAVE_CELLS);
+    if (behind < 0.0) behind += (double)UI_LIVING_FIELD_WAVE_CELLS;
+    return (double)UI_LIVING_FIELD_WAVE_CELLS - behind;
+}
+
+/* The chromatic wake that trails the swell: one additive primary per third of
+   the trail, so the aberration reads as a prismatic smear following the wave —
+   and it is a trail, never a fill, because only a fraction of its runs are
+   coloured. `width` is the trail's length in cells, so the field's wake and the
+   tide's front edge are coloured by the same rule. */
+static UiChromaFringe living_field_wake_edge(double behind, double width) {
+    double third = width / 3.0;
+    if (behind < third) return UI_CHROMA_FRINGE_LEFT;
+    if (behind < 2.0 * third) return UI_CHROMA_FRINGE_HORIZONTAL;
+    return UI_CHROMA_FRINGE_RIGHT;
+}
+
 /*
- * living_field — a white-dominant flowing fabric fringed by chromatic
+ * living_field — a solid fabric with one travelling swell, fringed by chromatic
  * aberration.
  *
  * Reference of record: UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md §1.1 ("fluid
  * motion expressed through discrete cells", "coordinated patterns rather than
  * independent flicker"), §1.3; UI_DISPLAY_SURFACE_TARGET_2026-10-07.md §3.1,
- * §5. The reference is a neutral weave whose rectangular forms travel and fold
- * as one material; saturated colour appears only as a thin fringing where the
- * light meets a gap — a chromatic aberration of the weave's own edges — so the
- * field is a substrate for the display, never a colour fill.
+ * §5. The reference is a sheet of light cells that moves as one material, the
+ * way a flag or a water surface does; saturated colour appears only as a thin
+ * chromatic-aberration trail, so the field stays a substrate for the display and
+ * never a colour fill.
  *
- * Occupancy is `wave_x * wave_y * fold`, so lit cells form coherent rectangular
- * patches that migrate and breathe together (§1.1) with black gaps between
- * them; the structure is neutral-dominant. Colour rides only the *edges* of
- * those forms and is **only the three additive primaries** — red on left edges,
- * blue on right edges, green on the horizontal edges — a directional chromatic
- * aberration, never a secondary colour and never a spatial hue ramp. The field
- * is a *substrate*: it paints only blank cells, so it fills the surface behind
- * text and controls and its fringes run up against the glyphs, keeping the
- * content part of one continuous material instead of an element on a black
- * plate. Motion is a pure function of explicit time
- * (phase = fmod(elapsed, AMBIENT)/AMBIENT), loops seamlessly, and draws only
- * approved decorative tokens plus a neutral structural tone. Reduced motion
- * never reaches here.
+ * The fabric is **solid**: every blank cell in the region carries a glyph from the
+ * density ramp, and its structure comes from that ramp plus a static per-cell
+ * grain, never from gaps between shapes. Its motion is one **swell** crossing the
+ * surface from the bottom-right corner to the top-left once per loop — the
+ * centrepiece — with a shorter **ripple** riding it and an anti-diagonal **fold**
+ * breathing across it, so the whole sheet lifts and settles the way a flag does.
+ * The motion is a pure function of explicit time
+ * (phase = fmod(elapsed, AMBIENT)/AMBIENT), so the loop is seamless.
+ *
+ * Colour is **only the three additive primaries**. The swell's **wake** carries
+ * one primary per third of the trail — the aberration follows the wave — and a
+ * fabric cell whose edge meets a drawn glyph or the region's border fringes by
+ * direction (red left, blue right, green horizontal), so the material also
+ * aberrates where it hits a control. Never a secondary colour, never a spatial
+ * hue ramp, never a fill. The field paints only blank cells, so it fills *behind*
+ * text and controls and its fringes run up against them. Reduced motion never
+ * reaches here.
  */
 static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
                                 double elapsed_ms, const char *orientation,
                                 SDL_Color background) {
     static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
-    static const double pi = 3.14159265358979323846;
     const UiThemeTokens *tokens = ui_theme_provisional_tokens();
     UiThemeColor neutral;
-    double wave_x[UI_LIVING_FIELD_TABLE];
-    double wave_y[UI_LIVING_FIELD_TABLE];
+    double wave[UI_LIVING_FIELD_TABLE];
+    double band_ref[UI_LIVING_FIELD_TABLE];
     double fold[UI_LIVING_FIELD_TABLE];
     uint8_t fillable[UI_LIVING_FIELD_REGION_MAX];
     const uint8_t *fillable_mask;
     unsigned int period;
     double phase;
-    int centre_x;
-    int centre_y;
     bool radial;
     bool vertical;
     bool content_aware;
@@ -400,21 +493,9 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
     if (period == 0U) return false;
     neutral = tokens->palette.text_secondary;
-    phase = fmod(elapsed_ms, (double)period) / (double)period * 2.0 * pi;
-    /* Build the travelling waves once per axis coordinate, so the per-cell cost
-       is a few multiplies, never per-cell trigonometry. The fold table is
-       indexed by cell sums modulo TABLE; that stays continuous because the
-       period divides TABLE. */
-    for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++) {
-        double value = (double)coord;
-        wave_x[coord] = 0.55 + 0.45 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_X) + phase);
-        wave_y[coord] = 0.55 + 0.45 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_Y) + phase);
-        fold[coord] = 0.80 + 0.30 * sin(value * (2.0 * pi / UI_LIVING_FIELD_PERIOD_D) - phase);
-    }
+    phase = fmod(elapsed_ms, (double)period) / (double)period;
     radial = orientation && strcmp(orientation, "radial") == 0;
     vertical = orientation && strcmp(orientation, "vertical") == 0;
-    centre_x = bounds->x + bounds->width / 2;
-    centre_y = bounds->y + bounds->height / 2;
     first_x = bounds->x < 0 ? 0 : bounds->x;
     first_y = bounds->y < 0 ? 0 : bounds->y;
     last_x = bounds->x + bounds->width;
@@ -422,10 +503,18 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     last_y = bounds->y + bounds->height;
     if (last_y > grid->height) last_y = grid->height;
     if (last_x <= first_x || last_y <= first_y) return true;
-    /* Capture a one-cell-padded mask of *blank* cells. The field draws only
-       blank cells and fringes where a dense patch meets a drawn glyph, so the
-       weave integrates text and controls instead of carving a black margin
-       around them. */
+    (void)living_field_distance(first_x, first_y, radial, vertical, last_x,
+                                last_y);
+    /* Sample the wave and the fold once per coordinate, so the per-cell cost is a
+       lookup and a hash, never per-cell trigonometry. */
+    for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++) {
+        wave[coord] = living_field_wave((double)coord, phase);
+        band_ref[coord] = living_field_band(wave[coord]);
+        fold[coord] = living_field_fold((double)coord, phase);
+    }
+    /* Capture a one-cell-padded mask of *blank* cells. The fabric draws only
+       blank cells and fringes where it meets a drawn glyph, so it integrates
+       text and controls instead of carving a black margin around them. */
     region_w = last_x - first_x + 2;
     region_h = last_y - first_y + 2;
     content_aware = region_w * region_h <= UI_LIVING_FIELD_REGION_MAX;
@@ -441,7 +530,11 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     fillable_mask = content_aware ? fillable : NULL;
     for (int y = first_y; y < last_y; y++) {
         for (int x = first_x; x < last_x; x++) {
-            double field;
+            double distance;
+            double weave;
+            double behind;
+            int wave_index;
+            int fold_index;
             int band;
             Cell occupied;
             SDL_Color fg;
@@ -449,37 +542,39 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
             bool open_r;
             bool open_u;
             bool open_d;
-            /* Product of two travelling axis waves: lit cells bunch into
-               rectangular patches that migrate and breathe as one material. */
-            field = living_field_density(x, y, wave_x, wave_y, fold, radial,
-                                         vertical, centre_x, centre_y);
-            if (field <= UI_LIVING_FIELD_LIT_LEVEL) continue;
-            /* The field is a substrate: it paints only blank cells, so it can
+            /* The fabric is a substrate: it paints only blank cells, so it can
                never obscure authored text, a control, or a focus marker — it
                fills the surface *behind* them. */
             if (grid_get(grid, x, y, &occupied) &&
                 occupied.glyph != 0U && occupied.glyph != ' ') continue;
-            band = (int)((field - UI_LIVING_FIELD_LIT_LEVEL) /
-                         (UI_LIVING_FIELD_FIELD_MAX - UI_LIVING_FIELD_LIT_LEVEL) *
-                         6.0);
+            distance = living_field_distance(x, y, radial, vertical, last_x,
+                                             last_y);
+            wave_index = (int)distance;
+            if (wave_index < 0) wave_index = 0;
+            if (wave_index >= UI_LIVING_FIELD_TABLE)
+                wave_index = UI_LIVING_FIELD_TABLE - 1;
+            fold_index = (x - first_x) - (y - first_y) + (last_y - first_y - 1);
+            if (fold_index < 0) fold_index = 0;
+            if (fold_index >= UI_LIVING_FIELD_TABLE)
+                fold_index = UI_LIVING_FIELD_TABLE - 1;
+            weave = living_field_weave(x, y);
+            band = (int)lround(band_ref[wave_index] +
+                               (fold[fold_index] - 0.5) *
+                                   UI_LIVING_FIELD_FOLD_BANDS +
+                               weave);
             if (band < 0) band = 0;
             if (band > 6) band = 6;
-            /* A cell sits on the field's edge when a neighbour is not
-               field-present — a gap, the border, or a drawn glyph. The interior
-               stays neutral; only edges take a fringe, so the weave fringes
-               against the text it flows around. */
-            open_l = x - 1 < first_x || !living_field_visible(
-                x - 1, y, wave_x, wave_y, fold, radial, vertical, centre_x,
-                centre_y, fillable_mask, region_w, first_x, first_y);
-            open_r = x + 1 >= last_x || !living_field_visible(
-                x + 1, y, wave_x, wave_y, fold, radial, vertical, centre_x,
-                centre_y, fillable_mask, region_w, first_x, first_y);
-            open_u = y - 1 < first_y || !living_field_visible(
-                x, y - 1, wave_x, wave_y, fold, radial, vertical, centre_x,
-                centre_y, fillable_mask, region_w, first_x, first_y);
-            open_d = y + 1 >= last_y || !living_field_visible(
-                x, y + 1, wave_x, wave_y, fold, radial, vertical, centre_x,
-                centre_y, fillable_mask, region_w, first_x, first_y);
+            /* A fabric cell sits on an edge when a neighbour is not fabric —
+               a drawn glyph or the region's border — and those edges fringe by
+               direction, so the material aberrates where it hits a control. */
+            open_l = x - 1 < first_x || !living_field_blank(
+                fillable_mask, region_w, first_x, first_y, x - 1, y);
+            open_r = x + 1 >= last_x || !living_field_blank(
+                fillable_mask, region_w, first_x, first_y, x + 1, y);
+            open_u = y - 1 < first_y || !living_field_blank(
+                fillable_mask, region_w, first_x, first_y, x, y - 1);
+            open_d = y + 1 >= last_y || !living_field_blank(
+                fillable_mask, region_w, first_x, first_y, x, y + 1);
             fg = color(neutral);
             if (open_l || open_r || open_u || open_d) {
                 int side;
@@ -494,6 +589,20 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
                     UI_LIVING_FIELD_FRINGE)
                     fg = color(ui_theme_chroma_fringe(
                         living_field_fringe_edge(side)));
+            } else {
+                /* The chromatic wake trails the crest as a prismatic *speckle*:
+                   only some cells are coloured, and which cells is a static
+                   function of position, so each cell shows its primary for the
+                   moment the wake passes over it and then returns to the neutral
+                   fabric. The aberration follows the wave; it never tints the
+                   sheet. */
+                behind = living_field_behind(distance, phase);
+                if (behind < (double)UI_LIVING_FIELD_WAKE &&
+                    living_field_unit((uint32_t)x, (uint32_t)y, 0x7d21U) <
+                        UI_LIVING_FIELD_WAKE_SPECKLE)
+                    fg = color(ui_theme_chroma_fringe(
+                        living_field_wake_edge(behind,
+                                               (double)UI_LIVING_FIELD_WAKE)));
             }
             if (!grid_set(grid, x, y, ramp[band], fg, background))
                 return false;
@@ -502,9 +611,243 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+/*
+ * The tide: the fabric surges in from the surface's bottom-right corner and
+ * covers everything, then drains back out revealing the next context. `progress`
+ * runs 1 -> 0 for a context exit and 0 -> 1 for a context enter, so `1 - progress`
+ * is the covered fraction in both directions — the exit ends where the enter
+ * begins and the material is continuous across the change of state (§1.2, change
+ * of direction recorded 2026-10-09).
+ *
+ * This is the one primitive that may pass over authored content: the element's
+ * spec declares `covers_content`, and the evaluator only honours the cover while
+ * this function reports one. At `covered == 0` it draws nothing and reports no
+ * cover, so the authored cells are restored and the controls are intact again —
+ * the exception lasts exactly as long as the transition does.
+ */
+static bool render_tide(Grid *grid, const UiElementLayout *bounds, double progress,
+                        double elapsed_ms, bool covering, SDL_Color background,
+                        bool *out_covers) {
+    static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
+    const UiThemeTokens *tokens = ui_theme_provisional_tokens();
+    unsigned int period;
+    double phase;
+    double eased;
+    double linear;
+    double smooth;
+    double covered;
+    double span;
+    double front;
+    SDL_Color neutral;
+    int first_x;
+    int first_y;
+    int last_x;
+    int last_y;
+    if (!grid || !grid->cells || !bounds || !tokens || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0 || !isfinite(elapsed_ms) ||
+        elapsed_ms < 0.0)
+        return false;
+    if (out_covers) *out_covers = false;
+    /* The shared motion curve is a fast-start pop: right for a control that
+       acknowledges a press, wrong for water, because it would put most of the
+       surface under the flood in the first half of the window. Recover the linear
+       fraction of the window from the shared ease and lay the tide's own curve
+       over it — leaving the corner slowly, crossing at a steady pace, pressing
+       home gently — so the cover reads as material arriving rather than as a wipe
+       (2026-10-09 direction record: the characters surge in and cover the menu
+       like a receding tide). */
+    eased = 1.0 - progress;
+    linear = covering ? 1.0 - cbrt(1.0 - eased) : 1.0 - cbrt(eased);
+    smooth = linear * linear * (3.0 - 2.0 * linear);
+    covered = covering ? smooth : 1.0 - smooth;
+    if (covered <= 0.0) return true;
+    period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
+    if (period == 0U) return false;
+    first_x = bounds->x < 0 ? 0 : bounds->x;
+    first_y = bounds->y < 0 ? 0 : bounds->y;
+    last_x = bounds->x + bounds->width;
+    if (last_x > grid->width) last_x = grid->width;
+    last_y = bounds->y + bounds->height;
+    if (last_y > grid->height) last_y = grid->height;
+    if (last_x <= first_x || last_y <= first_y) return true;
+    phase = fmod(elapsed_ms, (double)period) / (double)period;
+    span = (double)((last_x - 1 - first_x) + (last_y - 1 - first_y) +
+                    UI_TIDE_TRAIL);
+    front = covered * span - (double)UI_TIDE_TRAIL;
+    if (front < 0.0) return true;
+    neutral = color(tokens->palette.text_secondary);
+    for (int y = first_y; y < last_y; y++) {
+        for (int x = first_x; x < last_x; x++) {
+            double distance = (double)((last_x - 1 - x) + (last_y - 1 - y));
+            double depth;
+            double band;
+            int index;
+            SDL_Color fg;
+            if (distance > front) continue;
+            depth = front - distance;
+            /* The flood is the same fabric as the backdrop, one step denser, so
+               it ripples at the same rate and reads as that material arriving. */
+            band = living_field_band(living_field_wave(distance, phase)) +
+                   UI_TIDE_LIFT;
+            if (band < 1.0) band = 1.0;
+            if (band > 6.0) band = 6.0;
+            index = (int)lround(band);
+            fg = neutral;
+            if (depth < (double)UI_TIDE_FRONT)
+                fg = color(ui_theme_chroma_fringe(
+                    living_field_wake_edge(depth, (double)UI_TIDE_FRONT)));
+            if (!grid_set(grid, x, y, ramp[index], fg, background))
+                return false;
+        }
+    }
+    if (out_covers) *out_covers = true;
+    return true;
+}
+
+/*
+ * The settle: a surface handing over to the world frame. `progress` arrives from
+ * the shared evaluator as the exit curve (progress runs 1 -> 0, a fast-start pop
+ * shaped for a control acknowledging a press), so the linear fraction of the
+ * window is recovered from it and the material is driven by that: the settle
+ * occupies exactly its window and no literal duration appears here.
+ *
+ * The material that was on screen flows to its lattice: every cell belongs to a
+ * block of `UI_SETTLE_LATTICE` cells and slides toward that block's far corner,
+ * which is where a lattice position is. In the first half of the window the
+ * characters outside a shrinking diamond leave, so the surface's characters
+ * condense onto the lattice; from the halfway point the lattice is all that
+ * remains, and it holds and then thins away in a stable order, so the last frame
+ * draws nothing and the live frame underneath is simply uncovered. Where the main
+ * crest of the backdrop wave crosses a lattice position, the wave takes the
+ * character over and it cycles through the fabric's own glyphs, accented by the
+ * same prismatic wake the backdrop carries.
+ *
+ * Like the tide this primitive passes over authored content, and only for its
+ * window: it reports a cover for as long as it draws, and at the end of the
+ * window it draws nothing and reports none, so the caller drops the overlay with
+ * it (2026-10-09 direction record, item 4, Stage C).
+ */
+static bool render_settle(Grid *grid, const UiElementLayout *bounds, double progress,
+                          double elapsed_ms, SDL_Color background, bool *out_covers) {
+    static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
+    const UiThemeTokens *tokens = ui_theme_provisional_tokens();
+    UiThemeColor neutral;
+    double wave_band[UI_LIVING_FIELD_TABLE];
+    double window;
+    double phase;
+    double settle;
+    double condense;
+    double thin;
+    double reach;
+    int first_x;
+    int first_y;
+    int last_x;
+    int last_y;
+    if (!grid || !grid->cells || !bounds || !tokens || !isfinite(progress) ||
+        progress < 0.0 || progress > 1.0 || !isfinite(elapsed_ms) || elapsed_ms < 0.0)
+        return false;
+    if (out_covers) *out_covers = false;
+    window = (double)ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    if (window <= 0.0) return true;
+    /* The shared curve is (1 - t)^3 over the window, so its cube root recovers the
+       fraction of the window the material has actually travelled. */
+    settle = 1.0 - cbrt(progress);
+    if (settle >= 1.0) return true;
+    if (elapsed_ms > window * UI_SETTLE_HOLD) elapsed_ms = window * UI_SETTLE_HOLD;
+    neutral = tokens->palette.text_secondary;
+    /* One crossing of the backdrop wave while the window runs, then the material
+       holds for the settle. */
+    phase = elapsed_ms / window;
+    first_x = bounds->x < 0 ? 0 : bounds->x;
+    first_y = bounds->y < 0 ? 0 : bounds->y;
+    last_x = bounds->x + bounds->width;
+    if (last_x > grid->width) last_x = grid->width;
+    last_y = bounds->y + bounds->height;
+    if (last_y > grid->height) last_y = grid->height;
+    if (last_x <= first_x || last_y <= first_y) return true;
+    /* Sample the fabric's band once per distance coordinate, as the backdrop does. */
+    for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++)
+        wave_band[coord] = living_field_band(living_field_wave((double)coord, phase));
+    condense = settle * 2.0;
+    if (condense > 1.0) condense = 1.0;
+    thin = settle * 2.0 - 1.0;
+    if (thin < 0.0) thin = 0.0;
+    /* A cell keeps its character while it sits inside the diamond that reaches from
+       its own lattice position; the diamond closes over the first half of the
+       window, so at the halfway point only the lattice positions still carry one. */
+    reach = (1.0 - condense) * (double)(2 * (UI_SETTLE_LATTICE - 1));
+    for (int y = first_y; y < last_y; y++) {
+        for (int x = first_x; x < last_x; x++) {
+            int anchor_x = first_x + ((x - first_x) / UI_SETTLE_LATTICE + 1) *
+                                          UI_SETTLE_LATTICE - 1;
+            int anchor_y = first_y + ((y - first_y) / UI_SETTLE_LATTICE + 1) *
+                                          UI_SETTLE_LATTICE - 1;
+            double distance;
+            double behind;
+            int wave_index;
+            int band;
+            Cell source;
+            SDL_Color fg;
+            int sample_x;
+            int sample_y;
+            if (anchor_x > last_x - 1) anchor_x = last_x - 1;
+            if (anchor_y > last_y - 1) anchor_y = last_y - 1;
+            if ((double)((anchor_x - x) + (anchor_y - y)) > reach ||
+                (thin > 0.0 && living_field_unit((uint32_t)anchor_x,
+                                                 (uint32_t)anchor_y,
+                                                 UI_SETTLE_THIN_SALT) < thin)) {
+                /* The character has left this cell: the material has moved on, and
+                   what it leaves behind is not covered at all. The empty glyph is
+                   the one the compositor's copy skips, so the live frame underneath
+                   shows through from this cell while the rest is still material —
+                   the sheet thins on screen instead of blanking the surface and
+                   being dropped at the end. */
+                if (!grid_set(grid, x, y, 0U, color(neutral), background)) return false;
+                continue;
+            }
+            distance = living_field_distance(x, y, false, false, last_x, last_y);
+            wave_index = (int)distance;
+            if (wave_index < 0) wave_index = 0;
+            if (wave_index >= UI_LIVING_FIELD_TABLE)
+                wave_index = UI_LIVING_FIELD_TABLE - 1;
+            band = (int)lround(wave_band[wave_index]);
+            if (band < 0) band = 0;
+            if (band > 6) band = 6;
+            if ((double)band >= UI_SETTLE_CYCLE && condense >= UI_SETTLE_TAKEOVER) {
+                /* Under the crest, once the material has started to move, the wave
+                   has taken the character over and the fabric's own glyph is what it
+                   cycles to, coloured by the wake while it passes. The takeover
+                   waits for the material to be moving so that the window's first
+                   frame is the surface exactly as it stood: the change is the
+                   motion, never a step at the moment of handover. */
+                fg = color(neutral);
+                behind = living_field_behind(distance, phase);
+                if (behind < (double)UI_LIVING_FIELD_WAKE &&
+                    living_field_unit((uint32_t)x, (uint32_t)y,
+                                      UI_SETTLE_SPECKLE_SALT) <
+                        UI_LIVING_FIELD_WAKE_SPECKLE)
+                    fg = color(ui_theme_chroma_fringe(
+                        living_field_wake_edge(behind, (double)UI_LIVING_FIELD_WAKE)));
+                if (!grid_set(grid, x, y, ramp[band], fg, background)) return false;
+                continue;
+            }
+            /* Away from the crest a character keeps its own face and slides toward
+               the lattice position it belongs to. That position is never behind the
+               cell in either axis, so the character this reads has not been written
+               yet on this pass: the material never feeds on itself. */
+            sample_x = x + (int)lround(condense * (double)(anchor_x - x));
+            sample_y = y + (int)lround(condense * (double)(anchor_y - y));
+            if (!grid_get(grid, sample_x, sample_y, &source)) return false;
+            if (!grid_set(grid, x, y, source.glyph, source.fg, source.bg)) return false;
+        }
+    }
+    if (out_covers) *out_covers = true;
+    return true;
+}
+
 static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
                         double elapsed_ms, bool reduced_motion, bool preview_loop,
-                        UiAnimationEvent event) {
+                        UiAnimationEvent event, bool *out_covers) {
     const UiThemePalette *palette = &ui_theme_provisional_tokens()->palette;
     const UiEffectSpec *spec = ui_effect_spec_by_name(unit->preset);
     UiElement *target = find_element(layout, unit->target);
@@ -515,7 +858,11 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     int y;
     int width;
     int height;
+    if (out_covers) *out_covers = false;
     if (!spec) return false;
+    /* A transition is not part of a settled surface, so a static preview never
+       plays one: the preview shows the state the surface resolves to. */
+    if (event == UI_ANIMATION_EVENT_PREVIEW && spec->covers_content) return true;
     if (!target || !ui_ele_absolute_bounds(target, &x, &y, &width, &height)) return false;
     if (spec->target_type != UI_ELE_ANIMATION && target->type != spec->target_type)
         return false;
@@ -548,6 +895,14 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
         return false;
     if (!visible) return true;
     switch (spec->id) {
+        case UI_EFFECT_TIDE_COVER:
+        case UI_EFFECT_TIDE_REVEAL:
+            return render_tide(grid, &bounds, progress, elapsed_ms,
+                               spec->id == UI_EFFECT_TIDE_COVER,
+                               color(palette->canvas), out_covers);
+        case UI_EFFECT_SETTLE:
+            return render_settle(grid, &bounds, progress, elapsed_ms,
+                                 color(palette->canvas), out_covers);
         case UI_EFFECT_LIVING_FIELD:
             return render_living_field(grid, &bounds, elapsed_ms,
                                        unit->orientation, color(palette->canvas));
@@ -599,10 +954,12 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
 
 static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
                                 bool reduced_motion, bool preview_loop,
-                                UiAnimationEvent event) {
+                                UiAnimationEvent event, bool *out_covers) {
     UiElement *processed[UI_LAYOUT_MAX_ELEMS];
     int processed_count = 0;
+    bool covers = false;
     int i;
+    if (out_covers) *out_covers = false;
     if (!layout || !grid || !isfinite(elapsed_ms) || elapsed_ms < 0.0) return false;
     for (i = 0; i < layout->element_count; i++) {
         UiElement *element = layout->elements[i];
@@ -636,21 +993,59 @@ static bool render_layout_units(UiLayout *layout, Grid *grid, double elapsed_ms,
             (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s",
                 event == UI_ANIMATION_EVENT_CONTEXT_EXIT ? "context_exit" : "context_enter");
             (void)snprintf(unit.orientation, sizeof(unit.orientation), "radial");
-            if (!render_unit(&unit, layout, grid, elapsed_ms,
-                             reduced_motion, preview_loop,
-                              event == UI_ANIMATION_EVENT_CONTEXT_EXIT
-                                  ? UI_ANIMATION_EVENT_CONTEXT_EXIT
-                                  : UI_ANIMATION_EVENT_CONTEXT_ENTER)) return false;
+            {
+                bool unit_covers = false;
+                if (!render_unit(&unit, layout, grid, elapsed_ms,
+                                 reduced_motion, preview_loop,
+                                  event == UI_ANIMATION_EVENT_CONTEXT_EXIT
+                                      ? UI_ANIMATION_EVENT_CONTEXT_EXIT
+                                      : UI_ANIMATION_EVENT_CONTEXT_ENTER,
+                                  &unit_covers)) return false;
+                if (unit_covers) covers = true;
+            }
             }
             if (!known && processed_count < UI_LAYOUT_MAX_ELEMS)
                 processed[processed_count++] = cursor;
             cursor = cursor->parent;
         }
-        if (element && element->type == UI_ELE_ANIMATION && element->visible &&
-            !render_unit(element, layout, grid, elapsed_ms,
-                         reduced_motion, preview_loop, event)) return false;
+        if (element && element->type == UI_ELE_ANIMATION && element->visible) {
+            bool unit_covers = false;
+            if (!render_unit(element, layout, grid, elapsed_ms,
+                             reduced_motion, preview_loop, event, &unit_covers))
+                return false;
+            if (unit_covers) covers = true;
+        }
     }
+    if (out_covers) *out_covers = covers;
     return true;
+}
+
+bool ui_animation_render_world_settle(UiLayout *outgoing, Grid *grid,
+                                      double elapsed_ms, bool reduced_motion) {
+    UiElement unit = {0};
+    UiElement *anchor;
+    bool covers = false;
+    if (!outgoing || !grid || !grid->cells || outgoing->element_count <= 0 ||
+        !isfinite(elapsed_ms) || elapsed_ms < 0.0)
+        return false;
+    /* One unit, named by the primitive registry and addressed at the whole
+       surface, synthesised exactly the way the evaluator synthesises an unauthored
+       transition for a control. `settle` is the transition a surface takes when it
+       hands over to the world; asking for it here rather than authoring it into a
+       layout is what keeps the decision with the destination, which is the only
+       place that knows a change of state is a menu leaving for the world rather
+       than for another menu (2026-10-09 direction record, item 4, Stage C). */
+    anchor = outgoing->elements[0];
+    unit.type = UI_ELE_ANIMATION;
+    unit.visible = 1;
+    unit.extent = UI_EXTENT_SURFACE;
+    (void)snprintf(unit.name, sizeof(unit.name), "%s", "world_settle");
+    (void)snprintf(unit.preset, sizeof(unit.preset), "%s", "settle");
+    (void)snprintf(unit.target, sizeof(unit.target), "%s", anchor->name);
+    (void)snprintf(unit.trigger, sizeof(unit.trigger), "%s", "context_exit");
+    (void)snprintf(unit.orientation, sizeof(unit.orientation), "%s", "radial");
+    return render_unit(&unit, outgoing, grid, elapsed_ms, reduced_motion, false,
+                       UI_ANIMATION_EVENT_CONTEXT_EXIT, &covers);
 }
 
 bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
@@ -659,6 +1054,7 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
     Grid *mask;
     UiCanvas *authored;
     bool result;
+    bool covers = false;
     size_t count;
     SDL_Color unused = {0};
     if (!layout || !grid || !grid->cells || !isfinite(elapsed_ms) || elapsed_ms < 0 ||
@@ -666,7 +1062,8 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
         return false;
     if (reduced_motion) return true;
     if (event == UI_ANIMATION_EVENT_PREVIEW)
-        return render_layout_units(layout, grid, elapsed_ms, false, preview_loop, event);
+        return render_layout_units(layout, grid, elapsed_ms, false, preview_loop,
+                                   event, NULL);
     /* A fresh layout render identifies authored cells, including authored spaces,
        independently of the caller's backdrop. Save their original colors too. */
     mask = grid_create(grid->width, grid->height);
@@ -682,9 +1079,15 @@ bool ui_animation_render_layout(UiLayout *layout, Grid *grid, double elapsed_ms,
     for (size_t i = 0; i < count; i++)
         if (authored->touched[i]) authored->cells[i] = grid->cells[i];
     grid_destroy(mask);
-    result = render_layout_units(layout, grid, elapsed_ms, false, preview_loop, event);
-    for (size_t i = 0; i < count; i++)
-        if (authored->touched[i]) grid->cells[i] = authored->cells[i];
+    result = render_layout_units(layout, grid, elapsed_ms, false, preview_loop,
+                                 event, &covers);
+    /* A control is never left covered. The authored cells are restored unless a
+       sanctioning primitive is *currently* covering the surface — the one
+       exception recorded for the tide in the 2026-10-09 direction record — and
+       that exception ends with the transition, when the tide reports no cover. */
+    if (!covers)
+        for (size_t i = 0; i < count; i++)
+            if (authored->touched[i]) grid->cells[i] = authored->cells[i];
     ui_canvas_destroy(authored);
     return result;
 }

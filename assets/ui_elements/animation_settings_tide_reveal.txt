@@ -1,0 +1,19 @@
+name=animation_settings_tide_reveal
+type=animation
+# The tide that drains away revealing this menu on the way in.
+x=0
+y=0
+coords=absolute
+width=0
+height=0
+extent=surface
+visible=1
+z_index=1
+align=left
+effect=tide_reveal
+target=settings_container
+orientation=horizontal
+style=plain
+transition=none
+focus_effect=none
+content=

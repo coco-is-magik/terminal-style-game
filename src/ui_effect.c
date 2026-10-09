@@ -17,30 +17,48 @@
 static const UiEffectSpec effect_specs[] = {
     { UI_EFFECT_PAUSE_GLITCH, "pause_glitch", UI_ELE_ANIMATION,
       UI_EFFECT_TRIGGER_ANY, UI_EFFECT_ORIENT_ANY, UI_EFFECT_ANY_BOOL,
-      UI_EFFECT_ANY_BOOL, false },
+      UI_EFFECT_ANY_BOOL, false, false },
     { UI_EFFECT_CENTER_OUT, "center_out", UI_ELE_ANIMATION,
       UI_EFFECT_TRIGGER_ANY, UI_EFFECT_ORIENT_ANY, UI_EFFECT_ANY_BOOL,
-      UI_EFFECT_ANY_BOOL, false },
+      UI_EFFECT_ANY_BOOL, false, false },
     { UI_EFFECT_PERIMETER_BURST, "perimeter_burst", UI_ELE_ANIMATION,
       UI_EFFECT_TRIGGER_ANY, UI_EFFECT_ORIENT_ANY, UI_EFFECT_ANY_BOOL,
-      UI_EFFECT_ANY_BOOL, false },
+      UI_EFFECT_ANY_BOOL, false, false },
     { UI_EFFECT_LOCAL_GLITCH, "local_glitch", UI_ELE_ANIMATION,
       UI_EFFECT_TRIGGER_ANY, UI_EFFECT_ORIENT_ANY, UI_EFFECT_ANY_BOOL,
-      UI_EFFECT_ANY_BOOL, false },
+      UI_EFFECT_ANY_BOOL, false, false },
     { UI_EFFECT_EDGE_TRACE, "edge_trace", UI_ELE_BUTTON,
-      UI_EFFECT_TRIGGER_FOCUS, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false },
+      UI_EFFECT_TRIGGER_FOCUS, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false, false },
     { UI_EFFECT_CHROMATIC_REGISTER, "chromatic_register", UI_ELE_BUTTON,
-      UI_EFFECT_TRIGGER_FOCUS, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false },
+      UI_EFFECT_TRIGGER_FOCUS, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false, false },
     { UI_EFFECT_COMMAND_FLASH, "command_flash", UI_ELE_BUTTON,
-      UI_EFFECT_TRIGGER_ACTIVATE, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false },
+      UI_EFFECT_TRIGGER_ACTIVATE, UI_EFFECT_ORIENT_HORIZONTAL, 0, 0, false, false },
     { UI_EFFECT_BUTTON_REASSEMBLE, "button_reassemble", UI_ELE_BUTTON,
       UI_EFFECT_TRIGGER_CONTEXT_ENTER | UI_EFFECT_TRIGGER_CONTEXT_EXIT,
-      UI_EFFECT_ORIENT_RADIAL, 0, 0, false },
+      UI_EFFECT_ORIENT_RADIAL, 0, 0, false, false },
     { UI_EFFECT_PANEL_REGISTER, "panel_register", UI_ELE_CONTAINER,
       UI_EFFECT_TRIGGER_CONTEXT_ENTER | UI_EFFECT_TRIGGER_CONTEXT_EXIT,
-      UI_EFFECT_ORIENT_RADIAL, 0, 0, false },
+      UI_EFFECT_ORIENT_RADIAL, 0, 0, false, false },
     { UI_EFFECT_LIVING_FIELD, "living_field", UI_ELE_ANIMATION,
-      UI_EFFECT_TRIGGER_WHILE_VISIBLE, UI_EFFECT_ORIENT_ANY, 0, 0, true }
+      UI_EFFECT_TRIGGER_WHILE_VISIBLE, UI_EFFECT_ORIENT_ANY, 0, 0, true, false },
+    /* The tide: the fabric surges in and covers the surface on the way out of a
+       context, and drains away revealing the next one on the way in. It is the
+       one primitive allowed to pass over authored content, and only for the
+       duration of that transition (covers_content). */
+    { UI_EFFECT_TIDE_COVER, "tide_cover", UI_ELE_ANIMATION,
+      UI_EFFECT_TRIGGER_CONTEXT_EXIT, UI_EFFECT_ORIENT_ANY, 0, 0, false, true },
+    { UI_EFFECT_TIDE_REVEAL, "tide_reveal", UI_ELE_ANIMATION,
+      UI_EFFECT_TRIGGER_CONTEXT_ENTER, UI_EFFECT_ORIENT_ANY, 0, 0, false, true },
+    /* The settle: the transition a surface takes when it hands over to the world
+       frame instead of to another surface. The material that was on screen flows
+       out to its lattice, cycles through the fabric's glyphs as the wave crosses
+       it, then resolves — the dots thin away and the live frame underneath is
+       left uncovered (2026-10-09 direction record, item 4, Stage C). It is never
+       authored into a layout: which transition plays is a fact about the
+       destination, not about the surface being left, so the runner asks for it by
+       name (`ui_animation_render_world_settle`). */
+    { UI_EFFECT_SETTLE, "settle", UI_ELE_ANIMATION,
+      UI_EFFECT_TRIGGER_CONTEXT_EXIT, UI_EFFECT_ORIENT_ANY, 0, 0, false, true }
 };
 
 static unsigned int trigger_bit(const char *trigger) {

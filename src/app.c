@@ -907,6 +907,34 @@ int app_main(int argc, char* argv[]) {
             }
         }
 
+        /* A context transition owns the surface: the tide covers the menu between
+           states (change of direction recorded 2026-10-09), so the menu's focus
+           movement and activation are ignored until the new state's controls are
+           live. The Escape gesture stays available throughout. */
+        double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
+                               (double)SDL_GetPerformanceFrequency();
+        /* The transition windows come from the theme, so a cover lasts exactly as
+           long as the material that plays it: the tide finishes covering the
+           outgoing surface at the end of the exit window, and the incoming surface
+           begins its reveal on the frame the cover completes. Reduced motion
+           shortens both windows to nothing, which is the recorded no-motion
+           response. Nothing here is a literal duration. */
+        double exit_duration_ms = (double)ui_theme_motion_duration_ms(
+            UI_THEME_MOTION_MAJOR_EXIT, reduced_motion);
+        double enter_duration_ms = (double)ui_theme_motion_duration_ms(
+            UI_THEME_MOTION_MAJOR_ENTER, reduced_motion);
+        double transition_exit_until_ms =
+            (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
+             animation_event_layout && animation_event_menu != MENU_NONE)
+                ? animation_event_start_ms + exit_duration_ms
+                : 0.0;
+        double transition_enter_until_ms =
+            menu_stack_peek(&ms) != MENU_NONE
+                ? animation_menu_start_ms + enter_duration_ms
+                : 0.0;
+        bool transition_owns_input = menu_controller_transition_owns_input(
+            motion_now_ms, transition_exit_until_ms, transition_enter_until_ms);
+
         if (input.esc) {
             if (ms.depth > 1 || (ms.depth > 0 && app_state != APP_STATE_MAIN_MENU)) {
                 menu_stack_pop(&ms);
@@ -917,7 +945,7 @@ int app_main(int argc, char* argv[]) {
         }
 
         MenuId active_menu = menu_stack_peek(&ms);
-        if (active_menu != MENU_NONE) {
+        if (active_menu != MENU_NONE && !transition_owns_input) {
             int mid = (int)active_menu;
             UiLayout *active_layout = (mid >= 0 && mid < MENU_ID_COUNT) ? menu_layouts[mid] : NULL;
             int count = active_layout ? ui_layout_focusable_count(active_layout) : 0;
@@ -948,7 +976,24 @@ int app_main(int argc, char* argv[]) {
                     }
                 }
                 active_menu = menu_stack_peek(&ms);
-                if (active_menu != (MenuId)mid && active_layout) {
+                /* Which transition plays is a fact about the destination, not about
+                   the surface being left: another menu is handed over to by the
+                   tide, the live frame by the settle (recorded as Stage B and Stage
+                   C of the 2026-10-09 direction). Both are one continuous motion —
+                   the settle covers the exit window exactly as the tide does, so
+                   nothing about the timing differs between them. */
+                if (active_menu != (MenuId)mid && active_layout &&
+                    active_menu != MENU_NONE) {
+                    animation_event_layout = active_layout;
+                    animation_event_menu = (MenuId)mid;
+                    animation_event = UI_ANIMATION_EVENT_CONTEXT_EXIT;
+                    animation_event_start_ms = (double)(start_time - initial_time) * 1000.0 /
+                                               (double)SDL_GetPerformanceFrequency();
+                } else if (active_menu == MENU_NONE && active_layout) {
+                    /* The surface is leaving for the world frame (the game or the
+                       editor), so the same exit window is played by the settle: the
+                       renderer below draws the outgoing surface and condenses it onto
+                       its lattice, then resolves onto the frame underneath. */
                     animation_event_layout = active_layout;
                     animation_event_menu = (MenuId)mid;
                     animation_event = UI_ANIMATION_EVENT_CONTEXT_EXIT;
@@ -1016,23 +1061,29 @@ int app_main(int argc, char* argv[]) {
         }
 
         double delta_time_sec = delta_time_ms / 1000.0;
-        /* Capture the frame that is on screen when a surface opens, while it is
-           still the live one, and forget it when no surface is open so the next
-           session captures its own. Capturing once per session keeps a later
-           frame from quietly replacing the frozen one. */
-        if (active_menu != MENU_NONE) {
-            if (!ui_underlay_has_frame(&ui_resources.underlay)) {
-                (void)ui_underlay_capture(&ui_resources.underlay, grid);
-            }
-        } else {
+        /* The underlay is the frame that was on screen when a surface opened,
+           recessed behind it, so it has to be captured while no surface is up: a
+           frame captured while a menu is displayed contains that menu, and the
+           next menu would then dim the menu it replaced instead of the world
+           behind it. A menu opened over another menu keeps the captured world
+           frame, and returning to the world drops it so the next open captures
+           its own. */
+        if (active_menu == MENU_NONE) {
             ui_underlay_forget(&ui_resources.underlay);
+        } else if (animation_menu == MENU_NONE) {
+            (void)ui_underlay_capture(&ui_resources.underlay, grid);
         }
 
-        double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
-                               (double)SDL_GetPerformanceFrequency();
         if (active_menu != animation_menu) {
             animation_menu = active_menu;
-            animation_menu_start_ms = motion_now_ms;
+            /* The reveal begins when the cover has finished, so the two halves are
+               one continuous motion: this surface is covered for exactly as long as
+               the outgoing one was covering it (2026-10-09 direction record). */
+            animation_menu_start_ms =
+                (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
+                 animation_event_layout && animation_event_menu != MENU_NONE)
+                    ? motion_now_ms + exit_duration_ms
+                    : motion_now_ms;
         }
         {
             int active_menu_index = (int)active_menu;
@@ -1067,20 +1118,37 @@ int app_main(int argc, char* argv[]) {
         }
         if (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
             animation_event_layout && animation_event_menu != MENU_NONE &&
-            motion_now_ms - animation_event_start_ms <= 160.0) {
+            motion_now_ms - animation_event_start_ms <= exit_duration_ms) {
             (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
                                          grid->width, grid->height);
             (void)draw_data_menu(ui_resources.staging, animation_event_layout,
                                  menu_selected[(int)animation_event_menu],
                                  motion_now_ms, reduced_motion);
-            (void)ui_animation_render_layout(
-                animation_event_layout, ui_resources.staging,
-                motion_now_ms - animation_event_start_ms, reduced_motion, false,
-                UI_ANIMATION_EVENT_CONTEXT_EXIT);
+            /* The destination chooses the transition: another menu is handed over
+               to by the tide, which covers this surface so the incoming one can
+               begin its reveal already covered; the world frame is handed over to
+               by the settle, which condenses this surface and resolves onto the
+               frame underneath. One exit window, one material either way. */
+            if (active_menu != MENU_NONE) {
+                (void)ui_animation_render_layout(
+                    animation_event_layout, ui_resources.staging,
+                    motion_now_ms - animation_event_start_ms, reduced_motion, false,
+                    UI_ANIMATION_EVENT_CONTEXT_EXIT);
+            } else if (!ui_animation_render_world_settle(
+                           animation_event_layout, ui_resources.staging,
+                           motion_now_ms - animation_event_start_ms, reduced_motion)) {
+                fprintf(stderr, "TSG-UI-BUG-0004: world settle failed\n");
+                input.quit = true;
+            }
             ui_canvas_copy_grid_region(ui_resources.menu_exit, ui_resources.staging, 0, 0);
+            /* Above the incoming surface (z 20), not below it: a cover has to be
+               seen closing over the menu it is leaving, because the incoming menu
+               begins its reveal already covered, and a settle has to be seen over
+               the frame it is uncovering, because the frame underneath is what its
+               cells become transparent to. One material, two halves, either way. */
             (void)app_add_ui_layer(&ui_layers, APP_UI_ROLE_MENU,
                                    ui_resources.menu_exit, UI_ANCHOR_CENTER,
-                                   UI_SCALE_INHERIT_GLOBAL, 18,
+                                   UI_SCALE_INHERIT_GLOBAL, 22,
                                    grid->width * 8, grid->height * 8);
         }
 
@@ -1095,6 +1163,10 @@ int app_main(int argc, char* argv[]) {
             }
             (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
                                          grid->width, grid->height);
+            /* The reveal is held until the outgoing surface's cover has finished,
+               so a delayed start is not an error: elapsed never runs backwards. */
+            double menu_elapsed_ms = motion_now_ms - animation_menu_start_ms;
+            if (menu_elapsed_ms < 0.0) menu_elapsed_ms = 0.0;
             if (!draw_data_menu(ui_resources.staging, active_layout,
                                 menu_selected[(int)active_menu], motion_now_ms,
                                 reduced_motion)) {
@@ -1103,7 +1175,7 @@ int app_main(int argc, char* argv[]) {
             }
             if (active_layout && !ui_animation_render_layout(
                     active_layout, ui_resources.staging,
-                    motion_now_ms - animation_menu_start_ms,
+                    menu_elapsed_ms,
                     reduced_motion, false,
                     UI_ANIMATION_EVENT_CONTEXT_ENTER)) {
                 fprintf(stderr, "TSG-UI-BUG-0004: menu animation failed\n");
@@ -1111,7 +1183,7 @@ int app_main(int argc, char* argv[]) {
             }
             if (active_layout && !ui_animation_render_layout(
                     active_layout, ui_resources.staging,
-                    motion_now_ms - animation_menu_start_ms,
+                    menu_elapsed_ms,
                     reduced_motion, false,
                     UI_ANIMATION_EVENT_WHILE_VISIBLE)) {
                 fprintf(stderr, "TSG-UI-BUG-0004: visible animation failed\n");
@@ -1126,7 +1198,7 @@ int app_main(int argc, char* argv[]) {
                 input.quit = true;
             }
             if (animation_event_layout == active_layout &&
-                motion_now_ms - animation_event_start_ms <= 160.0 &&
+                motion_now_ms - animation_event_start_ms <= exit_duration_ms &&
                 !ui_animation_render_layout(active_layout, ui_resources.staging,
                     motion_now_ms - animation_event_start_ms, reduced_motion, false,
                     animation_event)) {

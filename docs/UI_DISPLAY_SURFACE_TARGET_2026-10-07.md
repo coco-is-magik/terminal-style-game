@@ -46,20 +46,24 @@ fixed; only the amount and behaviour differ per surface.
 
 ### 3.1 Authored menus (`main_menu`, `pause_menu`, `settings`, `confirm_quit`)
 
-- **Material behaviour.** A coherent decorative field fills the surface behind the controls: shapes
-  travel, patterns flow, and coloured traces separate and recombine while the larger forms stay
-  coherent (§1.1). Context enter/exit is glyph reassembly — precision → controlled disorder →
-  precision (§1.2). All four authored menus carry a `living_field` backdrop
-  (`animation_main_field`, `animation_living_field`, `animation_settings_field`,
-  `animation_confirm_field`), and each declares `extent=surface` so the field fills the surface.
+- **Material behaviour.** A coherent decorative field fills the surface behind the controls: it is a
+  **solid fabric** whose density is carried by one **travelling wave** — a main wave and a finer ripple
+  riding the diagonal from the surface's bottom-right corner to its top-left — so the sheet flows and
+  folds as one material while its larger forms stay coherent (§1.1; change of direction recorded
+  2026-10-09). Context enter/exit is glyph reassembly — precision → controlled disorder → precision
+  (§1.2). All four authored menus carry a `living_field` backdrop (`animation_main_field`,
+  `animation_living_field`, `animation_settings_field`, `animation_confirm_field`), and each declares
+  `extent=surface` so the field fills the surface.
 - **The surface is the display.** A menu is composed into the whole grid, exactly like the world and
   the editor, so it fills the same viewport at the same cell size — there is no inner box and no black
   surround. A bounded backdrop is still authorable (`extent=box`), which is the shape a floating panel
   over a paused game needs; see `reviews/2026-10-08-menu-surface.md`.
-- **Chromatic treatment.** A white-dominant neutral weave whose saturated material appears **only as an
-  RGB chromatic-aberration fringe** on the weave's edges (see §4) — the three additive primaries chosen
-  by edge direction, never a secondary colour, never a monochrome wash, never a colour fill. The field is
-  a **substrate**: it fills *behind* text and controls, so the menu reads as one continuous material.
+- **Chromatic treatment.** A neutral fabric whose saturated material appears **only as an RGB
+  chromatic-aberration fringe**: in the **wake** behind every main crest of the travelling wave, and on
+  the fabric's edges where it meets a control, the region border, or a gap — the three additive
+  primaries, chosen by direction or by how far behind the crest the cell sits, never a secondary colour,
+  never a monochrome wash, never a colour fill. The field is a **substrate**: it fills *behind* text and
+  controls, so the menu reads as one continuous material.
 - **Layer over the frame behind it.** A menu opens over the frame that was on screen when it opened,
   recessed through the theme's overlay response (`dim` 45 / `grey` 60), so pausing reads as a layer over
   the paused game rather than a takeover. Each layout chooses with `underlay=<dim|none>`

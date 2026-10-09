@@ -1,0 +1,20 @@
+name=animation_settings_tide_cover
+type=animation
+# The tide that covers the menu on the way out; extent=surface fills the whole
+# surface, so x/y/width/height are unused and the target only anchors the element.
+x=0
+y=0
+coords=absolute
+width=0
+height=0
+extent=surface
+visible=1
+z_index=1
+align=left
+effect=tide_cover
+target=settings_container
+orientation=horizontal
+style=plain
+transition=none
+focus_effect=none
+content=

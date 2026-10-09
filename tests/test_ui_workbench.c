@@ -45,6 +45,24 @@ static void test_open_cycle_select_and_properties(void **state) {
 }
 
 
+/*
+ * The workbench loads every file in assets/ui_elements into one fixed cache, so
+ * an asset directory that outgrows UI_CACHE_MAX drops elements silently and a
+ * layout loses entries it names.  Guard both halves of that invariant.
+ */
+static void test_element_cache_holds_every_layout_member(void **state) {
+    UiWorkbench workbench;
+    (void)state;
+    ui_workbench_init(&workbench);
+    assert_int_equal(ui_workbench_open(&workbench, MENU_MAIN), UI_WORKBENCH_OK);
+    assert_true(workbench.catalog.count > 0U);
+    assert_true(workbench.cache.count < UI_CACHE_MAX);
+    assert_true((size_t)workbench.cache.count >= workbench.catalog.count);
+    for (int i = 0; i < workbench.layout->element_count; i++)
+        assert_non_null(workbench.layout->elements[i]);
+    ui_workbench_destroy(&workbench);
+}
+
 static void test_failed_reload_preserves_session(void **state) {
     UiWorkbench workbench;
     UiElement *selected;
@@ -647,6 +665,7 @@ int main(void) {
         cmocka_unit_test(test_preview_cycle_modes_and_context_preservation),
         cmocka_unit_test(test_scoped_categories_and_preview),
         cmocka_unit_test(test_open_cycle_select_and_properties),
+        cmocka_unit_test(test_element_cache_holds_every_layout_member),
         cmocka_unit_test(test_failed_reload_preserves_session),
         cmocka_unit_test(test_safe_navigation_and_unavailable_actions),
         cmocka_unit_test(test_invalid_operations_are_nonmutating),

@@ -692,10 +692,358 @@ static void test_living_field_is_deterministic_bounded_and_reduced(void **state)
     grid_destroy(grid);
 }
 
+/* Cells the settle has painted, and the ones the tide has covered: everything the
+   surface does not read as blank, whichever of the two blank spellings (a zero
+   glyph or an authored space) the cleared grid carries. Used to measure how much
+   of the surface a material reaches at a given moment. */
+static int grid_filled_cells(Grid *grid) {
+    int count = 0;
+    for (int i = 0; i < grid->width * grid->height; i++)
+        if (grid->cells[i].glyph != 0U && grid->cells[i].glyph != ' ') count++;
+    return count;
+}
+
+/* How many distinct glyphs a surface carries, ignoring blanks: the flood is
+   material, so it must be woven rather than one repeated mark. */
+static int grid_distinct_glyphs(Grid *grid) {
+    bool seen[256] = {false};
+    int count = 0;
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            Cell value;
+            if (!grid_get(grid, x, y, &value)) continue;
+            if (value.glyph == 0U || value.glyph == ' ') continue;
+            if (!seen[value.glyph]) {
+                seen[value.glyph] = true;
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+/* True when at least one cell is drawn in one of the three additive primaries,
+   which is how the tide's front edge carries its chromatic aberration. */
+static bool grid_uses_fringe_colour(Grid *grid) {
+    const UiThemeColor *material = ui_theme_material_palette();
+    for (int y = 0; y < grid->height; y++) {
+        for (int x = 0; x < grid->width; x++) {
+            Cell value;
+            if (!grid_get(grid, x, y, &value)) continue;
+            for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+                if ((m == 0 || m == 2 || m == 4) &&
+                    value.fg.r == material[m].red &&
+                    value.fg.g == material[m].green &&
+                    value.fg.b == material[m].blue)
+                    return true;
+        }
+    }
+    return false;
+}
+
+/* The tide covers the surface between states, and it is the one primitive allowed
+   to pass over authored content — for exactly as long as the transition lasts. The
+   rule it serves is recorded in the reference of record (2026-10-09 direction). */
+static void test_tide_covers_the_surface_then_restores_it(void **state) {
+    UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 40, 24);
+    UiElement label = element("label", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement cover = element("cover", UI_ELE_ANIMATION, 0, 0, 40, 24);
+    UiElement reveal = element("reveal", UI_ELE_ANIMATION, 0, 0, 40, 24);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 24);
+    Grid *repeat = grid_create(40, 24);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    Cell cell;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(repeat);
+    (void)snprintf(cover.target, sizeof(cover.target), "target");
+    (void)snprintf(cover.preset, sizeof(cover.preset), "tide_cover");
+    (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
+    (void)snprintf(cover.orientation, sizeof(cover.orientation), "horizontal");
+    cover.extent = UI_EXTENT_SURFACE;
+    (void)snprintf(reveal.target, sizeof(reveal.target), "target");
+    (void)snprintf(reveal.preset, sizeof(reveal.preset), "tide_reveal");
+    (void)snprintf(reveal.trigger, sizeof(reveal.trigger), "context_enter");
+    (void)snprintf(reveal.orientation, sizeof(reveal.orientation), "horizontal");
+    reveal.extent = UI_EXTENT_SURFACE;
+    layout.elements[0] = &target;
+    layout.elements[1] = &label;
+    layout.elements[2] = &cover;
+    layout.element_count = 3;
+
+    /* A cover is an exit and a reveal is an enter: neither accepts the other's
+       trigger, so nothing covers on the way in by accident. */
+    assert_true(ui_ele_animation_is_valid(&cover));
+    assert_true(ui_ele_animation_is_valid(&reveal));
+    (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_enter");
+    assert_false(ui_ele_animation_is_valid(&cover));
+    (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
+
+    /* The exit starts uncovered: the surface still carries the authored glyph. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_int_equal(cell.glyph, 'X');
+
+    /* ... and ends covered, with the control passed over: the one sanctioned
+       exception. The flood is material, so it is woven and carries chromatic
+       edges rather than being one repeated mark. The sample is one millisecond
+       inside the window because a finite transition ends by going invisible at
+       its own duration, exactly like every other unit. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms - 1.0,
+                                           false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_true(cell.glyph != 'X');
+    assert_true(grid_distinct_glyphs(grid) >= 3);
+    assert_true(grid_uses_fringe_colour(grid));
+
+    /* The flood crosses at a steady pace instead of arriving in the first frame:
+       half way through the window its front has crossed about half the diagonal,
+       which is roughly a fifth of the area in one corner. A fast-start curve
+       would already have the whole surface covered here, which is exactly the
+       wipe the tide's own curve exists to avoid. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms / 2.0, false,
+                                           false, UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    {
+        int filled = grid_filled_cells(grid);
+        int total = 40 * 24;
+        assert_true(filled > total * 10 / 100);
+        assert_true(filled < total * 50 / 100);
+    }
+
+    /* The enter begins exactly where the exit ended — covered — and resolves with
+       the control back, untouched. */
+    layout.elements[2] = &reveal;
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_true(cell.glyph != 'X');
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)enter_ms, false,
+                                           false, UI_ANIMATION_EVENT_CONTEXT_ENTER));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_int_equal(cell.glyph, 'X');
+
+    /* Deterministic: the same explicit time composes the same cells. */
+    layout.elements[2] = &cover;
+    for (int step = 0; step < 4; step++) {
+        double t = (double)exit_ms * (double)step / 4.0;
+        grid_clear(grid, bg);
+        ui_layout_render(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, grid, t, false, false,
+                                               UI_ANIMATION_EVENT_CONTEXT_EXIT));
+        grid_clear(repeat, bg);
+        ui_layout_render(&layout, repeat, fg, bg);
+        assert_true(ui_animation_render_layout(&layout, repeat, t, false, false,
+                                               UI_ANIMATION_EVENT_CONTEXT_EXIT));
+        assert_memory_equal(grid->cells, repeat->cells, 40U * 24U * sizeof(Cell));
+    }
+
+    /* Reduced motion never covers a control, and a static preview never plays a
+       transition: it shows the state the surface settles into. */
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms, true,
+                                           false, UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_int_equal(cell.glyph, 'X');
+    grid_clear(grid, bg);
+    ui_layout_render(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms, false,
+                                           false, UI_ANIMATION_EVENT_PREVIEW));
+    assert_true(grid_get(grid, 8, 8, &cell));
+    assert_int_equal(cell.glyph, 'X');
+
+    release(&cover);
+    release(&reveal);
+    release(&label);
+    release(&target);
+    grid_destroy(repeat);
+    grid_destroy(grid);
+}
+
 /* An element's `extent=` chooses whether a backdrop is a bounded region or the
    whole surface. The bounded case follows its target; the surface case fills the
    frame it renders into, so a menu backdrop covers the display without an asset
    carrying a grid size. */
+
+/* Cells the settle's lattice occupies on a surface of this size: the far corner of
+   each block of four, which is where a character is still standing at the halfway
+   point of the window (UI_SETTLE_LATTICE). */
+static int settle_lattice_cells(int width, int height) {
+    int count = 0;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int anchor_x = ((x / 4) + 1) * 4 - 1;
+            int anchor_y = ((y / 4) + 1) * 4 - 1;
+            if (anchor_x > width - 1) anchor_x = width - 1;
+            if (anchor_y > height - 1) anchor_y = height - 1;
+            if (anchor_x == x && anchor_y == y) count++;
+        }
+    }
+    return count;
+}
+
+/* The outgoing menu as it stands when the action is taken: its authored
+   characters over the fabric its backdrop fills the surface with. That is the
+   surface a settle has to start from, unchanged. */
+static void render_outgoing_surface(UiLayout *layout, Grid *grid, SDL_Color fg,
+                                    SDL_Color bg) {
+    grid_clear(grid, bg);
+    ui_layout_render(layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+}
+
+/* True when a glyph belongs to the fabric's alphabet — the ramp the backdrop and
+   the tide are drawn from. */
+static bool settle_ramp_glyph(uint8_t glyph) {
+    static const char ramp[] = ". :-=+*#";
+    for (size_t i = 0; i < sizeof(ramp) - 1U; i++)
+        if (glyph == (uint8_t)ramp[i]) return true;
+    return false;
+}
+
+/* The settle: a surface handing over to the world frame condenses onto its
+   lattice, cycles through the fabric's glyphs where the backdrop wave crosses it,
+   and then thins away, so the live frame underneath is left uncovered. The rule it
+   serves is recorded in the reference of record (2026-10-09 direction, item 4,
+   Stage C). */
+static void test_settle_condenses_to_the_lattice_then_resolves(void **state) {
+    UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 40, 24);
+    UiElement label = element("label", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement field = element("field", UI_ELE_ANIMATION, 0, 0, 40, 24);
+    UiLayout layout = {0};
+    Grid *grid = grid_create(40, 24);
+    Grid *start = grid_create(40, 24);
+    Grid *repeat = grid_create(40, 24);
+    SDL_Color bg = {5, 8, 10, 255};
+    SDL_Color fg = {242, 247, 248, 255};
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    int at_start;
+    int half;
+    int quarter;
+    int late;
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(start);
+    assert_non_null(repeat);
+    layout.elements[0] = &target;
+    layout.elements[1] = &label;
+    layout.element_count = 2;
+    (void)snprintf(field.target, sizeof(field.target), "target");
+    (void)snprintf(field.preset, sizeof(field.preset), "living_field");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "while_visible");
+    field.extent = UI_EXTENT_SURFACE;
+    layout.elements[2] = &field;
+    layout.element_count = 3;
+
+    /* The surface as the outgoing menu leaves it: authored characters over the
+       fabric its backdrop fills the surface with. */
+    render_outgoing_surface(&layout, start, fg, bg);
+    at_start = grid_filled_cells(start);
+    assert_true(at_start > 0);
+
+    /* The window opens on the surface as it stands: nothing has left yet, because
+       the diamond each character retreats inside still covers its whole block, and
+       the wave may not take a character over until the material is moving. The
+       first frame of a settle is the surface exactly as it stood. */
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid, 0.0, false));
+    assert_memory_equal(grid->cells, start->cells, 40U * 24U * sizeof(Cell));
+
+    /* Half way through the window the surface is exactly its lattice: every
+       lattice position still carries a character and nothing else does. */
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid, (double)exit_ms / 2.0,
+                                                 false));
+    half = grid_filled_cells(grid);
+    assert_int_equal(half, settle_lattice_cells(40, 24));
+    assert_true(grid_uses_fringe_colour(grid));
+    /* The settle never invents a character: what a cell shows is either the
+       surface's own character, still standing where it was, or one from the
+       fabric's alphabet where the wave has taken it over. */
+    for (int y = 0; y < 24; y++) {
+        for (int x = 0; x < 40; x++) {
+            Cell drawn;
+            if (!grid_get(grid, x, y, &drawn)) continue;
+            if (drawn.glyph == 0U || drawn.glyph == ' ') continue;
+            assert_true(drawn.glyph == start->cells[(size_t)y * 40U + (size_t)x].glyph ||
+                        settle_ramp_glyph(drawn.glyph));
+        }
+    }
+
+    /* The material thins in a stable order from there, so the surface carries
+       strictly less of itself at each later sample of the window. */
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid, (double)exit_ms / 4.0,
+                                                 false));
+    quarter = grid_filled_cells(grid);
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid,
+                                                 (double)exit_ms * 3.0 / 4.0, false));
+    late = grid_filled_cells(grid);
+    assert_true(quarter > half);
+    assert_true(half > late);
+    assert_true(late > 0);
+
+    /* At the end of the window nothing is drawn at all, so the live frame
+       underneath is simply uncovered: the surface is its own self again. */
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid, (double)exit_ms, false));
+    assert_memory_equal(grid->cells, start->cells, 40U * 24U * sizeof(Cell));
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid, (double)exit_ms + 50.0,
+                                                 false));
+    assert_memory_equal(grid->cells, start->cells, 40U * 24U * sizeof(Cell));
+
+    /* Deterministic: the same explicit time composes the same cells. */
+    for (int step = 1; step < 4; step++) {
+        double t = (double)exit_ms * (double)step / 4.0;
+        render_outgoing_surface(&layout, grid, fg, bg);
+        assert_true(ui_animation_render_world_settle(&layout, grid, t, false));
+        render_outgoing_surface(&layout, repeat, fg, bg);
+        assert_true(ui_animation_render_world_settle(&layout, repeat, t, false));
+        assert_memory_equal(grid->cells, repeat->cells, 40U * 24U * sizeof(Cell));
+    }
+
+    /* Reduced motion draws no material at all, which is the recorded no-motion
+       response: the world frame is simply there. */
+    render_outgoing_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_world_settle(&layout, grid,
+                                                 (double)exit_ms / 2.0, true));
+    assert_memory_equal(grid->cells, start->cells, 40U * 24U * sizeof(Cell));
+
+    /* A negative time, no layout, or a layout with nothing to address is refused
+       rather than composed. */
+    assert_false(ui_animation_render_world_settle(NULL, grid, 0.0, false));
+    assert_false(ui_animation_render_world_settle(&layout, grid, -1.0, false));
+    {
+        UiLayout empty = {0};
+        assert_false(ui_animation_render_world_settle(&empty, grid, 0.0, false));
+    }
+
+    release(&label);
+    release(&target);
+    grid_destroy(repeat);
+    grid_destroy(start);
+    grid_destroy(grid);
+}
+
 static bool painted_outside(Grid *grid, int x0, int y0, int x1, int y1) {
     for (int y = 0; y < grid->height; y++) {
         for (int x = 0; x < grid->width; x++) {
@@ -768,6 +1116,8 @@ int main(void) {
         cmocka_unit_test(test_focus_trigger_and_ordinary_transition),
         cmocka_unit_test(test_trigger_filter_and_random_bounds),
         cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced),
+        cmocka_unit_test(test_tide_covers_the_surface_then_restores_it),
+        cmocka_unit_test(test_settle_condenses_to_the_lattice_then_resolves),
         cmocka_unit_test(test_surface_extent_fills_the_frame_unless_bounded)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

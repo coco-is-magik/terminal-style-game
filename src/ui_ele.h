@@ -17,7 +17,14 @@
 #define UI_ELE_NAME_MAX      64
 #define UI_ELE_PATH_MAX     256
 #define UI_ELE_MAX_CHILDREN  16
-#define UI_CACHE_MAX         64
+/*
+ * Slots for loaded element documents.  The workbench loads every file in
+ * assets/ui_elements up front, so this must stay above that directory's file
+ * count: a saturated cache makes ui_cache_load() return NULL and the element
+ * silently disappears from the layout it is named in.
+ * tests/test_ui_workbench.c guards the invariant.
+ */
+#define UI_CACHE_MAX        128
 #define UI_LAYOUT_MAX_ELEMS  32
 #define UI_LAYOUT_MAX_SLOTS  16
 #define UI_MASTER_MAX        16

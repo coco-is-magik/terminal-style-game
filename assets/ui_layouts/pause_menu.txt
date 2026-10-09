@@ -1,4 +1,4 @@
 name=pause_menu
 type=layout
-elements=pause_menu_title,pause_menu_resume,pause_menu_main,pause_menu_settings,pause_menu_quit,animation_living_field
+elements=pause_menu_title,pause_menu_resume,pause_menu_main,pause_menu_settings,pause_menu_quit,animation_living_field,animation_pause_tide_cover,animation_pause_tide_reveal
 underlay=dim

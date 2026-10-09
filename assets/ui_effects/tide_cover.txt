@@ -1,0 +1,6 @@
+name=tide_cover
+primitive=tide_cover
+orientation=horizontal
+trigger=context_exit
+loop=0
+randomize=0

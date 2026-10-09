@@ -1,4 +1,4 @@
 name=confirm_quit
 type=layout
-elements=confirm_quit_title,confirm_yes,confirm_no,animation_confirm_field
+elements=confirm_quit_title,confirm_yes,confirm_no,animation_confirm_field,animation_confirm_tide_cover,animation_confirm_tide_reveal
 underlay=dim

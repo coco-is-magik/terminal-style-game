@@ -40,4 +40,17 @@ bool menu_controller_focus_identity_changed(int active_menu, int focus_index,
                                             int *tracked_menu,
                                             int *tracked_focus_index);
 
+/**
+ * True while a context transition owns the surface, so the menu's focus movement
+ * and activation are ignored until the new state's controls are live.
+ *
+ * The tide covers the surface between states (change of direction recorded
+ * 2026-10-09), and the recorded rule for that cover is that the controls it passes
+ * over are not interactive while it is over them. `exit_until_ms` and
+ * `enter_until_ms` are absolute deadlines in milliseconds; 0 (or any deadline
+ * already passed) is not a transition. Pure; no I/O.
+ */
+bool menu_controller_transition_owns_input(double now_ms, double exit_until_ms,
+                                          double enter_until_ms);
+
 #endif

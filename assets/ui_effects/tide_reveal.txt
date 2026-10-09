@@ -1,0 +1,6 @@
+name=tide_reveal
+primitive=tide_reveal
+orientation=horizontal
+trigger=context_enter
+loop=0
+randomize=0

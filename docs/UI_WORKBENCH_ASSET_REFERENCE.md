@@ -432,6 +432,13 @@ and pause contexts as `animation_main_field` (`assets/ui_layouts/main_menu.txt`)
 - `animation_confirm_field.txt`
 - `assets/ui_effects/ambient_field.txt` — reusable effect definition (`primitive=living_field`,
   bound by all four menu backdrops)
+- `assets/ui_effects/tide_cover.txt`, `tide_reveal.txt` — the material covering the surface between
+  two menus and draining away to reveal the incoming one (`primitive=tide_cover` / `tide_reveal`),
+  bound by `animation_<menu>_tide_cover.txt` / `animation_<menu>_tide_reveal.txt`
+- `assets/ui_effects/settle.txt` — the material condensing onto its lattice and thinning away when a
+  surface hands over to the world frame (`primitive=settle`). It is not bound by any element: the
+  runner asks for it by name, because which transition plays is a fact about the destination
+  (`ui_animation_render_world_settle`)
 
 Use Ctrl+N in the workbench to clone any existing UI element or one of these animation units.
 
