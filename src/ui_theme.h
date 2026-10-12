@@ -77,6 +77,12 @@ typedef enum {
     UI_THEME_MOTION_MAJOR_EXIT,
     UI_THEME_MOTION_RELATIONSHIP,
     UI_THEME_MOTION_AMBIENT,
+    /* A change of state between surfaces (or a surface handing over to the world
+       frame): the whole-screen tide, timed like a deep breath in and a deep
+       breath out. Distinct from the control-level enter/exit roles so retuning it
+       never slows a button's reassembly or the pause registration with it
+       (owner direction recorded 2026-10-12). */
+    UI_THEME_MOTION_TRANSITION,
     UI_THEME_MOTION_ROLE_COUNT
 } UiThemeMotionRole;
 

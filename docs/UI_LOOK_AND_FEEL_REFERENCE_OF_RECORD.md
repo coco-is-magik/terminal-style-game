@@ -111,38 +111,42 @@ simple; the behavior should carry the richness" — and is recorded as follows.
    main crest as a sparse speckle, in addition to the existing directional fringe where the fabric
    meets a control or the region border. Colour stays decoration only: never a fill, never a secondary
    colour, never a spatial hue ramp (§3.4).
-4. **State changes become a tide, and a menu→world change a settle.** Between menus the material
-   surges in from the bottom-right corner and covers the surface, and the incoming surface drains the
-   same material back out revealing its elements; going from a menu into the world the material flows
-   out to grid positions, cycles through glyphs where the wave crosses it, and thins away so the live
-   frame underneath is uncovered. Both are accented by the same chromatic wake, and **which transition
+4. **State changes become a tide, and a menu→world change a settle.** Between menus the characters on
+   the surface themselves draw in to its centre — each one carried radially inward, the ground it
+   leaves behind turned to black — and then flow back out to the places they came from, revealing the
+   incoming surface's elements; going from a menu into the world the material flows out to grid
+   positions, cycles through glyphs where the wave crosses it, and thins away so the live frame
+   underneath is uncovered. Both are accented by the same chromatic fringe, and **which transition
    plays is a fact about the destination** — the layout being left cannot know whether it is handing
    over to another surface or to the frame. The per-surface obligations, recorded as each was built
-   (`docs/reviews/2026-10-09-state-transitions.md`):
-   - **The windows come from the theme.** An exit runs `MAJOR_EXIT` and an enter `MAJOR_ENTER`; the
-     incoming reveal begins on the frame the outgoing cover completes, so the two halves are one
-     continuous motion with no frame where the surface is neither. No transition duration is written
-     down anywhere as a literal.
-   - **A transition is driven by its own window, never by the ambient clock.** The tide's wave advances
-     over the cover it is crossing — an exit ends and the reveal that follows begins on the same cover,
-     so they share one phase and the material never jumps at the handover — and the reveal retraces the
-     cover exactly: the characters leave the way they arrived (owner direction 2026-10-09, after a first
-     attempt driven by the ambient clock read as "a straight edge sweeping a still sheet ... more like a
-     stutter between things"). Consequently the backdrop's speed is a setting
-     (`backdrop_period_ms`) that no state change follows.
-   - **A transition is the fabric, not a stripe.** The flood's edge rides the backdrop's anti-diagonal
-     fold, so it arrives as a travelling swell rather than a straight line, and its body is the same
-     woven sheet as the backdrop: the wave's band *plus* the per-cell weave, mapped into the top of the
-     ramp, where a constant lift would clamp every cell to one glyph and read as a flat stripe.
+   (`docs/reviews/2026-10-09-state-transitions.md`, and the characters-drawn-in tide in
+   `docs/reviews/2026-10-12-centered-tide.md`):
+   - **The windows come from the theme.** A change of state runs the whole-screen
+     `UI_THEME_MOTION_TRANSITION` role, held apart from the control-level `MAJOR_ENTER`/`MAJOR_EXIT`
+     roles so that retuning it never slows a button's reassembly or the pause registration. The
+     incoming surface begins to flow back out on the frame the outgoing draw-in completes, so the two
+     halves are one continuous motion with no frame where the surface is neither. No transition
+     duration is written down anywhere as a literal.
+   - **A transition is driven by how far in the characters have drawn, never by the ambient clock.**
+     The draw-in and the flow-out are the same function of one measure — how far in the characters
+     sit — so an exit ends and the reveal that follows begins on that measure, the material never jumps
+     at the handover, and the reveal retraces the cover exactly: the characters leave the way they
+     arrived (owner direction 2026-10-09, after a first attempt driven by the ambient clock read as "a
+     straight edge sweeping a still sheet ... more like a stutter between things"). Consequently the
+     backdrop's speed is a setting (`backdrop_period_ms`) that no state change follows.
+   - **The characters themselves are carried, not redrawn.** The tide moves the surface's own cells, so
+     text keeps its face and colour and the fabric keeps its weave, and the ground they leave behind is
+     opaque black rather than a transparent hole. Its last ring carries the same chromatic fringe the
+     backdrop draws where the material meets empty space, so the RGB aberration still accents it.
    - **The cover is a sanction, and a narrow one.** `tide_cover`, `tide_reveal` and `settle`
      declare `covers_content` in the effect registry, which is what allows them to pass over authored
      content; the evaluator withholds the restore of authored cells only while such a primitive is
      *currently reporting a cover*, which ends with its window. Every other primitive keeps §4.4's
      guarantee that motion never obscures a control, and the props hold at every settled moment
      (`test_lifecycle_keeps_authored_cells_stable`).
-   - **Colour stays decoration.** The tide's advancing edge and the settle's crest carry the same
-     directional prismatic fringe and speckle as the backdrop's wake: never a fill, never a spatial hue
-     ramp (§3.4).
+   - **Colour stays decoration.** The tide's outer ring and the settle's crest carry the same
+     directional prismatic fringe as the backdrop's wake: never a fill, never a spatial hue ramp
+     (§3.4).
    - **Nothing is a literal and nothing is hidden in a constant.** The materials are driven by the
      window they occupy; the backdrop's wave is advanced over its `AMBIENT` loop when it is at rest and
      over the transition window when it is a transient.
@@ -188,6 +192,46 @@ identity does not name (`accent` `#67F5C2`, `focus` `#A8FFE1`, `warning` `#FFD16
 shows a hue outside the identity. Retiring those hues or re-deriving them from black, white and the
 primaries is a decision to take deliberately, under the same record discipline as everything else here —
 not a silent edit. `test-ui-theme`'s contrast floors continue to apply to whatever survives.
+
+## Change of direction recorded 2026-10-12 — the characters draw into the centre
+
+The project owner directed that the transition between surfaces carry the characters *themselves* in
+to the centre and back out, leaving black behind, and that it be timed like a breath and not rushed:
+
+> The transitions aren't working as we want them. ... We want a smooth transition, like the tide. The
+> characters all draw into the center and then flow out again, like a tide coming in and going out. ...
+> It also doesnt draw in the characters. We expect all the characters on the screen to appear to draw
+> in, leaving black behind, and then flow back out. Dont worry about it being fast, its stylized. Time
+> it like a deep breath in and a deep breath out. The base level motion is good though ... just work on
+> the execution. ... keep the same styling thats working elsewhere ... White, Black, Red, Green, Blue
+> only.
+
+Recorded under §1.1 ("fluid motion expressed through discrete cells", "the marks should be simple; the
+behavior should carry the richness"), §1.2 (a change of state is one continuous motion), and the
+locked identity above:
+
+1. **The characters are carried, not covered.** The surface's own cells draw in to its centre — each
+   one pulled radially inward, the ground it leaves behind turned to opaque black — and then flow back
+   out to the places they came from. Text keeps its face and colour and the fabric keeps its weave;
+   nothing is redrawn from another material. The border is taken first and the centre last, and the
+   reveal retraces the cover exactly, so the two halves are one motion (§1.2). The previous direction —
+   material flooding the surface from a corner, then a ring drawn in from the border — is superseded
+   for the between-surface transition.
+2. **Nothing outside the styling already in use is added.** The characters bring their own colours, and
+   the outermost ring of the gathered mass carries the same red/green/blue chromatic fringe the
+   backdrop draws where the material meets empty space. No hue outside black, white, red, green and
+   blue appears; the RGB aberration still accents the transition (§3.4).
+3. **It is timed like a breath, in its own role.** The whole-screen `UI_THEME_MOTION_TRANSITION` role
+   (§3.3) gives the draw-in and the flow-out 1600 ms each — a 3.2 s round trip, deliberately stylized —
+   and is held apart from `MAJOR_ENTER`/`MAJOR_EXIT` so retuning it never slows a button or the pause
+   registration. The material is still driven by how far in the characters have drawn, never by the
+   ambient clock, so `backdrop_period_ms` cannot move a transition.
+4. **The menu→world settle is unchanged.** A surface handing over to the live frame still condenses
+   onto its lattice, cycles through the fabric's glyphs, and thins away (the 2026-10-09 direction,
+   Stage C), on the same `TRANSITION` window.
+
+The implementation record is
+[`reviews/2026-10-12-centered-tide.md`](reviews/2026-10-12-centered-tide.md).
 
 ## Rule of engagement
 
@@ -470,11 +514,19 @@ small logical panel.**
 | `UI_THEME_MOTION_MAJOR_EXIT` | 120 ms | Major context exit |
 | `UI_THEME_MOTION_RELATIONSHIP` | 120 ms | Relationship cues |
 | `UI_THEME_MOTION_AMBIENT` | 1800 ms | Ambient looping material field (`living_field`); added 2026-10-07 |
+| `UI_THEME_MOTION_TRANSITION` | 1600 ms | A change of state between surfaces — the whole-screen tide; added 2026-10-12 |
 
 **Ambient role (2026-10-07).** `UI_THEME_MOTION_AMBIENT` was added under the change of direction
 above so a continuously-flowing material field has an in-vocabulary period rather than a hidden
-constant. A `while_visible` animation unit now maps to this role. The 80/160/120/120 ms transition
-roles are unchanged.
+constant. A `while_visible` animation unit now maps to this role.
+
+**Transition role (2026-10-12).** A state change between surfaces — and a surface handing over to the
+world frame — is played by the tide, and the tide's window is `UI_THEME_MOTION_TRANSITION`, held apart
+from the control-level `MAJOR_ENTER`/`MAJOR_EXIT` roles so that retuning it never slows a button's
+reassembly or the pause registration with it. The owner directed that it be timed like a deep breath
+in and a deep breath out, and that it not be rushed; at **1600 ms** each way a state change is a 3.2 s
+round trip, draw-in then flow-out. The tide is driven by how far in the characters have drawn, not by
+the ambient clock: `backdrop_period_ms` still cannot move a transition.
 
 **Backdrop speed (2026-10-09).** The token above stays 1800 ms. The loop the backdrop actually advances
 over is `backdrop_period_ms` in `config.ini` (default **2600 ms**, range 400..60000), applied once at
@@ -563,7 +615,8 @@ that feels alive; a permanently pane-cluttered editor sacrifices the first for n
 
 ## 4.4 Motion budget
 
-- Context enter/exit: `MAJOR_ENTER` 160 ms / `MAJOR_EXIT` 120 ms, glyph reassembly.
+- Context enter/exit: the whole-screen `TRANSITION` role, 1600 ms each way, the characters drawn in
+  and flowed back out (2026-10-12).
 - Focus move and small feedback: `FEEDBACK` 80 ms.
 - Relationship cues: `RELATIONSHIP` 120 ms.
 - **Flowy and smooth is the standard, and it is locked (2026-10-09).** Display-surface motion is one
@@ -653,7 +706,7 @@ Worked examples:
 
 - Replacing editor-interface literals with tokens → `§2 (existing foundation: palette adapter), §3.1 (palette roles), §4.2 (white-dominant editor interface)`
 - Correcting interface scale → `§4.7 (the editor interface obeys the same UI scale as everything else)`
-- Adding a context-enter transition → `§1.2 (glyph reassembly: precision → disorder → precision), §3.3 (MAJOR_ENTER 160 ms), §4.4 (motion budget)`
+- Adding a context-enter transition → `§1.2 (a change of state is one continuous motion), §3.3 (the TRANSITION role, 1600 ms), §4.4 (motion budget)`
 - Adding in-editor tooltips → `§4.5 (guidance lives inside the editor)`
 
 ## 5.2 Drift alarm

@@ -917,16 +917,16 @@ int app_main(int argc, char* argv[]) {
            live. The Escape gesture stays available throughout. */
         double motion_now_ms = (double)(start_time - initial_time) * 1000.0 /
                                (double)SDL_GetPerformanceFrequency();
-        /* The transition windows come from the theme, so a cover lasts exactly as
-           long as the material that plays it: the tide finishes covering the
-           outgoing surface at the end of the exit window, and the incoming surface
-           begins its reveal on the frame the cover completes. Reduced motion
-           shortens both windows to nothing, which is the recorded no-motion
-           response. Nothing here is a literal duration. */
+        /* The transition windows come from the theme's whole-screen transition
+           role, so the gather lasts exactly as long as the material that plays it:
+           the tide finishes drawing the outgoing surface in at the end of the exit
+           window, and the incoming surface begins to flow back out on the frame the
+           gather completes. Reduced motion shortens both windows to nothing, which
+           is the recorded no-motion response. Nothing here is a literal duration. */
         double exit_duration_ms = (double)ui_theme_motion_duration_ms(
-            UI_THEME_MOTION_MAJOR_EXIT, reduced_motion);
+            UI_THEME_MOTION_TRANSITION, reduced_motion);
         double enter_duration_ms = (double)ui_theme_motion_duration_ms(
-            UI_THEME_MOTION_MAJOR_ENTER, reduced_motion);
+            UI_THEME_MOTION_TRANSITION, reduced_motion);
         double transition_exit_until_ms =
             (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
              animation_event_layout && animation_event_menu != MENU_NONE)
@@ -1123,24 +1123,41 @@ int app_main(int argc, char* argv[]) {
         if (animation_event == UI_ANIMATION_EVENT_CONTEXT_EXIT &&
             animation_event_layout && animation_event_menu != MENU_NONE &&
             motion_now_ms - animation_event_start_ms <= exit_duration_ms) {
+            /* The last frame of the window is held an instant inside it: at exactly
+               the window's end a unit reports itself finished and draws nothing, and
+               the overlay would then show the outgoing surface un-gathered for one
+               frame. */
+            double exit_elapsed_ms = motion_now_ms - animation_event_start_ms;
+            if (exit_duration_ms > 0.0 && exit_elapsed_ms >= exit_duration_ms)
+                exit_elapsed_ms = exit_duration_ms - 1.0;
             (void)grid_clear_region_zero(ui_resources.staging, 0, 0,
                                          grid->width, grid->height);
             (void)draw_data_menu(ui_resources.staging, animation_event_layout,
                                  menu_selected[(int)animation_event_menu],
                                  motion_now_ms, reduced_motion);
+            /* The surface as it stood, fabric and all: the tide draws the whole
+               screen in, so the field has to be on it before the characters move.
+               Drawn after, the field would fill the black the characters leave. */
+            if (!ui_animation_render_layout(
+                    animation_event_layout, ui_resources.staging, motion_now_ms,
+                    reduced_motion, false,
+                    UI_ANIMATION_EVENT_WHILE_VISIBLE)) {
+                fprintf(stderr, "TSG-UI-BUG-0004: visible animation failed\n");
+                input.quit = true;
+            }
             /* The destination chooses the transition: another menu is handed over
-               to by the tide, which covers this surface so the incoming one can
-               begin its reveal already covered; the world frame is handed over to
+               to by the tide, which draws this surface in so the incoming one can
+               begin its reveal already gathered; the world frame is handed over to
                by the settle, which condenses this surface and resolves onto the
                frame underneath. One exit window, one material either way. */
             if (active_menu != MENU_NONE) {
                 (void)ui_animation_render_layout(
                     animation_event_layout, ui_resources.staging,
-                    motion_now_ms - animation_event_start_ms, reduced_motion, false,
+                    exit_elapsed_ms, reduced_motion, false,
                     UI_ANIMATION_EVENT_CONTEXT_EXIT);
             } else if (!ui_animation_render_world_settle(
                            animation_event_layout, ui_resources.staging,
-                           motion_now_ms - animation_event_start_ms, reduced_motion)) {
+                           exit_elapsed_ms, reduced_motion)) {
                 fprintf(stderr, "TSG-UI-BUG-0004: world settle failed\n");
                 input.quit = true;
             }
@@ -1177,20 +1194,23 @@ int app_main(int argc, char* argv[]) {
                 fprintf(stderr, "TSG-UI-BUG-0003: menu focus effect failed\n");
                 input.quit = true;
             }
+            /* The backdrop is laid down before the transition, so the tide draws
+               the fabric in with the characters. Drawn after it, the field would
+               fill the black the characters leave behind. */
             if (active_layout && !ui_animation_render_layout(
                     active_layout, ui_resources.staging,
-                    menu_elapsed_ms,
+                    motion_now_ms,
                     reduced_motion, false,
-                    UI_ANIMATION_EVENT_CONTEXT_ENTER)) {
-                fprintf(stderr, "TSG-UI-BUG-0004: menu animation failed\n");
+                    UI_ANIMATION_EVENT_WHILE_VISIBLE)) {
+                fprintf(stderr, "TSG-UI-BUG-0004: visible animation failed\n");
                 input.quit = true;
             }
             if (active_layout && !ui_animation_render_layout(
                     active_layout, ui_resources.staging,
                     menu_elapsed_ms,
                     reduced_motion, false,
-                    UI_ANIMATION_EVENT_WHILE_VISIBLE)) {
-                fprintf(stderr, "TSG-UI-BUG-0004: visible animation failed\n");
+                    UI_ANIMATION_EVENT_CONTEXT_ENTER)) {
+                fprintf(stderr, "TSG-UI-BUG-0004: menu animation failed\n");
                 input.quit = true;
             }
             if (active_layout && !ui_animation_render_layout(

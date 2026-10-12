@@ -1,5 +1,6 @@
 #include "ui_animation.h"
 
+#include "checked_size.h"
 #include "ui_effect.h"
 #include "ui_motion.h"
 #include "ui_theme.h"
@@ -7,6 +8,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define PAUSE_GLITCH_STABLE_ID UINT32_C(0x50415553)
@@ -98,14 +100,18 @@ static UiElement *find_element(UiLayout *layout, const char *name) {
     return NULL;
 }
 
-static bool animation_progress(const UiElement *unit, double elapsed_ms,
-                               bool preview_loop, bool *visible,
+static bool animation_progress(const UiElement *unit, const UiEffectSpec *spec,
+                               double elapsed_ms, bool preview_loop, bool *visible,
                                double *out_progress) {
     double elapsed = elapsed_ms;
     double progress;
     UiThemeMotionRole role = UI_THEME_MOTION_MAJOR_ENTER;
     double duration;
-    if (strcmp(unit->trigger, "context_exit") == 0) role = UI_THEME_MOTION_MAJOR_EXIT;
+    bool context = strcmp(unit->trigger, "context_exit") == 0 ||
+                   strcmp(unit->trigger, "context_enter") == 0;
+    if (spec && spec->covers_content && context)
+        role = UI_THEME_MOTION_TRANSITION;
+    else if (strcmp(unit->trigger, "context_exit") == 0) role = UI_THEME_MOTION_MAJOR_EXIT;
     else if (strcmp(unit->trigger, "focus") == 0 || strcmp(unit->trigger, "activate") == 0)
         role = UI_THEME_MOTION_FEEDBACK;
     else if (strcmp(unit->trigger, "while_visible") == 0) role = UI_THEME_MOTION_AMBIENT;
@@ -285,38 +291,9 @@ static bool render_panel_register(Grid *grid, const UiElementLayout *bounds,
 #define UI_LIVING_FIELD_WAKE_SPECKLE 0.18 /* fraction of wake cells coloured   */
 #define UI_LIVING_FIELD_REGION_MAX 16384 /* content-mask cap, in cells         */
 
-/*
- * tide_cover / tide_reveal — the fabric arriving over the surface and leaving it
- * again. The flood travels along the same diagonal as the backdrop wave (from the
- * bottom-right corner up to the top-left one) so a state change reads as the same
- * material moving, not as an unrelated effect (§1.1, §1.2). `UI_TIDE_TRAIL` is how
- * far the flood over-travels past the far corner, so the surface is completely
- * covered at the end of an exit; `UI_TIDE_FRONT` is the prismatic edge that trails
- * the flood's front, the aberration the wave carries with it.
- *
- * The material is driven by the *cover* rather than by a clock, which is what makes
- * the two halves one motion (owner direction 2026-10-09: the characters "surge in
- * and cover the menu like a receding tide, then flow back out" — a first attempt
- * driven by the ambient clock read as a straight edge sweeping a still sheet, which
- * is not a tide at all):
- *   - the wave journeys `UI_TIDE_TRAVEL` of its period across a transition, so every
- *     frame carries moving material and the pattern never returns to where it began
- *     (a whole number of wavelengths is a still picture at both ends);
- *   - an exit ends and the reveal that follows begins on the same cover, so they
- *     share one pattern on the frame the surface is swapped and nothing jumps;
- *   - the reveal therefore retraces the exit exactly: the characters leave the way
- *     they arrived, back to the places they came from;
- *   - the flood is the *fabric*, not a stripe: its band comes from the wave and from
- *     the same per-cell weave and anti-diagonal fold the backdrop uses, and the fold
- *     bends its edge — so it arrives as a wavering sheet instead of a straight wipe.
- */
-#define UI_TIDE_TRAIL 28   /* cells of over-travel past the far corner             */
-#define UI_TIDE_FRONT 6    /* cells of chromatic front edge                        */
-#define UI_TIDE_TRAVEL 0.5 /* wave periods the material journeys per transition    */
-#define UI_TIDE_BASE 2.0   /* where the arriving material sits in the ramp          */
-#define UI_TIDE_SPAN 3.0   /* ramp bands the flood spans                           */
-#define UI_TIDE_BEND 14.0  /* cells the flood's edge swells along the anti-diagonal */
-#define UI_TIDE_RAGGED 3.0 /* cells of per-cell raggedness on the same edge        */
+/* tide_cover / tide_reveal — the characters on the surface draw in to its centre
+   and then flow back out again: a tide going out and coming back in. The motion
+   and the material it carries are described at render_tide below. */
 
 /*
  * settle — the transition a surface takes when it hands over to the *world* frame
@@ -631,60 +608,71 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+/* True when a cell carries no character: the black the characters have left
+   behind as they draw in. */
+static bool tide_empty(Grid *grid, int x, int y) {
+    Cell cell;
+    return grid_get(grid, x, y, &cell) &&
+           (cell.glyph == 0U || cell.glyph == ' ');
+}
+
 /*
- * The tide: the fabric surges in from the surface's bottom-right corner and
- * covers everything, then drains back out revealing the next context. `progress`
- * runs 1 -> 0 for a context exit and 0 -> 1 for a context enter, so `1 - progress`
- * is the covered fraction in both directions — the exit ends where the enter
- * begins and the material is continuous across the change of state (§1.2, change
- * of direction recorded 2026-10-09).
+ * The tide: the characters on the surface draw in to its centre — each one
+ * carried radially inward, the ground it leaves behind turned to black — and then
+ * flow back out to the places they came from. It is one continuous motion across
+ * the change of state (§1.2): `gathered` runs 0 -> 1 for a context exit and
+ * 1 -> 0 for a context enter, so the exit ends exactly where the enter begins and
+ * the reveal unwinds what the cover wound. Owner direction recorded 2026-10-12 in
+ * UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md: "all the characters on the screen
+ * should appear to draw in, leaving black behind, and then flow back out".
  *
- * This is the one primitive that may pass over authored content: the element's
+ * The characters are not redrawn from another material: the surface's own cells
+ * are carried, so text keeps its face and colour and the fabric keeps its weave
+ * (§1.1, "the marks should be simple; the behavior should carry the richness").
+ * A cell at rest sits at `scale` 1; gathered, `scale` falls to 0 and every
+ * character has arrived at the centre. The outermost ring of the gathered mass
+ * carries the same chromatic fringe the backdrop draws where the material meets
+ * empty space, so the RGB aberration still accents the transition (§3.4).
+ *
+ * One of the two primitives that may pass over authored content: the element's
  * spec declares `covers_content`, and the evaluator only honours the cover while
- * this function reports one. At `covered == 0` it draws nothing and reports no
- * cover, so the authored cells are restored and the controls are intact again —
- * the exception lasts exactly as long as the transition does.
+ * this function reports one. When nothing is gathered it draws nothing and
+ * reports no cover, so the authored cells are restored and the controls are
+ * intact again — the exception lasts exactly as long as the transition does.
  */
 static bool render_tide(Grid *grid, const UiElementLayout *bounds, double progress,
                         bool covering, SDL_Color background, bool *out_covers) {
-    static const uint8_t ramp[] = {'.', ':', '-', '=', '+', '*', '#'};
-    const UiThemeTokens *tokens = ui_theme_provisional_tokens();
-    double wave[UI_LIVING_FIELD_TABLE];
-    double band_ref[UI_LIVING_FIELD_TABLE];
-    double fold[UI_LIVING_FIELD_TABLE];
-    double phase;
+    Cell *snapshot;
     double eased;
     double linear;
     double smooth;
-    double covered;
-    double span;
-    double front;
-    SDL_Color neutral;
+    double gathered;
+    double scale;
+    double center_x;
+    double center_y;
+    size_t count;
+    size_t bytes;
     int first_x;
     int first_y;
     int last_x;
     int last_y;
-    if (!grid || !grid->cells || !bounds || !tokens || !isfinite(progress) ||
+    int region_w;
+    int region_h;
+    bool ok = true;
+    if (!grid || !grid->cells || !bounds || !isfinite(progress) ||
         progress < 0.0 || progress > 1.0)
         return false;
     if (out_covers) *out_covers = false;
-    /* The shared motion curve is a fast-start pop: right for a control that
-       acknowledges a press, wrong for water, because it would put most of the
-       surface under the flood in the first half of the window. Recover the linear
-       fraction of the window from the shared ease and lay the tide's own curve
-       over it — leaving the corner slowly, crossing at a steady pace, pressing
-       home gently (2026-10-09 direction record: the characters surge in and cover
-       the menu like a receding tide). */
+    /* The shared motion curve is a fast-start pop — right for a control that
+       acknowledges a press, wrong for a whole screen of characters. Recover the
+       linear fraction of the window from the shared ease and lay the tide's own
+       curve over it, so the characters leave gently, cross at a steady pace, and
+       settle home slowly: a deep breath in, and a deep breath out. */
     eased = 1.0 - progress;
     linear = covering ? 1.0 - cbrt(1.0 - eased) : 1.0 - cbrt(eased);
     smooth = linear * linear * (3.0 - 2.0 * linear);
-    covered = covering ? smooth : 1.0 - smooth;
-    if (covered <= 0.0) return true;
-    /* One journey of the wave across the transition — see the constants above. The
-       cover is shared by both directions at their handover, so the material is
-       continuous across it and the reveal unwinds exactly what the cover wound. */
-    phase = covered * UI_TIDE_TRAVEL;
-    neutral = color(tokens->palette.text_secondary);
+    gathered = covering ? smooth : 1.0 - smooth;
+    if (gathered <= 0.0) return true;
     first_x = bounds->x < 0 ? 0 : bounds->x;
     first_y = bounds->y < 0 ? 0 : bounds->y;
     last_x = bounds->x + bounds->width;
@@ -692,63 +680,95 @@ static bool render_tide(Grid *grid, const UiElementLayout *bounds, double progre
     last_y = bounds->y + bounds->height;
     if (last_y > grid->height) last_y = grid->height;
     if (last_x <= first_x || last_y <= first_y) return true;
-    span = (double)((last_x - 1 - first_x) + (last_y - 1 - first_y) +
-                    UI_TIDE_TRAIL);
-    front = covered * span - (double)UI_TIDE_TRAIL;
-    if (front < 0.0) return true;
-    /* Sample the wave, its band and the fold once per coordinate, as the backdrop
-       does, so the per-cell cost is a lookup and a hash. */
-    for (int coord = 0; coord < UI_LIVING_FIELD_TABLE; coord++) {
-        wave[coord] = living_field_wave((double)coord, phase);
-        band_ref[coord] = living_field_band(wave[coord]);
-        fold[coord] = living_field_fold((double)coord, phase);
-    }
-    for (int y = first_y; y < last_y; y++) {
-        for (int x = first_x; x < last_x; x++) {
-            double distance = (double)((last_x - 1 - x) + (last_y - 1 - y));
-            int across = (x - first_x) - (y - first_y);
-            int wave_index = (int)distance;
-            int fold_index = across + (last_y - first_y - 1);
-            double bend;
-            double depth;
-            double band;
-            int index;
-            SDL_Color fg;
-            if (wave_index < 0) wave_index = 0;
-            if (wave_index >= UI_LIVING_FIELD_TABLE)
-                wave_index = UI_LIVING_FIELD_TABLE - 1;
-            if (fold_index < 0) fold_index = 0;
-            if (fold_index >= UI_LIVING_FIELD_TABLE)
-                fold_index = UI_LIVING_FIELD_TABLE - 1;
-            /* The edge rides the anti-diagonal fold, so the material arrives as a
-               broad swell, with a cell-scale raggedness on top of it. It is the same
-               fold the backdrop breathes with, at the transition's own phase, so the
-               swell travels as it advances: water crossing a surface, where the first
-               attempt was a straight line crossing a screen. */
-            bend = (fold[fold_index] - 0.5) * UI_TIDE_BEND +
-                   (living_field_unit((uint32_t)x, (uint32_t)y, 0x3c11U) - 0.5) *
-                       UI_TIDE_RAGGED;
-            if (distance + bend > front) continue;
-            depth = front - distance;
-            /* The same fabric as the backdrop, mapped into the top of the ramp: the
-               arriving material is denser than the calm sheet and still woven, where a
-               constant lift would clamp every cell to one glyph and read as a flat
-               stripe. */
-            band = UI_TIDE_BASE + band_ref[wave_index] / 6.0 * UI_TIDE_SPAN +
-                   living_field_weave(x, y);
-            if (band < 0.0) band = 0.0;
-            if (band > 6.0) band = 6.0;
-            index = (int)lround(band);
-            fg = neutral;
-            if (depth < (double)UI_TIDE_FRONT)
-                fg = color(ui_theme_chroma_fringe(
-                    living_field_wake_edge(depth, (double)UI_TIDE_FRONT)));
-            if (!grid_set(grid, x, y, ramp[index], fg, background))
-                return false;
+    region_w = last_x - first_x;
+    region_h = last_y - first_y;
+    if (!checked_size_2d(region_w, region_h, &count) ||
+        !checked_size_bytes(count, sizeof(Cell), &bytes))
+        return false;
+    snapshot = malloc(bytes);
+    if (!snapshot) return false;
+    /* The characters cross one another as they draw in, so the surface has to be
+       read in full before the ground they leave behind is written. */
+    for (int y = 0; ok && y < region_h; y++) {
+        for (int x = 0; x < region_w; x++) {
+            if (!grid_get(grid, first_x + x, first_y + y,
+                          &snapshot[(size_t)y * (size_t)region_w + x])) {
+                ok = false;
+                break;
+            }
         }
     }
-    if (out_covers) *out_covers = true;
-    return true;
+    /* The surface the characters have left is black: an opaque space, where the
+       empty glyph 0 would be transparent and let the frame underneath show
+       through. A cell carries a character again only once one has drawn into it. */
+    for (int y = first_y; ok && y < last_y; y++) {
+        for (int x = first_x; x < last_x; x++) {
+            if (!grid_set(grid, x, y, ' ', background, background)) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    center_x = (double)(first_x + last_x - 1) * 0.5;
+    center_y = (double)(first_y + last_y - 1) * 0.5;
+    scale = 1.0 - gathered;
+    /* Carry every character to where it has drawn in to. */
+    for (int y = 0; ok && y < region_h; y++) {
+        for (int x = 0; x < region_w; x++) {
+            const Cell *cell = &snapshot[(size_t)y * (size_t)region_w + x];
+            int dest_x;
+            int dest_y;
+            if (cell->glyph == 0U) continue;
+            dest_x = (int)lround(center_x +
+                ((double)(first_x + x) - center_x) * scale);
+            dest_y = (int)lround(center_y +
+                ((double)(first_y + y) - center_y) * scale);
+            if (dest_x < first_x) dest_x = first_x;
+            if (dest_x >= last_x) dest_x = last_x - 1;
+            if (dest_y < first_y) dest_y = first_y;
+            if (dest_y >= last_y) dest_y = last_y - 1;
+            if (!grid_set(grid, dest_x, dest_y, cell->glyph, cell->fg,
+                          cell->bg)) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    /* The outermost ring of the gathered mass carries the chromatic fringe the
+       backdrop draws where the material meets empty space (red left, blue right,
+       green horizontal), so the RGB aberration still accents the transition. */
+    for (int y = first_y; ok && y < last_y; y++) {
+        for (int x = first_x; ok && x < last_x; x++) {
+            Cell cell;
+            int side = -1;
+            int along;
+            int run;
+            if (!grid_get(grid, x, y, &cell)) {
+                ok = false;
+                break;
+            }
+            if (cell.glyph == 0U || cell.glyph == ' ') continue;
+            if (x > first_x && tide_empty(grid, x - 1, y)) side = 0;
+            else if (x + 1 < last_x && tide_empty(grid, x + 1, y)) side = 1;
+            else if (y > first_y && tide_empty(grid, x, y - 1)) side = 2;
+            else if (y + 1 < last_y && tide_empty(grid, x, y + 1)) side = 3;
+            if (side < 0) continue;
+            along = side <= 1 ? y : x;
+            run = along / UI_LIVING_FIELD_RUN;
+            if (living_field_unit((uint32_t)run, (uint32_t)side, 0x5f3aU) >=
+                UI_LIVING_FIELD_FRINGE)
+                continue;
+            cell.fg = color(ui_theme_chroma_fringe(
+                living_field_fringe_edge(side)));
+            if (!grid_set(grid, x, y, cell.glyph, cell.fg, cell.bg)) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    free(snapshot);
+    if (ok && out_covers) *out_covers = true;
+    return ok;
 }
 
 /*
@@ -794,7 +814,7 @@ static bool render_settle(Grid *grid, const UiElementLayout *bounds, double prog
         progress < 0.0 || progress > 1.0 || !isfinite(elapsed_ms) || elapsed_ms < 0.0)
         return false;
     if (out_covers) *out_covers = false;
-    window = (double)ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    window = (double)ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
     if (window <= 0.0) return true;
     /* The shared curve is (1 - t)^3 over the window, so its cube root recovers the
        fraction of the window the material has actually travelled. */
@@ -938,7 +958,7 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
     }
     if (strcmp(unit->trigger, "focus") == 0 && !target->focused) return true;
     if (spec->id == UI_EFFECT_COMMAND_FLASH && !target->focused) return true;
-    if (!animation_progress(unit, elapsed_ms, preview_loop, &visible, &progress))
+    if (!animation_progress(unit, spec, elapsed_ms, preview_loop, &visible, &progress))
         return false;
     if (!visible) return true;
     switch (spec->id) {

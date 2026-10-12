@@ -4,6 +4,7 @@
 
 #include <cmocka.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -703,8 +704,8 @@ static int grid_filled_cells(Grid *grid) {
     return count;
 }
 
-/* How many distinct glyphs a surface carries, ignoring blanks: the flood is
-   material, so it must be woven rather than one repeated mark. */
+/* How many distinct glyphs a surface carries, ignoring blanks: the fabric is
+   woven, so it is many marks rather than one repeated glyph. */
 static int grid_distinct_glyphs(Grid *grid) {
     bool seen[256] = {false};
     int count = 0;
@@ -741,12 +742,75 @@ static bool grid_uses_fringe_colour(Grid *grid) {
     return false;
 }
 
-/* The tide covers the surface between states, and it is the one primitive allowed
-   to pass over authored content — for exactly as long as the transition lasts. The
-   rule it serves is recorded in the reference of record (2026-10-09 direction). */
-static void test_tide_covers_the_surface_then_restores_it(void **state) {
+/* Cells the tide has drawn: the fabric's own neutral (the woven `text_secondary`),
+   or one of the three additive primaries its chromatic fringe is drawn in. The
+   authored label keeps its own colour, so this distinguishes the material from the
+   control underneath it. */
+static bool tide_painted(SDL_Color c) {
+    const UiThemeColor *material = ui_theme_material_palette();
+    UiThemeColor neutral = ui_theme_provisional_tokens()->palette.text_secondary;
+    if (c.r == neutral.red && c.g == neutral.green && c.b == neutral.blue) return true;
+    for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
+        if ((m == 0 || m == 2 || m == 4) && c.r == material[m].red &&
+            c.g == material[m].green && c.b == material[m].blue)
+            return true;
+    return false;
+}
+
+static int tide_painted_cells(Grid *grid) {
+    int count = 0;
+    for (int i = 0; i < grid->width * grid->height; i++)
+        if (tide_painted(grid->cells[i].fg)) count++;
+    return count;
+}
+
+/* True when one cell carries the fabric: its own neutral or a fringe primary, with
+   a drawn glyph. */
+static bool tide_cell_covered(Grid *grid, int x, int y) {
+    Cell value;
+    return grid_get(grid, x, y, &value) && tide_painted(value.fg) &&
+           value.glyph != 0U && value.glyph != ' ';
+}
+
+/* The surface as the application lays it down before a transition: the authored
+   controls over the fabric its backdrop fills the surface with. */
+static void tide_surface(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg) {
+    grid_clear(grid, bg);
+    ui_layout_render(layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
+                                           UI_ANIMATION_EVENT_WHILE_VISIBLE));
+}
+
+/* How far the drawn content reaches from the surface's centre: the largest radius
+   of a cell carrying a glyph. Drawing the characters in shrinks it. */
+static double tide_content_radius(Grid *grid, int width, int height) {
+    double center_x = (double)(width - 1) * 0.5;
+    double center_y = (double)(height - 1) * 0.5;
+    double largest = 0.0;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            Cell cell;
+            double dx;
+            double dy;
+            double radius;
+            if (!grid_get(grid, x, y, &cell)) continue;
+            if (cell.glyph == 0U || cell.glyph == ' ') continue;
+            dx = (double)x - center_x;
+            dy = (double)y - center_y;
+            radius = sqrt(dx * dx + dy * dy);
+            if (radius > largest) largest = radius;
+        }
+    }
+    return largest;
+}
+
+/* The tide draws the characters in to the centre — leaving black behind — and then
+   flows them back out. It is the one primitive allowed to pass over authored
+   content, and only for as long as the transition lasts (2026-10-12 record). */
+static void test_tide_draws_the_characters_in_then_restores_them(void **state) {
     UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 40, 24);
     UiElement label = element("label", UI_ELE_BUTTON, 8, 8, 12, 1);
+    UiElement field = element("field", UI_ELE_ANIMATION, 0, 0, 40, 24);
     UiElement cover = element("cover", UI_ELE_ANIMATION, 0, 0, 40, 24);
     UiElement reveal = element("reveal", UI_ELE_ANIMATION, 0, 0, 40, 24);
     UiLayout layout = {0};
@@ -754,12 +818,17 @@ static void test_tide_covers_the_surface_then_restores_it(void **state) {
     Grid *repeat = grid_create(40, 24);
     SDL_Color bg = {5, 8, 10, 255};
     SDL_Color fg = {242, 247, 248, 255};
-    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
-    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
+    double rest;
     Cell cell;
     (void)state;
     assert_non_null(grid);
     assert_non_null(repeat);
+    (void)snprintf(field.target, sizeof(field.target), "target");
+    (void)snprintf(field.preset, sizeof(field.preset), "living_field");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "while_visible");
+    field.extent = UI_EXTENT_SURFACE;
     (void)snprintf(cover.target, sizeof(cover.target), "target");
     (void)snprintf(cover.preset, sizeof(cover.preset), "tide_cover");
     (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
@@ -772,97 +841,86 @@ static void test_tide_covers_the_surface_then_restores_it(void **state) {
     reveal.extent = UI_EXTENT_SURFACE;
     layout.elements[0] = &target;
     layout.elements[1] = &label;
-    layout.elements[2] = &cover;
-    layout.element_count = 3;
+    layout.elements[2] = &field;
+    layout.elements[3] = &cover;
+    layout.element_count = 4;
 
     /* A cover is an exit and a reveal is an enter: neither accepts the other's
-       trigger, so nothing covers on the way in by accident. */
+       trigger, so nothing draws in on the way by accident. */
     assert_true(ui_ele_animation_is_valid(&cover));
     assert_true(ui_ele_animation_is_valid(&reveal));
     (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_enter");
     assert_false(ui_ele_animation_is_valid(&cover));
     (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
 
-    /* The exit starts uncovered: the surface still carries the authored glyph. */
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    /* The exit opens on the surface exactly as it stood: the authored glyph is in
+       its place and the fabric fills the rest. */
+    tide_surface(&layout, grid, fg, bg);
+    rest = tide_content_radius(grid, 40, 24);
+    assert_true(rest > 0.0);
     assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
                                            UI_ANIMATION_EVENT_CONTEXT_EXIT));
     assert_true(grid_get(grid, 8, 8, &cell));
     assert_int_equal(cell.glyph, 'X');
 
-    /* ... and ends covered, with the control passed over: the one sanctioned
-       exception. The flood is material, so it is woven and carries chromatic
-       edges rather than being one repeated mark. The sample is one millisecond
-       inside the window because a finite transition ends by going invisible at
-       its own duration, exactly like every other unit. */
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    /* Halfway in the characters have drawn toward the centre and the ground they
+       have left is black. */
+    tide_surface(&layout, grid, fg, bg);
+    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms / 2.0,
+                                           false, false,
+                                           UI_ANIMATION_EVENT_CONTEXT_EXIT));
+    if (tide_content_radius(grid, 40, 24) >= rest)
+        fprintf(stderr, "FAIL-PRODUCT: the characters did not draw in\n");
+    assert_true(tide_content_radius(grid, 40, 24) < rest);
+    assert_false(tide_cell_covered(grid, 1, 1));
+
+    /* ... and the exit closes with them all at the centre: the surface is black,
+       the control it passed over has left its place, and the last ring carries the
+       chromatic fringe. The sample is one millisecond inside the window because a
+       finite transition ends by going invisible at its own duration. */
+    tide_surface(&layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms - 1.0,
                                            false, false,
                                            UI_ANIMATION_EVENT_CONTEXT_EXIT));
-    assert_true(grid_get(grid, 8, 8, &cell));
-    assert_true(cell.glyph != 'X');
-    assert_true(grid_distinct_glyphs(grid) >= 3);
+    assert_true(grid_filled_cells(grid) < 40 * 24 / 10);
+    assert_false(tide_cell_covered(grid, 8, 8));
     assert_true(grid_uses_fringe_colour(grid));
 
-    /* The flood crosses at a steady pace instead of arriving in the first frame:
-       half way through the window its front has crossed about half the diagonal,
-       which is roughly a fifth of the area in one corner. A fast-start curve
-       would already have the whole surface covered here, which is exactly the
-       wipe the tide's own curve exists to avoid. */
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
-    assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms / 2.0, false,
-                                           false, UI_ANIMATION_EVENT_CONTEXT_EXIT));
-    {
-        int filled = grid_filled_cells(grid);
-        int total = 40 * 24;
-        assert_true(filled > total * 10 / 100);
-        assert_true(filled < total * 50 / 100);
-    }
-
-    /* The enter begins exactly where the exit ended — covered — and resolves with
+    /* The enter begins exactly where the exit ended — gathered — and resolves with
        the control back, untouched. */
-    layout.elements[2] = &reveal;
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    layout.elements[3] = &reveal;
+    tide_surface(&layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(&layout, grid, 0.0, false, false,
                                            UI_ANIMATION_EVENT_CONTEXT_ENTER));
     assert_true(grid_get(grid, 8, 8, &cell));
     assert_true(cell.glyph != 'X');
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    tide_surface(&layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(&layout, grid, (double)enter_ms, false,
                                            false, UI_ANIMATION_EVENT_CONTEXT_ENTER));
     assert_true(grid_get(grid, 8, 8, &cell));
     assert_int_equal(cell.glyph, 'X');
 
     /* Deterministic: the same explicit time composes the same cells. */
-    layout.elements[2] = &cover;
+    layout.elements[3] = &cover;
     for (int step = 0; step < 4; step++) {
         double t = (double)exit_ms * (double)step / 4.0;
-        grid_clear(grid, bg);
-        ui_layout_render(&layout, grid, fg, bg);
+        tide_surface(&layout, grid, fg, bg);
         assert_true(ui_animation_render_layout(&layout, grid, t, false, false,
                                                UI_ANIMATION_EVENT_CONTEXT_EXIT));
-        grid_clear(repeat, bg);
-        ui_layout_render(&layout, repeat, fg, bg);
+        tide_surface(&layout, repeat, fg, bg);
         assert_true(ui_animation_render_layout(&layout, repeat, t, false, false,
                                                UI_ANIMATION_EVENT_CONTEXT_EXIT));
         assert_memory_equal(grid->cells, repeat->cells, 40U * 24U * sizeof(Cell));
     }
 
-    /* Reduced motion never covers a control, and a static preview never plays a
+    /* Reduced motion never moves a control, and a static preview never plays a
        transition: it shows the state the surface settles into. */
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    tide_surface(&layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms, true,
                                            false, UI_ANIMATION_EVENT_CONTEXT_EXIT));
     assert_true(grid_get(grid, 8, 8, &cell));
     assert_int_equal(cell.glyph, 'X');
-    grid_clear(grid, bg);
-    ui_layout_render(&layout, grid, fg, bg);
+    tide_surface(&layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(&layout, grid, (double)exit_ms, false,
                                            false, UI_ANIMATION_EVENT_PREVIEW));
     assert_true(grid_get(grid, 8, 8, &cell));
@@ -870,6 +928,7 @@ static void test_tide_covers_the_surface_then_restores_it(void **state) {
 
     release(&cover);
     release(&reveal);
+    release(&field);
     release(&label);
     release(&target);
     grid_destroy(repeat);
@@ -923,39 +982,21 @@ static bool settle_ramp_glyph(uint8_t glyph) {
    and then thins away, so the live frame underneath is left uncovered. The rule it
    serves is recorded in the reference of record (2026-10-09 direction, item 4,
    Stage C). */
-/* Cells the tide has painted: the material's own neutral, or one of the three
-   additive primaries its edge and wake are drawn in. */
-static bool tide_painted(SDL_Color c) {
-    const UiThemeColor *material = ui_theme_material_palette();
-    UiThemeColor neutral = ui_theme_provisional_tokens()->palette.text_secondary;
-    if (c.r == neutral.red && c.g == neutral.green && c.b == neutral.blue) return true;
-    for (int m = 0; m < UI_THEME_MATERIAL_COLOR_COUNT; m++)
-        if ((m == 0 || m == 2 || m == 4) && c.r == material[m].red &&
-            c.g == material[m].green && c.b == material[m].blue)
-            return true;
-    return false;
-}
-
-static int tide_painted_cells(Grid *grid) {
-    int count = 0;
-    for (int i = 0; i < grid->width * grid->height; i++)
-        if (tide_painted(grid->cells[i].fg)) count++;
-    return count;
-}
 
 static void tide_render(UiLayout *layout, Grid *grid, double elapsed_ms,
                         UiAnimationEvent event) {
     SDL_Color bg = {5, 8, 10, 255};
     SDL_Color fg = {242, 247, 248, 255};
-    grid_clear(grid, bg);
-    ui_layout_render(layout, grid, fg, bg);
+    tide_surface(layout, grid, fg, bg);
     assert_true(ui_animation_render_layout(layout, grid, elapsed_ms, false, false, event));
 }
 
-/* The time at which a direction has painted `target` cells, by bisection: the cover
-   is monotone through each window, so the two halves can be compared at the same
-   cover rather than at the same elapsed time. */
-static double tide_time_for_cover(UiLayout *layout, Grid *grid, UiAnimationEvent event,
+/* The time at which a direction has drawn the surface down to `target` visible
+   cells, by bisection. The exit gathers (the count falls) and the enter flows back
+   out (it rises) and both are monotone through their window, so the two halves can
+   be compared at the same point of the motion rather than at the same elapsed
+   time. */
+static double tide_time_for_drawn(UiLayout *layout, Grid *grid, UiAnimationEvent event,
                                   unsigned int window_ms, int target) {
     double low = 0.0;
     double high = (double)window_ms;
@@ -964,8 +1005,8 @@ static double tide_time_for_cover(UiLayout *layout, Grid *grid, UiAnimationEvent
         bool above;
         tide_render(layout, grid, mid, event);
         above = tide_painted_cells(grid) >= target;
-        if (event == UI_ANIMATION_EVENT_CONTEXT_ENTER) {
-            /* The reveal opens covered and drains, so it is monotone downwards. */
+        if (event == UI_ANIMATION_EVENT_CONTEXT_EXIT) {
+            /* The exit gathers, so the count is monotone downwards. */
             if (above) low = mid; else high = mid;
         } else if (above) {
             high = mid;
@@ -976,32 +1017,36 @@ static double tide_time_for_cover(UiLayout *layout, Grid *grid, UiAnimationEvent
     return (low + high) / 2.0;
 }
 
-/* The tide has to read as water arriving, not as a wipe: an edge that swells and
-   travels, a woven sheet rather than one flat stripe, one continuous motion across
-   the handover, and a reveal that unwinds exactly what the cover wound. The first
-   attempt failed all four — the owner's report was "the wave straightens and freezes
-   for a moment ... more like a stutter between things" — because its edge was a
-   straight anti-diagonal, a constant band lift clamped every cell to one glyph, and
-   its phase came from the ambient clock, which over a 120 ms window barely moves and
-   does not line up across the handover. */
-static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
+/* The tide draws the characters in to the centre — leaving black behind — and then
+   flows them back out. It is one continuous motion: the handover frame is the same
+   surface on both sides of the state change, the reveal retraces the cover because
+   the characters are driven by how far in they have drawn and not by a clock, and
+   the speed of the ambient backdrop cannot move a state change. */
+static void test_tide_draws_in_with_black_behind_and_retraces(void **state) {
     UiElement target = element("target", UI_ELE_CONTAINER, 0, 0, 120, 80);
     UiElement label = element("label", UI_ELE_BUTTON, 40, 20, 24, 1);
+    UiElement field = element("field", UI_ELE_ANIMATION, 0, 0, 120, 80);
     UiElement cover = element("cover", UI_ELE_ANIMATION, 0, 0, 120, 80);
     UiElement reveal = element("reveal", UI_ELE_ANIMATION, 0, 0, 120, 80);
     UiLayout layout = {0};
     Grid *grid = grid_create(120, 80);
     Grid *exit_frame = grid_create(120, 80);
     Grid *enter_frame = grid_create(120, 80);
-    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
-    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
     unsigned int ambient = ui_theme_ambient_period_ms();
     const size_t cells = 120U * 80U;
+    double rest;
+    int full;
     int changed;
     (void)state;
     assert_non_null(grid);
     assert_non_null(exit_frame);
     assert_non_null(enter_frame);
+    (void)snprintf(field.target, sizeof(field.target), "target");
+    (void)snprintf(field.preset, sizeof(field.preset), "living_field");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "while_visible");
+    field.extent = UI_EXTENT_SURFACE;
     (void)snprintf(cover.target, sizeof(cover.target), "target");
     (void)snprintf(cover.preset, sizeof(cover.preset), "tide_cover");
     (void)snprintf(cover.trigger, sizeof(cover.trigger), "context_exit");
@@ -1014,14 +1059,14 @@ static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
     reveal.extent = UI_EXTENT_SURFACE;
     layout.elements[0] = &target;
     layout.elements[1] = &label;
-    layout.elements[2] = &cover;
-    layout.elements[3] = &reveal;
-    layout.element_count = 4;
+    layout.elements[2] = &field;
+    layout.elements[3] = &cover;
+    layout.elements[4] = &reveal;
+    layout.element_count = 5;
 
-    /* The handover: the runner drops the exit overlay on the frame the unit ends and
-       the incoming surface's reveal starts on that frame. One material, so those two
-       frames are nearly the same surface — 0.12% of the surface apart when measured,
-       against 82% for the ambient-clock phase, which is the stutter. */
+    /* The handover: the runner drops the exit overlay on the frame the gather ends
+       and the incoming surface's reveal starts on that frame, so those two frames
+       are the same surface. */
     tide_render(&layout, exit_frame, (double)exit_ms - 1.0,
                 UI_ANIMATION_EVENT_CONTEXT_EXIT);
     tide_render(&layout, enter_frame, 0.0, UI_ANIMATION_EVENT_CONTEXT_ENTER);
@@ -1034,14 +1079,41 @@ static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
                 cells);
     assert_true(changed <= (int)(cells / 100U));
 
-    /* The reveal retraces the cover: at the same cover the two directions compose the
-       same surface, because the phase is the cover and not a clock. */
+    /* At rest the fabric fills the surface right to its corners. */
+    tide_render(&layout, grid, 0.0, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+    rest = tide_content_radius(grid, 120, 80);
+    full = tide_painted_cells(grid);
+    assert_true(rest > 0.0);
+    assert_true(tide_cell_covered(grid, 0, 0));
+    assert_true(tide_cell_covered(grid, 119, 79));
+    assert_true(grid_distinct_glyphs(grid) >= 3);
+
+    /* Halfway in, the characters have drawn toward the centre and the ground they
+       have left behind is black: the corners carry nothing, the middle does. */
+    tide_render(&layout, grid, (double)exit_ms / 2.0, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+    if (tide_content_radius(grid, 120, 80) >= rest)
+        fprintf(stderr, "FAIL-PRODUCT: the characters did not draw in\n");
+    assert_true(tide_content_radius(grid, 120, 80) < rest);
+    assert_false(tide_cell_covered(grid, 0, 0));
+    assert_false(tide_cell_covered(grid, 119, 79));
+    assert_true(tide_cell_covered(grid, 60, 40));
+
+    /* ... and the exit closes with them all at the centre: the surface is nearly all
+       black, the middle is what is left, and its ring carries the chromatic fringe. */
+    tide_render(&layout, grid, (double)exit_ms - 1.0, UI_ANIMATION_EVENT_CONTEXT_EXIT);
+    assert_true(grid_filled_cells(grid) < (int)(cells / 10U));
+    assert_true(tide_cell_covered(grid, 60, 40));
+    assert_true(grid_uses_fringe_colour(grid));
+
+    /* The reveal retraces the cover: at the same point of the motion the two
+       directions compose the same surface, because the material is driven by how far
+       in the characters have drawn and not by a clock. */
     {
-        double exit_t = tide_time_for_cover(&layout, grid, UI_ANIMATION_EVENT_CONTEXT_EXIT,
-                                            exit_ms, (int)(cells / 2U));
-        double enter_t = tide_time_for_cover(&layout, grid,
+        double exit_t = tide_time_for_drawn(&layout, grid, UI_ANIMATION_EVENT_CONTEXT_EXIT,
+                                            exit_ms, full / 2);
+        double enter_t = tide_time_for_drawn(&layout, grid,
                                              UI_ANIMATION_EVENT_CONTEXT_ENTER, enter_ms,
-                                             (int)(cells / 2U));
+                                             full / 2);
         tide_render(&layout, exit_frame, exit_t, UI_ANIMATION_EVENT_CONTEXT_EXIT);
         tide_render(&layout, enter_frame, enter_t, UI_ANIMATION_EVENT_CONTEXT_ENTER);
         changed = 0;
@@ -1050,51 +1122,10 @@ static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
                 changed++;
         if (changed > (int)(cells / 100U))
             fprintf(stderr,
-                    "FAIL-PRODUCT: at half cover the two directions differ in %d of %zu "
-                    "cells (exit t=%.1f, enter t=%.1f)\n",
+                    "FAIL-PRODUCT: at equal gather the two directions differ in %d of "
+                    "%zu cells (exit t=%.1f, enter t=%.1f)\n",
                     changed, cells, exit_t, enter_t);
         assert_true(changed <= (int)(cells / 100U));
-    }
-
-    /* The edge swells, and the sheet under it is woven: a straight edge gives one
-       value of (edge + y) per row (the wipe the owner rejected), and a clamped band
-       gives one glyph (the flat stripe). */
-    {
-        double mid = tide_time_for_cover(&layout, grid, UI_ANIMATION_EVENT_CONTEXT_EXIT,
-                                         exit_ms, (int)(cells / 2U));
-        int low = 1 << 30;
-        int high = -(1 << 30);
-        int rows = 0;
-        int distinct = 0;
-        bool seen[256] = {false};
-        tide_render(&layout, grid, mid, UI_ANIMATION_EVENT_CONTEXT_EXIT);
-        for (int y = 0; y < 80; y++) {
-            int edge = -1;
-            for (int x = 0; x < 120; x++) {
-                Cell cell;
-                if (!grid_get(grid, x, y, &cell)) continue;
-                if (tide_painted(cell.fg) && cell.glyph != 0U && cell.glyph != ' ') {
-                    edge = x;
-                    if (!seen[cell.glyph]) {
-                        seen[cell.glyph] = true;
-                        distinct++;
-                    }
-                }
-            }
-            if (edge <= 0) continue;
-            if (edge + y < low) low = edge + y;
-            if (edge + y > high) high = edge + y;
-            rows++;
-        }
-        assert_true(rows > 20);
-        if (high - low < 3)
-            fprintf(stderr, "FAIL-PRODUCT: the flood's edge is straight (spread %d)\n",
-                    high - low);
-        assert_true(high - low >= 3);
-        if (distinct < 3)
-            fprintf(stderr, "FAIL-PRODUCT: the flood is one flat stripe (%d glyphs)\n",
-                    distinct);
-        assert_true(distinct >= 3);
     }
 
     /* A transition is not the backdrop: the speed of the ambient loop does not touch
@@ -1110,6 +1141,7 @@ static void test_tide_reads_as_a_tide_not_a_wipe(void **state) {
 
     release(&reveal);
     release(&cover);
+    release(&field);
     release(&label);
     release(&target);
     grid_destroy(enter_frame);
@@ -1130,7 +1162,7 @@ static void test_settle_condenses_to_the_lattice_then_resolves(void **state) {
     Grid *repeat = grid_create(40, 24);
     SDL_Color bg = {5, 8, 10, 255};
     SDL_Color fg = {242, 247, 248, 255};
-    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
     int at_start;
     int half;
     int quarter;
@@ -1344,8 +1376,8 @@ static void test_backdrop_period_retunes_the_speed_of_the_field(void **state) {
 static void test_application_menu_layouts_play_their_authored_transition(void **state) {
     static const char *const menus[] = {"main_menu", "pause_menu", "settings",
                                         "confirm_quit"};
-    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_EXIT, false);
-    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_MAJOR_ENTER, false);
+    unsigned int exit_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
+    unsigned int enter_ms = ui_theme_motion_duration_ms(UI_THEME_MOTION_TRANSITION, false);
     Grid *grid = grid_create(260, 160);
     Grid *authored = grid_create(260, 160);
     SDL_Color bg = {5, 8, 10, 255};
@@ -1390,11 +1422,15 @@ static void test_application_menu_layouts_play_their_authored_transition(void **
                 }
             }
         }
-        /* The surface as authored, to compare the transition against. */
+        /* The surface as the application lays it down before a transition: the
+           authored layout over the fabric its backdrop fills the surface with. */
         grid_clear(grid, bg);
         ui_layout_render(layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
+                                               UI_ANIMATION_EVENT_WHILE_VISIBLE));
         memcpy(authored->cells, grid->cells, cells * sizeof(Cell));
-        /* On the way out the material covers the surface... */
+        /* On the way out the characters draw in to the centre, so the surface is
+           almost entirely the black they leave behind... */
         assert_true(ui_animation_render_layout(layout, grid, (double)exit_ms - 1.0,
                                                false, false,
                                                UI_ANIMATION_EVENT_CONTEXT_EXIT));
@@ -1402,19 +1438,21 @@ static void test_application_menu_layouts_play_their_authored_transition(void **
         for (size_t i = 0; i < cells; i++)
             if (grid->cells[i].glyph != authored->cells[i].glyph) changed++;
         if (changed <= (int)(cells / 4U))
-            fprintf(stderr, "FAIL-PRODUCT: %s: exit covered %d of %zu cells\n",
+            fprintf(stderr, "FAIL-PRODUCT: %s: exit drew in %d of %zu cells\n",
                     menus[menu], changed, cells);
         assert_true(changed > (int)(cells / 4U));
-        /* ... and on the way in it is fully covered before the reveal drains. */
+        /* ... and on the way in they are all at the centre before they flow out. */
         grid_clear(grid, bg);
         ui_layout_render(layout, grid, fg, bg);
+        assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
+                                               UI_ANIMATION_EVENT_WHILE_VISIBLE));
         assert_true(ui_animation_render_layout(layout, grid, 0.0, false, false,
                                                UI_ANIMATION_EVENT_CONTEXT_ENTER));
         changed = 0;
         for (size_t i = 0; i < cells; i++)
             if (grid->cells[i].glyph != authored->cells[i].glyph) changed++;
         if (changed <= (int)(cells / 4U))
-            fprintf(stderr, "FAIL-PRODUCT: %s: reveal covered %d of %zu cells\n",
+            fprintf(stderr, "FAIL-PRODUCT: %s: reveal held %d of %zu cells\n",
                     menus[menu], changed, cells);
         assert_true(changed > (int)(cells / 4U));
         ui_layout_destroy(layout);
@@ -1497,10 +1535,10 @@ int main(void) {
         cmocka_unit_test(test_focus_trigger_and_ordinary_transition),
         cmocka_unit_test(test_trigger_filter_and_random_bounds),
         cmocka_unit_test(test_living_field_is_deterministic_bounded_and_reduced),
-        cmocka_unit_test(test_tide_covers_the_surface_then_restores_it),
+        cmocka_unit_test(test_tide_draws_the_characters_in_then_restores_them),
         cmocka_unit_test(test_settle_condenses_to_the_lattice_then_resolves),
         cmocka_unit_test(test_backdrop_period_retunes_the_speed_of_the_field),
-        cmocka_unit_test(test_tide_reads_as_a_tide_not_a_wipe),
+        cmocka_unit_test(test_tide_draws_in_with_black_behind_and_retraces),
         cmocka_unit_test(test_application_menu_layouts_play_their_authored_transition),
         cmocka_unit_test(test_surface_extent_fills_the_frame_unless_bounded)
     };

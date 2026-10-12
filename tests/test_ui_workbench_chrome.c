@@ -664,23 +664,21 @@ static void test_exit_overlay_preserves_incoming_and_endpoints(void **state) {
     grid_destroy(staging);
 }
 
-/* The one primitive sanctioned to pass over authored content is the tide, and
-   only for as long as it reports a cover. It paints from its own ramp, so a
-   covered authored cell always carries one of these glyphs — never a blank and
-   never a field glyph. */
-static bool tide_cover_glyph(uint8_t glyph) {
-    static const char ramp[] = ". :-=+*#";
-    for (size_t i = 0; i < sizeof(ramp) - 1U; i++)
-        if (glyph == (uint8_t)ramp[i]) return true;
-    return false;
-}
+/* The one primitive sanctioned to pass over authored content is the tide, and only
+   for as long as it reports a cover: it draws the whole screen's characters in to
+   the centre, so an authored cell inside a transition window may be black or carry
+   a character that has moved. No glyph belongs to the tide itself — it carries the
+   surface's own marks — so nothing here constrains what a covered cell shows. */
 
-/* The window a context event animates over, from the theme's own durations. */
+/* The window a context event animates over, from the theme's own durations. A
+   context transition is the whole-screen tide, whose window is the theme's
+   transition role, not the control-level enter/exit role. */
 static uint32_t event_window_ms(UiAnimationEvent event) {
     UiThemeMotionRole role = UI_THEME_MOTION_MAJOR_ENTER;
     switch (event) {
         case UI_ANIMATION_EVENT_CONTEXT_EXIT:
-            role = UI_THEME_MOTION_MAJOR_EXIT;
+        case UI_ANIMATION_EVENT_CONTEXT_ENTER:
+            role = UI_THEME_MOTION_TRANSITION;
             break;
         case UI_ANIMATION_EVENT_FOCUS:
         case UI_ANIMATION_EVENT_ACTIVATE:
@@ -699,7 +697,7 @@ static void test_lifecycle_keeps_authored_cells_stable(void **state) {
     Grid *expected = grid_create(260, 160);
     UiCanvas *canvas = ui_canvas_create(260, 160);
     UiCanvas *reference = ui_canvas_create(260, 160);
-    static const double times[] = {0, 40, 80, 120, 160};
+    static const double times[] = {0, 40, 80, 120, 160, 1600};
     (void)state;
     assert_non_null(actual);
     assert_non_null(expected);
@@ -741,12 +739,12 @@ static void test_lifecycle_keeps_authored_cells_stable(void **state) {
                 assert_true(ui_workbench_runtime_preview_event(canvas, actual, &workbench,
                     &palette, (UiAnimationEvent)event, times[t], false));
                 /* Authored cells are the ones the layout drew a glyph into. The
-                   surface's own material may pass over them only for as long as
-                   the sanctioned cover lasts: inside a transition window a
-                   covered cell carries the tide's own ramp, and every settled
-                   frame — the looping field, and any moment after a window has
-                   closed — is byte-identical to the authored layout, so no
-                   control is ever left under water. */
+                   tide may draw the surface's characters in over them, but only
+                   for as long as the transition window lasts: inside it an
+                   authored cell may be black or carry a character that has moved,
+                   and every settled frame — the looping field, and any moment
+                   after a window has closed — is byte-identical to the authored
+                   layout, so no control is ever left under water. */
                 for (size_t i = 0; i < 260U * 160U; i++) {
                     if (!reference->touched[i] || reference->cells[i].glyph == 0U ||
                         reference->cells[i].glyph == ' ') continue;
@@ -759,7 +757,6 @@ static void test_lifecycle_keeps_authored_cells_stable(void **state) {
                         assert_memory_equal(&actual->cells[i], &reference->cells[i],
                                             sizeof(Cell));
                     }
-                    assert_true(tide_cover_glyph(actual->cells[i].glyph));
                     cover_seen = true;
                 }
                 assert_int_equal(workbench.context, context);
