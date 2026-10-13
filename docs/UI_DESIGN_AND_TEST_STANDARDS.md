@@ -129,11 +129,36 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   channels use palette accent/focus roles or the additive decorative chromatic-material tokens
   (§3.4 of the Reference of Record); one literal-RGB comparison is permitted only in
   the isolated diagnostic specimen and is not a reusable semantic token.
+- **Edit-mode submenu rule (2026-10-13).** The submenus that come up while **editing** — starting with
+  the surface inspector for a **wall, ceiling or floor** — are **panels, not display surfaces**: fitted
+  to their content, holding the corner of the frame (column 1, bed from row 4) so **the world stays
+  visible while you edit**. The bed is `canvas` (black) and text is `primary_text` / `secondary_text`;
+  an edit-mode panel draws **no `border` frame, no `warning` hue and no `focus`/`accent` mint** — that is
+  the deliberate retirement of the editor-interface hues the 2026-10-09 identity note left open, and
+  emphasis is carried by brightness. The panel ends where its material **froths**: the **`living_shore`**
+  backdrop is bound to the panel's rectangle, one radial swell travels outward from its centre, the body
+  keeps a faint grain that stays two cells clear of every drawn glyph, and the outer bands break into
+  foam — a soft moving edge instead of a hard frame. Entries sit **two rows apart** so the focused entry
+  takes the shared **focus perimeter and its chase** (in `primary_text` here), and they are **two aligned
+  columns** — the label column is measured by the panel, never padded by hand in a source string, and the
+  entries are never re-sorted, because their order is the order the cursor walks. A panel that cannot
+  hold the two-row rhythm **closes the entries up rather than truncating the list** (and then marks the
+  focused entry by brightness alone, because the perimeter would overlap its neighbours) — §4.7's
+  "nothing is hidden". **A mode-selection display surface** — the authored menus and the editor's scene
+  browser, where the user is choosing rather than editing — still takes the whole frame: the
+  surface-extent `living_field` material, one centred block, entries on the menu's three-row rhythm, the
+  perimeter with its chase, composited centred, its own hint instead of the editor footer, the crosshair
+  suppressed. It is governed by §1, and is not part of this rule.
+  See [`reviews/2026-10-09-editor-scene-browser-display-surface.md`](reviews/2026-10-09-editor-scene-browser-display-surface.md)
+  and [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
 - Editor-interface colour comes from `ui_app_theme_workbench_palette()` roles only: a literal in the
   editor interface is an automatic rejection (Reference of Record §5.2), and selection is a state, so
   it takes the `focus` role rather than a hue of its own. The editor's *editing* surfaces (panes,
   footers, tooltips, status text) mark their focused row with the shared perimeter in its shape-only
-  form, never with chromatic motion. A **mode-selection display surface** — the editor's scene browser,
+  form, never with chromatic motion; **an edit-mode submenu panel is the exception** — it is a submenu, so
+  it takes the menu's focused-entry treatment, the perimeter *with* its chase, exactly as an authored
+  focused button draws it (see the edit-mode submenu rule above). A **mode-selection display surface** —
+  the editor's scene browser,
   which is built on the menus' form (full-display `living_field` material, one centred block, the
   perimeter *with* its chase, exactly as an authored focused button draws it) — is governed by §1
   instead. See

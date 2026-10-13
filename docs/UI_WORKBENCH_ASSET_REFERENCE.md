@@ -48,7 +48,7 @@ height=<bounded region height>
 visible=1
 z_index=-1
 align=left
-preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register|living_field>
+preset=<pause_glitch|center_out|perimeter_burst|local_glitch|edge_trace|chromatic_register|command_flash|button_reassemble|panel_register|living_field|living_shore>
 effect=<reusable effect from assets/ui_effects/, e.g. ambient_field>   # optional alternative to preset=
 target=<element name in the same active layout>
 trigger=<context_enter|context_exit|focus|activate|while_visible>
@@ -78,6 +78,15 @@ Rules:
   orientation). It fills only empty cells within its bounded region, so it never obscures authored
   text, a control, or a focus marker; `orientation` selects the axis its travelling waves emphasise
   (`horizontal`, `vertical`, or `radial`, which folds them about the region centre).
+- `living_shore` is the same fabric as `living_field` used as a **region's own edge**
+  (`trigger=while_visible`, `loop=0`, `randomize=0`, `extent=box` recommended). One radial swell
+  travels outward from the region's centre: in the body of the region only its crest shows, broken
+  into faint grain that keeps two cells clear of every drawn glyph, while the outermost bands break
+  into foam, so the region ends where the material froths instead of at a drawn border. It fills only
+  empty cells, so it is a substrate like the field; the caller owns the bed behind it. Owner direction
+  recorded 2026-10-13 (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md, "the edit-mode submenu keeps the
+  corner"); the editor's edit-mode submenus are its first use (`src/unified_editor.c`,
+  `editor_menu_panel_material`).
 - `focus` runs only while the target Button is focused.
 - `activate` runs when an action in the containing layout activates; it never delays the action.
 - `context_exit` uses a bounded departing-menu snapshot while destination controls appear

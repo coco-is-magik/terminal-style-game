@@ -608,6 +608,225 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
     return true;
 }
 
+/* ---- living_shore ---- */
+
+/* Cells of the region the shore occupies, on every side. */
+#define UI_SHORE_BANDS 1
+/* One radial swell travelling outward from the region's centre: its wavelength in
+   cells, and the *integer* number of crests that cross the region per AMBIENT loop,
+   which is what keeps the loop seamless for any region size. */
+#define UI_SHORE_SWELL_CELLS 7.0
+#define UI_SHORE_SWELL_CYCLES 2.0
+/* The swell height a cell must clear to carry a glyph, and the fraction of the cells
+   that height reaches which actually show. The body of the region is nearly still --
+   the crest is broken into faint grain -- while the shore shows foam whether or not a
+   crest is over it, because the region has to read as a region; the swell decides how
+   much of the shore is breaking. */
+#define UI_SHORE_BODY 0.85
+#define UI_SHORE_BODY_RATE 0.12
+#define UI_SHORE_FOAM_RATE 0.85
+#define UI_SHORE_FOAM_FLOOR 0.45
+#define UI_SHORE_BODY_SALT 0x4b21U
+#define UI_SHORE_FOAM_SALT 0x8e57U
+/* A crest at its peak may spill past the region by one cell, and a crest that high
+   may break in colour at this rate. Both are intermittent: the splash is what makes
+   the edge read as foam rather than as a border. */
+#define UI_SHORE_SPLASH 1
+#define UI_SHORE_PEAK 0.97
+#define UI_SHORE_SPLASH_RATE 0.35
+#define UI_SHORE_BREAK_RATE 0.30
+/* The swell is sampled once per cell of distance and then looked up, so the
+   per-cell cost stays a lookup and a hash, never per-cell trigonometry. */
+#define UI_SHORE_TABLE 512
+#define UI_SHORE_SPLASH_SALT 0x2f6bU
+#define UI_SHORE_BREAK_SALT 0x91a3U
+#define UI_SHORE_PICK_SALT 0x5c17U
+
+/* True when a cell, its four neighbours and the twelve cells around those carry no
+   glyph: the body fabric keeps two cells clear of everything drawn, so its grain sits
+   in the openings of the panel (the blank rows of the rhythm, the margin, the gaps
+   beside short entries) and never beside a character. Owner direction, 2026-10-13:
+   "It shouldnt distract from actual text". */
+static bool living_shore_gap(Grid *grid, int x, int y) {
+    Cell cell;
+    int dy;
+    for (dy = -2; dy <= 2; dy++) {
+        int dx;
+        for (dx = -2; dx <= 2; dx++) {
+            if (!grid_get(grid, x + dx, y + dy, &cell)) continue;
+            if (cell.glyph != 0U && cell.glyph != ' ') return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * living_shore — the fabric as a panel's own edge: a quiet sheet in the body of a
+ * region, and a swell that froths where the region ends.
+ *
+ * Owner direction recorded 2026-10-13 in UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md
+ * ("the edit-mode submenu keeps the corner"): a submenu that comes up while you are
+ * editing "shouldnt distract from actual text [but it] should still feel like theres
+ * motion"; and, instead of a hard frame, the menu should end where the material
+ * breaks -- "Wavy but emanating out from a center point and 'frothing/splashing'
+ * against where the menu ends ... like the froth of a small wave at its peak on the
+ * beach kind of effect, with a darker grey/black/dark area where the actual menu is."
+ *
+ * So this is the *same* fabric as living_field at two amplitudes over one radial
+ * swell, rather than a second material: in the body of the region the threshold is
+ * high, so only the crests show and the sheet stays quiet behind the text; in the
+ * shore bands it is low, so the swell breaks into foam exactly where the region
+ * ends. Nothing draws a border, and the region dissolves into what it sits on. The
+ * caller owns the bed (this is a substrate, so it paints only blank cells and never
+ * covers a control, glyph or focus marker, §4.4); the foam is the identity's
+ * neutral, and where a crest breaks it takes one of the identity's three additive
+ * primaries and nothing else (§1.3, "Black, White, Red, Green, Blue"). Reduced
+ * motion never reaches here, and the swell is a pure function of explicit time, so
+ * a frame is reproducible.
+ */
+static bool render_living_shore(Grid *grid, const UiElementLayout *bounds,
+                                double elapsed_ms, SDL_Color background) {
+    static const uint8_t body_ramp[] = {'.'};
+    static const uint8_t foam_ramp[] = {'-', '=', '*'};
+    static const double two_pi = 6.28318530717958647692;
+    const UiThemeTokens *tokens = ui_theme_provisional_tokens();
+    double swell[UI_SHORE_TABLE];
+    SDL_Color neutral;
+    unsigned int period;
+    double phase;
+    double center_x;
+    double center_y;
+    int first_x;
+    int first_y;
+    int last_x;
+    int last_y;
+    int from_x;
+    int from_y;
+    int to_x;
+    int to_y;
+    int coord;
+    int y;
+    if (!grid || !grid->cells || !bounds || !tokens || !isfinite(elapsed_ms) ||
+        elapsed_ms < 0.0)
+        return false;
+    period = ui_theme_motion_duration_ms(UI_THEME_MOTION_AMBIENT, false);
+    if (period == 0U) return false;
+    neutral = color(tokens->palette.text_secondary);
+    phase = fmod(elapsed_ms, (double)period) / (double)period;
+    first_x = bounds->x < 0 ? 0 : bounds->x;
+    first_y = bounds->y < 0 ? 0 : bounds->y;
+    last_x = bounds->x + bounds->width;
+    if (last_x > grid->width) last_x = grid->width;
+    last_y = bounds->y + bounds->height;
+    if (last_y > grid->height) last_y = grid->height;
+    if (last_x <= first_x || last_y <= first_y) return true;
+    center_x = ((double)first_x + (double)(last_x - 1)) * 0.5;
+    center_y = ((double)first_y + (double)(last_y - 1)) * 0.5;
+    for (coord = 0; coord < UI_SHORE_TABLE; coord++) {
+        double angle = two_pi * ((double)coord / UI_SHORE_SWELL_CELLS -
+                                 phase * UI_SHORE_SWELL_CYCLES);
+        swell[coord] = 0.5 + 0.5 * cos(angle);
+    }
+    from_x = first_x - UI_SHORE_SPLASH;
+    from_y = first_y - UI_SHORE_SPLASH;
+    if (from_x < 0) from_x = 0;
+    if (from_y < 0) from_y = 0;
+    to_x = last_x + UI_SHORE_SPLASH;
+    if (to_x > grid->width) to_x = grid->width;
+    to_y = last_y + UI_SHORE_SPLASH;
+    if (to_y > grid->height) to_y = grid->height;
+
+    for (y = from_y; y < to_y; y++) {
+        int x;
+        for (x = from_x; x < to_x; x++) {
+            const bool inside = x >= first_x && x < last_x &&
+                                y >= first_y && y < last_y;
+            Cell occupied;
+            double dx;
+            double dy;
+            double height;
+            uint8_t glyph;
+            SDL_Color fg = neutral;
+            int index;
+            /* The fabric is a substrate: it may never obscure authored text, a
+               control, or a focus marker -- it fills the region *behind* them. */
+            if (grid_get(grid, x, y, &occupied) &&
+                occupied.glyph != 0U && occupied.glyph != ' ') continue;
+            dx = (double)x - center_x;
+            dy = (double)y - center_y;
+            index = (int)sqrt(dx * dx + dy * dy);
+            if (index < 0) index = 0;
+            if (index >= UI_SHORE_TABLE) index = UI_SHORE_TABLE - 1;
+            height = swell[index];
+            if (!inside) {
+                /* Past the shore only a crest at its peak spills, and only here and
+                   there: the splash is intermittent, so the edge reads as foam. */
+                if (height < UI_SHORE_PEAK ||
+                    living_field_unit((uint32_t)x, (uint32_t)y,
+                                      UI_SHORE_SPLASH_SALT) >= UI_SHORE_SPLASH_RATE)
+                    continue;
+                glyph = foam_ramp[0];
+            } else {
+                int edge = x - first_x;
+                int ramp_len;
+                const uint8_t *ramp;
+                bool shore;
+                double density;
+                double lift;
+                int band;
+                if (last_x - 1 - x < edge) edge = last_x - 1 - x;
+                if (y - first_y < edge) edge = y - first_y;
+                if (last_y - 1 - y < edge) edge = last_y - 1 - y;
+                shore = edge < UI_SHORE_BANDS;
+                /* The shore always shows foam -- the region has to read as a region --
+                   but the swell decides how much of it is breaking, so the edge
+                   breathes instead of being a fixed line. The body shows the swell
+                   itself, and only where its crest is: quiet grain behind the text,
+                   and never beside it. */
+                if (shore) {
+                    density = UI_SHORE_FOAM_RATE * (UI_SHORE_FOAM_FLOOR +
+                                                    (1.0 - UI_SHORE_FOAM_FLOOR) * height);
+                } else {
+                    if (height <= UI_SHORE_BODY) continue;
+                    if (!living_shore_gap(grid, x, y)) continue;
+                    density = UI_SHORE_BODY_RATE;
+                }
+                /* Which cells show is a static function of position and each one shows
+                   only while the swell is over it, so the material drifts rather than
+                   flickering, and no cell is ever picked at random per frame. */
+                if (density <= 0.0 ||
+                    living_field_unit((uint32_t)x, (uint32_t)y,
+                                      shore ? UI_SHORE_FOAM_SALT
+                                            : UI_SHORE_BODY_SALT) >= density)
+                    continue;
+                ramp = shore ? foam_ramp : body_ramp;
+                ramp_len = shore ? (int)sizeof(foam_ramp) : (int)sizeof(body_ramp);
+                lift = shore ? height
+                             : (height - UI_SHORE_BODY) / (1.0 - UI_SHORE_BODY);
+                band = (int)(lift * (double)(ramp_len - 1) + 0.5);
+                if (band >= ramp_len) band = ramp_len - 1;
+                glyph = ramp[band];
+            }
+            /* A crest that breaks takes one of the three additive primaries, chosen
+               per cell: the identity's only colour, never a hue of its own. */
+            if (height >= UI_SHORE_PEAK &&
+                living_field_unit((uint32_t)x, (uint32_t)y, UI_SHORE_BREAK_SALT) <
+                    UI_SHORE_BREAK_RATE) {
+                const unsigned int pick = (unsigned int)
+                    (living_field_unit((uint32_t)x, (uint32_t)y,
+                                       UI_SHORE_PICK_SALT) * 3.0);
+                fg = color(ui_theme_chroma_fringe(
+                    pick == 0U ? UI_CHROMA_FRINGE_LEFT
+                    : pick == 1U ? UI_CHROMA_FRINGE_HORIZONTAL
+                                 : UI_CHROMA_FRINGE_RIGHT));
+            }
+            if (!grid_set(grid, x, y, glyph, fg, background)) return false;
+        }
+    }
+    return true;
+}
+
+
 /* True when a cell carries no character: the black the characters have left
    behind as they draw in. */
 static bool tide_empty(Grid *grid, int x, int y) {
@@ -973,6 +1192,9 @@ static bool render_unit(UiElement *unit, UiLayout *layout, Grid *grid,
         case UI_EFFECT_LIVING_FIELD:
             return render_living_field(grid, &bounds, elapsed_ms,
                                        unit->orientation, color(palette->canvas));
+        case UI_EFFECT_LIVING_SHORE:
+            return render_living_shore(grid, &bounds, elapsed_ms,
+                                       color(palette->canvas));
         case UI_EFFECT_PAUSE_GLITCH:
             return render_pause_glitch(grid, set_grid, &bounds, unit->name,
                                        unit->orientation, unit->randomize != 0,

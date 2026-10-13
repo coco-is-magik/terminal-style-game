@@ -58,7 +58,18 @@ static const UiEffectSpec effect_specs[] = {
        destination, not about the surface being left, so the runner asks for it by
        name (`ui_animation_render_world_settle`). */
     { UI_EFFECT_SETTLE, "settle", UI_ELE_ANIMATION,
-      UI_EFFECT_TRIGGER_CONTEXT_EXIT, UI_EFFECT_ORIENT_ANY, 0, 0, false, true }
+      UI_EFFECT_TRIGGER_CONTEXT_EXIT, UI_EFFECT_ORIENT_ANY, 0, 0, false, true },
+    /* The shore: the same fabric as the field, at two amplitudes over one radial
+       swell that travels outward from the region's centre. Only the crests clear
+       the threshold in the body of the region, so the sheet is quiet behind the
+       text; the threshold drops in the outermost bands, so the swell breaks into
+       foam where the region ends and the region dissolves into whatever is behind
+       it instead of being given a border. It is a substrate (blank cells only),
+       and the quiet body needs the caller's own bed behind it. Owner direction
+       recorded 2026-10-13 (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md, "the edit-mode
+       submenu keeps the corner"). */
+    { UI_EFFECT_LIVING_SHORE, "living_shore", UI_ELE_ANIMATION,
+      UI_EFFECT_TRIGGER_WHILE_VISIBLE, UI_EFFECT_ORIENT_ANY, 0, 0, true, false }
 };
 
 static unsigned int trigger_bit(const char *trigger) {

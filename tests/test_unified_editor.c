@@ -328,6 +328,84 @@ static bool grid_contains_text(const Grid *grid, const char *text) {
     return false;
 }
 
+/* The edit-mode submenus are panels in the corner of the frame, not pause menus: they
+   own a bed in the corner and leave the world the rest of the frame. The bed is black,
+   so the panel reads as a darker area of the frame without any border being drawn for
+   it -- the material froths where the panel ends. Locks the placement (column 1, bed
+   from row 4), that the panel is bounded, and the identity: no cell of the panel
+   carries a hue outside black, white and the primaries (2026-10-13 direction). */
+static bool cell_has_colour(const Cell *cell, uint8_t r, uint8_t g, uint8_t b) {
+    return cell->fg.r == r && cell->fg.g == g && cell->fg.b == b;
+}
+
+static void assert_corner_panel(const Grid *grid) {
+    const uint8_t canvas[3] = {0x05U, 0x08U, 0x0aU};
+    int top = -1;
+    int bottom = -1;
+    int y;
+    assert_true(grid->width > 8);
+    /* The bed is the run of cleared cells that starts at column 1: the material's
+       splash may paint a cell or two past the panel, so a row only counts as bed when
+       the whole left edge of it is the panel's. */
+    for (y = 4; y < grid->height; y++) {
+        int cleared = 0;
+        int x;
+        for (x = 1; x < 9; x++) {
+            const Cell *cell = &grid->cells[y * grid->width + x];
+            if (cell->bg.r != canvas[0] || cell->bg.g != canvas[1] ||
+                cell->bg.b != canvas[2])
+                break;
+            cleared++;
+        }
+        if (cleared == 8) {
+            if (top < 0) top = y;
+            bottom = y;
+        }
+    }
+    assert_int_equal(top, 4);
+    assert_true(bottom > top);
+    /* The panel is bounded: it never becomes the whole frame, so the world keeps rows of
+       its own. (The editor's frame is 160 rows high and the panel fits inside it; these
+       tests render into 30 and 40, so a long list can reach the foot of the fixture.) */
+    assert_true(bottom - top + 1 < grid->height);
+    for (y = top; y <= bottom; y++) {
+        int x;
+        for (x = 1; x < grid->width; x++) {
+            const Cell *cell = &grid->cells[y * grid->width + x];
+            /* Every cell the panel painted carries a glyph, never a zero: the editor
+               layer is copied cell by cell and a zero glyph is skipped as "nothing
+               here", so a zero-glyph bed would not reach the frame at all. */
+            if (cell->bg.r == canvas[0] && cell->bg.g == canvas[1] &&
+                cell->bg.b == canvas[2])
+                assert_true(cell->glyph != 0U);
+            /* Not the editor interface's faint blue-grey border, not its warning
+               yellow, not the mint it used to mark focus with. */
+            assert_false(cell_has_colour(cell, 0x64U, 0x75U, 0x7cU));
+            assert_false(cell_has_colour(cell, 0xffU, 0xd1U, 0x66U));
+            assert_false(cell_has_colour(cell, 0xa8U, 0xffU, 0xe1U));
+        }
+    }
+}
+
+static bool grid_find_text(const Grid *grid, const char *text, int *out_x,
+                           int *out_y);
+
+/* How far a detail sits from the left edge of its label in the panel. The panel aligns
+   its details in one column, so this is the same number for every entry however long
+   the labels are -- which is what the panel was rebuilt to get right. */
+static int panel_detail_offset(const Grid *grid, const char *label,
+                               const char *detail) {
+    int label_x = 0;
+    int label_y = 0;
+    int detail_x = 0;
+    int detail_y = 0;
+    assert_true(grid_find_text(grid, label, &label_x, &label_y));
+    assert_true(grid_find_text(grid, detail, &detail_x, &detail_y));
+    assert_int_equal(label_y, detail_y);
+    assert_true(detail_x > label_x);
+    return detail_x - label_x;
+}
+
 static bool grid_find_text(const Grid *grid, const char *text,
                            int *out_x, int *out_y) {
     size_t text_len;
@@ -2258,6 +2336,7 @@ static void test_decal_surface_menu_selects_stable_id(void **state) {
     unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Add decal..."));
     assert_true(grid_contains_text(grid, "decal:"));
+    assert_corner_panel(grid);
     grid_destroy(grid);
     zero_input(&in); in.editor_confirm_pressed = true;
     update_with(&ed, &cam, &in);
@@ -2843,8 +2922,12 @@ static void test_r8_i5_vertical_authoring_tuning_overlay_and_round_trip(void **s
     grid = grid_create(260, 80);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_contains_text(grid, "Height      0.25"));
-    assert_true(grid_contains_text(grid, "Surface     removed"));
+    /* The panel's label column separates the label from its value, so the detail is
+       the value and the keys rather than a second column hand-padded in the source. */
+    assert_true(grid_contains_text(grid, "Height"));
+    assert_true(grid_contains_text(grid, "0.25  Left/Right"));
+    assert_true(grid_contains_text(grid, "Surface"));
+    assert_true(grid_contains_text(grid, "removed"));
     assert_true(grid_contains_text(grid, "MOVEMENT"));
     assert_true(grid_contains_text(grid, "Cell grav dir"));
     assert_true(grid_contains_text(grid, "Map movement"));
@@ -4444,8 +4527,19 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     editor.material_picker_open = true;
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Inspector: floor surface"));
-    assert_true(grid_contains_text(grid, "> Place Wall"));
+    assert_true(grid_contains_text(grid, "Place Wall"));
     assert_true(grid_contains_text(grid, "Ambient"));
+    /* The surface inspector keeps its corner (it is not a pause menu) and wears the
+       menu styling: a black bed where the menu is, no drawn border (the material froths
+       where it ends), and focus carried by the shared perimeter and the bright role
+       rather than a '>' marker. */
+    assert_corner_panel(grid);
+    assert_false(grid_contains_text(grid, "> Place Wall"));
+    /* Entries are two aligned columns: labels of different lengths put their values in
+       the same column. */
+    assert_int_equal(panel_detail_offset(grid, "Place Wall", "Enter=apply"),
+                     panel_detail_offset(grid, "Decals",
+                                         "surface list  Enter=open"));
     grid_destroy(grid);
     unified_editor_destroy(&editor);
     remove(path);
@@ -4519,7 +4613,8 @@ static void test_r4_increment_d_empty_missing_and_runtime_failure_atomic(void **
     grid = grid_create(260, 30);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_contains_text(grid, "Material   1 (missing)"));
+    assert_true(grid_contains_text(grid, "Material"));
+    assert_true(grid_contains_text(grid, "1 (missing)"));
     assert_true(grid_contains_text(grid, "Create new material..."));
     grid_destroy(grid);
 
@@ -4825,7 +4920,8 @@ static void test_r9_i6_optical_submenu_input_and_overlay(void **state) {
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "OPTICS"));
-    assert_true(grid_contains_text(grid, "Scope: cell override"));
+    assert_true(grid_contains_text(grid, "Scope:"));
+    assert_true(grid_contains_text(grid, "cell override"));
     grid_destroy(grid);
     unified_editor_destroy(&editor);
 }
@@ -4890,7 +4986,8 @@ static void test_r9_transparency_submenu_master_custom_undo_and_round_trip(void 
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "TRANSPARENCY"));
-    assert_true(grid_contains_text(grid, "Transparency   Custom"));
+    assert_true(grid_contains_text(grid, "Transparency"));
+    assert_true(grid_contains_text(grid, "Custom"));
     grid_destroy(grid);
 
     path_in_tmpdir(path, sizeof(path), "r9_transparency_saved.tscene");

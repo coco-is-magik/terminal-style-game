@@ -233,6 +233,72 @@ locked identity above:
 The implementation record is
 [`reviews/2026-10-12-centered-tide.md`](reviews/2026-10-12-centered-tide.md).
 
+## Change of direction recorded 2026-10-13 — edit-mode submenus are panels, not display surfaces
+
+The project owner directed that the UI language built for the menus, the HUD and the transitions be
+applied to the **edit mode** of the unified editor, starting with the submenus that come up while
+editing a **wall, ceiling or floor**:
+
+> We are in a good spot with the UI so far. Lets apply what we have to overhaul the editor UI next, and
+> lock in our UI rules before continuing with development there. ... Start with the menus/submenus that
+> come up when selecting walls/ceiling/floor to edit them.
+
+and then corrected the first attempt, which had taken the whole frame for the submenu:
+
+> In the edit mode, covering the whole screen in a menu like that doesnt work. Its not a pause menu. It
+> comes up in the corner of the screen because you need to be able to see what you are doing as you
+> edit. The placement pre-work was correct, just the styling needed to change.
+
+then asked for the panel itself to be finished, in their words:
+
+> Its still got yellow/faint blue from the previous color scheme.
+> Can we do a more muted version of the wavy background? It shouldnt distract from actual text but it
+> should still feel like theres motion. Or alternatively, maybe we can drop the hard frame for the menu
+> border and use motion as a sort of soft-boundary? Wavy but emanating out from a center point and
+> "frothing/splashing" against where the menu ends. So its not a hard border but you can tell which
+> part is the menu. ... like kinda the froth of a small wave at its peak on the beach kind of effect,
+> with a darker grey/black/dark area where the actual menu is.
+> ... its not perfectly aligned because some stuff on the right column is too long. Can we resort the
+> menu items based on length/alphabet and just align the columns so they make nicer alignment?
+
+Recorded under §1.1, §1.3, §4.2 and its scope note (the editor interface), §4.7, and the locked identity
+of 2026-10-09:
+
+1. **An edit-mode submenu is a panel, not a display surface.** It is fitted to its content and it keeps
+   the corner of the frame its ragged list held (column 1, bed from row 4), so **the world stays visible
+   while you edit it.** It never takes the frame, it is not composited as a menu, it does not suppress
+   the crosshair, and the editor footer keeps its rows.
+2. **The identity reaches the edit-mode panel, and its editor-interface hues are retired here.** The bed
+   is black (`canvas`), text is `primary_text` and `secondary_text`, and **nothing else**: no `border`
+   frame, no `warning` yellow, and no `focus`/`accent` mint. Where the interface needs emphasis it uses
+   brightness, and the only colour is the material's three additive primaries as chromatic aberration —
+   which is the deliberate retirement of those hues that the 2026-10-09 identity note left open. The
+   authored menus and the scene browser keep their own focus colour; this is the edit-mode panel.
+3. **The panel draws no border: it ends where the material froths.** The `living_shore` backdrop (same
+   fabric as `living_field`, one shared evaluator) is bound to the panel's own rectangle. One radial
+   swell travels outward from its centre; in the body only the crest shows, broken into faint grain that
+   **keeps two cells clear of every drawn glyph**, and the outermost bands break into foam. So the menu is
+   a darker area of the frame with a soft, moving edge rather than a hard frame — and the material is a
+   substrate, so no entry, focus marker or control is ever covered (§4.4).
+4. **The focused entry still takes the shared focus perimeter and its chase**, exactly as an authored
+   focused button draws it — now in `primary_text`, so the focus marker is brightness and movement.
+5. **Entries are two aligned columns.** The panel measures its label column and starts every value in
+   one column, so the raggedness the owner saw was fixed by the panel rather than by every source string
+   padding itself (`EDITOR_MENU_COLUMN_GAP`). The *order* of entries is untouched: that order is the
+   order the cursor walks, and it is never re-sorted for looks.
+6. **Only mode-selection display surfaces take the frame.** The authored menus and the editor's scene
+   browser — where the user is choosing rather than editing — keep the surface-extent `living_field`
+   material and one centred block (§4.2's scope note, unchanged). They are not part of this slice.
+7. **Nothing is truncated.** Entries sit two rows apart so the perimeter fits between them, with a margin
+   kept clear above the title and below the hint so no text sits in the band the material froths in; a
+   panel that cannot hold that closes the entries up rather than cutting the list off (§4.7) and marks
+   the focused entry by brightness alone, because the perimeter would overlap its entries.
+8. **Behaviour is untouched.** Which keys open, move, confirm and close a submenu, and every value it
+   edits, is unchanged; only the form it is drawn in is new.
+
+The implementation record is
+[`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
+
 ## Rule of engagement
 
 1. Before beginning any phase, and before approving any change that touches colour, motion,

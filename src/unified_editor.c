@@ -5343,15 +5343,17 @@ static void editor_browser_put_centred(Grid *grid, int center_x, int row,
     editor_browser_put(grid, center_x - columns / 2, row, columns, text, fg, palette);
 }
 
-/* The browser is a display surface, so its material is the same surface-extent
-   living_field the authored menus use: one shared evaluator, the field covering
-   the whole display, no editor-only material and no asset carrying a size. */
-static bool editor_browser_field(Grid *grid, double now_ms, bool reduced_motion) {
+/* The surface material for an editor menu surface: the same surface-extent
+   living_field the authored menus use, one shared evaluator, the field covering the
+   whole display, no editor-only material and no asset carrying a size. `name` names
+   the synthesised container, field and layout so each surface is its own specimen. */
+static bool editor_menu_field(Grid *grid, const char *name, double now_ms,
+                              bool reduced_motion) {
     UiElement container = {0};
     UiElement field = {0};
     UiLayout layout = {0};
 
-    (void)snprintf(container.name, sizeof(container.name), "%s", "editor_scene_browser");
+    (void)snprintf(container.name, sizeof(container.name), "%s", name);
     container.type = UI_ELE_CONTAINER;
     container.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE,
                                          grid->width, grid->height};
@@ -5361,7 +5363,7 @@ static bool editor_browser_field(Grid *grid, double now_ms, bool reduced_motion)
     (void)snprintf(container.transition, sizeof(container.transition), "%s", "none");
     (void)snprintf(container.focus_effect, sizeof(container.focus_effect), "%s", "none");
 
-    (void)snprintf(field.name, sizeof(field.name), "%s", "editor_scene_browser_field");
+    (void)snprintf(field.name, sizeof(field.name), "%s_field", name);
     field.type = UI_ELE_ANIMATION;
     /* extent=surface: the surface is the display, exactly as for a menu. */
     field.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE, 0, 0};
@@ -5370,14 +5372,14 @@ static bool editor_browser_field(Grid *grid, double now_ms, bool reduced_motion)
     field.z_index = -1;
     field.align = UI_ALIGN_LEFT;
     (void)snprintf(field.preset, sizeof(field.preset), "%s", "living_field");
-    (void)snprintf(field.target, sizeof(field.target), "%s", "editor_scene_browser");
+    (void)snprintf(field.target, sizeof(field.target), "%s", name);
     (void)snprintf(field.trigger, sizeof(field.trigger), "%s", "while_visible");
     (void)snprintf(field.orientation, sizeof(field.orientation), "%s", "horizontal");
     (void)snprintf(field.style, sizeof(field.style), "%s", "plain");
     (void)snprintf(field.transition, sizeof(field.transition), "%s", "none");
     (void)snprintf(field.focus_effect, sizeof(field.focus_effect), "%s", "none");
 
-    (void)snprintf(layout.name, sizeof(layout.name), "%s", "editor_scene_browser");
+    (void)snprintf(layout.name, sizeof(layout.name), "%s", name);
     (void)snprintf(layout.transition, sizeof(layout.transition), "%s", "none");
     layout.elements[0] = &container;
     layout.elements[1] = &field;
@@ -5385,6 +5387,282 @@ static bool editor_browser_field(Grid *grid, double now_ms, bool reduced_motion)
     return ui_animation_render_layout(&layout, grid, now_ms, reduced_motion, false,
                                       UI_ANIMATION_EVENT_WHILE_VISIBLE);
 }
+
+/* ---- Editor menu panel ----
+ *
+ * The submenus that come up while editing a wall, ceiling or floor are panels, not
+ * pause menus: they sit in the corner of the frame so the world stays visible while
+ * you work, and they carry the styling the menu work established -- a bordered bed of
+ * the panel/border roles, a title row, the hint, and entries two rows apart so the
+ * focused entry takes the shared focus perimeter and its chase, exactly as an
+ * authored focused button draws it. The scene browser was rebuilt on this form first
+ * (commit "rebuild the editor scene browser as a palette-driven panel"); the surface
+ * inspector follows it. Placement is unchanged: the panel replaces the ragged
+ * column-1 list in the same corner.
+ */
+#define EDITOR_MENU_ROW_STEP 2   /* entries two rows apart, so the perimeter fits */
+#define EDITOR_MENU_MAX_ROWS 24
+#define EDITOR_MENU_PAD 2
+#define EDITOR_MENU_COLUMN_GAP 2 /* between the label column and the detail column */
+/* Rows kept clear above the title and below the hint, so no text ever sits in the
+   band the material froths in: the menu's edge stays the material's, not the text's. */
+#define EDITOR_MENU_MARGIN 2
+
+typedef struct {
+    char text[80];   /* the label: what the entry is              */
+    char detail[64]; /* its value and the keys that act on it, or "" */
+    bool focused;    /* takes the focus perimeter and brightens   */
+    bool strong;     /* a heading: bright, but not a control      */
+    bool note;       /* a notice or an error: the bright role     */
+} EditorMenuRow;
+
+/* Collect one line of an editor list into the menu block, classified by the role it
+   was drawn with: the focus role is the selection, the warning role is a note, the
+   primary role is a heading, everything else is an ordinary entry. A leading "> "
+   marker is dropped -- the menu surface marks the focused entry with the focus
+   perimeter and its chase, exactly as an authored menu does. */
+static void editor_menu_collect(EditorMenuRow *rows, size_t *count, const char *text,
+                                SDL_Color colour, const UiAppWorkbenchPalette *palette) {
+    const char *label = text ? text : "";
+    const char *split = NULL;
+    const char *rest = NULL;
+    bool focused = false;
+    bool strong = false;
+    bool note = false;
+    while (*label == ' ') label++;
+    if (*label == '>') {
+        focused = true;
+        label++;
+        while (*label == ' ') label++;
+    }
+    /* An entry is two columns: what it is, and its value with the keys that act on
+       it. The split is the first run of two or more spaces, so the panel can align
+       the columns itself instead of every source string padding itself by hand --
+       which is what left the details starting at a different column per row. */
+    {
+        const char *scan = label;
+        while (*scan != '\0') {
+            if (scan[0] == ' ' && scan[1] == ' ') {
+                const char *value = scan + 2;
+                while (*value == ' ') value++;
+                if (*value != '\0') {
+                    split = scan;
+                    rest = value;
+                }
+                break;
+            }
+            scan++;
+        }
+    }
+    if (palette) {
+        if (colour.r == palette->focus.r && colour.g == palette->focus.g &&
+            colour.b == palette->focus.b && colour.a == palette->focus.a)
+            focused = true;
+        else if (colour.r == palette->warning.r && colour.g == palette->warning.g &&
+                 colour.b == palette->warning.b && colour.a == palette->warning.a)
+            note = true;
+        else if (colour.r == palette->primary_text.r &&
+                 colour.g == palette->primary_text.g &&
+                 colour.b == palette->primary_text.b &&
+                 colour.a == palette->primary_text.a)
+            strong = true;
+    }
+    if (!rows || !count || *count >= EDITOR_MENU_MAX_ROWS) return;
+    (void)snprintf(rows[*count].text, sizeof(rows[*count].text), "%.*s",
+                   (int)(split ? (size_t)(split - label) : strlen(label)), label);
+    (void)snprintf(rows[*count].detail, sizeof(rows[*count].detail), "%s",
+                   rest ? rest : "");
+    rows[*count].focused = focused;
+    rows[*count].strong = strong;
+    rows[*count].note = note;
+    (*count)++;
+}
+
+/* The panel's bed: the region the menu owns, cleared to black. The material is a
+   substrate -- it paints only blank cells -- so the panel clears its own bed first.
+   That is what makes the menu a darker area of the frame (the owner's "darker
+   grey/black/dark area where the actual menu is") and what lets a panel sit over a
+   bright world without the world showing through its own lines. The cleared cells
+   carry a *space*, not a zero glyph: the editor layer is copied cell by cell and a
+   zero glyph is skipped as "nothing here", so a zero-glyph bed would let the world
+   through and the panel would have no bed at all. */
+static void editor_menu_panel_bed(Grid *grid, int x, int y, int columns, int rows,
+                                  const UiAppWorkbenchPalette *palette) {
+    int row;
+    int column;
+    for (row = 0; row < rows; row++)
+        for (column = 0; column < columns; column++)
+            (void)grid_set(grid, x + column, y + row, ' ', palette->primary_text,
+                           palette->canvas);
+}
+
+/* The panel's material: the shore, bound to the panel's own rectangle rather than to
+   the surface. The swell travels outward from the panel's centre and breaks into foam
+   where the panel ends, so the menu has no drawn border: its edge is where the
+   material froths, and the material paints only blank cells, so the foam runs up
+   against the entries without ever covering one (§4.4). Same shared evaluator and
+   same synthesised-element path as the authored menus, so there is no editor-only
+   material. */
+static bool editor_menu_panel_material(Grid *grid, int x, int y, int columns, int rows,
+                                       double now_ms, bool reduced_motion) {
+    UiElement container = {0};
+    UiElement field = {0};
+    UiLayout layout = {0};
+
+    (void)snprintf(container.name, sizeof(container.name), "%s", "editor_menu_panel");
+    container.type = UI_ELE_CONTAINER;
+    container.layout = (UiElementLayout){x, y, UI_COORD_ABSOLUTE, columns, rows};
+    container.visible = 1;
+    container.align = UI_ALIGN_LEFT;
+    (void)snprintf(container.style, sizeof(container.style), "%s", "plain");
+    (void)snprintf(container.transition, sizeof(container.transition), "%s", "none");
+    (void)snprintf(container.focus_effect, sizeof(container.focus_effect), "%s", "none");
+
+    (void)snprintf(field.name, sizeof(field.name), "%s", "editor_menu_panel_shore");
+    field.type = UI_ELE_ANIMATION;
+    field.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE, 0, 0};
+    /* extent=box: the material is the panel, not the display. */
+    field.extent = UI_EXTENT_BOX;
+    field.visible = 1;
+    field.z_index = -1;
+    field.align = UI_ALIGN_LEFT;
+    (void)snprintf(field.preset, sizeof(field.preset), "%s", "living_shore");
+    (void)snprintf(field.target, sizeof(field.target), "%s", "editor_menu_panel");
+    (void)snprintf(field.trigger, sizeof(field.trigger), "%s", "while_visible");
+    (void)snprintf(field.orientation, sizeof(field.orientation), "%s", "radial");
+    (void)snprintf(field.style, sizeof(field.style), "%s", "plain");
+    (void)snprintf(field.transition, sizeof(field.transition), "%s", "none");
+    (void)snprintf(field.focus_effect, sizeof(field.focus_effect), "%s", "none");
+
+    (void)snprintf(layout.name, sizeof(layout.name), "%s", "editor_menu_panel");
+    (void)snprintf(layout.transition, sizeof(layout.transition), "%s", "none");
+    layout.elements[0] = &container;
+    layout.elements[1] = &field;
+    layout.element_count = 2;
+    return ui_animation_render_layout(&layout, grid, now_ms, reduced_motion, false,
+                                      UI_ANIMATION_EVENT_WHILE_VISIBLE);
+}
+
+/* One panel line on the bed, clipped to the interior. */
+static void editor_menu_put(Grid *grid, int x, int y, int columns, const char *text,
+                            SDL_Color fg, const UiAppWorkbenchPalette *palette) {
+    int column;
+    if (!text || columns <= 0) return;
+    for (column = 0; text[column] != '\0' && column < columns; column++)
+        (void)grid_set(grid, x + column, y, (uint8_t)text[column], fg, palette->canvas);
+}
+
+/* The panel fits its content and stays in the corner it is given: a submenu that comes
+   up while editing must not cover the world being edited. Entries sit two rows apart so
+   the focused entry takes the shared focus perimeter and its chase, exactly as an
+   authored focused button does; a panel too short for that closes the entries up rather
+   than truncating the list (§4.7), and at the tighter rhythm focus is carried by the
+   bright role alone, because the perimeter would overlap the neighbouring entries.
+   An entry is two aligned columns -- what it is, then its value and the keys that act on
+   it -- so the details start in one column whatever the labels are. */
+static void editor_menu_panel_render(
+    Grid *grid, int x, int y, const char *title, const char *subtitle,
+    const EditorMenuRow *rows, size_t count, const char *hint, const char *note,
+    double now_ms, bool reduced_motion, const UiAppWorkbenchPalette *palette) {
+    const int pad = EDITOR_MENU_PAD;
+    const int listed = (int)count;
+    const bool has_subtitle = subtitle && subtitle[0];
+    const bool has_note = note && note[0];
+    int label_columns = 0;
+    int width;
+    int height;
+    int title_row;
+    int first_row;
+    int hint_row;
+    int step = EDITOR_MENU_ROW_STEP;
+    size_t i;
+    /* The label column is as wide as the widest label that carries a detail. A row
+       without one is a line of its own, so it never widens the column. */
+    for (i = 0U; i < count; i++)
+        if (rows[i].detail[0] && (int)strlen(rows[i].text) > label_columns)
+            label_columns = (int)strlen(rows[i].text);
+    /* The panel fits its content: the widest line wins, and the title, the blank row
+       under it, the entries and the hint and note below them set the height. */
+    width = (int)strlen(title ? title : "");
+    if (subtitle && (int)strlen(subtitle) > width) width = (int)strlen(subtitle);
+    for (i = 0U; i < count; i++) {
+        int columns = (int)strlen(rows[i].text);
+        if (rows[i].detail[0]) {
+            const int spanned = label_columns + EDITOR_MENU_COLUMN_GAP +
+                                (int)strlen(rows[i].detail);
+            if (spanned > columns) columns = spanned;
+        }
+        if (columns > width) width = columns;
+    }
+    if (hint && (int)strlen(hint) > width) width = (int)strlen(hint);
+    if (note && (int)strlen(note) > width) width = (int)strlen(note);
+    width += pad * 2 + 2;
+    /* The panel fits its content; only the display bounds it, because a clipped line
+       would hide a control. A tall list is what the corner cannot afford, and that is
+       what the tighter rhythm below answers. */
+    if (width > grid->width - x - 1) width = grid->width - x - 1;
+    if (width < 8) width = 8;
+    /* The menu rhythm is two rows per entry; a panel too short for it closes the
+       entries up rather than truncating the list: nothing is hidden (§4.7). */
+    while (step > 1 &&
+           y + (2 * EDITOR_MENU_MARGIN + 3 + (has_subtitle ? 1 : 0) + listed * step +
+                (has_note ? 1 : 0)) > grid->height)
+        step--;
+    height = 2 * EDITOR_MENU_MARGIN + 3 + (has_subtitle ? 1 : 0) + listed * step +
+             (has_note ? 1 : 0);
+    /* Keep the panel on the display: hold the corner it was given, and slide it up only if
+       the content is taller than the room below the corner. */
+    if (y + height > grid->height) y = grid->height - height;
+    if (y < 0) y = 0;
+    title_row = y + EDITOR_MENU_MARGIN;
+    first_row = title_row + (has_subtitle ? 2 : 1) + 1;
+    hint_row = first_row + listed * step;
+
+    /* The bed, then the text, then the material over both. Nothing draws the panel's
+       border: its edge is where the shore froths (the material is bound to this
+       rectangle), which is what keeps the world visible around it instead of a frame
+       cutting it off. The material goes last so it can see the text and keep its
+       grain out of the characters' way -- it paints only blank cells, so text, the
+       focus perimeter and their neighbours are never touched (§4.4). */
+    editor_menu_panel_bed(grid, x, y, width, height, palette);
+    if (title && title[0])
+        editor_menu_put(grid, x + pad, title_row, width - pad * 2, title,
+                        palette->primary_text, palette);
+    if (has_subtitle)
+        editor_menu_put(grid, x + pad, title_row + 1, width - pad * 2, subtitle,
+                        palette->secondary_text, palette);
+    for (i = 0U; i < count; i++) {
+        const EditorMenuRow *entry = &rows[i];
+        const int row = first_row + (int)i * step;
+        /* The identity's emphasis is brightness, not hue: a notice takes the bright
+           role rather than a warning colour of its own (§1.3, "Black, White, Red,
+           Green, Blue"). */
+        const SDL_Color fg = (entry->focused || entry->strong || entry->note)
+                                 ? palette->primary_text
+                                 : palette->secondary_text;
+        int columns = (int)strlen(entry->text);
+        editor_menu_put(grid, x + pad, row, width - pad * 2, entry->text, fg, palette);
+        if (entry->detail[0]) {
+            const int at = x + pad + label_columns + EDITOR_MENU_COLUMN_GAP;
+            editor_menu_put(grid, at, row, x + width - pad - at, entry->detail, fg,
+                            palette);
+            columns = label_columns + EDITOR_MENU_COLUMN_GAP +
+                      (int)strlen(entry->detail);
+        }
+        if (entry->focused && step >= EDITOR_MENU_ROW_STEP)
+            ui_ele_focus_perimeter_draw(grid, x + pad, row, columns + 2, 1, now_ms,
+                                        reduced_motion, palette->primary_text,
+                                        palette->canvas);
+    }
+    if (hint && hint[0])
+        editor_menu_put(grid, x + pad, hint_row, width - pad * 2, hint,
+                        palette->secondary_text, palette);
+    if (has_note)
+        editor_menu_put(grid, x + pad, hint_row + 1, width - pad * 2, note,
+                        palette->primary_text, palette);
+    (void)editor_menu_panel_material(grid, x, y, width, height, now_ms, reduced_motion);
+}
+
 
 /* The scene browser laid out the way an authored menu screen is: the field fills
    the display, and title, count, entries and hint form one centred block -- the
@@ -5416,7 +5694,7 @@ static void editor_render_scene_browser(Grid *grid, const UnifiedEditorState *ed
     /* The material goes down first and the labels over it: the field fills only
        blank cells, so the text keeps its interior spaces and stays crisp while
        the material fills behind it. */
-    (void)editor_browser_field(grid, now_ms, reduced_motion);
+    (void)editor_menu_field(grid, "editor_scene_browser", now_ms, reduced_motion);
 
     editor_browser_put_centred(grid, center_x, title_row, grid->width - 8,
                                native ? "OPEN SCENE" : "IMPORT LEGACY MAP",
@@ -5769,18 +6047,33 @@ void unified_editor_render_text_overlay(
 
         row = 5;
         if (editor->inspector_open && editor_is_surface_inspector(editor)) {
-            EditorInspectorPresentation presentation;
+            EditorInspectorPresentation presentation = {0};
             size_t count = editor->material_search_result_count;
             size_t start;
             size_t i;
             MaterialId current = 0;
             bool current_loaded;
+            /* The surface inspector keeps its corner: the ragged column-1 list it has
+               always had becomes a panel in the styling the menu work established -- a
+               bordered bed, a title, entries two rows apart so the selected one takes the
+               shared focus perimeter and its chase, and the hint under them. It is not a
+               pause menu: it must leave the world visible while you edit it, so it stays
+               small and in the corner. The list is collected here and rendered as the
+               panel at the end of this branch; collecting is what lets the per-field
+               formatting below stay exactly as it is. */
+            EditorMenuRow menu_rows[EDITOR_MENU_MAX_ROWS];
+            size_t menu_count = 0U;
+            char menu_title[64] = "";
+            char menu_hint[96] = "";
+#define grid_print(g, x, y, text, colour, bg) \
+            editor_menu_collect(menu_rows, &menu_count, (text), (colour), &palette)
 
             if (editor_domain_inspector_presentation(
                     editor->inspector_kind, &presentation)) {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
             }
             if (editor->selection.type == SELECTION_WALL_FACE) {
                 WallMaterialRef ref = editor_wall_face_to_material_ref(
@@ -5875,7 +6168,7 @@ void unified_editor_render_text_overlay(
                        editor->surface_field == EDITOR_SURFACE_FIELD_DECALS ? hi : dim,
                        bg);
             if (editor->selection_set.count <= 1U) {
-                snprintf(line, sizeof(line), " %s Optics... Enter=open",
+                snprintf(line, sizeof(line), " %s Optics...  Enter=open",
                          editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS &&
                              !editor->optical_menu_open ? ">" : " ");
                 grid_print(grid, 1, row++, line,
@@ -5888,7 +6181,7 @@ void unified_editor_render_text_overlay(
                            ? "   TRANSPARENCY  Up/Down  Left/Right=edit  Esc=back"
                            : "   OPTICS  Up/Down  Left/Right=edit  Enter=open/inherit",
                            fg, bg);
-                snprintf(line, sizeof(line), " %s Scope: %s",
+                snprintf(line, sizeof(line), " %s Scope:  %s",
                          !editor->transparency_menu_open &&
                              editor->optical_menu_index == 0U ? ">" : " ",
                          editor->optical_scope == EDITOR_OPTICAL_SCOPE_CELL
@@ -5913,7 +6206,7 @@ void unified_editor_render_text_overlay(
                         (void)editor_domain_format_transparency(
                             &editor->document, editor->selection,
                             editor->optical_scope, value, sizeof(value));
-                        snprintf(line, sizeof(line), " %s %-14s %s",
+                        snprintf(line, sizeof(line), " %s %-14s  %s",
                             editor->transparency_field ==
                                 EDITOR_TRANSPARENCY_FIELD_MASTER ? ">" : " ",
                             "Transparency", value);
@@ -5925,7 +6218,7 @@ void unified_editor_render_text_overlay(
                                 (EditorTransparencyField)(i + 1U);
                             (void)editor_domain_format_optical_field(
                                 &extension, fields[i], value, sizeof(value));
-                            snprintf(line, sizeof(line), " %s %-14s %s",
+                            snprintf(line, sizeof(line), " %s %-14s  %s",
                                 editor->transparency_field == selected ? ">" : " ",
                                 labels[i], value);
                             grid_print(grid, 1, row++, line,
@@ -5936,7 +6229,7 @@ void unified_editor_render_text_overlay(
                         (void)editor_domain_format_optical_field(
                             &extension, EDITOR_OPTICAL_FIELD_PLAYER_BLOCKS,
                             value, sizeof(value));
-                        snprintf(line, sizeof(line), " %s %-14s %s",
+                        snprintf(line, sizeof(line), " %s %-14s  %s",
                             editor->optical_menu_index == 1U ? ">" : " ",
                             "Player blocks", value);
                         grid_print(grid, 1, row++, line,
@@ -5944,14 +6237,14 @@ void unified_editor_render_text_overlay(
                         (void)editor_domain_format_transparency(
                             &editor->document, editor->selection,
                             editor->optical_scope, value, sizeof(value));
-                        snprintf(line, sizeof(line), " %s Transparency... %s",
+                        snprintf(line, sizeof(line), " %s Transparency...  %s",
                             editor->optical_menu_index == 2U ? ">" : " ", value);
                         grid_print(grid, 1, row++, line,
                             editor->optical_menu_index == 2U ? hi : dim, bg);
                         (void)editor_domain_format_optical_field(
                             &extension, EDITOR_OPTICAL_FIELD_REFLECTIVITY,
                             value, sizeof(value));
-                        snprintf(line, sizeof(line), " %s %-14s %s",
+                        snprintf(line, sizeof(line), " %s %-14s  %s",
                             editor->optical_menu_index == 3U ? ">" : " ",
                             "Reflectivity", value);
                         grid_print(grid, 1, row++, line,
@@ -5988,19 +6281,19 @@ void unified_editor_render_text_overlay(
                 grid_print(grid, 1, row++, line,
                             editor->surface_field == EDITOR_SURFACE_FIELD_REMOVE ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Cell grav dir %s  Left/Right",
+                snprintf(line, sizeof(line), " %s Cell grav dir  %s  Left/Right",
                          editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? ">" : " ",
                          gravity_names[cell->gravity_orientation]);
                 grid_print(grid, 1, row++, line,
                            editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Cell grav x %s%.2f  Left/Right",
+                snprintf(line, sizeof(line), " %s Cell grav x  %s%.2f  Left/Right",
                          editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? ">" : " ",
                          cell->gravity_scale_step == 0U ? "inherit " : "", gravity_scale);
                 grid_print(grid, 1, row++, line,
                            editor->surface_field == EDITOR_SURFACE_FIELD_GRAVITY_SCALE ? hi : dim,
                            bg);
-                snprintf(line, sizeof(line), " %s Map movement... Enter=open",
+                snprintf(line, sizeof(line), " %s Map movement...  Enter=open",
                          editor->surface_field == EDITOR_SURFACE_FIELD_MOVEMENT &&
                              !editor->movement_menu_open ? ">" : " ");
                 grid_print(grid, 1, row++, line,
@@ -6032,7 +6325,7 @@ void unified_editor_render_text_overlay(
                             (2.0 * editor->document.movement.gravity_magnitude);
                         traversal = delta <= apex ? "jump" : "blocked (height)";
                     }
-                    snprintf(line, sizeof(line), "   Traversal: %s", traversal);
+                    snprintf(line, sizeof(line), "   Traversal:  %s", traversal);
                     grid_print(grid, 1, row++, line,
                                strstr(traversal, "blocked") ? warn : fg, bg);
                 }
@@ -6053,12 +6346,12 @@ void unified_editor_render_text_overlay(
                         (void)editor_domain_movement_field_presentation(
                             (EditorMovementField)i, &metadata);
                         if (i == EDITOR_MOVEMENT_FIELD_GRAVITY_ORIENTATION) {
-                            snprintf(line, sizeof(line), " %s %s: %s",
+                            snprintf(line, sizeof(line), " %s %s:  %s",
                                      editor->movement_field == (EditorMovementField)i ? ">" : " ",
                                      metadata.label,
                                      gravity_names[movement->gravity_orientation]);
                         } else {
-                            snprintf(line, sizeof(line), " %s %s: %.4g",
+                            snprintf(line, sizeof(line), " %s %s:  %.4g",
                                      editor->movement_field == (EditorMovementField)i ? ">" : " ",
                                      metadata.label, values[i]);
                         }
@@ -6076,7 +6369,7 @@ void unified_editor_render_text_overlay(
                                "   DECALS  Up/Down  Enter=select  Esc=back", fg, bg);
                     for (i = 0U; i < decals; i++) {
                         const SceneDecalInstance *decal = editor_surface_decal_at(editor, i);
-                        snprintf(line, sizeof(line), " %s decal:%" PRIu64 " asset:%u",
+                        snprintf(line, sizeof(line), " %s decal:%" PRIu64 "  asset:%u",
                                  editor->decal_menu_index == i ? ">" : " ",
                                  decal ? decal->id : 0U,
                                  decal ? (unsigned)decal->asset.id : 0U);
@@ -6106,12 +6399,12 @@ void unified_editor_render_text_overlay(
                     grid_print(grid, 1, row++,
                                "   CREATE EMPTY  Up/Down=field Left/Right=size",
                                fg, bg);
-                    snprintf(line, sizeof(line), " %s Columns: %zu",
+                    snprintf(line, sizeof(line), " %s Columns:  %zu",
                              !editor->decal_create_edit_rows ? ">" : " ",
                              editor->decal_create_cols);
                     grid_print(grid, 1, row++, line,
                                !editor->decal_create_edit_rows ? hi : dim, bg);
-                    snprintf(line, sizeof(line), " %s Rows:    %zu",
+                    snprintf(line, sizeof(line), " %s Rows:  %zu",
                              editor->decal_create_edit_rows ? ">" : " ",
                              editor->decal_create_rows);
                     grid_print(grid, 1, row++, line,
@@ -6120,6 +6413,13 @@ void unified_editor_render_text_overlay(
                 }
             }
             if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
+#undef grid_print
+            /* Draw the collected list as the corner panel: column 1, top frame on row 4
+               so the title lands on row 5, exactly where the ragged list used to start.
+               A modal prompt is drawn by the shared modal renderer below, over this
+               panel, so the panel does not return early. */
+            editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                     menu_hint, NULL, now_ms, reduced_motion, &palette);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             EditorInspectorPresentation presentation;
