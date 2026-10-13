@@ -87,6 +87,19 @@ static int count_primary_cells(const Grid *grid) {
     return count;
 }
 
+/* Cells that are neither the world fill this test paints nor empty: the outline, whatever
+   characters it is shifting through. */
+static int count_outline_cells(const Grid *grid) {
+    int count = 0;
+    int i;
+    for (i = 0; i < grid->width * grid->height; i++) {
+        const uint8_t glyph = grid->cells[i].glyph;
+        if (glyph == 0U || glyph == ' ' || glyph == 'w') continue;
+        count++;
+    }
+    return count;
+}
+
 static int count_glyph(const Grid *grid, uint8_t glyph) {
     int count = 0;
     int x;
@@ -252,13 +265,14 @@ static void test_wrong_face_and_invalid_target_draw_nothing(void **state) {
     grid_destroy(grid);
 }
 
-/* A selected surface's outline carries the shared chromatic chase: somewhere in the lap
-   one of the identity's three additive primaries is on the outline, whatever the surface
-   type, and under Reduced Motion the outline is drawn with no chase at all. Owner
-   direction, 2026-10-13: "The indicator for what surface you have selected is currently
-   plain white. Can we have a similar chromatic effect to the button frame with the rgb
-   circling around it?" */
-static void test_selected_outline_carries_the_chromatic_chase(void **state) {
+/* A selected surface's frame is chromatic *throughout* and its characters shift along the
+   outline with explicit time: every frame cell carries one of the identity's three additive
+   primaries, one tick advances the characters, and Reduced Motion draws the frame still in
+   the plain contrast colours. Owner direction, 2026-10-13: "The surface selection rotator
+   isnt quite working. its stuttering kinda and its too thin to discern the color
+   effectively. Instad of rotating lets try making the whole frame just shift characters
+   constantly instead". */
+static void test_selected_outline_shifts_its_characters(void **state) {
     Grid *grid = grid_create(41, 25);
     Map *map = map_create(7, 7);
     Camera camera;
@@ -266,6 +280,12 @@ static void test_selected_outline_carries_the_chromatic_chase(void **state) {
     SelectionTarget floor = horizontal_target(SELECTION_FLOOR, 3, 3);
     EditorHit hover = {0};
     SDL_Color dark = {0, 0, 0, 255};
+    Cell cell;
+    int first_x = 0;
+    int first_y = 0;
+    int first_glyph = 0;
+    int i;
+    bool found = false;
 
     (void)state;
     assert_non_null(grid);
@@ -274,21 +294,38 @@ static void test_selected_outline_carries_the_chromatic_chase(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 200.0, false);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 0.0, false);
+    /* The frame is chromatic throughout: every cell of the outline that is not the world
+       carries a primary, so there is no thin band to read. */
+    assert_int_equal(count_primary_cells(grid), count_outline_cells(grid));
     assert_true(count_primary_cells(grid) > 0);
+    for (i = 0; i < grid->width * grid->height && !found; i++) {
+        if (grid->cells[i].glyph == 'w' || grid->cells[i].glyph == 0U ||
+            grid->cells[i].glyph == ' ')
+            continue;
+        found = true;
+        first_x = i % grid->width;
+        first_y = i / grid->width;
+        first_glyph = (int)grid->cells[i].glyph;
+    }
+    assert_true(found);
 
-    /* Explicit time, not a frame counter: the band is somewhere else later in the lap. */
+    /* Explicit time, not a frame counter: the whole frame advances one character a tick,
+       so the very same cell carries the next character. */
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 900.0, false);
-    assert_true(count_primary_cells(grid) > 0);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover,
+                            EDITOR_HIGHLIGHT_SHIFT_MS, false);
+    assert_true(grid_get(grid, first_x, first_y, &cell));
+    assert_true((int)cell.glyph != first_glyph);
 
-    /* A horizontal surface carries the same band. */
+    /* A horizontal surface shifts the same way. */
     camera.pitch = -5.0;
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 200.0, false);
-    assert_true(count_primary_cells(grid) > 0);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 0.0, false);
+    assert_int_equal(count_primary_cells(grid), count_outline_cells(grid));
+    assert_true(count_outline_cells(grid) > 0);
 
-    /* Reduced Motion: the outline is still drawn, with no chase. */
+    /* Reduced Motion: the frame is still drawn, in the plain contrast colours. */
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 200.0, true);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
@@ -756,7 +793,7 @@ int main(void) {
         cmocka_unit_test(test_selection_set_marks_members_and_primary_distinctly),
         cmocka_unit_test(test_nearer_wall_occludes_target),
         cmocka_unit_test(test_wrong_face_and_invalid_target_draw_nothing),
-        cmocka_unit_test(test_selected_outline_carries_the_chromatic_chase),
+        cmocka_unit_test(test_selected_outline_shifts_its_characters),
         cmocka_unit_test(test_contrast_adapts_to_dark_and_bright_cells),
         cmocka_unit_test(test_render_does_not_mutate_map_or_interior),
         cmocka_unit_test(test_crosshair_is_centered_and_adaptive),

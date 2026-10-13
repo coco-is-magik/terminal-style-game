@@ -312,20 +312,27 @@ Two more corrections followed, on the finished panel:
 > one stays still.
 > The indicator for what surface you have selected is currently plain white. Can we have a similar
 > chromatic effect to the button frame with the rgb circling around it?
+> The surface selection rotator isnt quite working. its stuttering kinda and its too thin to discern
+> the color effectively. Instad of rotating lets try making the whole frame just shift characters
+> constantly instead.
 
 9. **Exactly one indicator moves.** An edit-mode panel marks its **live cursor** with the shared focus
    perimeter and its chase, and every *other* selected row — the entry whose submenu is open — with the
    same frame in its **shape-only form** (`ui_ele_focus_perimeter_draw_still`). A submenu's rows are
    collected after the entry that opened it, so the panel takes the *last* focused row as the live
    cursor and stills the rest: two frames are drawn and one band travels.
-10. **A selected surface carries the same band.** The editor's projected selection outline — walls,
-    floors, ceilings, and the trigger regions drawn with the selected style — is walked as one closed
-    path and carries the identical chromatic chase (`ui_theme_chase_head` /
-    `ui_theme_chase_colour`, the material's own sampler, so no second colour rule exists), marking a
-    selected surface the way an authored focused button's frame is marked. A **hover** keeps the plain
-    dashed contrast outline, and **Reduced Motion** draws the outline with no band. The band is explicit
-    time like everything else: `editor_highlight_render*` takes `now_ms` and `reduced_motion` instead of
-    reading a clock.
+10. **A selected surface shifts its characters, and its frame is chromatic throughout.** The editor's
+    projected selection outline — walls, floors, ceilings, and the trigger regions drawn with the
+    selected style — is walked as one closed path whose **whole frame shifts its characters** along it,
+    one step per `EDITOR_HIGHLIGHT_SHIFT_MS` of explicit time, and every cell of that frame carries one
+    of the material's three additive primaries through the shared sampler (`ui_theme_chase_colour`)
+    rather than a hue of its own. A band travelling a one-cell-thick line was too thin to read and its
+    steps strobed against the frame rate, so the motion is the **frame's own characters** instead: the
+    characters visibly run along the outline, and the colour is legible because it is on every cell of
+    it. A **hover** keeps the plain dashed contrast outline, and **Reduced Motion** draws the frame
+    still, in the plain contrast colours. The band that marks a *focused control* is unchanged:
+    `ui_theme_chase_head` / `UI_THEME_CHASE_WIDTH` still travel the perimeter around a button, a menu
+    row and the editor's panels.
 
 The implementation record is
 [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).

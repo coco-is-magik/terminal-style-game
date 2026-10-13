@@ -146,11 +146,14 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   entries are never re-sorted, because their order is the order the cursor walks. **Exactly one indicator
   moves**: the panel's live cursor carries the perimeter *with* its chase and every other selected row —
   the entry whose submenu is open — carries the same frame in its **shape-only form**
-  (`ui_ele_focus_perimeter_draw_still`), so a panel showing both draws two frames and one band. The same
-  band travels the editor's **projected selection outline** (walls, floors, ceilings, trigger regions)
-  through `ui_theme_chase_head` / `ui_theme_chase_colour` — the material's own sampler, so a selected
-  surface is marked the way an authored focused button's frame is — while a hover keeps the plain dashed
-  contrast outline and Reduced Motion draws no band. A panel that cannot
+  (`ui_ele_focus_perimeter_draw_still`), so a panel showing both draws two frames and one band. The
+  editor's **projected selection outline** (walls, floors, ceilings, trigger regions) instead **shifts
+  its whole frame's characters** along its outline, one step per `EDITOR_HIGHLIGHT_SHIFT_MS`, with every
+  cell of that frame taking a step of the material's three additive primaries through the shared sampler
+  (`ui_theme_chase_colour`) — the characters run along the selection and the colour is legible because it
+  is on every cell of it, where a band chasing a one-cell-thick line was too thin to read. A hover keeps
+  the plain dashed contrast outline and Reduced Motion draws the frame still in the plain contrast
+  colours. A panel that cannot
   hold the two-row rhythm **closes the entries up rather than truncating the list** (and then marks the
   focused entry by brightness alone, because the perimeter would overlap its neighbours) — §4.7's
   "nothing is hidden". **A mode-selection display surface** — the authored menus and the editor's scene

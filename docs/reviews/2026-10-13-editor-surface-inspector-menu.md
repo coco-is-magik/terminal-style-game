@@ -43,8 +43,8 @@ The panel is now:
   re-sorting the display would make the cursor jump around; the alignment is what fixed the raggedness.
 
 The **selected surface** in the world also stopped being plain white: its projected outline (walls,
-floors, ceilings, trigger regions) now carries the identical chromatic band, travelling around the shape
-once per lap, exactly as an authored focused button's frame does.
+floors, ceilings, trigger regions) now **shifts its whole frame's characters** along the outline, every
+cell of it carrying a step of the material's three additive primaries.
 
 **Behaviour is untouched.** Which keys open, move, confirm and close each submenu, and every value it
 edits, is unchanged. The whole change is the form the list is drawn in.
@@ -89,11 +89,14 @@ edits, is unchanged. The whole change is the form the list is drawn in.
 - **`src/unified_editor.c`.** The panel takes the **last** focused row as its live cursor and draws that
   row's perimeter with the chase, every other focused row with the still form.
 - **`src/editor_highlight.c` / `src/editor_highlight.h`.** The outline is built as **one closed path**
-  (far edge left to right, the right side, the near edge right to left, the left side) and carries the
-  shared chase on a **selection**; hover stays plain. `now_ms` and `reduced_motion` are threaded through
-  the render entry points so the band is explicit time and absent under Reduced Motion. The column chunk
-  is one whole surface wide (512) so the editor's outline is a single path, and the side runs are drawn
-  through the same path rather than as per-chunk bars.
+  (far edge left to right, the right side, the near edge right to left, the left side). A **selection**
+  shifts its **whole frame's characters** along that path, one step per `EDITOR_HIGHLIGHT_SHIFT_MS`, from
+  a ramp of dense glyphs that starts at the selected glyph, with each cell's colour taken from the shared
+  material sampler -- so the frame is chromatic throughout. A hover stays the plain dashed outline.
+  `now_ms` and `reduced_motion` are threaded through the render entry points, so the shift is explicit
+  time and absent under Reduced Motion. The column chunk is one whole surface wide (512) so the editor's
+  outline is a single path, and the side runs are drawn through the same path rather than as per-chunk
+  bars.
 - **`Makefile`.** `test-editor-highlight` and `benchmark-editor-highlight` link `src/ui_theme.c`, which
   now provides the chase.
 - **Tests.** `test_edit_mode_submenu_moves_only_the_cursor` (two frames drawn, one band travelling),
@@ -131,9 +134,15 @@ edits, is unchanged. The whole change is the form the list is drawn in.
    caught `floor:surface`. The material is now drawn *under* the text, so a label's spaces are written over
    it and every word stays intact.
 
+9. **The rotating band on the selection outline stuttered and was too thin.** The outline is one cell
+   thick, so a five-cell band chasing it was barely a colour at all; and because the band's head advanced
+   in whole cells along a path whose legs meet at corners, its steps strobed against the frame rate. The
+   owner asked for the whole frame's characters to shift instead, which is what it does now: every cell
+   of the frame changes together, one character and one colour a tick.
+
 ## Evidence
 
-- `test-unified-editor` **100/100**, including the new `assert_corner_panel` (placement, bounded, identity
+- `test-unified-editor` **101/101**, including the new `assert_corner_panel` (placement, bounded, identity
   hues) and `panel_detail_offset` (aligned columns) locks in the surface-inspector, decal-submenu and
   transparency-submenu tests.
 - The rendering was reviewed as a **cell dump** of the real overlay. At the editor's own 260x160 frame the
@@ -166,6 +175,15 @@ edits, is unchanged. The whole change is the form the list is drawn in.
 - The body marks were measured at **`#2F3233`** — 28% of the fabric's `#A8B4B8` — so the ripple is dark
   by construction, and far below the text (`#F2F7F8`). `assert_panel_body_ripples` fails if the ripple
   stops being drawn.
+- `test-editor-highlight` **21/21**, including `test_selected_outline_shifts_its_characters`: every cell
+  of a selected wall outline and of a selected floor outline is one of the three primaries at a live time,
+  one tick advances the character on a given cell, and Reduced Motion leaves no primary at all. A dump of
+  the frame one tick apart shows the whole frame moving together:
+  ```
+  t=0        #%& @ %&8        t=1        %&8 # &8@
+             #  8 #  %                   %  @ %  &
+             @       &                   #       8
+  ```
 - A **frame dump** of the panel with the material picker open shows the two indicators behaving
   differently: the entry whose submenu is open is still white, and the submenu's own cursor carries the
   band (red and green corners at that instant):

@@ -18,6 +18,18 @@
 
 #define EDITOR_HIGHLIGHT_SELECTED_GLYPH ((uint8_t)'#')
 #define EDITOR_HIGHLIGHT_HOVER_GLYPH ((uint8_t)'.')
+
+/*
+ * How long one character of a selected frame's shift takes, in explicit milliseconds.
+ *
+ * A selected outline does not carry a band chasing around it: its *whole* frame shifts its
+ * characters along the outline, one step per tick, so the motion reads across the frame
+ * instead of on a few cells of a one-cell-thick line. Owner direction, 2026-10-13: "The
+ * surface selection rotator isnt quite working. its stuttering kinda and its too thin to
+ * discern the color effectively. Instad of rotating lets try making the whole frame just
+ * shift characters constantly instead".
+ */
+#define EDITOR_HIGHLIGHT_SHIFT_MS 90.0
 #define EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH ((uint8_t)'@')
 #define EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH ((uint8_t)'o')
 #define EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH EDITOR_HIGHLIGHT_SELECTED_GLYPH
@@ -31,10 +43,10 @@
  * drawn first; selection wins when both identify the same target. Authored lights
  * are borrowed and resolved by stable ID. All inputs remain unchanged.
  *
- * `now_ms` is explicit time and drives the shared chromatic chase that travels the
- * outline of a selected surface -- the same band an authored focused button's frame
- * carries; a hover does not carry it, and `reduced_motion` draws the outline with no
- * chase at all.
+ * `now_ms` is explicit time and drives the **shift** of a selected frame's characters: the whole
+ * outline's characters and colours advance one step per tick, so the motion reads across the
+ * frame rather than as a band chasing a one-cell-thick line. A hover does not shift, and
+ * `reduced_motion` draws the outline still in the plain contrast colours.
  */
 void editor_highlight_render(
     Grid *grid,

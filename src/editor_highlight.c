@@ -97,7 +97,8 @@ static void contrasting_colors(const Cell *under,
 
 static void draw_highlight_cell_coloured(Grid *grid, int x, int y,
                                          HighlightStyle style,
-                                         const SDL_Color *foreground_override) {
+                                         const SDL_Color *foreground_override,
+                                         int glyph_override) {
     Cell under;
     SDL_Color foreground;
     SDL_Color background;
@@ -112,9 +113,11 @@ static void draw_highlight_cell_coloured(Grid *grid, int x, int y,
 
     contrasting_colors(&under, &foreground, &background);
     if (foreground_override) foreground = *foreground_override;
-    glyph = style == HIGHLIGHT_STYLE_SELECTED
-        ? EDITOR_HIGHLIGHT_SELECTED_GLYPH
-        : EDITOR_HIGHLIGHT_HOVER_GLYPH;
+    glyph = glyph_override >= 0
+        ? (uint8_t)glyph_override
+        : style == HIGHLIGHT_STYLE_SELECTED
+            ? EDITOR_HIGHLIGHT_SELECTED_GLYPH
+            : EDITOR_HIGHLIGHT_HOVER_GLYPH;
     (void)grid_set(grid, x, y, glyph, foreground, background);
 }
 
@@ -126,18 +129,27 @@ static bool outline_column_is_edge(const HighlightColumn *columns, int index, in
     return !columns[index - 1].visible || !columns[index + 1].visible;
 }
 
+/* The characters a selected frame shifts through: all dense and of similar weight, so the
+   frame keeps the thickness of the selected glyph while its characters visibly move. The
+   first entry is the selected glyph itself, so a frame at rest is the marker it always was. */
+static const uint8_t selected_shift_ramp[] = {'#', '%', '&', '8', '@'};
+#define SELECTED_SHIFT_RAMP_LEN ((int)sizeof(selected_shift_ramp))
+
 /* One outline, drawn as a single closed path: the far edge cell of every visible column,
-   the side runs, then the near edge cell back the other way. A **selection** carries the
-   shared chromatic chase along that path, so a selected surface is marked the way an
-   authored focused button's frame is -- the identity's three additive primaries, sampled
-   by the shared evaluator rather than a hue of the outline's own. A hover keeps the plain
-   dashed contrast outline, and Reduced Motion draws no chase at all. */
+   the side runs, then the near edge cell back the other way, so a **selection** can shift
+   its characters *along* the outline and a hover keeps the plain dashed contrast outline.
+   A selected frame is **chromatic throughout** -- each cell takes a step of the identity's
+   three additive primaries, sampled through the shared material rule
+   (`ui_theme_chase_colour`) rather than a hue of the outline's own -- and the whole frame
+   advances one character per `EDITOR_HIGHLIGHT_SHIFT_MS`, so the motion reads across the
+   frame instead of as a band chasing a one-cell-thick line. Reduced Motion draws the frame
+   still, in the plain contrast colours. */
 static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
                          int count, HighlightStyle style, double now_ms,
                          bool reduced_motion) {
     static OutlineCell path[EDITOR_HIGHLIGHT_PATH_MAX];
     int cells = 0;
-    int head;
+    int shift = -1;
     int i;
     int k;
     /* The far edge, left to right. */
@@ -194,21 +206,24 @@ static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
         }
     }
 
-    head = style == HIGHLIGHT_STYLE_SELECTED
-        ? ui_theme_chase_head(cells, now_ms, reduced_motion)
-        : -1;
+    /* One step of the shift per tick of explicit time. Reduced Motion never takes one, so
+       the frame is drawn still and in the plain contrast colours. */
+    if (style == HIGHLIGHT_STYLE_SELECTED && !reduced_motion && isfinite(now_ms) &&
+        now_ms >= 0.0)
+        shift = (int)(now_ms / EDITOR_HIGHLIGHT_SHIFT_MS);
+
     for (k = 0; k < cells; k++) {
-        SDL_Color chase;
-        const SDL_Color *colour = NULL;
-        if (head >= 0) {
-            int behind = (head - k + cells) % cells;
-            if (behind < UI_THEME_CHASE_WIDTH) {
-                UiThemeColor band = ui_theme_chase_colour(behind);
-                chase = (SDL_Color){band.red, band.green, band.blue, band.alpha};
-                colour = &chase;
-            }
+        SDL_Color colour;
+        const SDL_Color *override = NULL;
+        int glyph = -1;
+        if (shift >= 0) {
+            const int phase = k + shift;
+            UiThemeColor band = ui_theme_chase_colour(phase % 3);
+            colour = (SDL_Color){band.red, band.green, band.blue, band.alpha};
+            override = &colour;
+            glyph = (int)selected_shift_ramp[phase % SELECTED_SHIFT_RAMP_LEN];
         }
-        draw_highlight_cell_coloured(grid, path[k].x, path[k].y, style, colour);
+        draw_highlight_cell_coloured(grid, path[k].x, path[k].y, style, override, glyph);
     }
 }
 
