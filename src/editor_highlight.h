@@ -30,6 +30,11 @@
  * Draw visible projected markers for selected and hovered typed targets. Hover is
  * drawn first; selection wins when both identify the same target. Authored lights
  * are borrowed and resolved by stable ID. All inputs remain unchanged.
+ *
+ * `now_ms` is explicit time and drives the shared chromatic chase that travels the
+ * outline of a selected surface -- the same band an authored focused button's frame
+ * carries; a hover does not carry it, and `reduced_motion` draws the outline with no
+ * chase at all.
  */
 void editor_highlight_render(
     Grid *grid,
@@ -38,33 +43,39 @@ void editor_highlight_render(
     const SceneLight *lights,
     size_t light_count,
     SelectionTarget selection,
-    EditorHit hover
+    EditorHit hover,
+    double now_ms,
+    bool reduced_motion
 );
 void editor_highlight_render_height(
     Grid *grid, Map *map, Camera *camera,
     const SceneLight *lights, size_t light_count,
     SelectionTarget selection, EditorHit hover,
-    const SceneHeightView *heights
+    const SceneHeightView *heights,
+    double now_ms, bool reduced_motion
 );
 
 void editor_highlight_render_set(
     Grid *grid, Map *map, Camera *camera,
     const SceneLight *lights, size_t light_count,
     const SelectionTarget *selections, size_t selection_count,
-    size_t primary_index, EditorHit hover
+    size_t primary_index, EditorHit hover,
+    double now_ms, bool reduced_motion
 );
 void editor_highlight_render_set_height(
     Grid *grid, Map *map, Camera *camera,
     const SceneLight *lights, size_t light_count,
     const SelectionTarget *selections, size_t selection_count,
     size_t primary_index, EditorHit hover,
-    const SceneHeightView *heights
+    const SceneHeightView *heights,
+    double now_ms, bool reduced_motion
 );
 void editor_highlight_render_trigger_regions(
     Grid *grid, Map *map, Camera *camera,
     const SceneTrigger *triggers, size_t trigger_count,
     SelectionTarget selection, EditorHit hover,
-    const SceneHeightView *heights
+    const SceneHeightView *heights,
+    double now_ms, bool reduced_motion
 );
 
 /** Draw the editor center-ray reticle above world highlights. */

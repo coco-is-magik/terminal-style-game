@@ -411,6 +411,60 @@ static void assert_panel_body_ripples(const Grid *grid) {
     assert_true(marks > 0);
 }
 
+/* True for a cell foreground that is one of the identity's three additive primaries: the
+   shared chromatic chase, and the only colour a moving frame carries. */
+static bool is_primary_colour(SDL_Color colour) {
+    const uint8_t high = 0x60U;
+    if (colour.r >= high && colour.g <= high && colour.b <= high) return true;
+    if (colour.g >= high && colour.r <= high && colour.b <= high) return true;
+    if (colour.b >= high && colour.r <= high && colour.g <= high) return true;
+    return false;
+}
+
+/* Count the panel's focus frames and how many of them carry a chase, so "exactly one
+   indicator moves" can be checked while a submenu is open: a frame is a '+' corner with
+   another two rows below it and a run of '-' between them, which is the shape the shared
+   perimeter draws around one entry. */
+static int count_frames_with_band(const Grid *grid, int *out_frames) {
+    int frames = 0;
+    int moving = 0;
+    int y;
+    for (y = 4; y + 2 < grid->height; y++) {
+        int x;
+        for (x = 1; x + 1 < grid->width; x++) {
+            int last_dash = x;
+            int right;
+            bool band = false;
+            int i;
+            if (grid->cells[y * grid->width + x].glyph != '+') continue;
+            if (grid->cells[(y + 2) * grid->width + x].glyph != '+') continue;
+            /* The frame's top edge runs right to its far corner. */
+            while (last_dash + 1 < grid->width &&
+                   grid->cells[y * grid->width + last_dash + 1].glyph == '-')
+                last_dash++;
+            right = last_dash + 1;
+            if (right >= grid->width) continue;
+            if (grid->cells[y * grid->width + right].glyph != '+') continue;
+            if (grid->cells[(y + 2) * grid->width + right].glyph != '+') continue;
+            frames++;
+            for (i = 0; i < 3 && !band; i++) {
+                int j;
+                for (j = 0; j <= right - x; j++) {
+                    const Cell *cell = &grid->cells[(y + i) * grid->width + x + j];
+                    if (cell->glyph == 0U) continue;
+                    if (is_primary_colour(cell->fg)) {
+                        band = true;
+                        break;
+                    }
+                }
+            }
+            if (band) moving++;
+        }
+    }
+    *out_frames = frames;
+    return moving;
+}
+
 /* How far a detail sits from the left edge of its label in the panel. The panel aligns
    its details in one column, so this is the same number for every entry however long
    the labels are -- which is what the panel was rebuilt to get right. */
@@ -4567,6 +4621,37 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     remove(path);
 }
 
+/* With a submenu open, exactly one indicator moves: the submenu's own cursor. The entry
+   whose submenu is open keeps its frame, but that frame carries no chromatic chase, so a
+   panel showing both draws two frames and one band. Owner direction, 2026-10-13: "when
+   selecting submenus ... both the top level and submenu selection indicator have the same
+   selector. Can we adjust so that only the submenu selector is moving and the top level
+   one stays still." */
+static void test_edit_mode_submenu_moves_only_the_cursor(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    Grid *grid;
+    char path[512];
+    int frames = 0;
+    int moving;
+    (void)state;
+    path_in_tmpdir(path, sizeof(path), "submenu_cursor.tscene");
+    open_horizontal_inspector(&editor, &camera, path, NATIVE_SCENE, -70.0);
+    /* The material row takes the frame as the owner of the open picker, and the picker's
+       own selection takes another. */
+    editor.surface_field = EDITOR_SURFACE_FIELD_MATERIAL;
+    editor.material_picker_open = true;
+    grid = grid_create(260, 80);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
+    moving = count_frames_with_band(grid, &frames);
+    assert_int_equal(frames, 2);
+    assert_int_equal(moving, 1);
+    grid_destroy(grid);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
 static void test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape(void **state) {
     UnifiedEditorState editor;
     Camera camera;
@@ -6105,6 +6190,7 @@ int main(void) {
         cmocka_unit_test(test_r4_increment_b_controller_commands_and_safety),
         cmocka_unit_test(test_r4_increment_c_horizontal_hover_and_selection),
         cmocka_unit_test(test_r4_increment_d_surface_material_and_construction_ui),
+        cmocka_unit_test(test_edit_mode_submenu_moves_only_the_cursor),
         cmocka_unit_test(test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape),
         cmocka_unit_test(test_r4_increment_d_empty_missing_and_runtime_failure_atomic),
         cmocka_unit_test(test_r4_increment_f_checked_in_v2_workflow),

@@ -305,6 +305,28 @@ of 2026-10-09:
 8. **Behaviour is untouched.** Which keys open, move, confirm and close a submenu, and every value it
    edits, is unchanged; only the form it is drawn in is new.
 
+Two more corrections followed, on the finished panel:
+
+> when selecting submenus, such as the materials, both the top level and submenu selection indicator
+> have the same selector. Can we adjust so that only the submenu selector is moving and the top level
+> one stays still.
+> The indicator for what surface you have selected is currently plain white. Can we have a similar
+> chromatic effect to the button frame with the rgb circling around it?
+
+9. **Exactly one indicator moves.** An edit-mode panel marks its **live cursor** with the shared focus
+   perimeter and its chase, and every *other* selected row — the entry whose submenu is open — with the
+   same frame in its **shape-only form** (`ui_ele_focus_perimeter_draw_still`). A submenu's rows are
+   collected after the entry that opened it, so the panel takes the *last* focused row as the live
+   cursor and stills the rest: two frames are drawn and one band travels.
+10. **A selected surface carries the same band.** The editor's projected selection outline — walls,
+    floors, ceilings, and the trigger regions drawn with the selected style — is walked as one closed
+    path and carries the identical chromatic chase (`ui_theme_chase_head` /
+    `ui_theme_chase_colour`, the material's own sampler, so no second colour rule exists), marking a
+    selected surface the way an authored focused button's frame is marked. A **hover** keeps the plain
+    dashed contrast outline, and **Reduced Motion** draws the outline with no band. The band is explicit
+    time like everything else: `editor_highlight_render*` takes `now_ms` and `reduced_motion` instead of
+    reading a clock.
+
 The implementation record is
 [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
 

@@ -73,6 +73,30 @@ UiThemeColor ui_theme_chroma_fringe(UiChromaFringe edge) {
     return material[2];                                     /* green */
 }
 
+/* One lap of the chase, in explicit time. Long enough to read as flow rather than as a
+   spinner, and independent of any path's length, so a small frame and a long outline move
+   at the same speed. */
+#define UI_THEME_CHASE_LAP_MS 1500.0
+
+int ui_theme_chase_head(int path_length, double now_ms, bool reduced_motion) {
+    double lap;
+    int head;
+    if (reduced_motion || path_length <= 0 || !isfinite(now_ms) || now_ms < 0.0)
+        return -1;
+    lap = now_ms - (double)((uint64_t)(now_ms / UI_THEME_CHASE_LAP_MS)) *
+                        UI_THEME_CHASE_LAP_MS;
+    head = (int)(lap / UI_THEME_CHASE_LAP_MS * (double)path_length);
+    if (head >= path_length) head = path_length - 1;
+    return head;
+}
+
+UiThemeColor ui_theme_chase_colour(int behind) {
+    UiChromaFringe edge = behind % 3 == 0 ? UI_CHROMA_FRINGE_LEFT :
+                          behind % 3 == 1 ? UI_CHROMA_FRINGE_RIGHT :
+                                            UI_CHROMA_FRINGE_HORIZONTAL;
+    return ui_theme_chroma_fringe(edge);
+}
+
 static double srgb_to_linear(uint8_t channel) {
     double value = channel / 255.0;
     if (value <= 0.04045) return value / 12.92;

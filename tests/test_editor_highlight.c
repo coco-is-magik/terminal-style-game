@@ -65,6 +65,28 @@ static void fill_grid(Grid *grid, uint8_t glyph, SDL_Color fg, SDL_Color bg) {
     }
 }
 
+/* True for a cell foreground that is one of the identity's three additive primaries: the
+   shared chromatic chase, and the only colour an editor outline carries that is neither
+   white nor black. */
+static bool is_primary_colour(SDL_Color colour) {
+    const uint8_t high = 0x60U;
+    if (colour.r >= high && colour.g <= high && colour.b <= high) return true;
+    if (colour.g >= high && colour.r <= high && colour.b <= high) return true;
+    if (colour.b >= high && colour.r <= high && colour.g <= high) return true;
+    return false;
+}
+
+static int count_primary_cells(const Grid *grid) {
+    int count = 0;
+    int i;
+    for (i = 0; i < grid->width * grid->height; i++) {
+        const Cell *cell = &grid->cells[i];
+        if (cell->glyph == 0U) continue;
+        if (is_primary_colour(cell->fg)) count++;
+    }
+    return count;
+}
+
 static int count_glyph(const Grid *grid, uint8_t glyph) {
     int count = 0;
     int x;
@@ -113,7 +135,7 @@ static void render_cardinal_case(double camera_x, double camera_y,
     camera_init(&camera, camera_x, camera_y, angle, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, selection, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, selection, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_true(count_glyph(grid, 'w') > 0);
 
@@ -145,12 +167,12 @@ static void test_hover_is_dashed_and_selection_wins_same_target(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, none, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, none, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH), 0);
 
@@ -176,7 +198,7 @@ static void test_selection_set_marks_members_and_primary_distinctly(void **state
     camera_init(&camera, 2.5, 3.8, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render_set(
-        grid, map, &camera, NULL, 0U, targets, 2U, 1U, hover);
+        grid, map, &camera, NULL, 0U, targets, 2U, 1U, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH) > 0);
     map_destroy(map);
@@ -199,7 +221,7 @@ static void test_nearer_wall_occludes_target(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     map_destroy(map);
@@ -222,9 +244,55 @@ static void test_wrong_face_and_invalid_target_draw_nothing(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, wrong_face, hover);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, empty, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wrong_face, hover, 0.0, false);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, empty, hover, 0.0, false);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH), 0);
+
+    map_destroy(map);
+    grid_destroy(grid);
+}
+
+/* A selected surface's outline carries the shared chromatic chase: somewhere in the lap
+   one of the identity's three additive primaries is on the outline, whatever the surface
+   type, and under Reduced Motion the outline is drawn with no chase at all. Owner
+   direction, 2026-10-13: "The indicator for what surface you have selected is currently
+   plain white. Can we have a similar chromatic effect to the button frame with the rgb
+   circling around it?" */
+static void test_selected_outline_carries_the_chromatic_chase(void **state) {
+    Grid *grid = grid_create(41, 25);
+    Map *map = map_create(7, 7);
+    Camera camera;
+    SelectionTarget wall = wall_target(5, 3, WALL_FACE_WEST);
+    SelectionTarget floor = horizontal_target(SELECTION_FLOOR, 3, 3);
+    EditorHit hover = {0};
+    SDL_Color dark = {0, 0, 0, 255};
+
+    (void)state;
+    assert_non_null(grid);
+    assert_non_null(map);
+    map_set(map, 5, 3, 1);
+    camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
+
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 200.0, false);
+    assert_true(count_primary_cells(grid) > 0);
+
+    /* Explicit time, not a frame counter: the band is somewhere else later in the lap. */
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 900.0, false);
+    assert_true(count_primary_cells(grid) > 0);
+
+    /* A horizontal surface carries the same band. */
+    camera.pitch = -5.0;
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 200.0, false);
+    assert_true(count_primary_cells(grid) > 0);
+
+    /* Reduced Motion: the outline is still drawn, with no chase. */
+    fill_grid(grid, 'w', dark, dark);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, wall, hover, 200.0, true);
+    assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
+    assert_int_equal(count_primary_cells(grid), 0);
 
     map_destroy(map);
     grid_destroy(grid);
@@ -246,14 +314,16 @@ static void test_contrast_adapts_to_dark_and_bright_cells(void **state) {
     map_set(map, 5, 3, 1);
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
 
+    /* Reduced Motion: this test is about the contrasting outline itself, and the
+       chromatic chase deliberately colours one cell of a *selected* outline. */
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, true);
     cell = first_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     assert_int_equal(cell.fg.r, 255);
     assert_int_equal(cell.bg.r, 0);
 
     fill_grid(grid, 'w', bright, bright);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, true);
     cell = first_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     assert_int_equal(cell.fg.r, 0);
     assert_int_equal(cell.bg.r, 255);
@@ -281,7 +351,7 @@ static void test_render_does_not_mutate_map_or_interior(void **state) {
     assert_true(grid_get(grid, grid->width / 2, grid->height / 2,
                          &center_before));
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
 
     assert_int_equal(map_get(map, 5, 3)->material_id, 7);
     assert_true(grid_get(grid, grid->width / 2, grid->height / 2,
@@ -326,7 +396,7 @@ static void test_wide_grid_has_no_fixed_width_cutoff(void **state) {
     camera_init(&camera, 2.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
 
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
     for (y = 0; y < grid->height; y++) {
         for (x = grid->width / 2; x < grid->width; x++) {
             if (grid->cells[y * grid->width + x].glyph ==
@@ -357,11 +427,11 @@ static void test_extreme_horizon_offsets_clip_safely(void **state) {
 
     fill_grid(grid, 'w', dark, dark);
     camera.pitch = (double)grid->height;
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
 
     fill_grid(grid, 'w', dark, dark);
     camera.pitch = -(double)grid->height;
-    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, target, hover, 0.0, false);
 
     map_destroy(map);
     grid_destroy(grid);
@@ -389,7 +459,7 @@ static void test_light_marker_resolves_stable_id_and_projects(void **state) {
     camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render(grid, map, &camera, lights, 2U,
-                            selection, hover);
+                            selection, hover, 0.0, false);
     assert_int_equal(count_glyph(
         grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 3);
     assert_true(grid_get(grid, grid->width / 2, grid->height / 2, &marker));
@@ -418,11 +488,11 @@ static void test_light_hover_and_selection_precedence(void **state) {
     assert_non_null(map);
     camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, &light, 1U, none, hover);
+    editor_highlight_render(grid, map, &camera, &light, 1U, none, hover, 0.0, false);
     assert_int_equal(count_glyph(grid, EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH), 3);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover);
+    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover, 0.0, false);
     assert_int_equal(count_glyph(
         grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 3);
     assert_int_equal(count_glyph(grid, EDITOR_LIGHT_HIGHLIGHT_HOVER_GLYPH), 0);
@@ -446,7 +516,7 @@ static void test_light_marker_obeys_wall_occlusion(void **state) {
     map_set(map, 3, 3, 1);
     camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover);
+    editor_highlight_render(grid, map, &camera, &light, 1U, target, hover, 0.0, false);
     assert_int_equal(count_glyph(
         grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
 
@@ -471,18 +541,18 @@ static void test_light_marker_rejects_invalid_or_invisible_targets(void **state)
     camera_init(&camera, 1.5, 3.5, 0.0, PI / 2.0);
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render(grid, map, &camera, lights, 2U,
-                            light_target(99U), hover);
+                            light_target(99U), hover, 0.0, false);
     editor_highlight_render(grid, map, &camera, lights, 2U,
-                            light_target(11U), hover);
+                            light_target(11U), hover, 0.0, false);
     editor_highlight_render(grid, map, &camera, lights, 2U,
-                            light_target(12U), hover);
+                            light_target(12U), hover, 0.0, false);
     assert_int_equal(count_glyph(
         grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     camera.pitch = (double)grid->height;
     lights[0].x = 4.5;
     editor_highlight_render(grid, map, &camera, lights, 2U,
-                            light_target(11U), hover);
+                            light_target(11U), hover, 0.0, false);
     assert_int_equal(count_glyph(
         grid, EDITOR_LIGHT_HIGHLIGHT_SELECTED_GLYPH), 0);
 
@@ -505,18 +575,19 @@ static void test_horizontal_selected_and_hover_are_distinct(void **state) {
     camera.pitch = -5.0;
     fill_grid(grid, 'w', dark, dark);
     editor_highlight_render(
-        grid, map, &camera, NULL, 0U, (SelectionTarget){0}, hover);
+        grid, map, &camera, NULL, 0U, (SelectionTarget){0}, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_HOVER_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
 
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_HOVER_GLYPH), 0);
 
     camera.pitch = 5.0;
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, ceiling, (EditorHit){0});
+    editor_highlight_render(grid, map, &camera, NULL, 0U, ceiling, (EditorHit){0}, 0.0,
+                            false);
     assert_true(count_glyph(grid, EDITOR_CEILING_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_int_equal(count_glyph(grid, EDITOR_HIGHLIGHT_HOVER_GLYPH), 0);
     map_destroy(map);
@@ -539,13 +610,13 @@ static void test_horizontal_highlight_occlusion_invalid_and_borrowed_inputs(void
     before_camera = camera;
     map_set(map, 3, 3, 1);
     fill_grid(grid, 'w', dark, dark);
-    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 0.0, false);
     assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
     assert_memory_equal(&camera, &before_camera, sizeof(camera));
     assert_int_equal(map_get(map, 3, 3)->material_id, 1);
 
     floor.value.horizontal.map_x = 99;
-    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover);
+    editor_highlight_render(grid, map, &camera, NULL, 0U, floor, hover, 0.0, false);
     assert_int_equal(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH), 0);
     map_destroy(map);
     grid_destroy(grid);
@@ -585,7 +656,7 @@ static void test_horizontal_highlight_composes_over_authored_material(void **sta
     raycast_render(grid, map, &camera, &assets, &world, &surfaces);
     assert_true(count_glyph(grid, 'f') > 0);
     editor_highlight_render(
-        grid, map, &camera, NULL, 0U, floor, (EditorHit){0});
+        grid, map, &camera, NULL, 0U, floor, (EditorHit){0}, 0.0, false);
     assert_true(count_glyph(grid, EDITOR_FLOOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_true(count_glyph(grid, 'f') > 0);
     assert_memory_equal(&camera, &before_camera, sizeof(camera));
@@ -625,12 +696,13 @@ static void test_height_aware_wall_outline_matches_raised_span(void **state) {
     }
     fill_grid(legacy, ' ', dark, dark);
     fill_grid(raised, ' ', dark, dark);
-    editor_highlight_render(legacy, map, &camera, NULL, 0U, wall, (EditorHit){0});
+    editor_highlight_render(legacy, map, &camera, NULL, 0U, wall, (EditorHit){0}, 0.0,
+                            false);
     legacy_count = count_glyph(legacy, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     cells[4U * 9U + 7U].floor_height_step = UINT16_C(0x0080);
     cells[4U * 9U + 7U].ceiling_height_step = UINT16_C(0x0180);
     editor_highlight_render_height(
-        raised, map, &camera, NULL, 0U, wall, (EditorHit){0}, &heights);
+        raised, map, &camera, NULL, 0U, wall, (EditorHit){0}, &heights, 0.0, false);
     raised_count = count_glyph(raised, EDITOR_HIGHLIGHT_SELECTED_GLYPH);
     assert_true(legacy_count > 0);
     assert_true(raised_count > 0);
@@ -648,7 +720,7 @@ static void test_null_inputs_are_safe(void **state) {
     EditorHit hover = {0};
 
     (void)state;
-    editor_highlight_render(NULL, NULL, NULL, NULL, 0U, none, hover);
+    editor_highlight_render(NULL, NULL, NULL, NULL, 0U, none, hover, 0.0, false);
     editor_crosshair_render(NULL);
 }
 
@@ -669,7 +741,8 @@ static void test_trigger_region_highlight_is_visible_and_borrowed(void **state) 
     selection.type = SELECTION_TRIGGER;
     selection.value.trigger.id = 7U;
     editor_highlight_render_trigger_regions(
-        grid, map, &camera, &trigger, 1U, selection, (EditorHit){0}, NULL);
+        grid, map, &camera, &trigger, 1U, selection, (EditorHit){0}, NULL, 0.0,
+        false);
     assert_true(count_glyph(grid, EDITOR_HIGHLIGHT_SELECTED_GLYPH) > 0);
     assert_memory_equal(&trigger, &before, sizeof(trigger));
     map_destroy(map);
@@ -683,6 +756,7 @@ int main(void) {
         cmocka_unit_test(test_selection_set_marks_members_and_primary_distinctly),
         cmocka_unit_test(test_nearer_wall_occludes_target),
         cmocka_unit_test(test_wrong_face_and_invalid_target_draw_nothing),
+        cmocka_unit_test(test_selected_outline_carries_the_chromatic_chase),
         cmocka_unit_test(test_contrast_adapts_to_dark_and_bright_cells),
         cmocka_unit_test(test_render_does_not_mutate_map_or_interior),
         cmocka_unit_test(test_crosshair_is_centered_and_adaptive),

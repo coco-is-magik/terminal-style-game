@@ -143,7 +143,14 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   sit **two rows apart** so the focused entry
   takes the shared **focus perimeter and its chase** (in `primary_text` here), and they are **two aligned
   columns** — the label column is measured by the panel, never padded by hand in a source string, and the
-  entries are never re-sorted, because their order is the order the cursor walks. A panel that cannot
+  entries are never re-sorted, because their order is the order the cursor walks. **Exactly one indicator
+  moves**: the panel's live cursor carries the perimeter *with* its chase and every other selected row —
+  the entry whose submenu is open — carries the same frame in its **shape-only form**
+  (`ui_ele_focus_perimeter_draw_still`), so a panel showing both draws two frames and one band. The same
+  band travels the editor's **projected selection outline** (walls, floors, ceilings, trigger regions)
+  through `ui_theme_chase_head` / `ui_theme_chase_colour` — the material's own sampler, so a selected
+  surface is marked the way an authored focused button's frame is — while a hover keeps the plain dashed
+  contrast outline and Reduced Motion draws no band. A panel that cannot
   hold the two-row rhythm **closes the entries up rather than truncating the list** (and then marks the
   focused entry by brightness alone, because the perimeter would overlap its neighbours) — §4.7's
   "nothing is hidden". **A mode-selection display surface** — the authored menus and the editor's scene

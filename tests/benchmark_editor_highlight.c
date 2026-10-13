@@ -112,7 +112,7 @@ static bool render_scenario(Grid *grid, Map *map, Camera *camera,
             break;
     }
     editor_highlight_render(grid, map, camera, lights, light_count,
-                            selection, hover);
+                            selection, hover, 0.0, false);
     return true;
 }
 

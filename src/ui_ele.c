@@ -979,8 +979,6 @@ void ui_layout_render(UiLayout *layout, Grid *grid, SDL_Color fg, SDL_Color bg) 
    chromatic-aberration colours travels around it. Under Reduced Motion the full
    frame is drawn without the chase, so focus is still shown by shape, not
    motion. Only the focused element reaches here. */
-#define UI_FOCUS_PERIMETER_LAP_MS 1500.0
-#define UI_FOCUS_PERIMETER_CHASE 5
 
 static void focus_perimeter_point(int x0, int y0, int w, int h, int index,
                                   int *px, int *py) {
@@ -1019,14 +1017,10 @@ static void focus_perimeter_draw_core(Grid *grid, int x, int y, int width, int h
     int w = width + 2;
     int h = height + 2;
     int perimeter = 2 * w + 2 * h - 4;
-    int head = -1;
+    int head = chroma_chase
+        ? ui_theme_chase_head(perimeter, now_ms, reduced_motion)
+        : -1;
     int i;
-    if (chroma_chase && !reduced_motion && perimeter > 0) {
-        double lap = now_ms - (double)((uint64_t)(now_ms / UI_FOCUS_PERIMETER_LAP_MS)) *
-                                 UI_FOCUS_PERIMETER_LAP_MS;
-        head = (int)(lap / UI_FOCUS_PERIMETER_LAP_MS * (double)perimeter);
-        if (head >= perimeter) head = perimeter - 1;
-    }
     for (i = 0; i < perimeter; i++) {
         int px;
         int py;
@@ -1035,12 +1029,8 @@ static void focus_perimeter_draw_core(Grid *grid, int x, int y, int width, int h
         focus_perimeter_point(x0, y0, w, h, i, &px, &py);
         if (head >= 0) {
             int behind = (head - i + perimeter) % perimeter;
-            if (behind < UI_FOCUS_PERIMETER_CHASE) {
-                UiChromaFringe edge = behind % 3 == 0 ? UI_CHROMA_FRINGE_LEFT :
-                                      behind % 3 == 1 ? UI_CHROMA_FRINGE_RIGHT :
-                                                        UI_CHROMA_FRINGE_HORIZONTAL;
-                colour = theme_sdl(ui_theme_chroma_fringe(edge));
-            }
+            if (behind < UI_THEME_CHASE_WIDTH)
+                colour = theme_sdl(ui_theme_chase_colour(behind));
         }
         corner = (px == x0 || px == x0 + w - 1) &&
                  (py == y0 || py == y0 + h - 1);
@@ -1065,6 +1055,11 @@ void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height
                                  SDL_Color bg) {
     focus_perimeter_draw_core(grid, x, y, width, height, now_ms, true,
                               reduced_motion, frame, bg);
+}
+
+void ui_ele_focus_perimeter_draw_still(Grid *grid, int x, int y, int width, int height,
+                                       SDL_Color frame, SDL_Color bg) {
+    focus_perimeter_draw_core(grid, x, y, width, height, 0.0, false, true, frame, bg);
 }
 
 bool ui_layout_render_focus_effect(UiLayout *layout, int focus_index, Grid *grid,

@@ -136,6 +136,16 @@ void ui_ele_focus_perimeter_draw(Grid *grid, int x, int y, int width, int height
                                  double now_ms, bool reduced_motion, SDL_Color frame,
                                  SDL_Color bg);
 
+/**
+ * The shape-only form of the same perimeter: the `frame`-coloured frame with no
+ * chromatic chase at all. This is how a row that is *not* the live cursor is marked --
+ * a top-level entry whose submenu is open keeps its frame while the submenu's own cursor
+ * carries the chase -- so exactly one indicator moves at a time while the rest still
+ * read as selected.
+ */
+void ui_ele_focus_perimeter_draw_still(Grid *grid, int x, int y, int width, int height,
+                                       SDL_Color frame, SDL_Color bg);
+
 /** Parses a layout `underlay=` value; unknown values leave `out_mode` alone. */
 bool ui_ele_underlay_parse(const char *name, UiUnderlayMode *out_mode);
 

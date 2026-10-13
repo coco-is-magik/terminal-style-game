@@ -42,6 +42,23 @@ static UiElement make_text_element(const char *name, const char *content,
     return e;
 }
 
+/* Cells whose foreground is one of the identity's three additive primaries: the shared
+   chromatic chase, and the only colour a perimeter cell can carry that is neither its
+   frame colour nor its background. */
+static int count_chase_cells(const Grid *grid) {
+    int count = 0;
+    int i;
+    for (i = 0; i < grid->width * grid->height; i++) {
+        const Cell *cell = &grid->cells[i];
+        if (cell->glyph == 0U) continue;
+        if ((cell->fg.r >= 0x60U && cell->fg.g <= 0x60U && cell->fg.b <= 0x60U) ||
+            (cell->fg.g >= 0x60U && cell->fg.r <= 0x60U && cell->fg.b <= 0x60U) ||
+            (cell->fg.b >= 0x60U && cell->fg.r <= 0x60U && cell->fg.g <= 0x60U))
+            count++;
+    }
+    return count;
+}
+
 static void release_stack_element(UiElement *e) {
     free(e->content);
     e->content = NULL;
@@ -276,6 +293,19 @@ static void test_focus_perimeter_runs_around_focused_button(void **state) {
     assert_true(ui_layout_render_focus_effect(&layout, 0, grid, 0.0, false, fg, fg, bg));
     assert_true(grid_get(grid, 3, 4, &cell));
     assert_int_equal(cell.glyph, ' ');
+
+    /* The shape-only form: the same frame with no chase at all, which is how a row that
+       is not the live cursor is marked while the submenu's own cursor moves. */
+    grid_clear(grid, bg);
+    ui_ele_focus_perimeter_draw(grid, 4, 5, 10, 1, 300.0, false, fg, bg);
+    assert_true(count_chase_cells(grid) > 0);
+    grid_clear(grid, bg);
+    ui_ele_focus_perimeter_draw_still(grid, 4, 5, 10, 1, fg, bg);
+    assert_int_equal(count_chase_cells(grid), 0);
+    assert_true(grid_get(grid, 3, 4, &cell));
+    assert_int_equal(cell.glyph, '+');
+    assert_true(grid_get(grid, 8, 4, &cell));
+    assert_int_equal(cell.glyph, '-');
 
     release_stack_element(&button);
     grid_destroy(grid);

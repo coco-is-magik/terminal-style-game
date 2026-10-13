@@ -1300,15 +1300,18 @@ int app_main(int argc, char* argv[]) {
                         editor_highlight_render_set_height(
                             grid, ed_map, &cam, editor_lights, editor_light_count,
                             ued.selection_set.members, ued.selection_set.count,
-                            ued.selection_set.primary_index, ued.hover, heights);
+                            ued.selection_set.primary_index, ued.hover, heights,
+                            motion_now_ms, reduced_motion);
                     } else {
                         editor_highlight_render_height(
                             grid, ed_map, &cam, editor_lights, editor_light_count,
-                            ued.selection, ued.hover, heights);
+                            ued.selection, ued.hover, heights, motion_now_ms,
+                            reduced_motion);
                     }
                     editor_highlight_render_trigger_regions(
                         grid, ed_map, &cam, ued.document.triggers,
-                        ued.document.trigger_count, ued.selection, ued.hover, heights);
+                        ued.document.trigger_count, ued.selection, ued.hover, heights,
+                        motion_now_ms, reduced_motion);
                 } else {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);

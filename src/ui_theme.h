@@ -135,6 +135,21 @@ typedef enum {
 
 UiThemeColor ui_theme_chroma_fringe(UiChromaFringe edge);
 
+/*
+ * The chromatic chase: a short band of the three additive primaries that travels a
+ * closed path once per lap, the way the shared material's fringe travels a focus
+ * perimeter. Exposed here because it is the *material's* motion, so anything that
+ * walks a closed path -- the perimeter around a control, and the editor's projected
+ * selection outline -- carries one identical band. A caller asks for the head along a
+ * path of `path_length` cells, then colours the cell at index `index` with
+ * `ui_theme_chase_colour((head - index + path_length) % path_length)` for every value
+ * below `UI_THEME_CHASE_WIDTH`. `head` is -1 when there is no band to draw: Reduced
+ * Motion, an empty path, or an unusable time.
+ */
+#define UI_THEME_CHASE_WIDTH 5
+int ui_theme_chase_head(int path_length, double now_ms, bool reduced_motion);
+UiThemeColor ui_theme_chase_colour(int behind);
+
 /** Resolves RGBA over an opaque background; out_color is unchanged on failure. */
 bool ui_theme_composite_over(UiThemeColor foreground, UiThemeColor background,
                              UiThemeColor *out_color);

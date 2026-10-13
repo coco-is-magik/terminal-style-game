@@ -5,12 +5,13 @@
 #include "config.h"
 #include "editor_selection.h"
 #include "raycast.h"
+#include "ui_theme.h"
 
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 
-#define EDITOR_HIGHLIGHT_COLUMN_CHUNK 256
+#define EDITOR_HIGHLIGHT_COLUMN_CHUNK 512
 
 typedef enum {
     HIGHLIGHT_STYLE_HOVER = 0,
@@ -22,6 +23,25 @@ typedef struct {
     int draw_start;
     int draw_end;
 } HighlightColumn;
+
+/* What part of the outline a cell belongs to. The path is walked far edge first (left to
+   right), then the sides, then the near edge back (right to left), so the chromatic chase
+   travels the outline the way the shared focus perimeter travels a frame. */
+typedef enum {
+    OUTLINE_CELL_FAR = 0,
+    OUTLINE_CELL_NEAR,
+    OUTLINE_CELL_SIDE
+} OutlineCellPart;
+
+typedef struct {
+    int x;
+    int y;
+    OutlineCellPart part;
+} OutlineCell;
+
+/* Cell cap for one outline path: two cells per column plus the side runs. The editor's
+   surface is 260x160, so this covers a whole outline with room to spare. */
+#define EDITOR_HIGHLIGHT_PATH_MAX 2048
 
 static void contrasting_colors(
     const Cell *under,
@@ -75,8 +95,9 @@ static void contrasting_colors(const Cell *under,
     }
 }
 
-static void draw_highlight_cell(Grid *grid, int x, int y,
-                                HighlightStyle style) {
+static void draw_highlight_cell_coloured(Grid *grid, int x, int y,
+                                         HighlightStyle style,
+                                         const SDL_Color *foreground_override) {
     Cell under;
     SDL_Color foreground;
     SDL_Color background;
@@ -90,32 +111,111 @@ static void draw_highlight_cell(Grid *grid, int x, int y,
     }
 
     contrasting_colors(&under, &foreground, &background);
+    if (foreground_override) foreground = *foreground_override;
     glyph = style == HIGHLIGHT_STYLE_SELECTED
         ? EDITOR_HIGHLIGHT_SELECTED_GLYPH
         : EDITOR_HIGHLIGHT_HOVER_GLYPH;
     (void)grid_set(grid, x, y, glyph, foreground, background);
 }
 
-static void draw_outline_columns(Grid *grid, const HighlightColumn *columns,
-                                 int first, int count, HighlightStyle style) {
-    int x;
-    for (x = 0; x < count; x++) {
+/* True when a column is an edge of the shape: the first or last of the run, or beside a
+   gap where the surface is cut by occlusion. These are the columns whose interior run is
+   part of the outline. */
+static bool outline_column_is_edge(const HighlightColumn *columns, int index, int count) {
+    if (index <= 0 || index >= count - 1) return true;
+    return !columns[index - 1].visible || !columns[index + 1].visible;
+}
+
+/* One outline, drawn as a single closed path: the far edge cell of every visible column,
+   the side runs, then the near edge cell back the other way. A **selection** carries the
+   shared chromatic chase along that path, so a selected surface is marked the way an
+   authored focused button's frame is -- the identity's three additive primaries, sampled
+   by the shared evaluator rather than a hue of the outline's own. A hover keeps the plain
+   dashed contrast outline, and Reduced Motion draws no chase at all. */
+static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
+                         int count, HighlightStyle style, double now_ms,
+                         bool reduced_motion) {
+    static OutlineCell path[EDITOR_HIGHLIGHT_PATH_MAX];
+    int cells = 0;
+    int head;
+    int i;
+    int k;
+    /* The far edge, left to right. */
+    for (i = 0; i < count; i++) {
+        if (!columns[i].visible) continue;
+        if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
+        path[cells++] = (OutlineCell){first + i, columns[i].draw_start,
+                                      OUTLINE_CELL_FAR};
+    }
+    /* The right side: the interior of the last visible column, top to bottom. */
+    for (i = count - 1; i >= 0; i--) {
         int y;
-        if (!columns[x].visible) continue;
-        draw_highlight_cell(grid, first + x, columns[x].draw_start, style);
-        if (columns[x].draw_end != columns[x].draw_start)
-            draw_highlight_cell(grid, first + x, columns[x].draw_end, style);
-        if (x == 0 || x == count - 1 || !columns[x - 1].visible ||
-            !columns[x + 1].visible) {
-            for (y = columns[x].draw_start + 1; y < columns[x].draw_end; y++)
-                draw_highlight_cell(grid, first + x, y, style);
+        if (!columns[i].visible) continue;
+        if (outline_column_is_edge(columns, i, count)) {
+            for (y = columns[i].draw_start + 1; y < columns[i].draw_end; y++) {
+                if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
+                path[cells++] = (OutlineCell){first + i, y, OUTLINE_CELL_SIDE};
+            }
         }
+        break;
+    }
+    /* The near edge, right to left. */
+    for (i = count - 1; i >= 0; i--) {
+        if (!columns[i].visible) continue;
+        if (columns[i].draw_end == columns[i].draw_start) continue;
+        if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
+        path[cells++] = (OutlineCell){first + i, columns[i].draw_end,
+                                      OUTLINE_CELL_NEAR};
+    }
+    /* The left side: the interior of the first visible column, bottom to top. */
+    for (i = 0; i < count; i++) {
+        int y;
+        if (!columns[i].visible) continue;
+        if (outline_column_is_edge(columns, i, count)) {
+            for (y = columns[i].draw_end - 1; y > columns[i].draw_start; y--) {
+                if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
+                path[cells++] = (OutlineCell){first + i, y, OUTLINE_CELL_SIDE};
+            }
+        }
+        break;
+    }
+    /* Any other side run -- where occlusion cuts the surface -- joins the path at the end.
+       Those runs are rare, so the chase passing them once per lap out of order is not
+       visible; every ordinary outline is the two sides above. */
+    for (i = 0; i < count; i++) {
+        int y;
+        if (!columns[i].visible) continue;
+        if (!outline_column_is_edge(columns, i, count)) continue;
+        if (i == 0 || i == count - 1) continue;
+        if (!columns[i - 1].visible) continue;
+        for (y = columns[i].draw_start + 1; y < columns[i].draw_end; y++) {
+            if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
+            path[cells++] = (OutlineCell){first + i, y, OUTLINE_CELL_SIDE};
+        }
+    }
+
+    head = style == HIGHLIGHT_STYLE_SELECTED
+        ? ui_theme_chase_head(cells, now_ms, reduced_motion)
+        : -1;
+    for (k = 0; k < cells; k++) {
+        SDL_Color chase;
+        const SDL_Color *colour = NULL;
+        if (head >= 0) {
+            int behind = (head - k + cells) % cells;
+            if (behind < UI_THEME_CHASE_WIDTH) {
+                UiThemeColor band = ui_theme_chase_colour(behind);
+                chase = (SDL_Color){band.red, band.green, band.blue, band.alpha};
+                colour = &chase;
+            }
+        }
+        draw_highlight_cell_coloured(grid, path[k].x, path[k].y, style, colour);
     }
 }
 
 static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
                                       SelectionTarget target, HighlightStyle style,
-                                      const SceneHeightView *heights) {
+                                      const SceneHeightView *heights, double now_ms,
+                                      bool reduced_motion) {
     HighlightColumn columns[EDITOR_HIGHLIGHT_COLUMN_CHUNK];
     int first;
     if ((target.type != SELECTION_FLOOR && target.type != SELECTION_CEILING) ||
@@ -172,7 +272,7 @@ static void render_horizontal_surface(Grid *grid, Map *map, Camera *camera,
                 columns[local_x].draw_end = y;
             }
         }
-        draw_outline_columns(grid, columns, first, count, style);
+        draw_outline(grid, columns, first, count, style, now_ms, reduced_motion);
     }
 }
 
@@ -256,7 +356,8 @@ static void collect_target_columns(Grid *grid, Map *map, Camera *camera,
 static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
                                 SelectionTarget target,
                                 HighlightStyle style,
-                                const SceneHeightView *heights) {
+                                const SceneHeightView *heights, double now_ms,
+                                bool reduced_motion) {
     HighlightColumn columns[EDITOR_HIGHLIGHT_COLUMN_CHUNK + 2];
     int chunk_start;
 
@@ -270,7 +371,6 @@ static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
         int chunk_count = grid->width - chunk_start;
         int collected_first;
         int collected_count;
-        int local_x;
 
         if (chunk_count > EDITOR_HIGHLIGHT_COLUMN_CHUNK) {
             chunk_count = EDITOR_HIGHLIGHT_COLUMN_CHUNK;
@@ -286,35 +386,8 @@ static void render_wall_outline(Grid *grid, Map *map, Camera *camera,
         collect_target_columns(grid, map, camera, target.value.wall_face, heights,
                                columns, collected_first, collected_count);
 
-        for (local_x = 0; local_x < chunk_count; local_x++) {
-            int screen_x = chunk_start + local_x;
-            int collected_x = screen_x - collected_first;
-            int y;
-
-            if (!columns[collected_x].visible) {
-                continue;
-            }
-
-            draw_highlight_cell(grid, screen_x,
-                                columns[collected_x].draw_start, style);
-            if (columns[collected_x].draw_end !=
-                columns[collected_x].draw_start) {
-                draw_highlight_cell(grid, screen_x,
-                                    columns[collected_x].draw_end, style);
-            }
-
-            if (screen_x == 0 || screen_x == grid->width - 1 ||
-                (screen_x > 0 &&
-                 !columns[collected_x - 1].visible) ||
-                (screen_x + 1 < grid->width &&
-                 !columns[collected_x + 1].visible)) {
-                for (y = columns[collected_x].draw_start + 1;
-                     y < columns[collected_x].draw_end;
-                     y++) {
-                    draw_highlight_cell(grid, screen_x, y, style);
-                }
-            }
-        }
+        draw_outline(grid, columns + (chunk_start - collected_first), chunk_start,
+                     chunk_count, style, now_ms, reduced_motion);
     }
 }
 
@@ -400,28 +473,33 @@ static void render_light_marker(Grid *grid, Map *map, Camera *camera,
 static void render_target(Grid *grid, Map *map, Camera *camera,
                           const SceneLight *lights, size_t light_count,
                           SelectionTarget target, HighlightStyle style,
-                          const SceneHeightView *heights) {
+                          const SceneHeightView *heights, double now_ms,
+                          bool reduced_motion) {
     if (target.type == SELECTION_WALL_FACE) {
-        render_wall_outline(grid, map, camera, target, style, heights);
+        render_wall_outline(grid, map, camera, target, style, heights, now_ms,
+                            reduced_motion);
     } else if (target.type == SELECTION_LIGHT) {
         render_light_marker(grid, map, camera, lights, light_count, target, style);
     } else if (target.type == SELECTION_FLOOR ||
                target.type == SELECTION_CEILING) {
-        render_horizontal_surface(grid, map, camera, target, style, heights);
+        render_horizontal_surface(grid, map, camera, target, style, heights, now_ms,
+                                  reduced_motion);
     }
 }
 
 void editor_highlight_render(Grid *grid, Map *map, Camera *camera,
                              const SceneLight *lights, size_t light_count,
-                             SelectionTarget selection, EditorHit hover) {
+                             SelectionTarget selection, EditorHit hover,
+                             double now_ms, bool reduced_motion) {
     editor_highlight_render_height(grid, map, camera, lights, light_count,
-                                   selection, hover, NULL);
+                                   selection, hover, NULL, now_ms, reduced_motion);
 }
 
 void editor_highlight_render_height(Grid *grid, Map *map, Camera *camera,
                                     const SceneLight *lights, size_t light_count,
                                     SelectionTarget selection, EditorHit hover,
-                                    const SceneHeightView *heights) {
+                                    const SceneHeightView *heights, double now_ms,
+                                    bool reduced_motion) {
     bool hover_matches_selection;
 
     if (!grid || !map || !camera || grid->width <= 0 || grid->height <= 0) {
@@ -432,27 +510,29 @@ void editor_highlight_render_height(Grid *grid, Map *map, Camera *camera,
         selection_targets_equal(selection, hover.target);
     if (hover.valid && !hover_matches_selection) {
         render_target(grid, map, camera, lights, light_count, hover.target,
-                      HIGHLIGHT_STYLE_HOVER, heights);
+                      HIGHLIGHT_STYLE_HOVER, heights, now_ms, reduced_motion);
     }
     render_target(grid, map, camera, lights, light_count, selection,
-                  HIGHLIGHT_STYLE_SELECTED, heights);
+                  HIGHLIGHT_STYLE_SELECTED, heights, now_ms, reduced_motion);
 }
 
 void editor_highlight_render_set(Grid *grid, Map *map, Camera *camera,
                                  const SceneLight *lights, size_t light_count,
                                  const SelectionTarget *selections,
                                  size_t selection_count, size_t primary_index,
-                                 EditorHit hover) {
+                                 EditorHit hover, double now_ms,
+                                 bool reduced_motion) {
     editor_highlight_render_set_height(
         grid, map, camera, lights, light_count, selections, selection_count,
-        primary_index, hover, NULL);
+        primary_index, hover, NULL, now_ms, reduced_motion);
 }
 
 void editor_highlight_render_set_height(
     Grid *grid, Map *map, Camera *camera,
     const SceneLight *lights, size_t light_count,
     const SelectionTarget *selections, size_t selection_count,
-    size_t primary_index, EditorHit hover, const SceneHeightView *heights
+    size_t primary_index, EditorHit hover, const SceneHeightView *heights,
+    double now_ms, bool reduced_motion
 ) {
     size_t i;
     bool hover_matches = false;
@@ -462,14 +542,15 @@ void editor_highlight_render_set_height(
             hover_matches = true;
     if (hover.valid && !hover_matches)
         render_target(grid, map, camera, lights, light_count, hover.target,
-                      HIGHLIGHT_STYLE_HOVER, heights);
+                      HIGHLIGHT_STYLE_HOVER, heights, now_ms, reduced_motion);
     for (i = 0U; i < selection_count; i++)
         if (i != primary_index)
             render_target(grid, map, camera, lights, light_count, selections[i],
-                          HIGHLIGHT_STYLE_HOVER, heights);
+                          HIGHLIGHT_STYLE_HOVER, heights, now_ms, reduced_motion);
     if (selections && primary_index < selection_count)
         render_target(grid, map, camera, lights, light_count,
-                      selections[primary_index], HIGHLIGHT_STYLE_SELECTED, heights);
+                      selections[primary_index], HIGHLIGHT_STYLE_SELECTED, heights,
+                      now_ms, reduced_motion);
 }
 
 static const SceneTrigger *find_trigger(const SceneTrigger *triggers, size_t count,
@@ -481,7 +562,8 @@ static const SceneTrigger *find_trigger(const SceneTrigger *triggers, size_t cou
 
 static void render_trigger_region(
     Grid *grid, Map *map, Camera *camera, const SceneTrigger *trigger,
-    HighlightStyle style, const SceneHeightView *heights
+    HighlightStyle style, const SceneHeightView *heights, double now_ms,
+    bool reduced_motion
 ) {
     int min_x, min_y, max_x, max_y, x, y;
     if (!trigger) return;
@@ -494,14 +576,16 @@ static void render_trigger_region(
         if (!map_in_bounds(map, x, y)) continue;
         target.type = SELECTION_FLOOR;
         target.value.horizontal = (HorizontalSurfaceRef){x, y};
-        render_horizontal_surface(grid, map, camera, target, style, heights);
+        render_horizontal_surface(grid, map, camera, target, style, heights, now_ms,
+                                  reduced_motion);
     }
 }
 
 void editor_highlight_render_trigger_regions(
     Grid *grid, Map *map, Camera *camera,
     const SceneTrigger *triggers, size_t trigger_count,
-    SelectionTarget selection, EditorHit hover, const SceneHeightView *heights
+    SelectionTarget selection, EditorHit hover, const SceneHeightView *heights,
+    double now_ms, bool reduced_motion
 ) {
     const SceneTrigger *selected = NULL;
     const SceneTrigger *hovered = NULL;
@@ -511,8 +595,10 @@ void editor_highlight_render_trigger_regions(
     if (hover.valid && hover.target.type == SELECTION_TRIGGER)
         hovered = find_trigger(triggers, trigger_count, hover.target.value.trigger.id);
     if (hovered && (!selected || hovered->id != selected->id))
-        render_trigger_region(grid, map, camera, hovered, HIGHLIGHT_STYLE_HOVER, heights);
-    render_trigger_region(grid, map, camera, selected, HIGHLIGHT_STYLE_SELECTED, heights);
+        render_trigger_region(grid, map, camera, hovered, HIGHLIGHT_STYLE_HOVER,
+                              heights, now_ms, reduced_motion);
+    render_trigger_region(grid, map, camera, selected, HIGHLIGHT_STYLE_SELECTED,
+                          heights, now_ms, reduced_motion);
 }
 
 void editor_crosshair_render(Grid *grid) {

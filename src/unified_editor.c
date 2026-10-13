@@ -5575,7 +5575,14 @@ static void editor_menu_panel_render(
     int first_row;
     int hint_row;
     int step = EDITOR_MENU_ROW_STEP;
+    size_t cursor_row = count;
     size_t i;
+    /* Exactly one indicator moves: the list the cursor is in. A submenu's rows are
+       collected after the entry that opened it, so the *last* focused row is the
+       innermost list's cursor; any earlier focused row is the entry whose submenu is
+       open, and it keeps its frame without the chase. */
+    for (i = 0U; i < count; i++)
+        if (rows[i].focused) cursor_row = i;
     /* The label column is as wide as the widest label that carries a detail. A row
        without one is a line of its own, so it never widens the column. */
     for (i = 0U; i < count; i++)
@@ -5650,10 +5657,15 @@ static void editor_menu_panel_render(
             columns = label_columns + EDITOR_MENU_COLUMN_GAP +
                       (int)strlen(entry->detail);
         }
-        if (entry->focused && step >= EDITOR_MENU_ROW_STEP)
-            ui_ele_focus_perimeter_draw(grid, x + pad, row, columns + 2, 1, now_ms,
-                                        reduced_motion, palette->primary_text,
-                                        palette->canvas);
+        if (entry->focused && step >= EDITOR_MENU_ROW_STEP) {
+            if (i == cursor_row)
+                ui_ele_focus_perimeter_draw(grid, x + pad, row, columns + 2, 1, now_ms,
+                                            reduced_motion, palette->primary_text,
+                                            palette->canvas);
+            else
+                ui_ele_focus_perimeter_draw_still(grid, x + pad, row, columns + 2, 1,
+                                                  palette->primary_text, palette->canvas);
+        }
     }
     if (hint && hint[0])
         editor_menu_put(grid, x + pad, hint_row, width - pad * 2, hint,

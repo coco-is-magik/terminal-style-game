@@ -37,8 +37,14 @@ The panel is now:
   darker area of the frame with a soft, breathing edge;
 - **two aligned columns**: the label, then its value and keys, with the panel measuring the label column
   (`EDITOR_MENU_COLUMN_GAP`) instead of every source string padding itself by hand;
+- **one indicator moves**: the live cursor carries the perimeter *with* its chase, and the entry whose
+  submenu is open keeps the same frame **still** (`ui_ele_focus_perimeter_draw_still`);
 - **unchanged in order**: the entries stay in the order the cursor walks. They were not re-sorted, because
   re-sorting the display would make the cursor jump around; the alignment is what fixed the raggedness.
+
+The **selected surface** in the world also stopped being plain white: its projected outline (walls,
+floors, ceilings, trigger regions) now carries the identical chromatic band, travelling around the shape
+once per lap, exactly as an authored focused button's frame does.
 
 **Behaviour is untouched.** Which keys open, move, confirm and close each submenu, and every value it
 edits, is unchanged. The whole change is the form the list is drawn in.
@@ -73,6 +79,28 @@ edits, is unchanged. The whole change is the form the list is drawn in.
   grey-blue, the `warning` yellow or the `focus` mint.** New **`panel_detail_offset`** locks the aligned
   columns across two labels of different length. The re-spaced assertions were updated to the panel's
   label/detail split.
+
+- **`src/ui_theme.c` / `src/ui_theme.h`.** The chromatic chase is now the material's own, exposed as
+  `ui_theme_chase_head` (`UI_THEME_CHASE_LAP_MS`, `UI_THEME_CHASE_WIDTH`) and
+  `ui_theme_chase_colour`, so the focus perimeter and the editor's selection outline carry one identical
+  band instead of two rules.
+- **`src/ui_ele.c` / `src/ui_ele.h`.** `focus_perimeter_draw_core` now samples that shared chase, and the
+  **shape-only form** is a named entry point: **`ui_ele_focus_perimeter_draw_still`**.
+- **`src/unified_editor.c`.** The panel takes the **last** focused row as its live cursor and draws that
+  row's perimeter with the chase, every other focused row with the still form.
+- **`src/editor_highlight.c` / `src/editor_highlight.h`.** The outline is built as **one closed path**
+  (far edge left to right, the right side, the near edge right to left, the left side) and carries the
+  shared chase on a **selection**; hover stays plain. `now_ms` and `reduced_motion` are threaded through
+  the render entry points so the band is explicit time and absent under Reduced Motion. The column chunk
+  is one whole surface wide (512) so the editor's outline is a single path, and the side runs are drawn
+  through the same path rather than as per-chunk bars.
+- **`Makefile`.** `test-editor-highlight` and `benchmark-editor-highlight` link `src/ui_theme.c`, which
+  now provides the chase.
+- **Tests.** `test_edit_mode_submenu_moves_only_the_cursor` (two frames drawn, one band travelling),
+  `test_focus_perimeter_runs_around_focused_button` (the still form draws the frame with no chase), and
+  `test_selected_outline_carries_the_chromatic_chase` (a selected wall and floor outline holds a primary;
+  Reduced Motion holds none). The highlight tests that are about the *contrast* outline pass
+  `reduced_motion` so the chase does not stand in for the cell they sample.
 
 ## Failures found and fixed during the work
 
@@ -138,6 +166,15 @@ edits, is unchanged. The whole change is the form the list is drawn in.
 - The body marks were measured at **`#2F3233`** — 28% of the fabric's `#A8B4B8` — so the ripple is dark
   by construction, and far below the text (`#F2F7F8`). `assert_panel_body_ripples` fails if the ripple
   stops being drawn.
+- A **frame dump** of the panel with the material picker open shows the two indicators behaving
+  differently: the entry whose submenu is open is still white, and the submenu's own cursor carries the
+  band (red and green corners at that instant):
+  ```
+    '+' ( 7, 2) fg=f2f7f8      <- the material row's frame: still
+    '+' ( 9,19) fg=f2f7f8
+    '+' (11, 2) fg=ff2b2b      <- the picker cursor's frame: the chase
+    '+' (13, 2) fg=2bff4f
+  ```
 - A colour dump of the panel confirmed the retired hues are gone: only `#F2F7F8` (text), `#A8B4B8`
   (fabric and foam), `#05080A` (bed), the dark ripple shades and the primaries appear, where before it
   drew `#FFD166` (warning) on the notices and `#64757C` (border) around the bed.
