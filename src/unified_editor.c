@@ -5618,13 +5618,14 @@ static void editor_menu_panel_render(
     first_row = title_row + (has_subtitle ? 2 : 1) + 1;
     hint_row = first_row + listed * step;
 
-    /* The bed, then the text, then the material over both. Nothing draws the panel's
-       border: its edge is where the shore froths (the material is bound to this
-       rectangle), which is what keeps the world visible around it instead of a frame
-       cutting it off. The material goes last so it can see the text and keep its
-       grain out of the characters' way -- it paints only blank cells, so text, the
-       focus perimeter and their neighbours are never touched (§4.4). */
+    /* The bed, then the material on it, then the text over both. Drawing the material
+       first is what keeps a label intact: a space inside a label is a blank cell, so a
+       material drawn after the text would put a mark in the middle of a word. Nothing
+       draws the panel's border: its edge is where the shore froths (the material is
+       bound to this rectangle), which is what keeps the world visible around it instead
+       of a frame cutting it off. */
     editor_menu_panel_bed(grid, x, y, width, height, palette);
+    (void)editor_menu_panel_material(grid, x, y, width, height, now_ms, reduced_motion);
     if (title && title[0])
         editor_menu_put(grid, x + pad, title_row, width - pad * 2, title,
                         palette->primary_text, palette);
@@ -5660,7 +5661,6 @@ static void editor_menu_panel_render(
     if (has_note)
         editor_menu_put(grid, x + pad, hint_row + 1, width - pad * 2, note,
                         palette->primary_text, palette);
-    (void)editor_menu_panel_material(grid, x, y, width, height, now_ms, reduced_motion);
 }
 
 

@@ -29,10 +29,12 @@ The panel is now:
   no `focus`/`accent` mint. The only colour is the material's three additive primaries as chromatic
   aberration — the deliberate retirement of the editor-interface hues the 2026-10-09 identity note left
   open;
-- **edged by motion, not by a border**: the new **`living_shore`** backdrop is bound to the panel's own
-  rectangle. One radial swell travels outward from its centre; the body shows only the crest, broken into
-  faint grain that keeps two cells clear of every drawn glyph, and the outer band breaks into foam. The
-  panel therefore reads as a darker area of the frame with a soft, breathing edge;
+- **edged by motion, not by a border, and dark inside but not flat**: the new **`living_shore`** backdrop
+  is bound to the panel's own rectangle. One radial swell travels outward from its centre; in the body its
+  crest ring is drawn as sparse one-pixel marks in a **dark shade of the material's own neutral** (an
+  intensity of a palette colour, never a colour of its own), so the panel is a dark sheet whose rings
+  ripple outward instead of a solid black; the outer band breaks into foam. The panel therefore reads as a
+  darker area of the frame with a soft, breathing edge;
 - **two aligned columns**: the label, then its value and keys, with the panel measuring the label column
   (`EDITOR_MENU_COLUMN_GAP`) instead of every source string padding itself by hand;
 - **unchanged in order**: the entries stay in the order the cursor walks. They were not re-sorted, because
@@ -48,12 +50,13 @@ edits, is unchanged. The whole change is the form the list is drawn in.
   `living_shore` (one registry row, per the registry's own rule): an ambient backdrop
   (`trigger=while_visible`, `loop=0`, `randomize=0`, any orientation), `backdrop = true`, and
   `covers_content = false` — it is a substrate, so it never passes over authored content.
-- **`src/ui_animation.c`.** New **`render_living_shore`** and **`living_shore_gap`**, plus its dispatch
+- **`src/ui_animation.c`.** New **`render_living_shore`** and **`living_shore_shade`**, plus its dispatch
   case. One radial swell, sampled once per cell of distance and looked up, so the per-cell cost stays a
-  lookup and a hash; two amplitudes over that swell (a thin crest in the body, a much lower threshold at
-  the shore), each broken by a static per-cell value so the material drifts rather than flickers; the
-  splash and the breaking crest take one of the identity's three primaries. Deterministic, explicit time,
-  nothing drawn under reduced motion, and the body keeps two cells clear of any glyph.
+  lookup and a hash. Its **body** draws the crest ring as sparse one-pixel marks (`UI_SHORE_BODY_RATE`) in
+  a **shade of the material's own neutral** (`living_shore_shade`: a percentage of a palette colour, so no
+  literal colour enters the interface, §5.2), stepped from `UI_SHORE_BODY_SHADE` to `…SHADE_GAIN`; its
+  **shore** shows foam at a density the swell drives, and a crest that breaks takes one of the identity's
+  three primaries. Deterministic, explicit time, nothing drawn under reduced motion.
 - **`src/unified_editor.c`.**
   - **`EditorMenuRow` / `editor_menu_collect`** now carry a **detail** as well as a label: the collector
     splits each line at its first run of two or more spaces, and drops the old `"> "` marker, which the
@@ -91,6 +94,14 @@ edits, is unchanged. The whole change is the form the list is drawn in.
    glyphs therefore left the world showing through the panel on a real display — the panel had no bed at
    all. The bed now carries a *space*, and `assert_corner_panel` asserts that every cell the panel painted
    is non-zero, whatever the material painted over it.
+7. **The first ripple was a full field of glyphs**, which made the panel a busy striped sheet rather than a
+   dark one; the second was a solid dark sheet, which was still not the *ripple* the owner asked for. The
+   body now draws the crest ring only (sparse one-pixel marks in a dark shade), which is dark, moving, and
+   readable as rings travelling outward.
+8. **The material marked a space inside a label.** Drawn *after* the text so it could keep clear of it, the
+   material saw a space inside a label as a blank cell and put a mark in the middle of the word — the dump
+   caught `floor:surface`. The material is now drawn *under* the text, so a label's spaces are written over
+   it and every word stays intact.
 
 ## Evidence
 
@@ -113,9 +124,23 @@ edits, is unchanged. The whole change is the form the list is drawn in.
   32|   Up/Down=choose  Enter=open/apply  Esc=back    *-|
   34|  *     ***   -  - =** ********   --  = *** - - **|
   ```
+- A **ripple map** of the panel (a dump that marks the material separately from the text) shows the body
+  rings curving out from the panel's centre, the foam along the shore, and the labels intact:
+  ```
+   5|..                   # ## ##  #          #              |
+   7|       #                         #         #     .      |
+  10|  #..... .... #     ...........  .  #                   |
+  15|    #      #       #           #       #                |
+  20| . ....... #      # .......  ............               |
+  25|    #       #       ##       #                          |
+  30|   ........... ..... ....... ... ... .... ....          |
+  ```
+- The body marks were measured at **`#2F3233`** — 28% of the fabric's `#A8B4B8` — so the ripple is dark
+  by construction, and far below the text (`#F2F7F8`). `assert_panel_body_ripples` fails if the ripple
+  stops being drawn.
 - A colour dump of the panel confirmed the retired hues are gone: only `#F2F7F8` (text), `#A8B4B8`
-  (fabric), `#05080A` (bed) and the primaries appear, where before it drew `#FFD166` (warning) on the
-  notices and `#64757C` (border) around the bed.
+  (fabric and foam), `#05080A` (bed), the dark ripple shades and the primaries appear, where before it
+  drew `#FFD166` (warning) on the notices and `#64757C` (border) around the bed.
 
 ## Validation
 
@@ -125,7 +150,8 @@ edits, is unchanged. The whole change is the form the list is drawn in.
 ## Not done here / next
 
 - **No native visual capture was reviewed on a display**; the form is verified by the tests and the cell
-  dumps above. The material's densities (`UI_SHORE_*`) are named constants, so tuning it is one value.
+  dumps above. The material's marks, shades and densities are named constants (`UI_SHORE_BODY*`,
+  `UI_SHORE_FOAM*`), so tuning the ripple or the foam is one value.
 - **The other inspector kinds are still column-1 lists.** The light, decal, trigger, object and sprite
   inspectors (and the workspace panels) are unchanged; this slice is the wall / ceiling / floor submenus
   the owner named first. Converting the rest is the next slice, on the same helpers.

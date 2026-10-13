@@ -80,13 +80,14 @@ Rules:
   (`horizontal`, `vertical`, or `radial`, which folds them about the region centre).
 - `living_shore` is the same fabric as `living_field` used as a **region's own edge**
   (`trigger=while_visible`, `loop=0`, `randomize=0`, `extent=box` recommended). One radial swell
-  travels outward from the region's centre: in the body of the region only its crest shows, broken
-  into faint grain that keeps two cells clear of every drawn glyph, while the outermost bands break
-  into foam, so the region ends where the material froths instead of at a drawn border. It fills only
-  empty cells, so it is a substrate like the field; the caller owns the bed behind it. Owner direction
-  recorded 2026-10-13 (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md, "the edit-mode submenu keeps the
-  corner"); the editor's edit-mode submenus are its first use (`src/unified_editor.c`,
-  `editor_menu_panel_material`).
+  travels outward from the region's centre: in the **body** its crest ring is drawn as sparse
+  one-pixel marks in a **shade of the material's own neutral** (an intensity, never a colour of its
+  own), so the region is a dark sheet whose rings ripple outward from its middle instead of flat black;
+  in the **outermost band** the swell breaks into foam at the full neutral, so the region ends where the
+  material froths instead of at a drawn border. It fills only empty cells, so it is a substrate like the
+  field; the caller owns the bed behind it. Owner direction recorded 2026-10-13
+  (UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md, "the edit-mode submenu keeps the corner"); the editor's
+  edit-mode submenus are its first use (`src/unified_editor.c`, `editor_menu_panel_material`).
 - `focus` runs only while the target Button is focused.
 - `activate` runs when an action in the containing layout activates; it never delays the action.
 - `context_exit` uses a bounded departing-menu snapshot while destination controls appear

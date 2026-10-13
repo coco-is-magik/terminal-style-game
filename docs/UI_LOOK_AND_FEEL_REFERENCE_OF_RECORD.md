@@ -261,6 +261,12 @@ then asked for the panel itself to be finished, in their words:
 > ... its not perfectly aligned because some stuff on the right column is too long. Can we resort the
 > menu items based on length/alphabet and just align the columns so they make nicer alignment?
 
+and then, with the panel's edge in place, asked for the dark area itself to move:
+
+> Right now the background is a solid black. the edge looks great, but lets adjust that solid black to
+> have a bit of motion to match. lets keep it dark and have it ripple out radially from the middle using
+> darker colors.
+
 Recorded under §1.1, §1.3, §4.2 and its scope note (the editor interface), §4.7, and the locked identity
 of 2026-10-09:
 
@@ -274,12 +280,15 @@ of 2026-10-09:
    brightness, and the only colour is the material's three additive primaries as chromatic aberration —
    which is the deliberate retirement of those hues that the 2026-10-09 identity note left open. The
    authored menus and the scene browser keep their own focus colour; this is the edit-mode panel.
-3. **The panel draws no border: it ends where the material froths.** The `living_shore` backdrop (same
-   fabric as `living_field`, one shared evaluator) is bound to the panel's own rectangle. One radial
-   swell travels outward from its centre; in the body only the crest shows, broken into faint grain that
-   **keeps two cells clear of every drawn glyph**, and the outermost bands break into foam. So the menu is
-   a darker area of the frame with a soft, moving edge rather than a hard frame — and the material is a
-   substrate, so no entry, focus marker or control is ever covered (§4.4).
+3. **The panel draws no border: it ends where the material froths, and its dark area ripples.** The
+   `living_shore` backdrop (same fabric as `living_field`, one shared evaluator) is bound to the panel's
+   own rectangle. One radial swell travels outward from its centre; in the body its **crest ring is drawn
+   as sparse one-pixel marks in a dark shade of the material's own neutral** — an intensity of the
+   palette's colour, never a colour of its own — so the panel is a dark sheet whose rings ripple outward
+   from its middle instead of flat black, and it stays far below the text's brightness. In the outermost
+   band the swell breaks into foam, so the menu is a darker area of the frame with a soft, moving edge
+   rather than a hard frame — and the material is a substrate, so no entry, focus marker or control is
+   ever covered (§4.4). The material is drawn under the text, so a space inside a label is never marked.
 4. **The focused entry still takes the shared focus perimeter and its chase**, exactly as an authored
    focused button draws it — now in `primary_text`, so the focus marker is brightness and movement.
 5. **Entries are two aligned columns.** The panel measures its label column and starts every value in

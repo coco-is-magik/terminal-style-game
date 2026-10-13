@@ -390,6 +390,27 @@ static void assert_corner_panel(const Grid *grid) {
 static bool grid_find_text(const Grid *grid, const char *text, int *out_x,
                            int *out_y);
 
+/* The panel's body is not flat black: the material draws the swell across it as a dark
+   ripple, so some cell inside the panel carries a mark in a dark shade of the fabric's
+   own neutral (owner direction, 2026-10-13: "lets keep it dark and have it ripple out
+   radially from the middle using darker colors"). Counts only marks that are darker than
+   any text or foam, so it fails if the ripple stops being drawn. */
+static void assert_panel_body_ripples(const Grid *grid) {
+    int marks = 0;
+    int y;
+    for (y = 4; y < grid->height; y++) {
+        int x;
+        for (x = 1; x < grid->width; x++) {
+            const Cell *cell = &grid->cells[y * grid->width + x];
+            if (cell->glyph == 0U || cell->glyph == ' ') continue;
+            if (cell->fg.r > 0x08U && cell->fg.r < 0x50U && cell->fg.g < 0x60U &&
+                cell->fg.b < 0x60U)
+                marks++;
+        }
+    }
+    assert_true(marks > 0);
+}
+
 /* How far a detail sits from the left edge of its label in the panel. The panel aligns
    its details in one column, so this is the same number for every entry however long
    the labels are -- which is what the panel was rebuilt to get right. */
@@ -4534,6 +4555,7 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
        where it ends), and focus carried by the shared perimeter and the bright role
        rather than a '>' marker. */
     assert_corner_panel(grid);
+    assert_panel_body_ripples(grid);
     assert_false(grid_contains_text(grid, "> Place Wall"));
     /* Entries are two aligned columns: labels of different lengths put their values in
        the same column. */

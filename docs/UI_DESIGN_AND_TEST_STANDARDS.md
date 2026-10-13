@@ -136,9 +136,11 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   an edit-mode panel draws **no `border` frame, no `warning` hue and no `focus`/`accent` mint** — that is
   the deliberate retirement of the editor-interface hues the 2026-10-09 identity note left open, and
   emphasis is carried by brightness. The panel ends where its material **froths**: the **`living_shore`**
-  backdrop is bound to the panel's rectangle, one radial swell travels outward from its centre, the body
-  keeps a faint grain that stays two cells clear of every drawn glyph, and the outer bands break into
-  foam — a soft moving edge instead of a hard frame. Entries sit **two rows apart** so the focused entry
+  backdrop is bound to the panel's rectangle, one radial swell travels outward from its centre, its body
+  draws that swell as **rings of sparse one-pixel marks in a dark shade of the material's own neutral**
+  (an intensity of a palette colour, never a colour of its own) so the dark area ripples instead of being
+  flat black, and the outer band breaks into foam — a soft moving edge instead of a hard frame. Entries
+  sit **two rows apart** so the focused entry
   takes the shared **focus perimeter and its chase** (in `primary_text` here), and they are **two aligned
   columns** — the label column is measured by the panel, never padded by hand in a source string, and the
   entries are never re-sorted, because their order is the order the cursor walks. A panel that cannot

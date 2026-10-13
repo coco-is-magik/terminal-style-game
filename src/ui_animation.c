@@ -617,16 +617,20 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
    which is what keeps the loop seamless for any region size. */
 #define UI_SHORE_SWELL_CELLS 7.0
 #define UI_SHORE_SWELL_CYCLES 2.0
-/* The swell height a cell must clear to carry a glyph, and the fraction of the cells
-   that height reaches which actually show. The body of the region is nearly still --
-   the crest is broken into faint grain -- while the shore shows foam whether or not a
-   crest is over it, because the region has to read as a region; the swell decides how
-   much of the shore is breaking. */
-#define UI_SHORE_BODY 0.85
-#define UI_SHORE_BODY_RATE 0.12
+/* The body of the region is the same swell as a *dark* ripple: the crest of the swell
+   is drawn as a ring of sparse marks in a shade of the material's own neutral, so the
+   panel is a dark sheet whose rings travel outward from its middle instead of flat
+   black. The marks are one pixel wide and the shade is a percentage of the neutral, not
+   a colour of its own, so the ripple stays far below the text's brightness (owner
+   direction, 2026-10-13: "lets keep it dark and have it ripple out radially from the
+   middle using darker colors"). */
+#define UI_SHORE_BODY 0.90      /* swell height the body ripple is drawn at      */
+#define UI_SHORE_BODY_RATE 0.65 /* fraction of a crest ring that shows           */
+#define UI_SHORE_BODY_SHADE 12  /* percent of the neutral at the ring's edge     */
+#define UI_SHORE_BODY_SHADE_GAIN 16 /* extra percent of the neutral at the crest */
+#define UI_SHORE_BODY_SALT 0x4b21U
 #define UI_SHORE_FOAM_RATE 0.85
 #define UI_SHORE_FOAM_FLOOR 0.45
-#define UI_SHORE_BODY_SALT 0x4b21U
 #define UI_SHORE_FOAM_SALT 0x8e57U
 /* A crest at its peak may spill past the region by one cell, and a crest that high
    may break in colour at this rate. Both are intermittent: the splash is what makes
@@ -642,22 +646,15 @@ static bool render_living_field(Grid *grid, const UiElementLayout *bounds,
 #define UI_SHORE_BREAK_SALT 0x91a3U
 #define UI_SHORE_PICK_SALT 0x5c17U
 
-/* True when a cell, its four neighbours and the twelve cells around those carry no
-   glyph: the body fabric keeps two cells clear of everything drawn, so its grain sits
-   in the openings of the panel (the blank rows of the rhythm, the margin, the gaps
-   beside short entries) and never beside a character. Owner direction, 2026-10-13:
-   "It shouldnt distract from actual text". */
-static bool living_shore_gap(Grid *grid, int x, int y) {
-    Cell cell;
-    int dy;
-    for (dy = -2; dy <= 2; dy++) {
-        int dx;
-        for (dx = -2; dx <= 2; dx++) {
-            if (!grid_get(grid, x + dx, y + dy, &cell)) continue;
-            if (cell.glyph != 0U && cell.glyph != ' ') return false;
-        }
-    }
-    return true;
+/* A darker step of a palette colour: the ripple in the body of a region is the
+   material's *own* neutral at a fraction of its intensity, so no new colour enters the
+   identity and no literal is written into the interface (§5.2). `percent` is an
+   intensity, not a colour. */
+static SDL_Color living_shore_shade(SDL_Color colour, unsigned int percent) {
+    return (SDL_Color){(uint8_t)((unsigned int)colour.r * percent / 100U),
+                       (uint8_t)((unsigned int)colour.g * percent / 100U),
+                       (uint8_t)((unsigned int)colour.b * percent / 100U),
+                       colour.a};
 }
 
 /*
@@ -671,22 +668,26 @@ static bool living_shore_gap(Grid *grid, int x, int y) {
  * breaks -- "Wavy but emanating out from a center point and 'frothing/splashing'
  * against where the menu ends ... like the froth of a small wave at its peak on the
  * beach kind of effect, with a darker grey/black/dark area where the actual menu is."
+ * The owner then asked for that dark area itself to move: "lets keep it dark and have
+ * it ripple out radially from the middle using darker colors."
  *
- * So this is the *same* fabric as living_field at two amplitudes over one radial
- * swell, rather than a second material: in the body of the region the threshold is
- * high, so only the crests show and the sheet stays quiet behind the text; in the
- * shore bands it is low, so the swell breaks into foam exactly where the region
- * ends. Nothing draws a border, and the region dissolves into what it sits on. The
- * caller owns the bed (this is a substrate, so it paints only blank cells and never
- * covers a control, glyph or focus marker, §4.4); the foam is the identity's
- * neutral, and where a crest breaks it takes one of the identity's three additive
- * primaries and nothing else (§1.3, "Black, White, Red, Green, Blue"). Reduced
- * motion never reaches here, and the swell is a pure function of explicit time, so
- * a frame is reproducible.
+ * So this is the *same* fabric as living_field over one radial swell, at three
+ * amplitudes rather than as a second material. In the body of the region every blank
+ * cell carries the swell as a *dark ripple*: a step of a shade of the material's own
+ * neutral (an intensity, never a colour of its own), darkest in the trough, so the
+ * panel is a dark sheet whose rings travel outward from its middle instead of flat
+ * black -- and stays far enough below the text's brightness that it never competes
+ * with a character. At the shore the threshold drops and the swell breaks into foam
+ * at the full neutral, so the region ends where the material froths rather than at a
+ * drawn border. A crest at its peak may spill one cell past the shore, and a breaking
+ * crest takes one of the identity's three additive primaries and nothing else (§1.3,
+ * "Black, White, Red, Green, Blue"). The caller owns the bed (this is a substrate, so
+ * it paints only blank cells and never covers a control, glyph or focus marker, §4.4).
+ * Reduced motion never reaches here, and the swell is a pure function of explicit
+ * time, so a frame is reproducible.
  */
 static bool render_living_shore(Grid *grid, const UiElementLayout *bounds,
                                 double elapsed_ms, SDL_Color background) {
-    static const uint8_t body_ramp[] = {'.'};
     static const uint8_t foam_ramp[] = {'-', '=', '*'};
     static const double two_pi = 6.28318530717958647692;
     const UiThemeTokens *tokens = ui_theme_provisional_tokens();
@@ -747,6 +748,7 @@ static bool render_living_shore(Grid *grid, const UiElementLayout *bounds,
             double height;
             uint8_t glyph;
             SDL_Color fg = neutral;
+            bool takes_colour = true;
             int index;
             /* The fabric is a substrate: it may never obscure authored text, a
                control, or a focus marker -- it fills the region *behind* them. */
@@ -768,48 +770,50 @@ static bool render_living_shore(Grid *grid, const UiElementLayout *bounds,
                 glyph = foam_ramp[0];
             } else {
                 int edge = x - first_x;
-                int ramp_len;
-                const uint8_t *ramp;
-                bool shore;
-                double density;
-                double lift;
-                int band;
                 if (last_x - 1 - x < edge) edge = last_x - 1 - x;
                 if (y - first_y < edge) edge = y - first_y;
                 if (last_y - 1 - y < edge) edge = last_y - 1 - y;
-                shore = edge < UI_SHORE_BANDS;
-                /* The shore always shows foam -- the region has to read as a region --
-                   but the swell decides how much of it is breaking, so the edge
-                   breathes instead of being a fixed line. The body shows the swell
-                   itself, and only where its crest is: quiet grain behind the text,
-                   and never beside it. */
-                if (shore) {
-                    density = UI_SHORE_FOAM_RATE * (UI_SHORE_FOAM_FLOOR +
-                                                    (1.0 - UI_SHORE_FOAM_FLOOR) * height);
+                if (edge < UI_SHORE_BANDS) {
+                    /* The shore always shows foam -- the region has to read as a
+                       region -- but the swell decides how much of it is breaking, so
+                       the edge breathes instead of being a fixed line. Which cells
+                       show is a static function of position and each one shows only
+                       while the swell is over it: the foam drifts, never flickers. */
+                    const double density = UI_SHORE_FOAM_RATE *
+                        (UI_SHORE_FOAM_FLOOR + (1.0 - UI_SHORE_FOAM_FLOOR) * height);
+                    int band;
+                    if (density <= 0.0 ||
+                        living_field_unit((uint32_t)x, (uint32_t)y,
+                                          UI_SHORE_FOAM_SALT) >= density)
+                        continue;
+                    band = (int)(height * (double)(sizeof(foam_ramp) - 1) + 0.5);
+                    if (band >= (int)sizeof(foam_ramp)) band = (int)sizeof(foam_ramp) - 1;
+                    glyph = foam_ramp[band];
                 } else {
+                    /* The body is the same swell as a dark ripple: the crest ring is
+                       drawn as sparse one-pixel marks in a shade of the material's own
+                       neutral, so the panel is a dark sheet whose rings travel outward
+                       from its middle instead of flat black -- and stays far enough
+                       below the text's brightness that it never competes with a
+                       character. Which cells of the ring show is a static function of
+                       position, so each cell keeps its place and only the ring moves. */
+                    double lift;
                     if (height <= UI_SHORE_BODY) continue;
-                    if (!living_shore_gap(grid, x, y)) continue;
-                    density = UI_SHORE_BODY_RATE;
+                    if (living_field_unit((uint32_t)x, (uint32_t)y,
+                                          UI_SHORE_BODY_SALT) >= UI_SHORE_BODY_RATE)
+                        continue;
+                    lift = (height - UI_SHORE_BODY) / (1.0 - UI_SHORE_BODY);
+                    glyph = lift > 0.75 ? ':' : '.';
+                    fg = living_shore_shade(
+                        neutral, UI_SHORE_BODY_SHADE +
+                                     (unsigned int)(UI_SHORE_BODY_SHADE_GAIN * lift));
+                    takes_colour = false;
                 }
-                /* Which cells show is a static function of position and each one shows
-                   only while the swell is over it, so the material drifts rather than
-                   flickering, and no cell is ever picked at random per frame. */
-                if (density <= 0.0 ||
-                    living_field_unit((uint32_t)x, (uint32_t)y,
-                                      shore ? UI_SHORE_FOAM_SALT
-                                            : UI_SHORE_BODY_SALT) >= density)
-                    continue;
-                ramp = shore ? foam_ramp : body_ramp;
-                ramp_len = shore ? (int)sizeof(foam_ramp) : (int)sizeof(body_ramp);
-                lift = shore ? height
-                             : (height - UI_SHORE_BODY) / (1.0 - UI_SHORE_BODY);
-                band = (int)(lift * (double)(ramp_len - 1) + 0.5);
-                if (band >= ramp_len) band = ramp_len - 1;
-                glyph = ramp[band];
             }
             /* A crest that breaks takes one of the three additive primaries, chosen
-               per cell: the identity's only colour, never a hue of its own. */
-            if (height >= UI_SHORE_PEAK &&
+               per cell: the identity's only colour, never a hue of its own. The ripple
+               in the body stays dark, so only the foam takes colour. */
+            if (takes_colour && height >= UI_SHORE_PEAK &&
                 living_field_unit((uint32_t)x, (uint32_t)y, UI_SHORE_BREAK_SALT) <
                     UI_SHORE_BREAK_RATE) {
                 const unsigned int pick = (unsigned int)
