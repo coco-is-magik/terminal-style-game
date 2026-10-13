@@ -5131,42 +5131,152 @@ EditorInputConsumption unified_editor_update(
     return consumed;
 }
 
-static void editor_render_sprite_pattern_menu(
-    const UnifiedEditorState *editor, Grid *grid, int *row,
-    SDL_Color fg, SDL_Color bg, SDL_Color dim, SDL_Color warn, SDL_Color hi
+/* ---- Editor menu panel ----
+ *
+ * The submenus that come up while editing a wall, ceiling or floor are panels, not
+ * pause menus: they sit in the corner of the frame so the world stays visible while
+ * you work, and they carry the styling the menu work established -- a bordered bed of
+ * the panel/border roles, a title row, the hint, and entries two rows apart so the
+ * focused entry takes the shared focus perimeter and its chase, exactly as an
+ * authored focused button draws it. The scene browser was rebuilt on this form first
+ * (commit "rebuild the editor scene browser as a palette-driven panel"); the surface
+ * inspector follows it. Placement is unchanged: the panel replaces the ragged
+ * column-1 list in the same corner.
+ */
+#define EDITOR_MENU_ROW_STEP 2   /* entries two rows apart, so the perimeter fits */
+#define EDITOR_MENU_MAX_ROWS 24
+#define EDITOR_MENU_PAD 2
+#define EDITOR_MENU_COLUMN_GAP 2 /* between the label column and the detail column */
+/* Rows kept clear above the title and below the hint, so no text ever sits in the
+   band the material froths in: the menu's edge stays the material's, not the text's. */
+#define EDITOR_MENU_MARGIN 2
+
+typedef struct {
+    char text[80];   /* the label: what the entry is              */
+    char detail[64]; /* its value and the keys that act on it, or "" */
+    bool focused;    /* takes the focus perimeter and brightens   */
+    bool strong;     /* a heading: bright, but not a control      */
+    bool note;       /* a notice or an error: the bright role     */
+} EditorMenuRow;
+
+/* Collect one line of an editor list into the menu block, classified by the role it
+   was drawn with: the focus role is the selection, the warning role is a note, the
+   primary role is a heading, everything else is an ordinary entry. A leading "> "
+   marker is dropped -- the menu surface marks the focused entry with the focus
+   perimeter and its chase, exactly as an authored menu does. */
+static void editor_menu_collect(EditorMenuRow *rows, size_t *count, const char *text,
+                                SDL_Color colour, const UiAppWorkbenchPalette *palette) {
+    const char *label = text ? text : "";
+    const char *split = NULL;
+    const char *rest = NULL;
+    bool focused = false;
+    bool strong = false;
+    bool note = false;
+    while (*label == ' ') label++;
+    if (*label == '>') {
+        focused = true;
+        label++;
+        while (*label == ' ') label++;
+    }
+    /* An entry is two columns: what it is, and its value with the keys that act on
+       it. The split is the first run of two or more spaces, so the panel can align
+       the columns itself instead of every source string padding itself by hand --
+       which is what left the details starting at a different column per row. */
+    {
+        const char *scan = label;
+        while (*scan != '\0') {
+            if (scan[0] == ' ' && scan[1] == ' ') {
+                const char *value = scan + 2;
+                while (*value == ' ') value++;
+                if (*value != '\0') {
+                    split = scan;
+                    rest = value;
+                }
+                break;
+            }
+            scan++;
+        }
+    }
+    if (palette) {
+        if (colour.r == palette->focus.r && colour.g == palette->focus.g &&
+            colour.b == palette->focus.b && colour.a == palette->focus.a)
+            focused = true;
+        else if (colour.r == palette->warning.r && colour.g == palette->warning.g &&
+                 colour.b == palette->warning.b && colour.a == palette->warning.a)
+            note = true;
+        else if (colour.r == palette->primary_text.r &&
+                 colour.g == palette->primary_text.g &&
+                 colour.b == palette->primary_text.b &&
+                 colour.a == palette->primary_text.a)
+            strong = true;
+    }
+    if (!rows || !count || *count >= EDITOR_MENU_MAX_ROWS) return;
+    (void)snprintf(rows[*count].text, sizeof(rows[*count].text), "%.*s",
+                   (int)(split ? (size_t)(split - label) : strlen(label)), label);
+    (void)snprintf(rows[*count].detail, sizeof(rows[*count].detail), "%s",
+                   rest ? rest : "");
+    rows[*count].focused = focused;
+    rows[*count].strong = strong;
+    rows[*count].note = note;
+    (*count)++;
+}
+
+/* The sprite menu's two list stages, collected as menu rows: the actions list and the
+   saved-sprite load list. The paint stage is not here -- it is a canvas screen of its own
+   (see editor_render_sprite_paint_screen), because it draws the sprite canvas together
+   with its own menu column rather than a list of entries. */
+static void editor_collect_sprite_menu_rows(
+    const UnifiedEditorState *editor, EditorMenuRow *rows, size_t *count,
+    const UiAppWorkbenchPalette *palette, SDL_Color dim, SDL_Color hi
 ) {
     static const char *actions[3] = {
         "Load existing...", "Save pattern", "Edit/Paint"
     };
     char line[160];
-    if (!editor || !grid || !row || !editor->sprite_menu_open) return;
+    if (!editor || !rows || !count || !palette || !editor->sprite_menu_open) return;
     if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_ACTIONS) {
         size_t action;
         for (action = 0U; action < 3U; action++) {
             snprintf(line, sizeof(line), "   %s %s",
                      editor->sprite_menu_index == action ? ">" : " ",
                      actions[action]);
-            grid_print(grid, 1, (*row)++, line,
-                       editor->sprite_menu_index == action ? hi : dim, bg);
+            editor_menu_collect(rows, count, line,
+                                editor->sprite_menu_index == action ? hi : dim, palette);
         }
     } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
         size_t index;
-        grid_print(grid, 1, (*row)++,
-                   "     LOAD SPRITE  Up/Down  Enter=load  Esc=back", fg, bg);
+        editor_menu_collect(rows, count,
+                            "LOAD SPRITE  Up/Down  Enter=load  Esc=back",
+                            palette->primary_text, palette);
         if (editor->sprite_shortlist_count == 0U)
-            grid_print(grid, 1, (*row)++, "     (no saved sprite files)", dim, bg);
+            editor_menu_collect(rows, count, "(no saved sprite files)",
+                                palette->secondary_text, palette);
         for (index = 0U; index < editor->sprite_shortlist_count; index++) {
-            snprintf(line, sizeof(line), "     %s sprite pattern:%u",
+            snprintf(line, sizeof(line), "%s sprite pattern:%u",
                      editor->sprite_menu_index == index ? ">" : " ",
                      (unsigned)editor->sprite_shortlist[index]);
-            grid_print(grid, 1, (*row)++, line,
-                       editor->sprite_menu_index == index ? hi : dim, bg);
+            editor_menu_collect(rows, count, line,
+                                editor->sprite_menu_index == index ? hi : dim, palette);
         }
-    } else {
-        static const char *frame_actions[7] = {
-            "Previous frame", "Next frame", "Add frame", "Remove frame",
-            "FPS -1", "FPS +1", "Toggle loop"
-        };
+    }
+}
+
+/* The sprite paint stage: a canvas screen, not a menu. It draws the previous, active and
+   next frames side by side with its own action column, so the fields panel is not drawn
+   under it -- painting gets the whole surface. */
+static void editor_render_sprite_paint_screen(
+    const UnifiedEditorState *editor, Grid *grid, int *row,
+    SDL_Color fg, SDL_Color bg, SDL_Color dim, SDL_Color warn, SDL_Color hi
+) {
+    static const char *frame_actions[7] = {
+        "Previous frame", "Next frame", "Add frame", "Remove frame",
+        "FPS -1", "FPS +1", "Toggle loop"
+    };
+    char line[160];
+    if (!editor || !grid || !row || !editor->sprite_menu_open) return;
+    if (editor->sprite_menu_stage != EDITOR_SPRITE_MENU_PAINT) return;
+    {
+
         const SpriteDocumentFrame *previous =
             sprite_document_previous_frame(&editor->sprite_document);
         const SpriteDocumentFrame *next =
@@ -5386,96 +5496,6 @@ static bool editor_menu_field(Grid *grid, const char *name, double now_ms,
     layout.element_count = 2;
     return ui_animation_render_layout(&layout, grid, now_ms, reduced_motion, false,
                                       UI_ANIMATION_EVENT_WHILE_VISIBLE);
-}
-
-/* ---- Editor menu panel ----
- *
- * The submenus that come up while editing a wall, ceiling or floor are panels, not
- * pause menus: they sit in the corner of the frame so the world stays visible while
- * you work, and they carry the styling the menu work established -- a bordered bed of
- * the panel/border roles, a title row, the hint, and entries two rows apart so the
- * focused entry takes the shared focus perimeter and its chase, exactly as an
- * authored focused button draws it. The scene browser was rebuilt on this form first
- * (commit "rebuild the editor scene browser as a palette-driven panel"); the surface
- * inspector follows it. Placement is unchanged: the panel replaces the ragged
- * column-1 list in the same corner.
- */
-#define EDITOR_MENU_ROW_STEP 2   /* entries two rows apart, so the perimeter fits */
-#define EDITOR_MENU_MAX_ROWS 24
-#define EDITOR_MENU_PAD 2
-#define EDITOR_MENU_COLUMN_GAP 2 /* between the label column and the detail column */
-/* Rows kept clear above the title and below the hint, so no text ever sits in the
-   band the material froths in: the menu's edge stays the material's, not the text's. */
-#define EDITOR_MENU_MARGIN 2
-
-typedef struct {
-    char text[80];   /* the label: what the entry is              */
-    char detail[64]; /* its value and the keys that act on it, or "" */
-    bool focused;    /* takes the focus perimeter and brightens   */
-    bool strong;     /* a heading: bright, but not a control      */
-    bool note;       /* a notice or an error: the bright role     */
-} EditorMenuRow;
-
-/* Collect one line of an editor list into the menu block, classified by the role it
-   was drawn with: the focus role is the selection, the warning role is a note, the
-   primary role is a heading, everything else is an ordinary entry. A leading "> "
-   marker is dropped -- the menu surface marks the focused entry with the focus
-   perimeter and its chase, exactly as an authored menu does. */
-static void editor_menu_collect(EditorMenuRow *rows, size_t *count, const char *text,
-                                SDL_Color colour, const UiAppWorkbenchPalette *palette) {
-    const char *label = text ? text : "";
-    const char *split = NULL;
-    const char *rest = NULL;
-    bool focused = false;
-    bool strong = false;
-    bool note = false;
-    while (*label == ' ') label++;
-    if (*label == '>') {
-        focused = true;
-        label++;
-        while (*label == ' ') label++;
-    }
-    /* An entry is two columns: what it is, and its value with the keys that act on
-       it. The split is the first run of two or more spaces, so the panel can align
-       the columns itself instead of every source string padding itself by hand --
-       which is what left the details starting at a different column per row. */
-    {
-        const char *scan = label;
-        while (*scan != '\0') {
-            if (scan[0] == ' ' && scan[1] == ' ') {
-                const char *value = scan + 2;
-                while (*value == ' ') value++;
-                if (*value != '\0') {
-                    split = scan;
-                    rest = value;
-                }
-                break;
-            }
-            scan++;
-        }
-    }
-    if (palette) {
-        if (colour.r == palette->focus.r && colour.g == palette->focus.g &&
-            colour.b == palette->focus.b && colour.a == palette->focus.a)
-            focused = true;
-        else if (colour.r == palette->warning.r && colour.g == palette->warning.g &&
-                 colour.b == palette->warning.b && colour.a == palette->warning.a)
-            note = true;
-        else if (colour.r == palette->primary_text.r &&
-                 colour.g == palette->primary_text.g &&
-                 colour.b == palette->primary_text.b &&
-                 colour.a == palette->primary_text.a)
-            strong = true;
-    }
-    if (!rows || !count || *count >= EDITOR_MENU_MAX_ROWS) return;
-    (void)snprintf(rows[*count].text, sizeof(rows[*count].text), "%.*s",
-                   (int)(split ? (size_t)(split - label) : strlen(label)), label);
-    (void)snprintf(rows[*count].detail, sizeof(rows[*count].detail), "%s",
-                   rest ? rest : "");
-    rows[*count].focused = focused;
-    rows[*count].strong = strong;
-    rows[*count].note = note;
-    (*count)++;
 }
 
 /* The panel's bed: the region the menu owns, cleared to black. The material is a
@@ -6058,6 +6078,35 @@ void unified_editor_render_text_overlay(
         grid_print(grid, 1, 3, line, fg, bg);
 
         row = 5;
+        /* Every edit-mode menu is the same panel: the submenus that come up on a selection
+           are collected here and rendered as a corner panel at the end of their own branch,
+           so the light, decal, sprite, trigger and object inspectors wear exactly what the
+           surface inspector wears. Collecting is what lets each branch's per-field
+           formatting stay as it is: only the drawn form changes.
+           (`grid_print` is redefined to collect for the length of the inspector chain and
+           restored straight after it, so the workspace panels above and the modal prompts
+           below keep drawing their own lines.) */
+        EditorMenuRow menu_rows[EDITOR_MENU_MAX_ROWS];
+        size_t menu_count = 0U;
+        char menu_title[64] = "";
+        char menu_hint[96] = "";
+        const bool unsavable_document =
+            editor_document_has_unsaveable_material(&editor->document) ||
+            editor->status == EDITOR_STATUS_UNSAVABLE_MATERIAL_ID;
+        const char *const unsavable_note =
+            unsavable_document ? "WARNING: document has material ID > 9 (unsavable)" : NULL;
+        bool inspector_menu_shown =
+            editor->inspector_open && editor_is_surface_inspector(editor);
+        if (editor->inspector_open &&
+            (editor->inspector_kind == EDITOR_INSPECTOR_LIGHT ||
+             editor->inspector_kind == EDITOR_INSPECTOR_DECAL ||
+             editor->inspector_kind == EDITOR_INSPECTOR_SPRITE ||
+             editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER ||
+             editor->inspector_kind == EDITOR_INSPECTOR_OBJECT))
+            inspector_menu_shown = true;
+#define grid_print(g, x, y, text, colour, bg) \
+            editor_menu_collect(menu_rows, &menu_count, (text), (colour), &palette)
+
         if (editor->inspector_open && editor_is_surface_inspector(editor)) {
             EditorInspectorPresentation presentation = {0};
             size_t count = editor->material_search_result_count;
@@ -6065,21 +6114,6 @@ void unified_editor_render_text_overlay(
             size_t i;
             MaterialId current = 0;
             bool current_loaded;
-            /* The surface inspector keeps its corner: the ragged column-1 list it has
-               always had becomes a panel in the styling the menu work established -- a
-               bordered bed, a title, entries two rows apart so the selected one takes the
-               shared focus perimeter and its chase, and the hint under them. It is not a
-               pause menu: it must leave the world visible while you edit it, so it stays
-               small and in the corner. The list is collected here and rendered as the
-               panel at the end of this branch; collecting is what lets the per-field
-               formatting below stay exactly as it is. */
-            EditorMenuRow menu_rows[EDITOR_MENU_MAX_ROWS];
-            size_t menu_count = 0U;
-            char menu_title[64] = "";
-            char menu_hint[96] = "";
-#define grid_print(g, x, y, text, colour, bg) \
-            editor_menu_collect(menu_rows, &menu_count, (text), (colour), &palette)
-
             if (editor_domain_inspector_presentation(
                     editor->inspector_kind, &presentation)) {
                 (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
@@ -6425,13 +6459,9 @@ void unified_editor_render_text_overlay(
                 }
             }
             if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
-#undef grid_print
-            /* Draw the collected list as the corner panel: column 1, top frame on row 4
-               so the title lands on row 5, exactly where the ragged list used to start.
-               A modal prompt is drawn by the shared modal renderer below, over this
-               panel, so the panel does not return early. */
             editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
-                                     menu_hint, NULL, now_ms, reduced_motion, &palette);
+                                     menu_hint, unsavable_note, now_ms, reduced_motion,
+                                     &palette);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             EditorInspectorPresentation presentation;
@@ -6442,9 +6472,10 @@ void unified_editor_render_text_overlay(
                     editor->inspector_kind, &presentation)) {
                 presentation = (EditorInspectorPresentation){0};
             } else {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
             }
             for (field = 0; field < presentation.field_count; field++) {
                 EditorInspectorFieldPresentation field_presentation;
@@ -6462,7 +6493,7 @@ void unified_editor_render_text_overlay(
                     snprintf(line, sizeof(line), " > %-10s [%s_]",
                              field_presentation.label, editor->light_value_text);
                 } else {
-                    snprintf(line, sizeof(line), " %s %-10s %s",
+                    snprintf(line, sizeof(line), " %s %-10s  %s",
                              selected ? ">" : " ", field_presentation.label, value);
                 }
                 grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
@@ -6470,6 +6501,9 @@ void unified_editor_render_text_overlay(
             if (presentation.note) {
                 grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
+            editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                     menu_hint, unsavable_note, now_ms, reduced_motion,
+                                     &palette);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
             EditorInspectorPresentation presentation;
@@ -6477,9 +6511,10 @@ void unified_editor_render_text_overlay(
                 &editor->document, editor->selection.value.decal.id);
             if (editor_domain_inspector_presentation(
                     EDITOR_INSPECTOR_DECAL, &presentation)) {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
                 for (size_t field = 0U; field < presentation.field_count; field++) {
                     EditorInspectorFieldPresentation fp;
                     char value[32];
@@ -6491,22 +6526,31 @@ void unified_editor_render_text_overlay(
                     if (selected && editor->light_value_editing)
                         snprintf(line, sizeof(line), " > %-10s [%s_]",
                                  fp.label, editor->light_value_text);
-                    else snprintf(line, sizeof(line), " %s %-10s %s",
+                    else snprintf(line, sizeof(line), " %s %-10s  %s",
                                   selected ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
+                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
+                                         menu_count, menu_hint, unsavable_note, now_ms,
+                                         reduced_motion, &palette);
             }
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
             EditorInspectorPresentation presentation;
             const SceneSpriteInstance *sprite = scene_document_find_sprite(
                 &editor->document, editor->selection.value.sprite.id);
-            if (editor_domain_inspector_presentation(
+            if (editor->sprite_menu_open &&
+                editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT) {
+                /* Painting is its own screen: the canvas and its action column, with no
+                   fields panel under it. */
+                editor_render_sprite_paint_screen(editor, grid, &row, fg, bg, dim, warn, hi);
+            } else if (editor_domain_inspector_presentation(
                     EDITOR_INSPECTOR_SPRITE, &presentation)) {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
                 for (size_t field = 0U; field < presentation.field_count; field++) {
                     EditorInspectorFieldPresentation fp;
                     char value[32];
@@ -6519,18 +6563,21 @@ void unified_editor_render_text_overlay(
                     if (selected && editor->light_value_editing)
                         snprintf(line, sizeof(line), " > %-10s [%s_]",
                                  fp.label, editor->light_value_text);
-                    else snprintf(line, sizeof(line), " %s %-10s %s",
+                    else snprintf(line, sizeof(line), " %s %-10s  %s",
                                    selected && !(editor->sprite_menu_open &&
                                        field == EDITOR_SPRITE_FIELD_PATTERN)
                                        ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                     if (field == EDITOR_SPRITE_FIELD_PATTERN &&
                         editor->sprite_menu_open) {
-                        editor_render_sprite_pattern_menu(
-                            editor, grid, &row, fg, bg, dim, warn, hi);
+                        editor_collect_sprite_menu_rows(
+                            editor, menu_rows, &menu_count, &palette, dim, hi);
                     }
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
+                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
+                                         menu_count, menu_hint, unsavable_note, now_ms,
+                                         reduced_motion, &palette);
             }
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
@@ -6539,9 +6586,10 @@ void unified_editor_render_text_overlay(
                 &editor->document, editor->selection.value.trigger.id);
             if (editor_domain_inspector_presentation(
                     EDITOR_INSPECTOR_TRIGGER, &presentation)) {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
                 for (size_t field = 0U; field < presentation.field_count; field++) {
                     EditorInspectorFieldPresentation fp;
                     char value[64];
@@ -6550,10 +6598,13 @@ void unified_editor_render_text_overlay(
                             (EditorTriggerField)field, &editor->document.map, &fp) ||
                         !editor_domain_format_trigger_field(
                             trigger, (EditorTriggerField)field, value, sizeof(value))) continue;
-                    snprintf(line, sizeof(line), " %s %-10s %s",
+                    snprintf(line, sizeof(line), " %s %-10s  %s",
                              selected ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                 }
+                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
+                                         menu_count, menu_hint, unsavable_note, now_ms,
+                                         reduced_motion, &palette);
             }
         }
         if (editor->inspector_open &&
@@ -6566,9 +6617,10 @@ void unified_editor_render_text_overlay(
             };
             if (object && editor_domain_inspector_presentation(
                     EDITOR_INSPECTOR_OBJECT, &presentation)) {
-                snprintf(line, sizeof(line), "Inspector: %s  %s",
-                         presentation.title, presentation.controls);
-                grid_print(grid, 1, row++, line, fg, bg);
+                (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
+                               presentation.title);
+                (void)snprintf(menu_hint, sizeof(menu_hint), "%s",
+                               presentation.controls);
                 for (size_t field = 0U; field < EDITOR_OBJECT_FIELD_COUNT; field++) {
                     bool selected = field == (size_t)editor->object_field;
                     if (field == EDITOR_OBJECT_FIELD_X)
@@ -6583,16 +6635,16 @@ void unified_editor_render_text_overlay(
                             object->sprite_asset < SPRITE_ID_CAPACITY &&
                             sprite_id_is_loaded(editor->assets, (int)object->sprite_asset))
                             sprite_label = "sprite";
-                        snprintf(line, sizeof(line), " %s %-10s %s:%u Enter=open",
+                        snprintf(line, sizeof(line), " %s %-10s  %s:%u Enter=open",
                             selected && !editor->object_picker_open ? ">" : " ",
                             labels[field], sprite_label,
                             (unsigned)object->sprite_asset);
-                } else snprintf(line, sizeof(line), " %s %-10s Enter=remove", selected ? ">" : " ", labels[field]);
+                } else snprintf(line, sizeof(line), " %s %-10s  Enter=remove", selected ? ">" : " ", labels[field]);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                     if (field == EDITOR_OBJECT_FIELD_ASSET && editor->object_picker_open) {
                         size_t start = editor->object_picker_index >= EDITOR_PICKER_VISIBLE
                             ? editor->object_picker_index - EDITOR_PICKER_VISIBLE + 1U : 0U;
-                        snprintf(line, sizeof(line), "   Sprite search: %s_",
+                        snprintf(line, sizeof(line), "   Sprite search:  %s_",
                                  editor->object_search_text);
                         grid_print(grid, 1, row++, line, fg, bg);
                         for (size_t i = start; i < editor->object_search_result_count &&
@@ -6607,15 +6659,17 @@ void unified_editor_render_text_overlay(
                     }
                 }
                 grid_print(grid, 1, row++, presentation.note, warn, bg);
+                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
+                                         menu_count, menu_hint, unsavable_note, now_ms,
+                                         reduced_motion, &palette);
             }
         }
+#undef grid_print
 
-        if (editor_document_has_unsaveable_material(&editor->document) ||
-            editor->status == EDITOR_STATUS_UNSAVABLE_MATERIAL_ID) {
-            grid_print(grid, 1, row++,
-                       "WARNING: document has material ID > 9 (unsavable)",
-                       warn, bg);
-        }
+        /* A document that cannot be saved says so whether or not a menu is open: as the
+           open menu's own note when one is, and on its own line when none is. */
+        if (unsavable_note && !inspector_menu_shown)
+            grid_print(grid, 1, 4, unsavable_note, warn, bg);
 
         {
             const char *status = editor_status_label(editor->status);

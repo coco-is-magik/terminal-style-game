@@ -129,8 +129,9 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   channels use palette accent/focus roles or the additive decorative chromatic-material tokens
   (§3.4 of the Reference of Record); one literal-RGB comparison is permitted only in
   the isolated diagnostic specimen and is not a reusable semantic token.
-- **Edit-mode submenu rule (2026-10-13).** The submenus that come up while **editing** — starting with
-  the surface inspector for a **wall, ceiling or floor** — are **panels, not display surfaces**: fitted
+- **Edit-mode submenu rule (2026-10-13).** **Every** submenu that comes up while **editing** — the
+  surface inspector for a **wall, ceiling or floor** and the light, decal, sprite, trigger and object
+  inspectors with everything nested under them — is **the same panel, not a display surface**: fitted
   to their content, holding the corner of the frame (column 1, bed from row 4) so **the world stays
   visible while you edit**. The bed is `canvas` (black) and text is `primary_text` / `secondary_text`;
   an edit-mode panel draws **no `border` frame, no `warning` hue and no `focus`/`accent` mint** — that is
@@ -153,7 +154,8 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   (`ui_theme_chase_colour`) — the characters run along the selection and the colour is legible because it
   is on every cell of it, where a band chasing a one-cell-thick line was too thin to read. A hover keeps
   the plain dashed contrast outline and Reduced Motion draws the frame still in the plain contrast
-  colours. A panel that cannot
+  colours. One stated exception: the sprite **paint** stage is a canvas screen, not a menu — it draws
+  the sprite canvas and its action column itself, so no panel is drawn under it. A panel that cannot
   hold the two-row rhythm **closes the entries up rather than truncating the list** (and then marks the
   focused entry by brightness alone, because the perimeter would overlap its neighbours) — §4.7's
   "nothing is hidden". **A mode-selection display surface** — the authored menus and the editor's scene

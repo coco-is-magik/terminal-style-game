@@ -1221,7 +1221,9 @@ static void test_light_hover_selection_uses_stable_id(void **state) {
     unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "Select light:11"));
     assert_true(grid_contains_text(grid, "Inspector: light"));
-    assert_true(grid_contains_text(grid, "> X"));
+    /* Every inspector is the same corner panel now, not a ragged marked-up list. */
+    assert_corner_panel(grid);
+    assert_false(grid_contains_text(grid, "> X"));
     grid_destroy(grid);
 
     zero_input(&in);
@@ -1720,24 +1722,19 @@ static void test_sprite_p_creates_canvas_and_pattern_workflow(void **state) {
     assert_true(grid_contains_text(grid, "Edit/Paint"));
     assert_true(grid_contains_text(grid, "P=new sprite canvas"));
     assert_true(grid_find_text(grid, "Pattern...", &pattern_x, &pattern_y));
-    assert_true(grid_find_text(grid, "> Edit/Paint", NULL, &edit_y));
+    assert_true(grid_find_text(grid, "Edit/Paint", NULL, &edit_y));
     assert_true(grid_find_text(grid, "Load existing...", &load_x, &load_y));
     assert_true(grid_find_text(grid, "Remove", NULL, &remove_y));
-    assert_true(load_x > pattern_x);
+    /* The panel is one column: the field labels and the submenu's entries all start in it,
+       and their order is the order they are collected in. */
+    assert_int_equal(load_x, pattern_x);
     assert_true(pattern_y < load_y && load_y < edit_y && edit_y < remove_y);
     assert_int_not_equal(grid->cells[pattern_y * grid->width + pattern_x - 1].glyph,
                          (uint8_t)'>');
-    {
-        /* The selected row takes the workbench palette's focus role (§4.2:
-           focus is state), not the old editor literal. */
-        UiAppWorkbenchPalette palette;
-        assert_true(ui_app_theme_workbench_palette(&palette));
-        assert_memory_equal(&grid->cells[pattern_y * grid->width + pattern_x].fg,
-                            &palette.focus, sizeof(SDL_Color));
-        assert_int_equal(grid->cells[edit_y * grid->width + 4].glyph, (uint8_t)'>');
-        assert_memory_equal(&grid->cells[edit_y * grid->width + 4].fg,
-                            &palette.focus, sizeof(SDL_Color));
-    }
+    /* The sprite inspector is the same corner panel as the others, and the focused entry --
+       the open submenu's own cursor -- takes the shared perimeter, never a '>' marker. */
+    assert_corner_panel(grid);
+    assert_int_equal(grid->cells[(edit_y - 1) * grid->width + 2].glyph, (uint8_t)'+');
     grid_destroy(grid);
 
     zero_input(&in);
@@ -1982,7 +1979,10 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
     grid = grid_create(160, 160);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_contains_text(grid, "Pattern..."));
+    /* Painting is a canvas screen of its own: the canvas, the frames beside it and its own
+       action column. The fields panel belongs to the inspector's list stages, so it is not
+       drawn under the canvas. */
+    assert_false(grid_contains_text(grid, "Pattern..."));
     assert_true(grid_contains_text(grid, "SPRITE PAINT"));
     assert_true(grid_contains_text(grid, "previous"));
     assert_true(grid_contains_text(grid, "active"));

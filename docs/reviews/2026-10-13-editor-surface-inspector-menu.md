@@ -105,6 +105,31 @@ edits, is unchanged. The whole change is the form the list is drawn in.
   Reduced Motion holds none). The highlight tests that are about the *contrast* outline pass
   `reduced_motion` so the chase does not stand in for the cell they sample.
 
+### Every menu, kept consistent (same day, owner follow-up)
+
+The owner asked for the same treatment across the rest of the menus: "lets apply the current menu
+appearance scheme to the rest of the menus we can pull up and have it consistently".
+
+- **`src/unified_editor.c`.** The rows, the collector and the panel renderer are hoisted so the whole
+  inspector chain shares them: `grid_print` is redefined to collect for the length of the chain and
+  restored straight after it, so the workspace panels above and the modal prompts below keep drawing
+  their own lines. The light, decal, sprite, trigger and object branches each set a title and a hint
+  from their `EditorInspectorPresentation` and render the same panel; their format strings gained the
+  second space that lets the panel split label from value. The object picker and the sprite menu's list
+  stages collect as nested rows, exactly as the material picker does.
+- **The document warning is the panel's note.** "document has material ID > 9 (unsavable)" was a line
+  drawn over whatever was open; it is now the open panel's own note, and keeps its own line when no
+  menu is open.
+- **The sprite paint stage is its own screen.** `editor_render_sprite_pattern_menu` became
+  `editor_collect_sprite_menu_rows` (the actions and load lists, collected) plus
+  `editor_render_sprite_paint_screen` (the canvas, the frames beside it and its action column, drawn
+  directly). Painting therefore gets the whole surface and no fields panel is drawn under it — the
+  fields belong to the inspector's list stages. The row model moved above both helpers so the sprite
+  lists can fill the same rows the panel draws.
+- **Tests.** The light and sprite inspectors now assert `assert_corner_panel`; the assertions that looked
+  for a `"> "` marker became assertions about the panel (one column, the perimeter on the focused entry,
+  no marker), and the paint-screen test asserts that the fields are *not* drawn while painting.
+
 ## Failures found and fixed during the work
 
 1. **The whole-frame version was the wrong placement**, and the bordered version was the wrong edge.
@@ -207,6 +232,10 @@ edits, is unchanged. The whole change is the form the list is drawn in.
 - **No native visual capture was reviewed on a display**; the form is verified by the tests and the cell
   dumps above. The material's marks, shades and densities are named constants (`UI_SHORE_BODY*`,
   `UI_SHORE_FOAM*`), so tuning the ripple or the foam is one value.
+- **The modal prompts and the two workspaces are not panels.** A prompt (unsaved changes, material
+  collision, overwrite, remove) is a dialog drawn *over* the menu while it is up, and the flow and
+  menu-UI workspaces are panes rather than menus, so both keep their own drawing. Every *menu* a
+  selection pulls up is the shared panel; if the prompts should wear it too, that is the next slice.
 - **The other inspector kinds are still column-1 lists.** The light, decal, trigger, object and sprite
   inspectors (and the workspace panels) are unchanged; this slice is the wall / ceiling / floor submenus
   the owner named first. Converting the rest is the next slice, on the same helpers.

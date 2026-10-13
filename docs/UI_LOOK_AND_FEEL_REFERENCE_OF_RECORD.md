@@ -334,6 +334,18 @@ Two more corrections followed, on the finished panel:
     `ui_theme_chase_head` / `UI_THEME_CHASE_WIDTH` still travel the perimeter around a button, a menu
     row and the editor's panels.
 
+and then asked for the whole set, kept consistent:
+
+> lets apply the current menu appearance scheme to the rest of the menus we can pull up and have it
+> consistently. we are in a good spot.
+
+11. **Every edit-mode menu is that one panel.** The light, decal, sprite, trigger and object inspectors
+    are collected into the same rows and drawn by the same renderer as the surface inspector: same bed,
+    same aligned columns, same two-row rhythm and perimeter rules, same hint, and a document warning is
+    the panel's own note rather than a line dropped over it. One exception is stated rather than
+    hidden: the sprite **paint** stage is a canvas screen, not a menu — it draws the sprite canvas and
+    its action column itself, so the fields panel is not drawn under it.
+
 The implementation record is
 [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
 
