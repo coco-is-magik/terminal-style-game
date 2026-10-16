@@ -465,6 +465,26 @@ static int count_frames_with_band(const Grid *grid, int *out_frames) {
     return moving;
 }
 
+/* Cells of one rectangle whose foreground is one of the material's additive primaries: the
+   material's own colour, which may never appear on the sprite painter's canvas. */
+static int count_material_cells_in_box(const Grid *grid, int box_x, int box_y,
+                                       int columns, int rows) {
+    int count = 0;
+    int y;
+    for (y = box_y; y < box_y + rows; y++) {
+        int x;
+        if (y < 0 || y >= grid->height) continue;
+        for (x = box_x; x < box_x + columns; x++) {
+            const Cell *cell;
+            if (x < 0 || x >= grid->width) continue;
+            cell = &grid->cells[y * grid->width + x];
+            if (cell->glyph == 0U) continue;
+            if (is_primary_colour(cell->fg)) count++;
+        }
+    }
+    return count;
+}
+
 /* How far a detail sits from the left edge of its label in the panel. The panel aligns
    its details in one column, so this is the same number for every entry however long
    the labels are -- which is what the panel was rebuilt to get right. */
@@ -1945,8 +1965,16 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
     InputState input;
     Grid *grid;
     SpriteAsset frames[2];
-    PatternCell first = {(uint8_t)'A', UINT16_C(1)};
-    PatternCell second = {(uint8_t)'B', UINT16_C(1)};
+    /* Two frames of a 2x2 pattern with one cell painted: the painted cell proves the
+       content lands *inside* the grid, and the three empty ones prove the drawable area is
+       a blank black background with a lattice around it -- not a mark in every cell. */
+    PatternCell first[4] = {{(uint8_t)'A', UINT16_C(1)}, {0U, 0U}, {0U, 0U}, {0U, 0U}};
+    PatternCell second[4] = {{(uint8_t)'B', UINT16_C(1)}, {0U, 0U}, {0U, 0U}, {0U, 0U}};
+    UiAppWorkbenchPalette palette;
+    int panel_x = 0;
+    int panel_y = 0;
+    int canvas_x = 0;
+    int canvas_y = 0;
     char sprite_root[512];
     char sprite_directory[512];
     char path[512];
@@ -1956,8 +1984,8 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
     assert_true(unified_editor_set_asset_root(&editor, g_tmpdir));
     path_in_tmpdir(sprite_root, sizeof(sprite_root), "sprites");
     assert_int_equal(test_mkdir(sprite_root), 0);
-    frames[0] = (SpriteAsset){1, 1, &first};
-    frames[1] = (SpriteAsset){1, 1, &second};
+    frames[0] = (SpriteAsset){2, 2, first};
+    frames[1] = (SpriteAsset){2, 2, second};
     assert_true(asset_registry_set_sprite_animation(
         &g_assets, 4U, frames, 2U, 4.0, true));
     set_horizontal_hover(&editor, SELECTION_FLOOR, 3, 2);
@@ -1978,18 +2006,100 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
 
     grid = grid_create(160, 160);
     assert_non_null(grid);
+    /* The screen shows the first 130 columns of the frame at the owner's 200% UI scale
+       (user.ini), and 80 of its 160 rows. The compositor draws this layer at the UI scale
+       and crops what does not fit, so everything asserted below has to be inside that. */
+    unified_editor_set_interface_viewport(&editor, 130, 80);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
     /* Painting is a canvas screen of its own: the canvas, the frames beside it and its own
        action column. The fields panel belongs to the inspector's list stages, so it is not
        drawn under the canvas. */
     assert_false(grid_contains_text(grid, "Pattern..."));
     assert_true(grid_contains_text(grid, "SPRITE PAINT"));
-    assert_true(grid_contains_text(grid, "previous"));
-    assert_true(grid_contains_text(grid, "active"));
-    assert_true(grid_contains_text(grid, "next"));
     assert_true(grid_contains_text(grid, "Add frame"));
+    /* The controls are the panel at the frame's top left, and the canvases are right-aligned
+       at the top of the *screen* region, a padding margin in from its right edge. Owner
+       direction, 2026-10-13: "Lets try having the menu top left aligned, canvas/previews top
+       right aligned. Dont press right up on the edge of the screen, have some padding and
+       arrange it neatly with good alignment. The canvas should have a frame around the
+       drawable area in bright white. The previews on either side of it should have a dimmer
+       frame". The block is right-aligned to the region the screen shows rather than to the
+       frame's own far edge, because that edge is cropped at a raised UI scale: at 200% a
+       canvas pinned to it is not drawn at all. */
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_true(grid_find_text(grid, "SPRITE PAINT", &panel_x, &panel_y));
+    assert_true(panel_x < grid->width / 4);
+    assert_true(panel_y < 8);
+    {
+        int preview_x = -1;
+        int rightmost = 0;
+        int x;
+        int y;
+        bool dotted = false;
+        canvas_y = 5;
+        for (x = 0; x < grid->width; x++)
+            if (grid->cells[canvas_y * grid->width + x].glyph == 'A') canvas_x = x;
+        assert_true(canvas_x > panel_x);
+        /* The active canvas is framed in bright white; the preview to its left is framed
+           dimmer, and no cell of the canvas carries the material's colour: the canvas is the
+           work. */
+        assert_int_equal(grid->cells[(canvas_y - 1) * grid->width + canvas_x - 1].glyph,
+                         (uint8_t)'+');
+        assert_memory_equal(&grid->cells[(canvas_y - 1) * grid->width + canvas_x - 1].fg,
+                            &palette.primary_text, sizeof(SDL_Color));
+        for (x = 0; x + 2 < canvas_x; x++)
+            if (grid->cells[(canvas_y - 1) * grid->width + x].glyph == '+')
+                preview_x = x;
+        assert_true(preview_x >= 0);
+        assert_memory_equal(&grid->cells[(canvas_y - 1) * grid->width + preview_x].fg,
+                            &palette.secondary_text, sizeof(SDL_Color));
+        assert_int_equal(count_material_cells_in_box(grid, canvas_x - 1, canvas_y - 1,
+                                                     5, 5), 0);
+        /* The drawable area is a lattice, not a field of marks. The cell the pattern painted
+           holds its glyph; the intersection between cells is a '+' of the divider role; the
+           empty cells are *blank* -- a space, never a '.' -- so the canvas reads as a grid of
+           cells on a blank black background (owner, 2026-10-14: "The canvas also is filled
+           with dots, not a grid, which is wrong"). */
+        assert_int_equal(grid->cells[canvas_y * grid->width + canvas_x].glyph, (uint8_t)'A');
+        assert_int_equal(grid->cells[(canvas_y + 1) * grid->width + canvas_x + 1].glyph,
+                         (uint8_t)'+');
+        assert_memory_equal(&grid->cells[(canvas_y + 1) * grid->width + canvas_x + 1].fg,
+                            &palette.border, sizeof(SDL_Color));
+        assert_int_equal(grid->cells[canvas_y * grid->width + canvas_x + 2].glyph, (uint8_t)' ');
+        assert_int_equal(grid->cells[(canvas_y + 2) * grid->width + canvas_x].glyph, (uint8_t)' ');
+        for (y = canvas_y - 1; y <= canvas_y + 3; y++)
+            for (x = canvas_x - 1; x <= canvas_x + 3; x++)
+                if (grid->cells[y * grid->width + x].glyph == '.') dotted = true;
+        assert_false(dotted);
+        /* The block -- preview, canvas and the frame beyond it -- is inside the columns the
+           screen shows, and its right edge is the padding margin in from their edge: 130
+           columns shown, two columns of padding, so the last drawn column is 127. */
+        for (x = 0; x < grid->width; x++)
+            if (grid->cells[(canvas_y - 1) * grid->width + x].glyph == '+')
+                rightmost = x;
+        assert_true(rightmost > canvas_x);
+        assert_int_equal(rightmost, 127);
+    }
     grid_destroy(grid);
 
+    /* The menu is the canvas's only neighbour on the screen, so either horizontal key that
+       would leave the canvas enters it and either horizontal key returns; the canvas's own
+       far edge still enters the menu too. */
+    zero_input(&input);
+    input.editor_decrease_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.sprite_paint_focus, EDITOR_SPRITE_PAINT_FOCUS_MENU);
+    zero_input(&input);
+    input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.sprite_paint_focus, EDITOR_SPRITE_PAINT_FOCUS_CANVAS);
+    /* Walk to the canvas's own far column, then off it: the far edge enters the menu. */
+    assert_int_equal(editor.sprite_paint_x, 0U);
+    zero_input(&input);
+    input.editor_increase_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_int_equal(editor.sprite_paint_x, 1U);
+    assert_int_equal(editor.sprite_paint_focus, EDITOR_SPRITE_PAINT_FOCUS_CANVAS);
     zero_input(&input);
     input.editor_increase_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
@@ -2006,6 +2116,29 @@ static void test_sprite_animation_painter_focus_frames_save_and_discard(void **s
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.sprite_document.frame_count, 1U);
     assert_int_equal(editor.sprite_document.cells[0].glyph, 'B');
+    /* The canvas sits in the same columns whether or not it is flanked by previews: it must not
+       move when a frame is added or removed (owner, 2026-10-14: "The canvas shouldnt move when
+       adding more frames. It should be in the same location no matter what. The location its in
+       when there are frames added ... should be the location it always sits"). The block is
+       three fixed slots and the canvas being painted always takes the middle one, so with the
+       second frame gone the canvas has not moved a column and the slots either side of it are
+       empty. */
+    {
+        Grid *alone = grid_create(160, 160);
+        int found = -1;
+        int x;
+        assert_non_null(alone);
+        unified_editor_set_interface_viewport(&editor, 130, 80);
+        unified_editor_render_text_overlay(&editor, alone, 0.0, false);
+        for (x = 0; x < alone->width; x++)
+            if (alone->cells[canvas_y * alone->width + x].glyph == 'B') found = x;
+        assert_int_equal(found, canvas_x);
+        for (x = canvas_x - 8; x < canvas_x - 1; x++)
+            assert_int_equal(alone->cells[(canvas_y - 1) * alone->width + x].glyph, 0U);
+        for (x = canvas_x + 4; x <= canvas_x + 10; x++)
+            assert_int_equal(alone->cells[(canvas_y - 1) * alone->width + x].glyph, 0U);
+        grid_destroy(alone);
+    }
     zero_input(&input);
     input.editor_save_pressed = true;
     update_with(&editor, &camera, &input);

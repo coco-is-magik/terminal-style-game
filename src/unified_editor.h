@@ -280,6 +280,19 @@ typedef struct {
     bool request_window_close;
     bool active;
 
+    /* How much of the editor's frame the screen actually shows, in editor cells, as the
+       application's UI scale leaves it: the compositor draws a UI layer at the UI scale
+       into the display's own buffer and crops whatever does not fit, so at 200% only the
+       first 130 columns and 80 rows of the 260x160 frame are on screen. The application
+       sets this every frame (unified_editor_set_interface_viewport); **zero means the whole
+       frame is on screen**, which is what a headless render and the tests assume. Right-
+       aligned editor interface -- the painter's canvas block -- is laid out inside this
+       region, so it is never placed past the screen's edge (UI_LOOK_AND_FEEL §4.7,
+       "Nothing leaves the surface": "Magnifying must never push the editor interface or a
+       control off the visible surface"). */
+    int interface_columns;
+    int interface_rows;
+
     /* Valid while modal == EDITOR_MODAL_EXIT_PROMPT. */
     EditorExitChoice exit_choice;
 
@@ -316,6 +329,15 @@ void unified_editor_request_new(UnifiedEditorState *editor);
 void unified_editor_request_window_close(UnifiedEditorState *editor);
 
 bool unified_editor_has_document(const UnifiedEditorState *editor);
+
+/* Tells the editor how much of its frame the screen shows, in editor cells: the
+   application computes it from the UI scale (columns = frame columns x 100 / scale, rows
+   likewise) and calls this before each render, because the UI scale can change at any time.
+   Zero for either dimension means "the whole frame is on screen" -- the headless default,
+   and what a render that does not know the scale must assume. Only the *layout* of
+   right-aligned editor interface reads it; no key, focus or editing path does. */
+void unified_editor_set_interface_viewport(UnifiedEditorState *editor,
+                                           int columns, int rows);
 
 SceneLoadResult unified_editor_load_scene(
     UnifiedEditorState *editor,

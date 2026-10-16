@@ -154,11 +154,46 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   (`ui_theme_chase_colour`) — the characters run along the selection and the colour is legible because it
   is on every cell of it, where a band chasing a one-cell-thick line was too thin to read. A hover keeps
   the plain dashed contrast outline and Reduced Motion draws the frame still in the plain contrast
-  colours. One stated exception: the sprite **paint** stage is a canvas screen, not a menu — it draws
-  the sprite canvas and its action column itself, so no panel is drawn under it. A panel that cannot
+  colours. One stated exception: the sprite **paint** stage is a canvas screen, not a menu — its title,
+  hint, frame line, frame actions and paint keys are the shared panel **top left, with every line about
+  as long as the others**, and the three canvases are **right-aligned at the top of the region the screen
+  shows**, a padding margin in from its right edge and a fixed gap apart, each in its own frame: the
+  active canvas framed in **bright white** with bright content, the previews framed and drawn
+  **dimmer**, so which one is being painted is never in question. They are **three fixed slots** —
+  previous, the canvas being painted, next — and the canvas being painted always takes the **middle**
+  one, whether or not the neighbours are there, so it does not move a column when a frame is added or
+  removed (owner, 2026-10-14: "The canvas shouldnt move when adding more frames. It should be in the same
+  location no matter what. The location its in when there are frames added ... should be the location it
+  always sits"). Owner direction, 2026-10-13: "Lets try
+  having the menu top left aligned, canvas/previews top right aligned. Dont press right up on the edge of
+  the screen, have some padding and arrange it neatly with good alignment." Each canvas has a **blank
+  black background and a character cell grid**, and carries nothing else — no bed, no material, no effect
+  — because the canvas is the work. The grid is drawn as a **lattice of characters**, one character of
+  line for every character of cell (`+` where the lines cross, `-` along a row, `|` along a column), so a
+  drawable cell is a blank black square with its neighbours' lines around it and stays visible under
+  anything painted in it; a **mark in every cell** (one `.` per empty cell) is not that grid — it reads as
+  dirt on the canvas (owner, 2026-10-14: "The canvas also is filled with dots, not a grid, which is
+  wrong"). The lattice's **outer ring is the frame**. The cursor is the identity's **inverse**, not a hue
+  of its own. **The menu is the canvas's only neighbour on the screen**, so either horizontal key that
+  would leave the canvas enters the menu and either horizontal key returns; the hint says so. The block is
+  right-aligned to the **region the screen shows**, not to the frame's own far edge, because at a raised
+  UI scale the compositor scales the editor's surface into the display's own buffer and **crops** it: at
+  the owner's 200% the 260-column frame shows 130 columns, so a canvas pinned to the frame's edge is never
+  drawn at all. The editor is told that region by the application
+  (`unified_editor_set_interface_viewport`, §4.7's "Nothing leaves the surface" — "Magnifying must never
+  push the editor interface or a control off the visible surface"); with no region reported — a headless
+  render, a test — the whole frame is assumed. When the region cannot hold the menu and the canvases
+  both, the block takes the room the menu has left and the **previews are given up before the canvas
+  being painted is**. A panel that cannot
   hold the two-row rhythm **closes the entries up rather than truncating the list** (and then marks the
   focused entry by brightness alone, because the perimeter would overlap its neighbours) — §4.7's
-  "nothing is hidden". **A mode-selection display surface** — the authored menus and the editor's scene
+  "nothing is hidden". The panel is the surface, so **the editor's own lines start below it**: the panel
+  returns the first row clear under its bed, and the status line and every prompt are drawn from there,
+  never on the menu. A **prompt** (unsaved changes, collision, overwrite, remove, the exit choices, the
+  save menu) is a *dialog* — it is not a menu of its own — but it is still the editor's text, so it is
+  drawn on **a bed of its own**, exactly as wide as its longest line, and slides up to clear the footer
+  if the menu has left it no room: printed straight through a panel, "Document is DIRTY" landed in the
+  middle of "Inspector: sprite instance" and the two were illegible. **A mode-selection display surface** — the authored menus and the editor's scene
   browser, where the user is choosing rather than editing — still takes the whole frame: the
   surface-extent `living_field` material, one centred block, entries on the menu's three-row rhythm, the
   perimeter with its chase, composited centred, its own hint instead of the editor footer, the crosshair

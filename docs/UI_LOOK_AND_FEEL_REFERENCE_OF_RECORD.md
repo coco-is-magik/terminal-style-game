@@ -346,6 +346,59 @@ and then asked for the whole set, kept consistent:
     hidden: the sprite **paint** stage is a canvas screen, not a menu — it draws the sprite canvas and
     its action column itself, so the fields panel is not drawn under it.
 
+and then focused on the one screen that is not a list:
+
+> Lets focus in on the sprite painter next. UI work only, right now its on the old menu scheme. We
+> cant just copy paste the same thing but lets use whats been working for us to make the sprite
+> painter work. The actual canvas of the sprite painter cant have effects or things on it, though, we
+> need to be able to see what we are doing.
+
+then refined the arrangement:
+
+> Right edge to get to the menu doesnt work when the menu is above instead of next to. The menu looks too
+> wide because the bottom and top have a much bigger width than the rest. The space isnt being used
+> efficiently. Its very difficult to tell where my canvas now. ... Lets try having the menu top left
+> aligned, canvas/previews top right aligned. Dont press right up on the edge of the screen, have some
+> padding and arrange it neatly with good alignment. The canvas should have a frame around the drawable
+> area in bright white. The previews on either side of it should have a dimmer frame, so its always clear
+> which of the 3 is the active canvas. Lets try giving the canvas a blank black background, and use
+> characters to impose a visible cell grid if we can.
+
+12. **The painter's controls are the panel, top left; the canvas and its previews are top right, right-aligned
+    to the screen.** The sprite paint stage draws its title, hint, the frame it is on, its frame actions
+    and its paint keys in the shared panel, and **every line is about as long as the others**, so the
+    panel is not a bowtie with two long rows and a narrow middle. The three canvases are **right-aligned
+    at the top of the region the screen shows**, a padding margin in from its right edge and a fixed gap
+    apart, each in its own frame: the **active canvas is framed in bright white** and its content is
+    bright, while the previews are framed and drawn dimmer, so which of the three is being painted is
+    never in question. They are **three fixed slots** — previous, the canvas being painted, next — and the
+    canvas being painted always takes the **middle** one, whether or not the neighbours are there, so it
+    does not move a column when a frame is added or removed (owner, 2026-10-14: "The canvas shouldnt move
+    when adding more frames. It should be in the same location no matter what. The location its in when
+    there are frames added ... should be the location it always sits"). Each canvas has a **blank black
+    background and a character cell grid** — the grid
+    is a **lattice of characters**, one character of line for every character of cell (`+` where the lines
+    cross, `-` along a row, `|` along a column), whose **outer ring is the frame**, and nothing else is
+    ever drawn on a canvas: no bed, no material, no effect. A mark in every cell (one `.` per empty cell)
+    is **not** that grid: it reads as dirt, and the cells must be blank black squares walled off from each
+    other (owner, 2026-10-14: "The canvas also is filled with dots, not a grid, which is wrong"). The
+    cursor is the identity's **inverse** (the bright role behind the bed's own colour), so it reads on an
+    empty cell and on a painted one alike without a hue of its own. **The menu is the canvas's only
+    neighbour on the screen**, so either horizontal key that would leave the canvas enters the menu and
+    either horizontal key returns, with the canvas's own far edge still entering the menu. Right-aligned
+    means right-aligned to the **screen**: the compositor scales a UI layer by the UI scale into the
+    display's own buffer and crops it (150% by default; the owner runs 200%, where the 260-column frame
+    shows 130 columns), so the frame's far edge is not drawn at a raised scale — which is why the editor
+    is told the visible region by the application (`unified_editor_set_interface_viewport`) and lays the
+    block out inside it (§4.7's "Nothing leaves the surface": "Magnifying must never push the editor
+    interface or a control off the visible surface"), assuming the whole frame only when nothing is
+    reported. When the region cannot hold the menu and the canvases both, the block takes the room the
+    menu has left and the previews are given up before the canvas being painted is. The owner's
+    2026-10-13 direction above — "Lets try having
+    the menu top left aligned, canvas/previews top right aligned. Dont press right up on the edge of the
+    screen, have some padding and arrange it neatly with good alignment." — is what this answers; the
+    earlier "beside the panel" placement (2026-10-14) was the alignment read backwards and is superseded.
+
 The implementation record is
 [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
 

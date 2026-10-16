@@ -1089,6 +1089,24 @@ bool unified_editor_has_document(const UnifiedEditorState *editor) {
     return map && map->cells && map->width > 0 && map->height > 0;
 }
 
+void unified_editor_set_interface_viewport(UnifiedEditorState *editor,
+                                           int columns, int rows) {
+    if (!editor) return;
+    /* A non-positive dimension means "unknown, assume the whole frame": the same thing the
+       zeroed state means, so a caller that has no scale cannot accidentally hide the
+       interface by reporting a region of no width. */
+    editor->interface_columns = columns > 0 ? columns : 0;
+    editor->interface_rows = rows > 0 ? rows : 0;
+}
+
+/* The columns of the frame the screen shows: what the application reported, or the whole
+   frame when it reported nothing. Layout that must not be cropped is placed inside this. */
+static int editor_interface_columns(const UnifiedEditorState *editor, const Grid *grid) {
+    if (editor->interface_columns > 0 && editor->interface_columns < grid->width)
+        return editor->interface_columns;
+    return grid->width;
+}
+
 MapCatalogResult unified_editor_begin_map_open(
     UnifiedEditorState *editor,
     const char *map_root
@@ -2454,7 +2472,9 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
             } else if (input->editor_next_pressed) {
                 editor->sprite_paint_menu_index =
                     (editor->sprite_paint_menu_index + 1U) % SPRITE_PAINT_MENU_COUNT;
-            } else if (input->editor_decrease_pressed) {
+            } else if (input->editor_decrease_pressed || input->editor_increase_pressed) {
+                /* The menu sits to the left of the canvas, so either horizontal key moves
+                   back to the canvas: the painter is arranged the way it is navigated. */
                 editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
             } else if (input->editor_confirm_pressed) {
                 SpriteDocumentResult result = SPRITE_DOCUMENT_NO_CHANGE;
@@ -2500,6 +2520,9 @@ static bool editor_handle_sprite_menu_input(UnifiedEditorState *editor,
             if (editor->sprite_paint_x + 1U < editor->sprite_document.cols)
                 editor->sprite_paint_x++;
             else editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_MENU;
+        } else if (input->editor_decrease_pressed && editor->sprite_paint_x == 0U) {
+            /* Left off the canvas reaches the menu that sits to its left. */
+            editor->sprite_paint_focus = EDITOR_SPRITE_PAINT_FOCUS_MENU;
         } else if (input->prev_glyph) {
             editor_cycle_sprite_paint_material(editor, -1);
         } else if (input->next_glyph) {
@@ -5159,6 +5182,19 @@ typedef struct {
     bool note;       /* a notice or an error: the bright role     */
 } EditorMenuRow;
 
+/* The panel renderer is defined with the other menu helpers, below the sprite painter that
+   lays its canvas beside it; the painter needs the row it ends on and the width it takes,
+   so both are measured and drawn by the helpers declared here. */
+static int editor_menu_panel_render(Grid *grid, int x, int y, const char *title,
+                                    const char *subtitle, const EditorMenuRow *rows,
+                                    size_t count, const char *hint, const char *note,
+                                    double now_ms, bool reduced_motion,
+                                    const UiAppWorkbenchPalette *palette);
+static void editor_menu_panel_measure(const EditorMenuRow *rows, size_t count,
+                                      const char *title, const char *subtitle,
+                                      const char *hint, const char *note, int max_width,
+                                      int *out_label_columns, int *out_width);
+
 /* Collect one line of an editor list into the menu block, classified by the role it
    was drawn with: the focus role is the selection, the warning role is a note, the
    primary role is a heading, everything else is an ordinary entry. A leading "> "
@@ -5261,93 +5297,243 @@ static void editor_collect_sprite_menu_rows(
     }
 }
 
-/* The sprite paint stage: a canvas screen, not a menu. It draws the previous, active and
-   next frames side by side with its own action column, so the fields panel is not drawn
-   under it -- painting gets the whole surface. */
+/* The painter's arrangement: the controls are the shared panel at the frame's top left, and
+   the three canvases are right-aligned at the top of the region the screen shows, a padding
+   margin in from its right edge and a fixed gap apart (owner direction, 2026-10-13: "the
+   menu top left aligned, canvas/previews top right aligned. Dont press right up on the edge
+   of the screen, have some padding and arrange it neatly with good alignment"). The menu is
+   the canvas's only neighbour on the screen, so either horizontal key that would leave the
+   canvas enters it and either horizontal key returns. Right-aligned means right-aligned to
+   the *screen*: the compositor scales the editor's surface by the UI scale into the
+   display's own buffer and crops it, so the frame's far edge is not drawn at a raised scale
+   (at the owner's 200% the 260-column frame shows 130 columns). That is what
+   `editor_interface_columns` is for, and it is why the block is never pinned to the frame's
+   own edge. */
+#define SPRITE_PAINT_TOP 4
+#define SPRITE_PAINT_PANEL_GAP 3
+#define SPRITE_PAINT_MARGIN 2
+#define SPRITE_PAINT_GAP 2
+
+/* One sprite canvas: the drawable area walled off cell by cell by a character lattice --
+   '+' where the lines cross, '-' along a row, '|' along a column -- with every drawable
+   cell one character inside its own box. The lattice's outer ring *is* the frame: the
+   active canvas is walled in bright white with bright content, a preview in the quieter
+   role, so which of the three is being painted is never in question. The background is
+   blank black and nothing else is drawn on it: the canvas is the work (owner direction,
+   2026-10-13: "The canvas should have a frame around the drawable area in bright white.
+   The previews on either side of it should have a dimmer frame ... give the canvas a blank
+   black background, and use characters to impose a visible cell grid").
+   A mark in every cell -- one '.' per empty cell -- was *not* that grid: it read as dirt
+   on the canvas, and a field of marks is not a lattice (owner, 2026-10-14: "The canvas also
+   is filled with dots, not a grid, which is wrong"). The grid is therefore drawn as lines
+   between the cells, so the background stays blank and the cells are visible both before
+   anything is painted in them and under everything painted in them. */
+#define SPRITE_CANVAS_CELL 2   /* one character of content, one of line, per cell */
+
+static int editor_sprite_canvas_span(int cells) {
+    return cells * SPRITE_CANVAS_CELL + 1;
+}
+
+static void editor_draw_sprite_canvas(
+    Grid *grid, int box_x, int box_y, int columns, int rows,
+    const PatternCell *cells, size_t cell_columns, bool active,
+    SDL_Color bg, const UiAppWorkbenchPalette *palette
+) {
+    const SDL_Color frame = active ? palette->primary_text : palette->secondary_text;
+    const SDL_Color content = active ? palette->primary_text : palette->secondary_text;
+    /* The grid is a divider, so it takes the divider role and is the same grid on all
+       three canvases: which of them is being painted is told by the frame and the content,
+       exactly as the owner described it. */
+    const SDL_Color lattice = palette->border;
+    const int span_columns = editor_sprite_canvas_span(columns);
+    const int span_rows = editor_sprite_canvas_span(rows);
+    int row;
+    int column;
+    if (!grid || !palette || columns <= 0 || rows <= 0) return;
+    for (row = 0; row < span_rows; row++) {
+        for (column = 0; column < span_columns; column++) {
+            const bool on_row_line = row % SPRITE_CANVAS_CELL == 0;
+            const bool on_column_line = column % SPRITE_CANVAS_CELL == 0;
+            const bool on_frame = row == 0 || column == 0 ||
+                                  row == span_rows - 1 || column == span_columns - 1;
+            if (!on_row_line && !on_column_line) continue;   /* a cell: drawn below */
+            (void)grid_set(grid, box_x + column, box_y + row,
+                           (on_row_line && on_column_line) ? (uint8_t)'+'
+                               : on_row_line ? (uint8_t)'-' : (uint8_t)'|',
+                           on_frame ? frame : lattice, bg);
+        }
+    }
+    for (row = 0; row < rows; row++) {
+        for (column = 0; column < columns; column++) {
+            const PatternCell cell = (cells && cell_columns &&
+                                      (size_t)column < cell_columns)
+                ? cells[(size_t)row * cell_columns + (size_t)column]
+                : (PatternCell){0};
+            const bool empty = cell.glyph == 0U || cell.glyph == (uint8_t)' ';
+            /* An empty cell is a *space*, not a zero glyph and not a mark: the editor layer
+               is copied cell by cell and a zero glyph is skipped as "nothing here", so a
+               space is what keeps the canvas's own black background over the world. */
+            (void)grid_set(grid, box_x + column * SPRITE_CANVAS_CELL + 1,
+                           box_y + row * SPRITE_CANVAS_CELL + 1,
+                           empty ? (uint8_t)' ' : cell.glyph, content, bg);
+        }
+    }
+}
+
+/* The sprite paint stage: the painter's own screen.
+ *
+ * The controls are the shared panel, top left, with every line about as long as the others so
+ * the panel is not a bowtie with two long rows and a narrow middle. The three canvases are top
+ * right, right-aligned inside the region the screen shows with a padding margin, each in its
+ * own frame: previous, the active canvas, next. They are three *fixed slots* and the canvas
+ * being painted always takes the middle one, so it does not move when a frame is added or
+ * removed. The canvases carry nothing but their frame, their blank black background and their
+ * cell grid -- the canvas is the work, so nothing is ever drawn over it.
+ */
 static void editor_render_sprite_paint_screen(
     const UnifiedEditorState *editor, Grid *grid, int *row,
-    SDL_Color fg, SDL_Color bg, SDL_Color dim, SDL_Color warn, SDL_Color hi
+    const UiAppWorkbenchPalette *palette, double now_ms, bool reduced_motion,
+    SDL_Color bg
 ) {
     static const char *frame_actions[7] = {
         "Previous frame", "Next frame", "Add frame", "Remove frame",
         "FPS -1", "FPS +1", "Toggle loop"
     };
+    static const char *const hint = "Left/Right=menu  Esc=discard";
+    EditorMenuRow rows[EDITOR_MENU_MAX_ROWS];
+    size_t count = 0U;
     char line[160];
-    if (!editor || !grid || !row || !editor->sprite_menu_open) return;
+    const SpriteDocumentFrame *previous;
+    const SpriteDocumentFrame *next;
+    int span;
+    int total;
+    int x;
+    int active_x;
+    int screen_columns;
+    int block_left;
+    int panel_width = 0;
+    int below_panel;
+    size_t action;
+    if (!editor || !grid || !row || !palette || !editor->sprite_menu_open) return;
     if (editor->sprite_menu_stage != EDITOR_SPRITE_MENU_PAINT) return;
-    {
 
-        const SpriteDocumentFrame *previous =
-            sprite_document_previous_frame(&editor->sprite_document);
-        const SpriteDocumentFrame *next =
-            sprite_document_next_frame(&editor->sprite_document);
-        size_t previous_slot = previous && previous->cols > 8U ? previous->cols : 8U;
-        size_t active_slot = editor->sprite_document.cols > 32U
-            ? editor->sprite_document.cols : 32U;
-        size_t next_slot = next && next->cols > 4U ? next->cols : 4U;
-        int active_col = 6 + (previous ? (int)previous_slot + 3 : 0);
-        int next_col = active_col + (int)active_slot + 3;
-        int menu_col = next_col + (next ? (int)next_slot + 3 : 0);
-        int canvas_row;
-        size_t y;
-        grid_print(grid, 1, (*row)++,
-                   "     SPRITE PAINT  Right=edge enters menu  Left=canvas  Esc=discard",
-                   fg, bg);
-        snprintf(line, sizeof(line),
-                 "     Type=paint  Backspace=erase  [ / ]=material:%d  Ctrl+S=save%s",
-                 editor->sprite_paint_material,
-                 editor->sprite_document.dirty ? "  UNSAVED" : "");
-        grid_print(grid, 1, (*row)++, line, warn, bg);
-        snprintf(line, sizeof(line), "frame %zu/%zu  fps:%.3g  loop:%s",
-                 editor->sprite_document.selected_frame + 1U,
-                 editor->sprite_document.frame_count,
-                 editor->sprite_document.frames_per_second,
-                 editor->sprite_document.loop ? "true" : "false");
-        grid_print(grid, active_col, *row, line,
-                   editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_CANVAS
-                       ? hi : fg, bg);
-        (*row)++;
-        if (previous) grid_print(grid, 6, *row, "previous", dim, bg);
-        grid_print(grid, active_col, *row, "active", hi, bg);
-        if (next) grid_print(grid, next_col, *row, "next", dim, bg);
-        canvas_row = ++(*row);
-        for (y = 0U; y < editor->sprite_document.rows &&
-             canvas_row + (int)y < grid->height - 3; y++) {
-            size_t x;
-            if (previous && y < previous->rows) {
-                for (x = 0U; x < previous->cols && 6 + (int)x < grid->width; x++)
-                    (void)grid_set(grid, 6 + (int)x, canvas_row + (int)y,
-                                   previous->cells[y * previous->cols + x].glyph,
-                                   dim, bg);
-            }
-            for (x = 0U; x < editor->sprite_document.cols &&
-                 active_col + (int)x < grid->width; x++) {
-                PatternCell cell = editor->sprite_document.cells[
-                    y * editor->sprite_document.cols + x];
-                bool cursor = x == editor->sprite_paint_x &&
-                              y == editor->sprite_paint_y &&
-                              editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_CANVAS;
-                (void)grid_set(grid, active_col + (int)x, canvas_row + (int)y,
-                    cursor && (cell.glyph == 0U || cell.glyph == (uint8_t)' ')
-                        ? (uint8_t)'_' : cell.glyph,
-                    cursor ? hi : fg, bg);
-            }
-            if (next && y < next->rows) {
-                for (x = 0U; x < next->cols && next_col + (int)x < grid->width; x++)
-                    (void)grid_set(grid, next_col + (int)x, canvas_row + (int)y,
-                                   next->cells[y * next->cols + x].glyph, dim, bg);
-            }
-        }
-        for (size_t action = 0U; action < 7U; action++) {
-            bool selected = editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_MENU &&
-                            editor->sprite_paint_menu_index == action;
-            snprintf(line, sizeof(line), "%s %s", selected ? ">" : " ",
-                     frame_actions[action]);
-            grid_print(grid, menu_col, canvas_row + (int)action, line,
-                       selected ? hi : dim, bg);
-        }
-        *row = canvas_row + (int)editor->sprite_document.rows;
+    (void)snprintf(line, sizeof(line), "Frame %zu/%zu",
+                   editor->sprite_document.selected_frame + 1U,
+                   editor->sprite_document.frame_count);
+    editor_menu_collect(rows, &count, line, palette->primary_text, palette);
+    (void)snprintf(line, sizeof(line), "fps %.3g",
+                   editor->sprite_document.frames_per_second);
+    editor_menu_collect(rows, &count, line, palette->secondary_text, palette);
+    (void)snprintf(line, sizeof(line), "loop %s",
+                   editor->sprite_document.loop ? "true" : "false");
+    editor_menu_collect(rows, &count, line, palette->secondary_text, palette);
+    for (action = 0U; action < 7U; action++) {
+        const bool selected =
+            editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_MENU &&
+            editor->sprite_paint_menu_index == action;
+        (void)snprintf(line, sizeof(line), "%s %s", selected ? ">" : " ",
+                       frame_actions[action]);
+        editor_menu_collect(rows, &count, line,
+                            selected ? palette->primary_text : palette->secondary_text,
+                            palette);
     }
+    editor_menu_collect(rows, &count, "Type=paint  Backspace=erase",
+                        palette->secondary_text, palette);
+    (void)snprintf(line, sizeof(line), "[ / ]=material:%d  Ctrl+S=save",
+                   editor->sprite_paint_material);
+    editor_menu_collect(rows, &count, line, palette->secondary_text, palette);
+    if (editor->sprite_document.dirty)
+        editor_menu_collect(rows, &count, "UNSAVED", palette->primary_text, palette);
+    /* The panel goes down first and returns the first row clear below it: the status line
+       and any prompt the editor draws after this screen belong there, never on the panel.
+       The panel's own width is measured with the same helper the panel draws itself with, so
+       the two can never disagree about where the block would have to start if the screen left
+       it no room at the far edge. */
+    below_panel = editor_menu_panel_render(grid, 1, SPRITE_PAINT_TOP, "SPRITE PAINT", "",
+                                           rows, count, hint, NULL, now_ms,
+                                           reduced_motion, palette);
+    editor_menu_panel_measure(rows, count, "SPRITE PAINT", "", hint, NULL,
+                              grid->width - 2, NULL, &panel_width);
+
+    previous = sprite_document_previous_frame(&editor->sprite_document);
+    next = sprite_document_next_frame(&editor->sprite_document);
+    /* The owner's arrangement (2026-10-13): "the menu top left aligned, canvas/previews top
+       right aligned. Dont press right up on the edge of the screen, have some padding and
+       arrange it neatly with good alignment." So the block is right-aligned inside the
+       columns the *screen* shows -- `editor_interface_columns`, the region a raised UI scale
+       leaves visible -- with a padding margin, never beside the menu and never against the
+       frame's far edge (which a raised scale crops: at the owner's 200% the frame is 260
+       columns wide and the screen shows 130 of them). The menu keeps its corner; the block
+       takes the room the menu has left, a gap past the menu's own edge, and the padding margin
+       is measured from the screen's edge rather than the frame's.
+       The block is **three fixed slots** -- previous, the canvas being painted, next -- and
+       the canvas being painted always takes the middle one, whether or not the neighbours are
+       there, so it sits in the same columns alone and flanked (owner, 2026-10-14: "The canvas
+       shouldnt move when adding more frames. It should be in the same location no matter
+       what. The location its in when there are frames added ... should be the location it
+       always sits"). A canvas is as wide as its lattice -- one character of line for every
+       character of cell -- so a slot is measured from `editor_sprite_canvas_span`, never from
+       the pattern's own column count. */
+    screen_columns = editor_interface_columns(editor, grid);
+    block_left = 1 + panel_width + SPRITE_PAINT_PANEL_GAP;
+    span = editor_sprite_canvas_span((int)editor->sprite_document.cols);
+    total = span * 3 + SPRITE_PAINT_GAP * 2;
+    x = screen_columns - SPRITE_PAINT_MARGIN - total;
+    /* When the screen cannot hold the panel and the three slots, the slots keep their order and
+       slide right rather than the canvas being painted moving on its own. */
+    if (x < block_left) x = block_left;
+    active_x = x + span + SPRITE_PAINT_GAP;
+    if (active_x + span > screen_columns) {
+        /* Last resort, when even the middle slot cannot fit beside the menu on the screen the
+           user has: the canvas being painted is the work, so it keeps the room the menu left
+           and the reserved neighbour slots are given up. */
+        previous = NULL;
+        next = NULL;
+        active_x = screen_columns - SPRITE_PAINT_MARGIN - span;
+        if (active_x < block_left) active_x = block_left;
+    }
+    if (active_x < 1) active_x = 1;
+    /* A frame of a sprite shares the document's dimensions -- every frame the editor creates
+       does, so a slot is exactly a canvas wide -- and a frame that is wider than the canvas
+       being painted (only a hand-edited file can make one) is left out rather than allowed to
+       cover the work. */
+    if (previous && editor_sprite_canvas_span((int)previous->cols) > span) previous = NULL;
+    if (next && editor_sprite_canvas_span((int)next->cols) > span) next = NULL;
+    if (previous)
+        editor_draw_sprite_canvas(grid, active_x - span - SPRITE_PAINT_GAP, SPRITE_PAINT_TOP,
+                                  (int)previous->cols, (int)previous->rows, previous->cells,
+                                  previous->cols, false, bg, palette);
+    editor_draw_sprite_canvas(grid, active_x, SPRITE_PAINT_TOP,
+                              (int)editor->sprite_document.cols,
+                              (int)editor->sprite_document.rows,
+                              editor->sprite_document.cells,
+                              editor->sprite_document.cols, true, bg, palette);
+    if (editor->sprite_paint_focus == EDITOR_SPRITE_PAINT_FOCUS_CANVAS &&
+        editor->sprite_document.cols > 0U && editor->sprite_document.rows > 0U) {
+        const size_t cursor_x = editor->sprite_paint_x < editor->sprite_document.cols
+            ? editor->sprite_paint_x : editor->sprite_document.cols - 1U;
+        const size_t cursor_y = editor->sprite_paint_y < editor->sprite_document.rows
+            ? editor->sprite_paint_y : editor->sprite_document.rows - 1U;
+        const PatternCell cell = editor->sprite_document.cells[
+            cursor_y * editor->sprite_document.cols + cursor_x];
+        const bool empty = cell.glyph == 0U || cell.glyph == (uint8_t)' ';
+        /* The cursor cell is the inverse -- the bright role behind the bed's own colour, the
+           identity's way of marking a state -- so it reads on an empty cell and on a painted
+           one alike, and needs no hue of its own. It sits on the cell's own character, the
+           one the lattice walls off, so the grid never shifts under the cursor. */
+        (void)grid_set(grid, active_x + (int)cursor_x * SPRITE_CANVAS_CELL + 1,
+                       SPRITE_PAINT_TOP + (int)cursor_y * SPRITE_CANVAS_CELL + 1,
+                       empty ? (uint8_t)'_' : cell.glyph, bg, palette->primary_text);
+    }
+    if (next)
+        editor_draw_sprite_canvas(grid, active_x + span + SPRITE_PAINT_GAP, SPRITE_PAINT_TOP,
+                                  (int)next->cols, (int)next->rows, next->cells,
+                                  next->cols, false, bg, palette);
+    /* Everything drawn after this screen starts below both the panel and the canvas block:
+       the status line and a prompt (unsaved changes, a save, the exit choices) are the
+       editor's own, and none of them may land on the menu or on the work. */
+    *row = SPRITE_PAINT_TOP + editor_sprite_canvas_span((int)editor->sprite_document.rows) + 1;
+    if (below_panel > *row) *row = below_panel;
 }
 
 
@@ -5580,31 +5766,24 @@ static void editor_menu_put(Grid *grid, int x, int y, int columns, const char *t
    bright role alone, because the perimeter would overlap the neighbouring entries.
    An entry is two aligned columns -- what it is, then its value and the keys that act on
    it -- so the details start in one column whatever the labels are. */
-static void editor_menu_panel_render(
-    Grid *grid, int x, int y, const char *title, const char *subtitle,
-    const EditorMenuRow *rows, size_t count, const char *hint, const char *note,
-    double now_ms, bool reduced_motion, const UiAppWorkbenchPalette *palette) {
+/* Draw the panel and return the first row below it that is clear for other content -- the
+   panel's own bottom edge plus the one cell the material may splash past it -- so a caller
+   can lay something of its own under the panel without the bed or the material touching it.
+   The sprite painter's canvas is the one caller that needs this: the canvas is the work, so
+   nothing may be drawn on it. */
+/* The panel's own geometry: the label column (as wide as the widest label that carries a
+   detail -- a row without one is a line of its own, so it never widens the column) and the
+   width the content needs, bounded by the room the frame has, because a clipped line would
+   hide a control. One source of truth: the renderer draws the panel from it, and a caller
+   that lays something beside the panel measures it with it, so the two never disagree. */
+static void editor_menu_panel_measure(const EditorMenuRow *rows, size_t count,
+                                      const char *title, const char *subtitle,
+                                      const char *hint, const char *note, int max_width,
+                                      int *out_label_columns, int *out_width) {
     const int pad = EDITOR_MENU_PAD;
-    const int listed = (int)count;
-    const bool has_subtitle = subtitle && subtitle[0];
-    const bool has_note = note && note[0];
     int label_columns = 0;
     int width;
-    int height;
-    int title_row;
-    int first_row;
-    int hint_row;
-    int step = EDITOR_MENU_ROW_STEP;
-    size_t cursor_row = count;
     size_t i;
-    /* Exactly one indicator moves: the list the cursor is in. A submenu's rows are
-       collected after the entry that opened it, so the *last* focused row is the
-       innermost list's cursor; any earlier focused row is the entry whose submenu is
-       open, and it keeps its frame without the chase. */
-    for (i = 0U; i < count; i++)
-        if (rows[i].focused) cursor_row = i;
-    /* The label column is as wide as the widest label that carries a detail. A row
-       without one is a line of its own, so it never widens the column. */
     for (i = 0U; i < count; i++)
         if (rows[i].detail[0] && (int)strlen(rows[i].text) > label_columns)
             label_columns = (int)strlen(rows[i].text);
@@ -5624,11 +5803,38 @@ static void editor_menu_panel_render(
     if (hint && (int)strlen(hint) > width) width = (int)strlen(hint);
     if (note && (int)strlen(note) > width) width = (int)strlen(note);
     width += pad * 2 + 2;
-    /* The panel fits its content; only the display bounds it, because a clipped line
-       would hide a control. A tall list is what the corner cannot afford, and that is
-       what the tighter rhythm below answers. */
-    if (width > grid->width - x - 1) width = grid->width - x - 1;
+    /* The panel fits its content; only the display bounds it. */
+    if (width > max_width) width = max_width;
     if (width < 8) width = 8;
+    if (out_label_columns) *out_label_columns = label_columns;
+    if (out_width) *out_width = width;
+}
+
+static int editor_menu_panel_render(
+    Grid *grid, int x, int y, const char *title, const char *subtitle,
+    const EditorMenuRow *rows, size_t count, const char *hint, const char *note,
+    double now_ms, bool reduced_motion, const UiAppWorkbenchPalette *palette) {
+    const int pad = EDITOR_MENU_PAD;
+    const int listed = (int)count;
+    const bool has_subtitle = subtitle && subtitle[0];
+    const bool has_note = note && note[0];
+    int label_columns = 0;
+    int width = 0;
+    int height;
+    int title_row;
+    int first_row;
+    int hint_row;
+    int step = EDITOR_MENU_ROW_STEP;
+    size_t cursor_row = count;
+    size_t i;
+    /* Exactly one indicator moves: the list the cursor is in. A submenu's rows are
+       collected after the entry that opened it, so the *last* focused row is the
+       innermost list's cursor; any earlier focused row is the entry whose submenu is
+       open, and it keeps its frame without the chase. */
+    for (i = 0U; i < count; i++)
+        if (rows[i].focused) cursor_row = i;
+    editor_menu_panel_measure(rows, count, title, subtitle, hint, note,
+                              grid->width - x - 1, &label_columns, &width);
     /* The menu rhythm is two rows per entry; a panel too short for it closes the
        entries up rather than truncating the list: nothing is hidden (§4.7). */
     while (step > 1 &&
@@ -5693,6 +5899,65 @@ static void editor_menu_panel_render(
     if (has_note)
         editor_menu_put(grid, x + pad, hint_row + 1, width - pad * 2, note,
                         palette->primary_text, palette);
+    return y + height + 1;
+}
+
+/* ---- Modal prompts ----
+ *
+ * A prompt (unsaved changes, material collision, overwrite, remove, the exit choices, the
+ * save menu) is a dialog drawn *over* the menu while it is up -- it is not a menu of its
+ * own -- but it is still the editor's own text, so it must never read through the menu's:
+ * printed straight through the panel, "Document is DIRTY" landed in the middle of
+ * "Inspector: sprite instance" and the two lines were illegible. The block is therefore
+ * collected first and drawn on a bed of its own, and if the menu has left the dialog no
+ * room it slides up until it fits, because a dialog is never cropped: the rows it was
+ * given are kept whenever they fit, so the placement is unchanged on the editor's own
+ * 160-row frame.
+ */
+#define EDITOR_PROMPT_MAX_LINES 16
+typedef struct {
+    int row;             /* the row the line was printed on */
+    char text[160];
+    SDL_Color colour;
+} EditorPromptLine;
+
+static void editor_prompt_collect(EditorPromptLine *lines, size_t *count, int row,
+                                  const char *text, SDL_Color colour) {
+    if (!lines || !count || *count >= EDITOR_PROMPT_MAX_LINES) return;
+    lines[*count].row = row;
+    (void)snprintf(lines[*count].text, sizeof(lines[*count].text), "%s",
+                   text ? text : "");
+    lines[*count].colour = colour;
+    (*count)++;
+}
+
+static void editor_prompt_render(Grid *grid, const EditorPromptLine *lines, size_t count,
+                                 const UiAppWorkbenchPalette *palette) {
+    int top;
+    int bottom;
+    int widest = 0;
+    int shift = 0;
+    size_t i;
+    if (!grid || !palette || !lines || count == 0U) return;
+    top = lines[0].row;
+    bottom = lines[0].row;
+    for (i = 0U; i < count; i++) {
+        if (lines[i].row < top) top = lines[i].row;
+        if (lines[i].row > bottom) bottom = lines[i].row;
+        if ((int)strlen(lines[i].text) > widest) widest = (int)strlen(lines[i].text);
+    }
+    /* The editor's footer owns the last two rows: a dialog that the menu has left no room
+       for slides up until it clears them and sits over the menu instead, on its own bed. */
+    if (bottom > grid->height - 3) shift = bottom - (grid->height - 3);
+    if (top - shift < 0) shift = top;
+    top -= shift;
+    bottom -= shift;
+    /* The dialog's bed is exactly its own lines: the menu underneath is covered where the
+       dialog is, and left alone everywhere else. */
+    editor_menu_panel_bed(grid, 0, top, widest + 2, bottom - top + 1, palette);
+    for (i = 0U; i < count; i++)
+        editor_menu_put(grid, 1, lines[i].row - shift, widest + 2, lines[i].text,
+                        lines[i].colour, palette);
 }
 
 
@@ -6085,7 +6350,11 @@ void unified_editor_render_text_overlay(
            formatting stay as it is: only the drawn form changes.
            (`grid_print` is redefined to collect for the length of the inspector chain and
            restored straight after it, so the workspace panels above and the modal prompts
-           below keep drawing their own lines.) */
+           below keep drawing their own lines.)
+           The panel is the surface, so each branch hands the row the panel returns back to
+           `row`: the status line and every prompt below are the editor's own and start
+           *under* the menu, where before they were drawn over it, because `row` still held
+           the row the last collected field would have been printed on. */
         EditorMenuRow menu_rows[EDITOR_MENU_MAX_ROWS];
         size_t menu_count = 0U;
         char menu_title[64] = "";
@@ -6459,9 +6728,8 @@ void unified_editor_render_text_overlay(
                 }
             }
             if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
-            editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
-                                     menu_hint, unsavable_note, now_ms, reduced_motion,
-                                     &palette);
+            row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                         menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_LIGHT) {
             EditorInspectorPresentation presentation;
@@ -6501,9 +6769,8 @@ void unified_editor_render_text_overlay(
             if (presentation.note) {
                 grid_print(grid, 1, row++, presentation.note, warn, bg);
             }
-            editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
-                                     menu_hint, unsavable_note, now_ms, reduced_motion,
-                                     &palette);
+            row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                         menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_DECAL) {
             EditorInspectorPresentation presentation;
@@ -6531,9 +6798,8 @@ void unified_editor_render_text_overlay(
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
-                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
-                                         menu_count, menu_hint, unsavable_note, now_ms,
-                                         reduced_motion, &palette);
+                row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                             menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
             }
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_SPRITE) {
@@ -6544,7 +6810,8 @@ void unified_editor_render_text_overlay(
                 editor->sprite_menu_stage == EDITOR_SPRITE_MENU_PAINT) {
                 /* Painting is its own screen: the canvas and its action column, with no
                    fields panel under it. */
-                editor_render_sprite_paint_screen(editor, grid, &row, fg, bg, dim, warn, hi);
+                editor_render_sprite_paint_screen(editor, grid, &row, &palette, now_ms,
+                                                  reduced_motion, bg);
             } else if (editor_domain_inspector_presentation(
                     EDITOR_INSPECTOR_SPRITE, &presentation)) {
                 (void)snprintf(menu_title, sizeof(menu_title), "Inspector: %s",
@@ -6575,9 +6842,8 @@ void unified_editor_render_text_overlay(
                     }
                 }
                 if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
-                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
-                                         menu_count, menu_hint, unsavable_note, now_ms,
-                                         reduced_motion, &palette);
+                row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                             menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
             }
         } else if (editor->inspector_open &&
                    editor->inspector_kind == EDITOR_INSPECTOR_TRIGGER) {
@@ -6602,9 +6868,8 @@ void unified_editor_render_text_overlay(
                              selected ? ">" : " ", fp.label, value);
                     grid_print(grid, 1, row++, line, selected ? hi : dim, bg);
                 }
-                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
-                                         menu_count, menu_hint, unsavable_note, now_ms,
-                                         reduced_motion, &palette);
+                row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                             menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
             }
         }
         if (editor->inspector_open &&
@@ -6659,9 +6924,8 @@ void unified_editor_render_text_overlay(
                     }
                 }
                 grid_print(grid, 1, row++, presentation.note, warn, bg);
-                editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows,
-                                         menu_count, menu_hint, unsavable_note, now_ms,
-                                         reduced_motion, &palette);
+                row = editor_menu_panel_render(grid, 1, 4, menu_title, "", menu_rows, menu_count,
+                                             menu_hint, unsavable_note, now_ms, reduced_motion, &palette);
             }
         }
 #undef grid_print
@@ -6679,6 +6943,13 @@ void unified_editor_render_text_overlay(
             }
         }
 
+        /* The prompts are dialogs, not menus, but they are still the editor's own text:
+           the block is collected and drawn on its own bed, so a dialog and the menu it
+           sits over never read through each other. */
+        EditorPromptLine prompt[EDITOR_PROMPT_MAX_LINES];
+        size_t prompt_count = 0U;
+#define grid_print(g, x, y, text, colour, bg) \
+            editor_prompt_collect(prompt, &prompt_count, (y), (text), (colour))
         if (editor->modal == EDITOR_MODAL_EXIT_PROMPT) {
             int c;
             grid_print(grid, 1, row++,
@@ -6780,6 +7051,8 @@ void unified_editor_render_text_overlay(
                            dim, bg);
             }
         }
+#undef grid_print
+        editor_prompt_render(grid, prompt, prompt_count, &palette);
         grid_print(grid, 1, grid->height - 2,
                    "Tab=walk/edit E=select G=game flow Ctrl+U=Menu UI L=place light P=new sprite canvas B=object",
                    dim, bg);

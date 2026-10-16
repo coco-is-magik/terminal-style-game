@@ -122,10 +122,24 @@ appearance scheme to the rest of the menus we can pull up and have it consistent
   menu is open.
 - **The sprite paint stage is its own screen.** `editor_render_sprite_pattern_menu` became
   `editor_collect_sprite_menu_rows` (the actions and load lists, collected) plus
-  `editor_render_sprite_paint_screen` (the canvas, the frames beside it and its action column, drawn
-  directly). Painting therefore gets the whole surface and no fields panel is drawn under it — the
-  fields belong to the inspector's list stages. The row model moved above both helpers so the sprite
-  lists can fill the same rows the panel draws.
+  `editor_render_sprite_paint_screen` (the painter's own screen). The row model moved above both helpers
+  so the sprite lists can fill the same rows the panel draws.
+- **The painter's controls are the panel, top left, and its canvases are top right.** The paint screen
+  draws its title, hint, the frame it is on, the seven frame actions and its paint keys in the shared
+  panel, every line about as long as the others (the keys are wrapped, and `fps` and `loop` are their own
+  rows) so the panel is not a bowtie; `editor_menu_panel_render` returns the first row clear below the
+  panel, past its own edge and the one cell the material may splash past. The three canvases are aligned
+  to the top right, a margin in from the frame's edge and a fixed gap apart, each in its own frame: the
+  active canvas framed in bright white with bright content, the previews framed and drawn dimmer. Each
+  canvas has a blank black background, a **character cell grid** so the drawable cells are visible before
+  anything is painted, and nothing else — no bed, no material, no effect. The cursor is the identity's
+  inverse, so it reads on an empty cell and a painted one alike. The fields panel is still not drawn
+  while painting. *(Superseded by both 2026-10-14 follow-ups below: "top right" means the top right of the
+  region the screen shows, a raised UI scale crops the frame's own far edge, the grid is a character
+  lattice rather than a mark per cell, and the row this helper returns is used by every caller.)*
+- **The arrangement is the navigation.** With the menu to the left of the canvas, Left off the canvas's
+  first column now reaches the menu and either horizontal key returns to the canvas, while the canvas's
+  own far edge still enters the menu. The hint says so.
 - **Tests.** The light and sprite inspectors now assert `assert_corner_panel`; the assertions that looked
   for a `"> "` marker became assertions about the panel (one column, the perimeter on the focused entry,
   no marker), and the paint-screen test asserts that the fields are *not* drawn while painting.
@@ -222,6 +236,24 @@ appearance scheme to the rest of the menus we can pull up and have it consistent
   (fabric and foam), `#05080A` (bed), the dark ripple shades and the primaries appear, where before it
   drew `#FFD166` (warning) on the notices and `#64757C` (border) around the bed.
 
+- A **painter dump** shows the layout: the shared panel with its title, hint, frame line, actions and
+  paint keys, its frothing edge, and then the canvas labels and the canvas below them, untouched:
+  ```
+   6| = SPRITE PAINT       ::                  :        :       :    =|
+   7|   Right=edge enters menu  Left=canvas  Esc=discard        :     |
+   9|   Frame 1/2                  :: :::                 :      :   -|
+  11| - fps 4  loop true:       ::        ::              :      :   -|
+  13| - Previous frame :       :            :                     :   |
+  25|   Toggle loop       :                              :            |
+  27| = Type=paint  Backspace=erase  [ / ]=material:1  Ctrl+S=save    |
+  29|  --   **=-   ***= - == *****        *****   --= ***  - =* * -   |
+  31|      previous   active                             next|
+  32|      B          A                                  B|
+  ```
+- `test_sprite_animation_painter_focus_frames_save_and_discard` now asserts that no cell below the
+  panel's canvas label carries the material's colour at all, which is what "nothing on the canvas"
+  means in a test.
+
 ## Validation
 
 - `make` (`-Werror`) clean; `./build/test-unified-editor` 100/100.
@@ -247,4 +279,123 @@ appearance scheme to the rest of the menus we can pull up and have it consistent
 - **The entry order was not re-sorted** (the owner offered "length/alphabet"); the order is the cursor's
   order, so sorting it for looks would desync navigation. The alignment alone fixed the raggedness — if
   the owner still wants sorted entries, navigation has to follow the display order first.
+
+## Follow-up: the painter's canvas and the dialogs (2026-10-14)
+
+Three defects the owner found on a display, all of them things the cell dumps of the time had not shown.
+
+**The canvases were placed against the frame's far edge, so they were never drawn.** `x =
+grid->width - SPRITE_PAINT_MARGIN - total` put the block at column 223 of the 260-column frame. The
+compositor draws a UI layer at the *UI scale* into the display's own buffer: at the default 150%
+(`UI_PREFERENCES_EMERGENCY_SCALE`, the scale used when no preferences file exists) the editor's 260x160
+surface is 1.5x, so only its first ~173 columns and ~106 rows are inside the buffer and the rest is
+cropped — the same fact that already made the scene browser a *centred* surface. A canvas at column 223
+was therefore not "far away", it was off the screen. *(Superseded by the second 2026-10-14 follow-up
+below: the crop is real, but the fix is to right-align to the region the screen shows, not to move the
+block beside the panel — which is the "alignment backwards" the owner reported.)*
+
+**The editor's own lines were drawn on the panel.** `editor_menu_panel_render` returns the first row
+clear below its bed, and every caller ignored it: the inspector branches left `row` at the row the last
+collected field would have been printed on, and the painter returned the row below its *canvas* (row 14)
+rather than below its panel (row 38). The status line and every prompt were therefore printed *through*
+the menu — a quit prompt read `Document is DIRTY instance`, `Save and Exit50`, the dialog's lines
+interleaved with the panel's. Every branch now hands the panel's returned row back to `row`.
+
+**A prompt is a dialog and now has its own bed.** The block is collected (`EditorPromptLine`,
+`editor_prompt_collect`) and drawn on a bed exactly as wide as its longest line
+(`editor_prompt_render`), sliding up only to clear the editor's two footer rows when a short frame has
+left it no room. On the editor's own 160-row frame the rows it is given are kept, so nothing moved; on
+the 30-row test fixtures the dialog covers the menu instead of reading through it. This is *not* the
+prompts wearing the menu panel — they remain dialogs — so that slice is still open.
+
+Verification: the cell dumps now show the three canvases at columns 42-80 beside the panel, and the quit
+prompt on rows 36-41, clear of the panel's bed (which ends at row 35). `test-unified-editor` 101/101;
+`make`, `make test`, `make standards`, `make test-ui-standards`, `make check-ui-workbench-frame` all exit
+0. The painter's test no longer asserts "top right" but that the whole canvas block is inside the frame's
+left half, which is the part of the surface a raised UI scale always shows — the regression guard for the
+crop. *(That assertion is superseded by the second follow-up below, which asserts the block's right edge
+against the region the screen actually shows.)*
+
+**Behaviour is untouched.** No key, focus or editing path changed: this slice is drawing plus the
+placement of the canvases the painter already drew.
+
+## Follow-up: the painter's alignment and its grid (2026-10-14, second)
+
+Two more defects the owner found on a display, both of them *the previous follow-up's fix read backwards*.
+
+**The alignment was backwards.** The previous follow-up moved the canvases to sit immediately beside the
+panel, reading "the menu is to the canvas's left, so Left off the canvas reaches the menu" as the reason
+for the placement. The owner's direction was not that the two are adjacent; it was the two *edges of the
+screen*: "Lets try having the menu top left aligned, canvas/previews top right aligned. Dont press right up
+on the edge of the screen, have some padding and arrange it neatly with good alignment." The canvas
+belongs at the **top right of the screen**, with a padding margin — which the previous fix had turned into
+the middle-left of the frame. Both readings agree that the frame's far edge is unusable (the crop below is
+real), so the fix is not "somewhere near the panel" but **right-aligned inside the region the screen
+shows**. The editor cannot know that region on its own: it is the UI scale that decides it, and the scale
+lives in the application's preferences. So the region is now an input —
+`unified_editor_set_interface_viewport(editor, columns, rows)`, called by `app.c` each frame from
+`ui_preferences_scale` before the editor's overlay is rendered, with 0 meaning the whole frame (the
+headless and test default, so nothing that renders without a display changes). The painter block is laid
+out inside those columns: right-aligned a `SPRITE_PAINT_MARGIN` of 2 in from their edge, and when the
+region cannot hold the panel and all three canvases, the block takes the room the panel has left and the
+**previews are given up before the canvas being painted is**.
+
+**The canvas was a field of dots, not a grid.** `editor_draw_sprite_canvas` drew one glyph per sprite cell
+— `'.'` for an empty cell, the cell's glyph otherwise — so a 16x16 canvas was 256 marks with no visible
+cell boundaries at all: a screen of dirt, not a grid (owner: "The canvas also is filled with dots, not a
+grid, which is wrong"). It now draws a **character lattice**: the canvas occupies `cells * 2 + 1` columns
+and rows (`SPRITE_CANVAS_CELL` is 2 — one character of content plus one of line), a `+` at every crossing,
+`-` along the rows, `|` along the columns, all in the divider role's colour, and the sprite's cells are the
+**interior** of that lattice. Empty cells are now a *space*, so the canvas reads as blank black squares
+walled off from each other and anything painted in a cell stays legible against the lines around it. The
+lattice's outer ring is the canvas's frame, so the frame the owner asked for in bright white *is* the grid
+rather than a border drawn around a field of marks. Every measurement the painter makes — the block width,
+the cursor's cell, the row below the canvas — is derived from `editor_sprite_canvas_span(cells) = cells *
+2 + 1`, never from a raw column count, so the two can never drift apart.
+
+**Behaviour is untouched.** No key, focus or editing path changed: this slice is drawing, the placement of
+the canvases, and the new viewport input. The painter's focus model is unchanged — the menu is still the
+canvas's only neighbour, so either horizontal key that would leave the canvas enters the menu and either
+horizontal key returns.
+
+**The block is three fixed slots, so the canvas never moves when a frame is added or removed.** The first
+pass sized the block from the frames that *exist*: with one frame the canvas was alone and right-aligned,
+with two it had a neighbour and shifted left, with three it sat in the middle — so the work moved under the
+hand that was adding to it (owner, 2026-10-14: "The canvas shouldnt move when adding more frames. It should
+be in the same location no matter what. The location its in when there are frames added ... should be the
+location it always sits"). The three slots — previous, the canvas being painted, next — are now always
+reserved, each as wide as a canvas (`editor_sprite_canvas_span` of the document's own columns, which every
+frame of a sprite shares), and the canvas being painted always takes the middle one. Absent neighbours
+leave empty slots rather than closing them up. When the region cannot hold the panel and the three slots,
+the slots keep their order and slide right rather than the canvas moving on its own; only when even the
+middle slot cannot fit beside the menu is the fallback taken — the canvas keeps the room, the neighbour
+slots are given up, and the canvas is right-aligned in what is left, which still does not depend on how
+many frames there are. A neighbour wider than the canvas being painted (only a hand-edited file can make
+one, since every frame the editor creates shares the document's dimensions) is left out rather than
+allowed to cover the work.
+
+Verification: the cell dumps now show the canvas being painted at exactly one column for 4, 3, 2 and 1
+frames, at 8x8, 16x16, 24x24 and 30x30 — columns 92, 78, 79 and 67 respectively, unchanged by the frame
+count (the 24x24 and 30x30 sprites are the fallback: their three slots cannot fit 130 columns, and the
+canvas is still fixed). `test-unified-editor` 101/101, including a new assertion that renders the painter
+again after a frame is removed and finds the canvas in the same columns with the slots either side of it
+empty. `make`, `make test`, `make standards`, `make test-ui-standards` and `make check-ui-workbench-frame`
+all exit 0.
+
+Verification: `test-unified-editor` 101/101, including a rewritten painter test that sets the viewport to
+the owner's 200% region (130 of the frame's 260 columns, 80 of its 160 rows) and asserts that the block's
+right edge is the region's last column minus the padding margin (127), that the active canvas's frame is
+bright and the preview's dimmer, that the pattern's painted cell holds its glyph, that the intersection
+between cells is a `+` in the divider colour, that the neighbouring empty cells are spaces, and that no
+cell of the canvas is a `'.'`. `make`, `make test`, `make standards`, `make test-ui-standards`,
+`make check-ui-workbench-frame` and `git diff --check` all exit 0. The composited frame was re-dumped at
+200% and reviewed at 200% scale: the panel sits at the top left, the three canvases are right-aligned at
+the top right with the padding margin showing as two clear columns at the screen's edge, the active canvas
+carries the bright frame and the inverse cursor while its neighbours carry the dim one, and the drawable
+area reads as a lattice of `+`, `-` and `|` around blank black cells. The same dump is also the proof of
+the defect it fixes: composed from a render whose block was pinned to the frame's far edge, the canvases
+did not appear *at all* — the crop is not a cosmetic worry. **No native visual capture was reviewed on a
+display**; that is still the owner's to confirm, and it is the step that would settle the one assumption
+here — that "top right" means the top right of the region the screen shows (the docs' own wording, "Dont
+press right up on the edge of the screen") rather than some other corner of the surface.
 

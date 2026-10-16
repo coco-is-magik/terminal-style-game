@@ -1316,6 +1316,20 @@ int app_main(int argc, char* argv[]) {
                     SDL_Color ae_bg = {0, 0, 0, 255};
                     grid_clear(grid, ae_bg);
                 }
+                /* The editor lays out the interface that must not be cropped -- the
+                   painter's right-aligned canvas block -- inside the part of its frame the
+                   screen actually shows: this layer is drawn at the UI scale into the
+                   display's buffer and whatever does not fit is cropped
+                   (UI_LOOK_AND_FEEL §4.7, "Nothing leaves the surface": "Magnifying must never
+                   push the editor interface or a control off the visible surface"). At 100%
+                   that is the whole frame. */
+                {
+                    int interface_scale = ui_preferences_scale(&preferences);
+                    unified_editor_set_interface_viewport(
+                        &ued,
+                        interface_scale > 0 ? grid->width * 100 / interface_scale : 0,
+                        interface_scale > 0 ? grid->height * 100 / interface_scale : 0);
+                }
                 unified_editor_render_text_overlay(&ued, ui_resources.staging,
                                                   motion_now_ms, reduced_motion);
                 ui_canvas_copy_grid_region(ui_resources.editor, ui_resources.staging, 0, 0);
