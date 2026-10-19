@@ -193,6 +193,11 @@ typedef struct {
     FlowWorkspace flow_workspace;
     FlowProjectCatalog flow_project_catalog;
     FlowWorkspaceResult last_flow_result;
+    /* The flow workspace's second pane: the selected node's ports and explicit
+       actions. It is UI state, not document state, so it lives here rather than
+       in FlowWorkspace (which stays headless for the tests). */
+    bool flow_inspector;
+    size_t flow_inspector_index;
     UiMenuWorkspace ui_menu_workspace;
     UiMenuWorkspaceResult last_ui_menu_result;
     UiMenuRuntime ui_menu_test_runtime;
@@ -200,6 +205,9 @@ typedef struct {
     FlowProjectCatalog ui_menu_test_catalog;
     FlowRuntimeSession ui_menu_test_session;
     FlowReferenceResult ui_menu_test_reference_result;
+    /* The runtime keeps a pointer to this theme for the whole test session, so
+       it must outlive editor_begin_ui_menu_test(). */
+    UiRenderTheme ui_menu_test_theme;
     UiMenuRuntimeResult last_ui_menu_test_result;
     FlowNodeId ui_menu_test_target_id;
     FlowNodeType ui_menu_test_target_type;

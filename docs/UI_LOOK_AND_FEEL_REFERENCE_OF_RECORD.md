@@ -402,6 +402,43 @@ then refined the arrangement:
 The implementation record is
 [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
 
+## Change of direction recorded 2026-10-19 — editing workspaces
+
+The owner confirmed that the overhaul was not complete: the game-flow workspace and the authored
+Menu (UI editor) workspace were still on the old scheme. The earlier edit-mode slice had explicitly
+left both workspaces alone because they are panes, not menus
+(`reviews/2026-10-13-editor-surface-inspector-menu.md`, "Not done here"). This records the direction
+for bringing them in:
+
+> The game flow menu and ui editor menu in edit mode have not yet been overhauled. Approaching the
+> issue with a node graph was previously discussed.
+
+Recorded under §1.1, §1.3, §4.2, §4.3, §4.4 and §4.7:
+
+1. **An editing workspace is a set of panes, not a display surface.** The black canvas, token
+   text and shared panel chrome apply; no `living_field` or other moving material may cover the
+   work. The graph and the Menu preview are the work. The workbench palette is the only colour
+   source.
+2. **Game flow is a node graph.** Start/Scene/Menu nodes are boxes with stable IDs, names and port
+   counts; edges are orthogonal and labelled with the source port. The layout is deterministic
+   (BFS layers from Start, document order within a layer) and the viewport follows the selection.
+   The existing `FlowWorkspace` controller, mutations, history and Save/Discard behaviour are
+   untouched. Node positions are not persisted in this slice; a sidecar or FlowDocument v2 is a
+   later decision.
+3. **The authored Menu workspace is preview-first.** The preview sits top-right inside the region
+   the screen shows, with a bright frame and no material on it. Hierarchy, properties and actions
+   are shared panels; the property panel becomes a single-row, windowed list when the frame is
+   short so no property is silently cut off. Pointer coordinates use the same preview origin as
+   the renderer.
+4. **Exactly one indicator moves.** The selected graph node, or the active list's live row, carries
+   the perimeter and its chase. Every other selected row is a still frame or brightness only.
+5. **No new hardcoded colours.** Both workspaces use `ui_app_theme_workbench_palette()` and the
+   shared panel renderer. The old authored-Menu chrome literals and the mint/dark-green/yellow
+   preview theme are retired.
+
+The implementation record is
+[`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md).
+
 ## Rule of engagement
 
 1. Before beginning any phase, and before approving any change that touches colour, motion,

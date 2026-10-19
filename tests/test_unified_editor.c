@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include "../src/unified_editor.h"
+#include "../src/ui_editor_presentation.h"
 #include "../src/unified_editor_test.h"
 #include "../src/ui_app_theme_adapter.h"
 #include "../src/ui_theme.h"
@@ -35,7 +36,7 @@
 
 /* Editor behavior tests use the production logical viewport height. */
 #define unified_editor_update(editor, input, camera, delta) \
-    unified_editor_update((editor), (input), (camera), (delta), 260, 160)
+    unified_editor_update((editor), (input), (camera), (delta), 160, 40)
 #include "../src/assets.h"
 #include "../src/camera.h"
 #include "../src/config.h"
@@ -5287,7 +5288,7 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_true(grid_contains_text(grid, "GAME FLOW"));
     assert_true(grid_contains_text(grid, "Start"));
     assert_true(grid_contains_text(grid, "Scene: mission"));
-    assert_true(grid_contains_text(grid, "Menu: missions"));
+    assert_true(grid_contains_text(grid, "missions"));
     grid_destroy(grid);
     camera_x = camera.transform.pos.x;
     camera_y = camera.transform.pos.y;
@@ -5298,9 +5299,19 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     assert_true(camera.transform.pos.x == camera_x && camera.transform.pos.y == camera_y);
     assert_int_equal(editor.document.current_state, scene_state);
 
+    /* The workspace opens on the selected node's inspector; go back to the
+       node list to drive the selection explicitly. */
+    assert_true(editor.flow_inspector);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_inspector);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+
     zero_input(&input); input.editor_confirm_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
-    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_true(editor.flow_inspector);
+    assert_int_equal(editor.flow_inspector_index, 0U);
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
@@ -5345,6 +5356,11 @@ static void test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay(void **
     zero_input(&input); input.editor_flow_workspace_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
     assert_true(editor.flow_workspace.active);
+    assert_true(editor.flow_inspector);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.flow_workspace.active);
+    assert_false(editor.flow_inspector);
     zero_input(&input); input.editor_flow_workspace_pressed = true;
     update_with(&editor, &camera, &input);
     assert_false(editor.flow_workspace.active);
@@ -5385,6 +5401,11 @@ static void test_r12_i10_g_loads_conventional_flow_transactionally(void **state)
     assert_true(editor.flow_workspace.active);
     assert_string_equal(editor.flow_workspace.document.path, path);
     assert_string_equal(editor.flow_workspace.document.nodes[1].asset_name, "mission");
+    assert_true(editor.flow_inspector);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.flow_workspace.active);
+    assert_false(editor.flow_inspector);
     zero_input(&input); input.editor_flow_workspace_pressed = true;
     update_with(&editor, &camera, &input);
     assert_false(editor.flow_workspace.active);
@@ -5425,6 +5446,10 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     assert_true(editor.flow_workspace.active);
     assert_non_null(flow_reference_find(editor.flow_workspace.catalog,
                                         FLOW_NODE_MENU, "main_menu"));
+    assert_true(editor.flow_inspector);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_inspector);
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
     zero_input(&input); input.editor_confirm_pressed = true;
@@ -5434,7 +5459,7 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     grid = grid_create(160, 40);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_contains_text(grid, "+ Menu:testmenu"));
+    assert_true(grid_contains_text(grid, "+ Menu: testmenu"));
     grid_destroy(grid);
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
@@ -5449,7 +5474,8 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     grid_destroy(grid);
     zero_input(&input); input.editor_cancel_pressed = true;
     update_with(&editor, &camera, &input);
-    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_true(editor.flow_inspector);
     zero_input(&input); input.editor_text_backspace_pressed = true;
     assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
     assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_MUTATION_FAILED);
@@ -5457,6 +5483,7 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     zero_input(&input); input.editor_cancel_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_false(editor.flow_inspector);
     editor.flow_workspace.node_index = 1U;
     grid = grid_create(160, 40);
     assert_non_null(grid);
@@ -5466,7 +5493,8 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
     editor.flow_workspace.node_index = 2U;
     zero_input(&input); input.editor_confirm_pressed = true;
     update_with(&editor, &camera, &input);
-    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_EDGES);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_true(editor.flow_inspector);
     zero_input(&input); input.editor_next_pressed = true;
     update_with(&editor, &camera, &input);
     assert_string_equal(flow_workspace_selected_port(
@@ -5487,6 +5515,90 @@ static void test_r12_i11_catalog_targets_and_remove_routing(void **state) {
         &editor.flow_workspace.document, editor.flow_workspace.catalog),
         FLOW_REFERENCE_OK);
     assert_int_equal(editor.document.current_state, scene_state);
+    unified_editor_destroy(&editor);
+}
+
+static void test_r12_i10_flow_inspector_ports_actions_and_add(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_i11.txt"), 0);
+    assert_true(unified_editor_set_asset_root(&editor, "assets"));
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    zero_input(&input); input.editor_flow_workspace_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.flow_workspace.active);
+    assert_true(editor.flow_inspector);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_inspector);
+
+    /* Select the Menu node and open its inspector. The ports and the named
+       actions must be visible together; there is no second "connections"
+       screen to discover. */
+    editor.flow_workspace.node_index = 2U;
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_true(editor.flow_inspector);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
+    assert_true(grid_contains_text(grid, "INSPECTOR"));
+    assert_true(grid_contains_text(grid, "PORTS"));
+    assert_true(grid_contains_text(grid, "extra_menu"));
+    assert_true(grid_contains_text(grid, "(not connected)"));
+    assert_true(grid_contains_text(grid, "Add node..."));
+    assert_true(grid_contains_text(grid, "Remove node"));
+    grid_destroy(grid);
+
+    /* Down moves to the free port; Enter opens a destination dialog titled
+       with the port, and Esc returns to the inspector rather than the old
+       CONNECTIONS mode. */
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_inspector_index, 1U);
+    assert_string_equal(flow_workspace_selected_port(&editor.flow_workspace),
+                        "extra_menu");
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
+    grid = grid_create(160, 40);
+    assert_non_null(grid);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
+    assert_true(grid_contains_text(grid, "CONNECT 'extra_menu' TO..."));
+    assert_true(grid_contains_text(grid, "NEW FROM CATALOG"));
+    grid_destroy(grid);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_true(editor.flow_inspector);
+
+    /* A is the same explicit Add action: it takes the free port and preselects
+       the first catalog entry that is not in the flow. */
+    zero_input(&input); input.editor_flow_connect_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_non_null(flow_workspace_selected_asset(&editor.flow_workspace));
+    assert_int_equal(editor.flow_workspace.target_index,
+                     editor.flow_workspace.document.node_count - 1U);
+    zero_input(&input); input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+
+    /* The Remove action is a real row, not a key chord hidden in the node list.
+       Remove the leaf Scene; the Menu cannot be removed because the Scene is
+       only reachable through it. */
+    editor.flow_workspace.node_index = 1U;
+    editor.flow_inspector_index = 0U;
+    zero_input(&input); input.editor_next_pressed = true;
+    update_with(&editor, &camera, &input);
+    zero_input(&input); input.editor_confirm_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.last_flow_result, FLOW_WORKSPACE_OK);
+    assert_int_equal(editor.flow_workspace.document.node_count, 2U);
+    assert_false(editor.flow_inspector);
     unified_editor_destroy(&editor);
 }
 
@@ -5995,7 +6107,12 @@ static void test_r12_menu_edit_preview_uses_authored_root_colors(void **state) {
     grid = grid_create(160, 40);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_get(grid, 40, 3, &preview));
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        assert_true(grid_get(grid, origin_x, origin_y, &preview));
+    }
     assert_int_equal(preview.glyph, '.');
     assert_memory_equal(&preview.fg, &expected_fg, sizeof(preview.fg));
     assert_memory_equal(&preview.bg, &expected_bg, sizeof(preview.bg));
@@ -6044,30 +6161,45 @@ static void test_r12_i16_menu_pointer_move_resize_cancel_and_isolate(void **stat
     update_with(&editor, &camera, &input);
 
     menu_history_count = editor.ui_menu_workspace.change_count;
-    zero_input(&input);
-    input.mouse_grid_valid = true;
-    input.mouse_grid_x = 43;
-    input.mouse_grid_y = 7;
-    input.mouse_left = true;
-    input.mouse_left_pressed = true;
-    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        zero_input(&input);
+        input.mouse_grid_valid = true;
+        input.mouse_grid_x = origin_x + 3;
+        input.mouse_grid_y = origin_y + 4;
+        input.mouse_left = true;
+        input.mouse_left_pressed = true;
+        assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    }
     assert_int_equal(ui_menu_workspace_selected_element(
         &editor.ui_menu_workspace)->id, button);
     assert_int_equal(editor.ui_menu_workspace.pointer_mode, UI_MENU_POINTER_MOVE);
-    zero_input(&input);
-    input.mouse_grid_valid = true;
-    input.mouse_grid_x = 46;
-    input.mouse_grid_y = 9;
-    input.mouse_left = true;
-    input.mouse_dx = 1.0f;
-    update_with(&editor, &camera, &input);
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        zero_input(&input);
+        input.mouse_grid_valid = true;
+        input.mouse_grid_x = origin_x + 6;
+        input.mouse_grid_y = origin_y + 6;
+        input.mouse_left = true;
+        input.mouse_dx = 1.0f;
+        update_with(&editor, &camera, &input);
+    }
     assert_int_equal(ui_document_find_element(
         &editor.ui_menu_workspace.document, button)->layout.x, 5);
     assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count);
     zero_input(&input);
     input.mouse_grid_valid = true;
-    input.mouse_grid_x = 46;
-    input.mouse_grid_y = 9;
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        input.mouse_grid_x = origin_x + 6;
+        input.mouse_grid_y = origin_y + 6;
+    }
     input.mouse_left_released = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.ui_menu_workspace.change_count, menu_history_count + 1U);
@@ -6076,21 +6208,36 @@ static void test_r12_i16_menu_pointer_move_resize_cancel_and_isolate(void **stat
     grid = grid_create(260, 40);
     assert_non_null(grid);
     unified_editor_render_text_overlay(&editor, grid, 0.0, false);
-    assert_true(grid_get(grid, 52, 10, &handle));
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        assert_true(grid_get(grid, origin_x + 12, origin_y + 7, &handle));
+    }
     assert_int_equal(handle.glyph, '+');
     grid_destroy(grid);
     zero_input(&input);
     input.mouse_grid_valid = true;
-    input.mouse_grid_x = 52;
-    input.mouse_grid_y = 10;
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        input.mouse_grid_x = origin_x + 12;
+        input.mouse_grid_y = origin_y + 7;
+    }
     input.mouse_left = true;
     input.mouse_left_pressed = true;
     update_with(&editor, &camera, &input);
     assert_int_equal(editor.ui_menu_workspace.pointer_mode, UI_MENU_POINTER_RESIZE);
     zero_input(&input);
     input.mouse_grid_valid = true;
-    input.mouse_grid_x = 54;
-    input.mouse_grid_y = 12;
+    {
+        int origin_x = 0;
+        int origin_y = 0;
+        ui_editor_presentation_preview_origin(160, 40, 80, 25, &origin_x, &origin_y);
+        input.mouse_grid_x = origin_x + 14;
+        input.mouse_grid_y = origin_y + 9;
+    }
     input.mouse_left = true;
     input.mouse_dx = 1.0f;
     update_with(&editor, &camera, &input);
@@ -6336,6 +6483,7 @@ int main(void) {
         cmocka_unit_test(test_r12_i10_flow_workspace_entry_rewire_discard_and_overlay),
         cmocka_unit_test(test_r12_i10_g_loads_conventional_flow_transactionally),
         cmocka_unit_test(test_r12_i11_catalog_targets_and_remove_routing),
+        cmocka_unit_test(test_r12_i10_flow_inspector_ports_actions_and_add),
         cmocka_unit_test(test_r12_i11_catalog_failure_opens_retained_graph_visibly),
         cmocka_unit_test(test_r12_checked_in_main_menu_test_reports_scene_only),
         cmocka_unit_test(test_r12_i12_visual_menu_workspace_edit_discard_and_create),

@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the twenty focused UI rule owners:
+`make test-ui-standards` runs the twenty-two focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -200,6 +200,19 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
   suppressed. It is governed by §1, and is not part of this rule.
   See [`reviews/2026-10-09-editor-scene-browser-display-surface.md`](reviews/2026-10-09-editor-scene-browser-display-surface.md)
   and [`reviews/2026-10-13-editor-surface-inspector-menu.md`](reviews/2026-10-13-editor-surface-inspector-menu.md).
+- **Editing workspace rule (2026-10-19).** The game-flow workspace and the authored-Menu workspace are
+  panes, not display surfaces: black canvas, workbench palette, shared panel chrome, no moving
+  material over the work. Game flow is a deterministic node graph (Start/Scene/Menu boxes, ports,
+  orthogonal labelled edges, selection-following viewport) plus a node inspector: the workspace
+  opens on the selected node's inspector and shows its ports and explicit `+ Add node…` /
+  `- Remove node` actions in one cursor, and a port's destination choice is a modal
+  `CONNECT '<port>' TO…` panel rather than a third mode. The R12
+  controller, mutations, history and Save/Discard behaviour are unchanged. The authored-Menu
+  workspace is preview-first, with the preview framed and placed inside the region the screen shows,
+  shared panels for hierarchy, properties and actions, and a windowed single-row property list on
+  short frames. Pointer coordinates use the same preview origin as the renderer. See
+  [`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md).
+
 - Editor-interface colour comes from `ui_app_theme_workbench_palette()` roles only: a literal in the
   editor interface is an automatic rejection (Reference of Record §5.2), and selection is a state, so
   it takes the `focus` role rather than a hue of its own. The editor's *editing* surfaces (panes,

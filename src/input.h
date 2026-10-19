@@ -30,7 +30,7 @@ typedef enum {
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
     INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
     INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO, INPUT_KEY_L, INPUT_KEY_P,
-    INPUT_KEY_T, INPUT_KEY_B, INPUT_KEY_G, INPUT_KEY_U
+    INPUT_KEY_T, INPUT_KEY_B, INPUT_KEY_G, INPUT_KEY_U, INPUT_KEY_A
 } InputKey;
 
 typedef struct {
@@ -121,6 +121,7 @@ typedef struct {
     bool editor_place_trigger_pressed; /* T — place an enter-region trigger */
     bool editor_place_object_pressed; /* B — place the first loaded object */
     bool editor_flow_workspace_pressed; /* G — open/close game-flow workspace */
+    bool editor_flow_connect_pressed;   /* A — flow: jump to a free port's target list */
     bool editor_ui_workspace_pressed;   /* Ctrl+U — open/close authored Menu workspace */
     bool editor_jump_pressed;        /* Space — jump in editor walk mode */
 

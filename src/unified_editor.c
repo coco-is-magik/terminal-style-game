@@ -13,6 +13,8 @@
 #include "ui_editor_host.h"
 #include "ui_editor_presentation.h"
 #include "ui_app_theme_adapter.h"
+#include "ui_editor_panel.h"
+#include "flow_graph.h"
 #include "ui_ele.h"
 #include "asset_refresh.h"
 #include "editor_domain.h"
@@ -45,11 +47,28 @@ static bool g_fail_runtime_build_for_test = false;
 #define EDITOR_UI_PREVIEW_MAX_WIDTH 80
 #define EDITOR_UI_PREVIEW_MAX_HEIGHT 25
 
-static const UiRenderTheme editor_ui_preview_theme = {
-    {120, 220, 160, 255}, {0, 40, 20, 255},
-    {20, 20, 20, 255}, {220, 220, 120, 255},
-    {120, 120, 120, 255}, {20, 20, 20, 255}
-};
+static UiRenderTheme editor_ui_preview_theme_for(const UiAppWorkbenchPalette *palette) {
+    UiRenderTheme theme;
+    if (!palette) {
+        theme = (UiRenderTheme){{242, 247, 248, 255}, {5, 8, 10, 255},
+                                {5, 8, 10, 255}, {242, 247, 248, 255},
+                                {110, 120, 124, 255}, {5, 8, 10, 255}};
+        return theme;
+    }
+    theme.focused_foreground = (UiDocumentColor){palette->primary_text.r,
+        palette->primary_text.g, palette->primary_text.b, palette->primary_text.a};
+    theme.focused_background = (UiDocumentColor){palette->canvas.r,
+        palette->canvas.g, palette->canvas.b, palette->canvas.a};
+    theme.pressed_foreground = (UiDocumentColor){palette->canvas.r,
+        palette->canvas.g, palette->canvas.b, palette->canvas.a};
+    theme.pressed_background = (UiDocumentColor){palette->primary_text.r,
+        palette->primary_text.g, palette->primary_text.b, palette->primary_text.a};
+    theme.disabled_foreground = (UiDocumentColor){palette->disabled_text.r,
+        palette->disabled_text.g, palette->disabled_text.b, palette->disabled_text.a};
+    theme.disabled_background = (UiDocumentColor){palette->canvas.r,
+        palette->canvas.g, palette->canvas.b, palette->canvas.a};
+    return theme;
+}
 
 void unified_editor_set_runtime_build_failure_for_test(bool fail) {
     g_fail_runtime_build_for_test = fail;
@@ -229,20 +248,261 @@ static void editor_mark_keyboard(EditorInputConsumption *c) {
     c->keyboard_consumed = true;
 }
 
-static FlowWorkspaceInput editor_flow_input(const InputState *input, bool *handled) {
-    *handled = true;
-    if (input->editor_previous_pressed) return FLOW_WORKSPACE_INPUT_PREVIOUS;
-    if (input->editor_next_pressed) return FLOW_WORKSPACE_INPUT_NEXT;
-    if (input->editor_confirm_pressed) return FLOW_WORKSPACE_INPUT_CONFIRM;
-    if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed)
-        return FLOW_WORKSPACE_INPUT_ESCAPE;
-    if (input->editor_save_pressed) return FLOW_WORKSPACE_INPUT_SAVE;
-    if (input->editor_undo_pressed) return FLOW_WORKSPACE_INPUT_UNDO;
-    if (input->editor_redo_pressed) return FLOW_WORKSPACE_INPUT_REDO;
-    if (input->editor_text_backspace_pressed) return FLOW_WORKSPACE_INPUT_REMOVE;
-    *handled = false;
-    return FLOW_WORKSPACE_INPUT_NEXT;
+static size_t editor_flow_inspector_count(const FlowWorkspace *workspace) {
+    const FlowNode *node = flow_workspace_selected_node(workspace);
+    size_t count;
+    if (!node) return 0U;
+    count = flow_workspace_connection_count(workspace) + 1U; /* ports + Add node */
+    if (node->type != FLOW_NODE_START) count++;              /* + Remove node */
+    return count;
 }
+
+static void editor_flow_step_index(size_t *index, size_t count, bool previous) {
+    if (!index || count == 0U) {
+        if (index) *index = 0U;
+        return;
+    }
+    if (previous) *index = *index == 0U ? count - 1U : *index - 1U;
+    else *index = (*index + 1U) % count;
+}
+
+static void editor_flow_sync_inspector_port(UnifiedEditorState *editor) {
+    const size_t ports = flow_workspace_connection_count(&editor->flow_workspace);
+    if (editor->flow_inspector_index < ports)
+        editor->flow_workspace.edge_index = editor->flow_inspector_index;
+}
+
+/* Leave the destination dialog and land back in the inspector, never in the old
+   CONNECTIONS screen. TARGETS -> EDGES -> NODES is two controller escapes. */
+static void editor_flow_close_dialog_to_inspector(UnifiedEditorState *editor) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    int guard = 3;
+    while ((workspace->mode == FLOW_WORKSPACE_TARGETS ||
+            workspace->mode == FLOW_WORKSPACE_EDGES) && guard-- > 0)
+        (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+    editor->flow_inspector = true;
+    if (editor->flow_inspector_index >= editor_flow_inspector_count(workspace))
+        editor->flow_inspector_index = 0U;
+    editor_flow_sync_inspector_port(editor);
+    editor->last_flow_result = FLOW_WORKSPACE_OK;
+}
+
+/* Activate one inspector row: a port opens the destination picker, Add node
+   opens it through a free port with the catalog selected, Remove deletes the
+   node. Rows are ordered ports, Add, Remove. */
+static void editor_flow_activate_inspector(UnifiedEditorState *editor) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    const FlowNode *node = flow_workspace_selected_node(workspace);
+    const size_t ports = flow_workspace_connection_count(workspace);
+    const size_t index = editor->flow_inspector_index;
+    FlowWorkspaceResult result;
+    if (!node) return;
+    if (index < ports) {
+        result = flow_workspace_begin_connection(workspace, workspace->node_index, index);
+        editor->last_flow_result = result;
+        if (result == FLOW_WORKSPACE_OK &&
+            workspace->mode == FLOW_WORKSPACE_TARGETS) return;
+        /* No destinations: the controller stopped in EDGES. Return it to NODES
+           so the inspector is the only surface and the header note explains
+           why no dialog appeared. */
+        if (workspace->mode == FLOW_WORKSPACE_EDGES)
+            (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+        editor->flow_inspector = true;
+        return;
+    }
+    if (index == ports) {
+        result = flow_workspace_begin_add_node(workspace);
+        editor->last_flow_result = result;
+        if (result == FLOW_WORKSPACE_OK &&
+            workspace->mode == FLOW_WORKSPACE_TARGETS) return;
+        if (workspace->mode == FLOW_WORKSPACE_EDGES)
+            (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+        editor->flow_inspector = true;
+        return;
+    }
+    result = flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_REMOVE);
+    editor->last_flow_result = result;
+    if (result == FLOW_WORKSPACE_OK) {
+        editor->flow_inspector = false;
+        editor->flow_inspector_index = 0U;
+    }
+}
+
+static bool editor_flow_update_close_prompt(UnifiedEditorState *editor,
+                                            const InputState *input) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    FlowWorkspaceInput flow_input;
+    if (input->editor_previous_pressed) flow_input = FLOW_WORKSPACE_INPUT_PREVIOUS;
+    else if (input->editor_next_pressed) flow_input = FLOW_WORKSPACE_INPUT_NEXT;
+    else if (input->editor_confirm_pressed) flow_input = FLOW_WORKSPACE_INPUT_CONFIRM;
+    else if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed)
+        flow_input = FLOW_WORKSPACE_INPUT_ESCAPE;
+    else return false;
+    editor->last_flow_result = flow_workspace_handle_input(workspace, flow_input);
+    return true;
+}
+
+static bool editor_flow_update_target_dialog(UnifiedEditorState *editor,
+                                             const InputState *input) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    if (input->editor_previous_pressed || input->editor_next_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, input->editor_previous_pressed
+                ? FLOW_WORKSPACE_INPUT_PREVIOUS : FLOW_WORKSPACE_INPUT_NEXT);
+        return true;
+    }
+    if (input->editor_confirm_pressed) {
+        FlowWorkspaceResult result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_CONFIRM);
+        editor->last_flow_result = result;
+        if (result == FLOW_WORKSPACE_OK && workspace->mode == FLOW_WORKSPACE_EDGES) {
+            (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+            editor->flow_inspector = true;
+            if (editor->flow_inspector_index >=
+                editor_flow_inspector_count(workspace))
+                editor->flow_inspector_index = 0U;
+        }
+        return true;
+    }
+    if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed) {
+        editor_flow_close_dialog_to_inspector(editor);
+        return true;
+    }
+    return false;
+}
+
+
+static bool editor_flow_update_inspector(UnifiedEditorState *editor,
+                                         const InputState *input) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    const size_t count = editor_flow_inspector_count(workspace);
+    const size_t ports = flow_workspace_connection_count(workspace);
+    const size_t index = editor->flow_inspector_index;
+    if (input->editor_previous_pressed || input->editor_next_pressed) {
+        editor_flow_step_index(&editor->flow_inspector_index, count,
+                               input->editor_previous_pressed);
+        editor_flow_sync_inspector_port(editor);
+        editor->last_flow_result = FLOW_WORKSPACE_OK;
+        return true;
+    }
+    if (input->editor_confirm_pressed || input->editor_increase_pressed) {
+        editor_flow_activate_inspector(editor);
+        return true;
+    }
+    if (input->editor_cancel_pressed || input->editor_decrease_pressed ||
+        input->editor_flow_workspace_pressed) {
+        editor->flow_inspector = false;
+        editor->last_flow_result = FLOW_WORKSPACE_OK;
+        return true;
+    }
+    if (input->editor_text_backspace_pressed) {
+        if (index < ports) {
+            editor->last_flow_result = flow_workspace_disconnect_port(
+                workspace, workspace->node_index, index);
+        } else if (index == ports + 1U) {
+            FlowWorkspaceResult result = flow_workspace_handle_input(
+                workspace, FLOW_WORKSPACE_INPUT_REMOVE);
+            editor->last_flow_result = result;
+            if (result == FLOW_WORKSPACE_OK) {
+                editor->flow_inspector = false;
+                editor->flow_inspector_index = 0U;
+            }
+        }
+        if (editor->flow_inspector_index >= editor_flow_inspector_count(workspace))
+            editor->flow_inspector_index = 0U;
+        return true;
+    }
+    if (input->editor_flow_connect_pressed) {
+        editor->last_flow_result = flow_workspace_begin_add_node(workspace);
+        if (workspace->mode == FLOW_WORKSPACE_EDGES)
+            (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+        editor->flow_inspector_index = ports;
+        return true;
+    }
+    return false;
+}
+
+static bool editor_flow_update_nodes(UnifiedEditorState *editor,
+                                     const InputState *input) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    if (input->editor_previous_pressed || input->editor_next_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, input->editor_previous_pressed
+                ? FLOW_WORKSPACE_INPUT_PREVIOUS : FLOW_WORKSPACE_INPUT_NEXT);
+        return true;
+    }
+    if (input->editor_confirm_pressed || input->editor_increase_pressed) {
+        editor->flow_inspector = true;
+        editor->flow_inspector_index = 0U;
+        workspace->edge_index = 0U;
+        editor->last_flow_result = FLOW_WORKSPACE_OK;
+        return true;
+    }
+    if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+        return true;
+    }
+    if (input->editor_text_backspace_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_REMOVE);
+        return true;
+    }
+    if (input->editor_flow_connect_pressed) {
+        FlowWorkspaceResult result = flow_workspace_begin_add_node(workspace);
+        editor->last_flow_result = result;
+        if (workspace->mode == FLOW_WORKSPACE_EDGES)
+            (void)flow_workspace_handle_input(workspace, FLOW_WORKSPACE_INPUT_ESCAPE);
+        editor->flow_inspector_index = flow_workspace_connection_count(workspace);
+        if (result != FLOW_WORKSPACE_OK ||
+            workspace->mode != FLOW_WORKSPACE_TARGETS)
+            editor->flow_inspector = true;
+        return true;
+    }
+    return false;
+}
+
+static void editor_update_flow_workspace(UnifiedEditorState *editor,
+                                         const InputState *input,
+                                         EditorInputConsumption *consumed) {
+    FlowWorkspace *workspace = &editor->flow_workspace;
+    bool handled = false;
+    if (input->editor_save_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_SAVE);
+        handled = true;
+    } else if (input->editor_undo_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_UNDO);
+        handled = true;
+    } else if (input->editor_redo_pressed) {
+        editor->last_flow_result = flow_workspace_handle_input(
+            workspace, FLOW_WORKSPACE_INPUT_REDO);
+        handled = true;
+    }
+    if (!handled && workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT)
+        handled = editor_flow_update_close_prompt(editor, input);
+    else if (!handled && workspace->mode == FLOW_WORKSPACE_TARGETS)
+        handled = editor_flow_update_target_dialog(editor, input);
+    else if (!handled && editor->flow_inspector)
+        handled = editor_flow_update_inspector(editor, input);
+    else if (!handled)
+        handled = editor_flow_update_nodes(editor, input);
+    if (!workspace->active) {
+        editor->flow_inspector = false;
+        editor->flow_inspector_index = 0U;
+    } else {
+        if (workspace->node_index >= workspace->document.node_count)
+            workspace->node_index = workspace->document.node_count > 0U
+                ? workspace->document.node_count - 1U : 0U;
+        if (editor->flow_inspector &&
+            editor->flow_inspector_index >= editor_flow_inspector_count(workspace))
+            editor->flow_inspector_index = 0U;
+    }
+    if (handled) editor_mark_keyboard(consumed);
+    consumed->pointer_consumed = true;
+}
+
 
 static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     UiMenuWorkspace *workspace,
@@ -254,6 +514,12 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     UiEditorHostViewport viewport = {
         viewport_columns, viewport_rows, 40, 3
     };
+    int preview_width = 0;
+    int preview_height = 0;
+    ui_menu_workspace_preview_dimensions(workspace, &preview_width, &preview_height);
+    ui_editor_presentation_preview_origin(viewport_columns, viewport_rows,
+                                          preview_width, preview_height,
+                                          &viewport.preview_x, &viewport.preview_y);
     return ui_editor_host_apply_input(workspace, input, &viewport, handled);
 }
 
@@ -310,10 +576,15 @@ static bool editor_begin_ui_menu_test(UnifiedEditorState *editor,
     if (width > viewport_columns - 41) width = viewport_columns - 41;
     if (height > viewport_rows - 5) height = viewport_rows - 5;
     if (width <= 0 || height <= 0) return false;
-    editor->last_ui_menu_test_result = ui_menu_runtime_activate(
-        &editor->ui_menu_test_runtime, &editor->ui_menu_workspace.document,
-        editor->assets, &editor_ui_preview_theme, &editor->ui_menu_test_flow,
-        &editor->ui_menu_test_session, width, height);
+    {
+        UiAppWorkbenchPalette palette;
+        if (!ui_app_theme_workbench_palette(&palette)) return false;
+        editor->ui_menu_test_theme = editor_ui_preview_theme_for(&palette);
+        editor->last_ui_menu_test_result = ui_menu_runtime_activate(
+            &editor->ui_menu_test_runtime, &editor->ui_menu_workspace.document,
+            editor->assets, &editor->ui_menu_test_theme, &editor->ui_menu_test_flow,
+            &editor->ui_menu_test_session, width, height);
+    }
     if (editor->last_ui_menu_test_result != UI_MENU_RUNTIME_OK) return false;
     editor->ui_menu_test_mode = true;
     return true;
@@ -972,6 +1243,8 @@ FlowWorkspaceResult unified_editor_open_flow_workspace(UnifiedEditorState *edito
     int written;
     if (!editor || !editor->active) return FLOW_WORKSPACE_INVALID_ARGUMENT;
     if (editor->flow_workspace.active) return FLOW_WORKSPACE_OK;
+    editor->flow_inspector = true;
+    editor->flow_inspector_index = 0U;
     if (editor->asset_root && flow_project_catalog_refresh(
             &editor->flow_project_catalog, editor->asset_root, editor->assets) !=
             FLOW_PROJECT_CATALOG_OK) {
@@ -1015,6 +1288,10 @@ FlowWorkspaceResult unified_editor_load_flow_workspace(UnifiedEditorState *edito
                                                        const char *path) {
     if (!editor || !editor->active) return FLOW_WORKSPACE_INVALID_ARGUMENT;
     editor->last_flow_result = flow_workspace_load(&editor->flow_workspace, path);
+    if (editor->last_flow_result == FLOW_WORKSPACE_OK) {
+        editor->flow_inspector = true;
+        editor->flow_inspector_index = 0U;
+    }
     return editor->last_flow_result;
 }
 
@@ -1105,6 +1382,12 @@ static int editor_interface_columns(const UnifiedEditorState *editor, const Grid
     if (editor->interface_columns > 0 && editor->interface_columns < grid->width)
         return editor->interface_columns;
     return grid->width;
+}
+
+static int editor_interface_rows(const UnifiedEditorState *editor, const Grid *grid) {
+    if (editor->interface_rows > 0 && editor->interface_rows < grid->height)
+        return editor->interface_rows;
+    return grid->height;
 }
 
 MapCatalogResult unified_editor_begin_map_open(
@@ -4314,6 +4597,17 @@ EditorInputConsumption unified_editor_update(
     EditorInputConsumption consumed = {false, false};
 
     if (!editor || !editor->active || !input) return consumed;
+    /* The renderer and the pointer host must agree about the visible region. The
+       application reports the scaled region before render; tests report the grid
+       through the update seam, so seed the interface region on first use. */
+    if (editor->interface_columns == 0 && viewport_columns > 0)
+        editor->interface_columns = viewport_columns;
+    if (editor->interface_rows == 0 && viewport_rows > 0)
+        editor->interface_rows = viewport_rows;
+    const int ui_viewport_columns = editor->interface_columns > 0
+        ? editor->interface_columns : viewport_columns;
+    const int ui_viewport_rows = editor->interface_rows > 0
+        ? editor->interface_rows : viewport_rows;
     sprite_animation_player_tick(&editor->runtime_world, editor->assets,
                                  delta_seconds);
     if (camera && isfinite(camera->transform.pos.x) &&
@@ -4437,6 +4731,7 @@ EditorInputConsumption unified_editor_update(
                        input->editor_increase_pressed ||
                        input->editor_overwrite_pressed ||
                        input->editor_flow_workspace_pressed ||
+                       input->editor_flow_connect_pressed ||
                        input->editor_ui_workspace_pressed) {
                 editor_mark_keyboard(&consumed);
             }
@@ -4444,14 +4739,7 @@ EditorInputConsumption unified_editor_update(
         }
 
         if (editor->flow_workspace.active) {
-            bool handled;
-            FlowWorkspaceInput flow_input = editor_flow_input(input, &handled);
-            if (handled) {
-                editor->last_flow_result = flow_workspace_handle_input(
-                    &editor->flow_workspace, flow_input);
-                editor_mark_keyboard(&consumed);
-            }
-            consumed.pointer_consumed = true;
+            editor_update_flow_workspace(editor, input, &consumed);
             return consumed;
         }
 
@@ -4463,12 +4751,12 @@ EditorInputConsumption unified_editor_update(
             } else if (input->editor_toggle_mode_pressed &&
                        editor->ui_menu_workspace.has_document) {
                 (void)editor_begin_ui_menu_test(
-                    editor, viewport_columns, viewport_rows);
+                    editor, ui_viewport_columns, ui_viewport_rows);
                 handled = true;
             } else {
                 editor->last_ui_menu_result = editor_update_ui_menu_workspace(
-                    &editor->ui_menu_workspace, input, viewport_columns,
-                    viewport_rows, &handled);
+                    &editor->ui_menu_workspace, input, ui_viewport_columns,
+                    ui_viewport_rows, &handled);
             }
             if (handled) editor_mark_keyboard(&consumed);
             input->forward = false;
@@ -5166,96 +5454,23 @@ EditorInputConsumption unified_editor_update(
  * inspector follows it. Placement is unchanged: the panel replaces the ragged
  * column-1 list in the same corner.
  */
-#define EDITOR_MENU_ROW_STEP 2   /* entries two rows apart, so the perimeter fits */
-#define EDITOR_MENU_MAX_ROWS 24
-#define EDITOR_MENU_PAD 2
-#define EDITOR_MENU_COLUMN_GAP 2 /* between the label column and the detail column */
-/* Rows kept clear above the title and below the hint, so no text ever sits in the
-   band the material froths in: the menu's edge stays the material's, not the text's. */
-#define EDITOR_MENU_MARGIN 2
+#define EDITOR_MENU_ROW_STEP UI_EDITOR_PANEL_ROW_STEP
+#define EDITOR_MENU_MAX_ROWS UI_EDITOR_PANEL_MAX_ROWS
+#define EDITOR_MENU_PAD UI_EDITOR_PANEL_PAD
+#define EDITOR_MENU_COLUMN_GAP UI_EDITOR_PANEL_COLUMN_GAP
+#define EDITOR_MENU_MARGIN UI_EDITOR_PANEL_MARGIN
 
-typedef struct {
-    char text[80];   /* the label: what the entry is              */
-    char detail[64]; /* its value and the keys that act on it, or "" */
-    bool focused;    /* takes the focus perimeter and brightens   */
-    bool strong;     /* a heading: bright, but not a control      */
-    bool note;       /* a notice or an error: the bright role     */
-} EditorMenuRow;
+typedef UiEditorPanelRow EditorMenuRow;
 
-/* The panel renderer is defined with the other menu helpers, below the sprite painter that
-   lays its canvas beside it; the painter needs the row it ends on and the width it takes,
-   so both are measured and drawn by the helpers declared here. */
-static int editor_menu_panel_render(Grid *grid, int x, int y, const char *title,
-                                    const char *subtitle, const EditorMenuRow *rows,
-                                    size_t count, const char *hint, const char *note,
-                                    double now_ms, bool reduced_motion,
-                                    const UiAppWorkbenchPalette *palette);
-static void editor_menu_panel_measure(const EditorMenuRow *rows, size_t count,
-                                      const char *title, const char *subtitle,
-                                      const char *hint, const char *note, int max_width,
-                                      int *out_label_columns, int *out_width);
+#define editor_menu_panel_render ui_editor_panel_render
+#define editor_menu_panel_measure ui_editor_panel_measure
+#define editor_menu_collect ui_editor_panel_collect
+#define editor_menu_panel_bed ui_editor_panel_bed
+#define editor_menu_put ui_editor_panel_put
 
-/* Collect one line of an editor list into the menu block, classified by the role it
-   was drawn with: the focus role is the selection, the warning role is a note, the
-   primary role is a heading, everything else is an ordinary entry. A leading "> "
-   marker is dropped -- the menu surface marks the focused entry with the focus
-   perimeter and its chase, exactly as an authored menu does. */
-static void editor_menu_collect(EditorMenuRow *rows, size_t *count, const char *text,
-                                SDL_Color colour, const UiAppWorkbenchPalette *palette) {
-    const char *label = text ? text : "";
-    const char *split = NULL;
-    const char *rest = NULL;
-    bool focused = false;
-    bool strong = false;
-    bool note = false;
-    while (*label == ' ') label++;
-    if (*label == '>') {
-        focused = true;
-        label++;
-        while (*label == ' ') label++;
-    }
-    /* An entry is two columns: what it is, and its value with the keys that act on
-       it. The split is the first run of two or more spaces, so the panel can align
-       the columns itself instead of every source string padding itself by hand --
-       which is what left the details starting at a different column per row. */
-    {
-        const char *scan = label;
-        while (*scan != '\0') {
-            if (scan[0] == ' ' && scan[1] == ' ') {
-                const char *value = scan + 2;
-                while (*value == ' ') value++;
-                if (*value != '\0') {
-                    split = scan;
-                    rest = value;
-                }
-                break;
-            }
-            scan++;
-        }
-    }
-    if (palette) {
-        if (colour.r == palette->focus.r && colour.g == palette->focus.g &&
-            colour.b == palette->focus.b && colour.a == palette->focus.a)
-            focused = true;
-        else if (colour.r == palette->warning.r && colour.g == palette->warning.g &&
-                 colour.b == palette->warning.b && colour.a == palette->warning.a)
-            note = true;
-        else if (colour.r == palette->primary_text.r &&
-                 colour.g == palette->primary_text.g &&
-                 colour.b == palette->primary_text.b &&
-                 colour.a == palette->primary_text.a)
-            strong = true;
-    }
-    if (!rows || !count || *count >= EDITOR_MENU_MAX_ROWS) return;
-    (void)snprintf(rows[*count].text, sizeof(rows[*count].text), "%.*s",
-                   (int)(split ? (size_t)(split - label) : strlen(label)), label);
-    (void)snprintf(rows[*count].detail, sizeof(rows[*count].detail), "%s",
-                   rest ? rest : "");
-    rows[*count].focused = focused;
-    rows[*count].strong = strong;
-    rows[*count].note = note;
-    (*count)++;
-}
+/* Row collection, measurement and rendering are shared with the authored-menu
+   workspace; see ui_editor_panel.c. The local names are aliases so the editor's
+   many callers keep their original vocabulary. */
 
 /* The sprite menu's two list stages, collected as menu rows: the actions list and the
    saved-sprite load list. The paint stage is not here -- it is a canvas screen of its own
@@ -5281,13 +5496,18 @@ static void editor_collect_sprite_menu_rows(
         }
     } else if (editor->sprite_menu_stage == EDITOR_SPRITE_MENU_LOAD) {
         size_t index;
+        size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 2U;
+        size_t start;
         editor_menu_collect(rows, count,
                             "LOAD SPRITE  Up/Down  Enter=load  Esc=back",
                             palette->primary_text, palette);
         if (editor->sprite_shortlist_count == 0U)
             editor_menu_collect(rows, count, "(no saved sprite files)",
                                 palette->secondary_text, palette);
-        for (index = 0U; index < editor->sprite_shortlist_count; index++) {
+        start = ui_editor_panel_window_start(editor->sprite_shortlist_count,
+                                             editor->sprite_menu_index, visible);
+        for (index = start; index < editor->sprite_shortlist_count &&
+                     *count < UI_EDITOR_PANEL_MAX_ROWS; index++) {
             snprintf(line, sizeof(line), "%s sprite pattern:%u",
                      editor->sprite_menu_index == index ? ">" : " ",
                      (unsigned)editor->sprite_shortlist[index]);
@@ -5571,12 +5791,14 @@ static const char *editor_flow_node_type(FlowNodeType type) {
 static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
                                             Grid *grid) {
     UiEditorPresentationDiagnostics diagnostics = {0};
+    UiAppWorkbenchPalette palette;
     const char *flow_status = NULL;
     Cell runtime_cells[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
     uint8_t runtime_touched[EDITOR_UI_PREVIEW_MAX_WIDTH * EDITOR_UI_PREVIEW_MAX_HEIGHT];
     UiCanvas runtime_canvas;
     int runtime_width = editor->ui_menu_test_runtime.viewport_width;
     int runtime_height = editor->ui_menu_test_runtime.viewport_height;
+    if (!ui_app_theme_workbench_palette(&palette)) return;
     if (editor->ui_menu_test_reference_result != FLOW_REFERENCE_INVALID_ARGUMENT)
         flow_status = editor_flow_reference_result(editor->ui_menu_test_reference_result);
     if (editor->ui_menu_test_mode && runtime_width > 0 && runtime_height > 0 &&
@@ -5594,9 +5816,13 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
     diagnostics.target_id = editor->ui_menu_test_target_id;
     diagnostics.test_mode = editor->ui_menu_test_mode;
     diagnostics.target_valid = editor->ui_menu_test_target_valid;
-    (void)ui_editor_presentation_render(
-        &editor->ui_menu_workspace, editor->last_ui_menu_result,
-        editor->assets, &editor_ui_preview_theme, &diagnostics, 0.0, grid);
+    {
+        UiRenderTheme preview_theme = editor_ui_preview_theme_for(&palette);
+        (void)ui_editor_presentation_render_viewport(
+            &editor->ui_menu_workspace, editor->last_ui_menu_result,
+            editor->assets, &preview_theme, &diagnostics, 0.0, grid,
+            editor_interface_columns(editor, grid), editor_interface_rows(editor, grid));
+    }
     return;
 }
 
@@ -5684,223 +5910,7 @@ static bool editor_menu_field(Grid *grid, const char *name, double now_ms,
                                       UI_ANIMATION_EVENT_WHILE_VISIBLE);
 }
 
-/* The panel's bed: the region the menu owns, cleared to black. The material is a
-   substrate -- it paints only blank cells -- so the panel clears its own bed first.
-   That is what makes the menu a darker area of the frame (the owner's "darker
-   grey/black/dark area where the actual menu is") and what lets a panel sit over a
-   bright world without the world showing through its own lines. The cleared cells
-   carry a *space*, not a zero glyph: the editor layer is copied cell by cell and a
-   zero glyph is skipped as "nothing here", so a zero-glyph bed would let the world
-   through and the panel would have no bed at all. */
-static void editor_menu_panel_bed(Grid *grid, int x, int y, int columns, int rows,
-                                  const UiAppWorkbenchPalette *palette) {
-    int row;
-    int column;
-    for (row = 0; row < rows; row++)
-        for (column = 0; column < columns; column++)
-            (void)grid_set(grid, x + column, y + row, ' ', palette->primary_text,
-                           palette->canvas);
-}
-
-/* The panel's material: the shore, bound to the panel's own rectangle rather than to
-   the surface. The swell travels outward from the panel's centre and breaks into foam
-   where the panel ends, so the menu has no drawn border: its edge is where the
-   material froths, and the material paints only blank cells, so the foam runs up
-   against the entries without ever covering one (§4.4). Same shared evaluator and
-   same synthesised-element path as the authored menus, so there is no editor-only
-   material. */
-static bool editor_menu_panel_material(Grid *grid, int x, int y, int columns, int rows,
-                                       double now_ms, bool reduced_motion) {
-    UiElement container = {0};
-    UiElement field = {0};
-    UiLayout layout = {0};
-
-    (void)snprintf(container.name, sizeof(container.name), "%s", "editor_menu_panel");
-    container.type = UI_ELE_CONTAINER;
-    container.layout = (UiElementLayout){x, y, UI_COORD_ABSOLUTE, columns, rows};
-    container.visible = 1;
-    container.align = UI_ALIGN_LEFT;
-    (void)snprintf(container.style, sizeof(container.style), "%s", "plain");
-    (void)snprintf(container.transition, sizeof(container.transition), "%s", "none");
-    (void)snprintf(container.focus_effect, sizeof(container.focus_effect), "%s", "none");
-
-    (void)snprintf(field.name, sizeof(field.name), "%s", "editor_menu_panel_shore");
-    field.type = UI_ELE_ANIMATION;
-    field.layout = (UiElementLayout){0, 0, UI_COORD_ABSOLUTE, 0, 0};
-    /* extent=box: the material is the panel, not the display. */
-    field.extent = UI_EXTENT_BOX;
-    field.visible = 1;
-    field.z_index = -1;
-    field.align = UI_ALIGN_LEFT;
-    (void)snprintf(field.preset, sizeof(field.preset), "%s", "living_shore");
-    (void)snprintf(field.target, sizeof(field.target), "%s", "editor_menu_panel");
-    (void)snprintf(field.trigger, sizeof(field.trigger), "%s", "while_visible");
-    (void)snprintf(field.orientation, sizeof(field.orientation), "%s", "radial");
-    (void)snprintf(field.style, sizeof(field.style), "%s", "plain");
-    (void)snprintf(field.transition, sizeof(field.transition), "%s", "none");
-    (void)snprintf(field.focus_effect, sizeof(field.focus_effect), "%s", "none");
-
-    (void)snprintf(layout.name, sizeof(layout.name), "%s", "editor_menu_panel");
-    (void)snprintf(layout.transition, sizeof(layout.transition), "%s", "none");
-    layout.elements[0] = &container;
-    layout.elements[1] = &field;
-    layout.element_count = 2;
-    return ui_animation_render_layout(&layout, grid, now_ms, reduced_motion, false,
-                                      UI_ANIMATION_EVENT_WHILE_VISIBLE);
-}
-
-/* One panel line on the bed, clipped to the interior. */
-static void editor_menu_put(Grid *grid, int x, int y, int columns, const char *text,
-                            SDL_Color fg, const UiAppWorkbenchPalette *palette) {
-    int column;
-    if (!text || columns <= 0) return;
-    for (column = 0; text[column] != '\0' && column < columns; column++)
-        (void)grid_set(grid, x + column, y, (uint8_t)text[column], fg, palette->canvas);
-}
-
-/* The panel fits its content and stays in the corner it is given: a submenu that comes
-   up while editing must not cover the world being edited. Entries sit two rows apart so
-   the focused entry takes the shared focus perimeter and its chase, exactly as an
-   authored focused button does; a panel too short for that closes the entries up rather
-   than truncating the list (§4.7), and at the tighter rhythm focus is carried by the
-   bright role alone, because the perimeter would overlap the neighbouring entries.
-   An entry is two aligned columns -- what it is, then its value and the keys that act on
-   it -- so the details start in one column whatever the labels are. */
-/* Draw the panel and return the first row below it that is clear for other content -- the
-   panel's own bottom edge plus the one cell the material may splash past it -- so a caller
-   can lay something of its own under the panel without the bed or the material touching it.
-   The sprite painter's canvas is the one caller that needs this: the canvas is the work, so
-   nothing may be drawn on it. */
-/* The panel's own geometry: the label column (as wide as the widest label that carries a
-   detail -- a row without one is a line of its own, so it never widens the column) and the
-   width the content needs, bounded by the room the frame has, because a clipped line would
-   hide a control. One source of truth: the renderer draws the panel from it, and a caller
-   that lays something beside the panel measures it with it, so the two never disagree. */
-static void editor_menu_panel_measure(const EditorMenuRow *rows, size_t count,
-                                      const char *title, const char *subtitle,
-                                      const char *hint, const char *note, int max_width,
-                                      int *out_label_columns, int *out_width) {
-    const int pad = EDITOR_MENU_PAD;
-    int label_columns = 0;
-    int width;
-    size_t i;
-    for (i = 0U; i < count; i++)
-        if (rows[i].detail[0] && (int)strlen(rows[i].text) > label_columns)
-            label_columns = (int)strlen(rows[i].text);
-    /* The panel fits its content: the widest line wins, and the title, the blank row
-       under it, the entries and the hint and note below them set the height. */
-    width = (int)strlen(title ? title : "");
-    if (subtitle && (int)strlen(subtitle) > width) width = (int)strlen(subtitle);
-    for (i = 0U; i < count; i++) {
-        int columns = (int)strlen(rows[i].text);
-        if (rows[i].detail[0]) {
-            const int spanned = label_columns + EDITOR_MENU_COLUMN_GAP +
-                                (int)strlen(rows[i].detail);
-            if (spanned > columns) columns = spanned;
-        }
-        if (columns > width) width = columns;
-    }
-    if (hint && (int)strlen(hint) > width) width = (int)strlen(hint);
-    if (note && (int)strlen(note) > width) width = (int)strlen(note);
-    width += pad * 2 + 2;
-    /* The panel fits its content; only the display bounds it. */
-    if (width > max_width) width = max_width;
-    if (width < 8) width = 8;
-    if (out_label_columns) *out_label_columns = label_columns;
-    if (out_width) *out_width = width;
-}
-
-static int editor_menu_panel_render(
-    Grid *grid, int x, int y, const char *title, const char *subtitle,
-    const EditorMenuRow *rows, size_t count, const char *hint, const char *note,
-    double now_ms, bool reduced_motion, const UiAppWorkbenchPalette *palette) {
-    const int pad = EDITOR_MENU_PAD;
-    const int listed = (int)count;
-    const bool has_subtitle = subtitle && subtitle[0];
-    const bool has_note = note && note[0];
-    int label_columns = 0;
-    int width = 0;
-    int height;
-    int title_row;
-    int first_row;
-    int hint_row;
-    int step = EDITOR_MENU_ROW_STEP;
-    size_t cursor_row = count;
-    size_t i;
-    /* Exactly one indicator moves: the list the cursor is in. A submenu's rows are
-       collected after the entry that opened it, so the *last* focused row is the
-       innermost list's cursor; any earlier focused row is the entry whose submenu is
-       open, and it keeps its frame without the chase. */
-    for (i = 0U; i < count; i++)
-        if (rows[i].focused) cursor_row = i;
-    editor_menu_panel_measure(rows, count, title, subtitle, hint, note,
-                              grid->width - x - 1, &label_columns, &width);
-    /* The menu rhythm is two rows per entry; a panel too short for it closes the
-       entries up rather than truncating the list: nothing is hidden (§4.7). */
-    while (step > 1 &&
-           y + (2 * EDITOR_MENU_MARGIN + 3 + (has_subtitle ? 1 : 0) + listed * step +
-                (has_note ? 1 : 0)) > grid->height)
-        step--;
-    height = 2 * EDITOR_MENU_MARGIN + 3 + (has_subtitle ? 1 : 0) + listed * step +
-             (has_note ? 1 : 0);
-    /* Keep the panel on the display: hold the corner it was given, and slide it up only if
-       the content is taller than the room below the corner. */
-    if (y + height > grid->height) y = grid->height - height;
-    if (y < 0) y = 0;
-    title_row = y + EDITOR_MENU_MARGIN;
-    first_row = title_row + (has_subtitle ? 2 : 1) + 1;
-    hint_row = first_row + listed * step;
-
-    /* The bed, then the material on it, then the text over both. Drawing the material
-       first is what keeps a label intact: a space inside a label is a blank cell, so a
-       material drawn after the text would put a mark in the middle of a word. Nothing
-       draws the panel's border: its edge is where the shore froths (the material is
-       bound to this rectangle), which is what keeps the world visible around it instead
-       of a frame cutting it off. */
-    editor_menu_panel_bed(grid, x, y, width, height, palette);
-    (void)editor_menu_panel_material(grid, x, y, width, height, now_ms, reduced_motion);
-    if (title && title[0])
-        editor_menu_put(grid, x + pad, title_row, width - pad * 2, title,
-                        palette->primary_text, palette);
-    if (has_subtitle)
-        editor_menu_put(grid, x + pad, title_row + 1, width - pad * 2, subtitle,
-                        palette->secondary_text, palette);
-    for (i = 0U; i < count; i++) {
-        const EditorMenuRow *entry = &rows[i];
-        const int row = first_row + (int)i * step;
-        /* The identity's emphasis is brightness, not hue: a notice takes the bright
-           role rather than a warning colour of its own (§1.3, "Black, White, Red,
-           Green, Blue"). */
-        const SDL_Color fg = (entry->focused || entry->strong || entry->note)
-                                 ? palette->primary_text
-                                 : palette->secondary_text;
-        int columns = (int)strlen(entry->text);
-        editor_menu_put(grid, x + pad, row, width - pad * 2, entry->text, fg, palette);
-        if (entry->detail[0]) {
-            const int at = x + pad + label_columns + EDITOR_MENU_COLUMN_GAP;
-            editor_menu_put(grid, at, row, x + width - pad - at, entry->detail, fg,
-                            palette);
-            columns = label_columns + EDITOR_MENU_COLUMN_GAP +
-                      (int)strlen(entry->detail);
-        }
-        if (entry->focused && step >= EDITOR_MENU_ROW_STEP) {
-            if (i == cursor_row)
-                ui_ele_focus_perimeter_draw(grid, x + pad, row, columns + 2, 1, now_ms,
-                                            reduced_motion, palette->primary_text,
-                                            palette->canvas);
-            else
-                ui_ele_focus_perimeter_draw_still(grid, x + pad, row, columns + 2, 1,
-                                                  palette->primary_text, palette->canvas);
-        }
-    }
-    if (hint && hint[0])
-        editor_menu_put(grid, x + pad, hint_row, width - pad * 2, hint,
-                        palette->secondary_text, palette);
-    if (has_note)
-        editor_menu_put(grid, x + pad, hint_row + 1, width - pad * 2, note,
-                        palette->primary_text, palette);
-    return y + height + 1;
-}
+/* Panel bed, material, row measurement and rendering live in ui_editor_panel.c. */
 
 /* ---- Modal prompts ----
  *
@@ -6040,6 +6050,868 @@ static void editor_render_scene_browser(Grid *grid, const UnifiedEditorState *ed
     }
 }
 
+
+/* ---- Game-flow node graph ----
+ *
+ * The flow workspace is an editing instrument, not a menu: the canvas stays black,
+ * the shared panel carries the status and selection, and the graph itself is the
+ * document. Nodes are laid out deterministically from Start; edges are orthogonal
+ * and drawn behind the node boxes. Exactly one indicator moves: the selected node's
+ * perimeter. The detail list beside the graph never carries a second chase.
+ */
+#define FLOW_GRAPH_PANEL_WIDTH 46
+#define FLOW_GRAPH_MIN_AREA 24
+
+static void flow_graph_put(Grid *grid, int x, int y, int columns, const char *text,
+                           SDL_Color fg, SDL_Color bg, int left, int top,
+                           int right, int bottom) {
+    int column;
+    if (!grid || !text) return;
+    for (column = 0; text[column] != '\0' && column < columns; column++) {
+        const int at_x = x + column;
+        if (at_x < left || at_x >= right || y < top || y >= bottom) continue;
+        (void)grid_set(grid, at_x, y, (uint8_t)text[column], fg, bg);
+    }
+}
+
+static void flow_graph_hline(Grid *grid, int x1, int x2, int y, SDL_Color fg,
+                             SDL_Color bg, int left, int top, int right, int bottom) {
+    int x;
+    if (y < top || y >= bottom) return;
+    if (x1 > x2) { int swap = x1; x1 = x2; x2 = swap; }
+    for (x = x1; x <= x2; x++) {
+        if (x < left || x >= right) continue;
+        (void)grid_set(grid, x, y, '-', fg, bg);
+    }
+}
+
+static void flow_graph_vline(Grid *grid, int y1, int y2, int x, SDL_Color fg,
+                             SDL_Color bg, int left, int top, int right, int bottom) {
+    int y;
+    if (x < left || x >= right) return;
+    if (y1 > y2) { int swap = y1; y1 = y2; y2 = swap; }
+    for (y = y1; y <= y2; y++) {
+        if (y < top || y >= bottom) continue;
+        (void)grid_set(grid, x, y, '|', fg, bg);
+    }
+}
+
+static void flow_graph_corner(Grid *grid, int x, int y, SDL_Color fg, SDL_Color bg,
+                              int left, int top, int right, int bottom) {
+    if (x < left || x >= right || y < top || y >= bottom) return;
+    (void)grid_set(grid, x, y, '+', fg, bg);
+}
+
+static void flow_row_set(EditorMenuRow *row, const char *text, const char *detail,
+                         bool focused, bool strong) {
+    if (!row) return;
+    (void)snprintf(row->text, sizeof(row->text), "%.44s", text ? text : "");
+    (void)snprintf(row->detail, sizeof(row->detail), "%.63s", detail ? detail : "");
+    row->focused = focused;
+    row->strong = strong;
+    row->note = false;
+}
+
+/* The inspector helpers below precede the node/port label helpers they use;
+   these declarations keep that ordering local and readable. */
+static void flow_node_label(const FlowNode *node, char *out, size_t capacity);
+static const FlowEdge *flow_edge_for_port(const FlowDocument *document,
+                                          const FlowNode *node, const char *port);
+static const char *flow_port_at(const FlowWorkspace *workspace,
+                                const FlowNode *node, size_t index);
+static void flow_target_label(const FlowDocument *document, FlowNodeId id,
+                              char *out, size_t capacity);
+
+
+/* What the highlighted inspector row will do. This replaces the old mode-based
+   hint, where Enter meant three different things depending on an invisible
+   cursor depth. */
+static void flow_inspector_hint(const UnifiedEditorState *editor, char *out,
+                                size_t capacity) {
+    const FlowWorkspace *workspace = &editor->flow_workspace;
+    const FlowNode *node = flow_workspace_selected_node(workspace);
+    const size_t ports = flow_workspace_connection_count(workspace);
+    const size_t index = editor->flow_inspector_index;
+    char label[64];
+    char target[64];
+    if (!out || capacity == 0U) return;
+    if (!node) {
+        (void)snprintf(out, capacity, "No node selected.");
+        return;
+    }
+    if (index < ports) {
+        const char *port = flow_port_at(workspace, node, index);
+        const FlowEdge *edge = port
+            ? flow_edge_for_port(&workspace->document, node, port) : NULL;
+        if (!port) {
+            (void)snprintf(out, capacity, "No port at this row.");
+        } else if (edge) {
+            flow_target_label(&workspace->document, edge->target_id,
+                              target, sizeof(target));
+            (void)snprintf(out, capacity,
+                           "Enter changes where '%s' leads (now %s). Backspace disconnects it.",
+                           port, target);
+        } else {
+            (void)snprintf(out, capacity,
+                           "Enter chooses a destination for the free port '%s'.",
+                           port);
+        }
+        return;
+    }
+    if (index == ports) {
+        const size_t used = flow_workspace_outgoing_for(workspace, node);
+        if (ports == 0U && node->type == FLOW_NODE_START) {
+            (void)snprintf(out, capacity,
+                           "No destinations yet: author a Scene or Menu asset first.");
+        } else if (ports == 0U) {
+            flow_node_label(node, label, sizeof(label));
+            (void)snprintf(out, capacity,
+                           "%s has no ports; author one in its asset first.", label);
+        } else if (used >= ports) {
+            (void)snprintf(out, capacity,
+                           "All %zu ports are connected. Disconnect one before adding a node.",
+                           ports);
+        } else {
+            (void)snprintf(out, capacity,
+                           "Enter adds a Scene or Menu from the catalog to the first free port.");
+        }
+        return;
+    }
+    flow_node_label(node, label, sizeof(label));
+    (void)snprintf(out, capacity,
+                   "Enter removes %s from the flow. Backspace does the same.", label);
+}
+
+/* Build the inspector's actionable rows in order: ports, Add node, Remove node.
+   Section labels are strong, non-focusable rows. The window follows the focused
+   action so a node with many ports never pushes the actions off screen. */
+static void flow_build_inspector_rows(const UnifiedEditorState *editor,
+                                      const FlowWorkspace *workspace,
+                                      const FlowNode *node,
+                                      EditorMenuRow *rows, size_t *count,
+                                      size_t visible) {
+    const size_t ports = flow_workspace_connection_count(workspace);
+    const bool can_remove = node && node->type != FLOW_NODE_START;
+    const size_t actions = ports + 1U + (can_remove ? 1U : 0U);
+    size_t focus = editor->flow_inspector_index;
+    size_t window = visible > 2U ? visible - 2U : 1U;
+    size_t start;
+    size_t end;
+    size_t action;
+    char line[160];
+    char detail[160];
+    if (!rows || !count || !node) return;
+    if (focus >= actions) focus = 0U;
+    start = ui_editor_panel_window_start(actions, focus, window);
+    end = start + window;
+    if (end > actions) end = actions;
+    if (start == 0U && ports > 0U && *count < UI_EDITOR_PANEL_MAX_ROWS)
+        flow_row_set(&rows[(*count)++], "PORTS", "", false, true);
+    for (action = start; action < end && *count < UI_EDITOR_PANEL_MAX_ROWS;
+         action++) {
+        if (action == ports) {
+            if (*count < UI_EDITOR_PANEL_MAX_ROWS)
+                flow_row_set(&rows[(*count)++], "ACTIONS", "", false, true);
+            else break;
+        }
+        if (action < ports) {
+            const char *port = flow_port_at(workspace, node, action);
+            const FlowEdge *edge = port
+                ? flow_edge_for_port(&workspace->document, node, port) : NULL;
+            if (!port) {
+                (void)snprintf(line, sizeof(line), "port %zu", action + 1U);
+                (void)snprintf(detail, sizeof(detail), "(unavailable)");
+            } else if (edge) {
+                flow_target_label(&workspace->document, edge->target_id,
+                                  detail, sizeof(detail));
+                {
+                    char connected[96];
+                    (void)snprintf(connected, sizeof(connected), "-> %.80s", detail);
+                    (void)snprintf(detail, sizeof(detail), "%s", connected);
+                }
+                (void)snprintf(line, sizeof(line), "%s", port);
+            } else {
+                (void)snprintf(line, sizeof(line), "%s", port);
+                (void)snprintf(detail, sizeof(detail), "(not connected)");
+            }
+            flow_row_set(&rows[(*count)++], line, detail, action == focus, false);
+        } else if (action == ports) {
+            const size_t used = flow_workspace_outgoing_for(workspace, node);
+            (void)snprintf(detail, sizeof(detail), "%s",
+                           ports == 0U
+                               ? (node->type == FLOW_NODE_START
+                                      ? "no destinations" : "no ports")
+                               : used >= ports ? "all ports connected"
+                                               : "from catalog");
+            flow_row_set(&rows[(*count)++], "+ Add node...", detail,
+                         action == focus, false);
+        } else {
+            flow_row_set(&rows[(*count)++], "- Remove node", "Backspace",
+                         action == focus, false);
+        }
+    }
+}
+
+
+static void flow_node_label(const FlowNode *node, char *out, size_t capacity) {
+    if (!out || capacity == 0U) return;
+    if (!node) {
+        (void)snprintf(out, capacity, "(none)");
+        return;
+    }
+    if (node->type == FLOW_NODE_START)
+        (void)snprintf(out, capacity, "[%u] Start", node->id);
+    else
+        (void)snprintf(out, capacity, "[%u] %s: %.28s", node->id,
+                       node->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                       node->asset_name);
+}
+
+/* A node's detail column: how much of its port budget is used. A Start node has
+   one port; a Scene or Menu reports the ports its authored asset exposes. */
+static void flow_node_summary(const FlowWorkspace *workspace, const FlowNode *node,
+                              char *out, size_t capacity) {
+    const FlowReferenceEntry *entry = NULL;
+    const size_t outgoing = flow_workspace_outgoing_for(workspace, node);
+    size_t ports;
+    if (!out || capacity == 0U || !node) return;
+    if (node->type == FLOW_NODE_START) {
+        (void)snprintf(out, capacity, outgoing ? "start connected" : "start free");
+        return;
+    }
+    if (workspace->catalog)
+        entry = flow_reference_find(workspace->catalog, node->type, node->asset_name);
+    if (!entry) {
+        (void)snprintf(out, capacity, "%zu link%s", outgoing,
+                       outgoing == 1U ? "" : "s");
+        return;
+    }
+    ports = entry->port_count;
+    if (ports == 0U) {
+        (void)snprintf(out, capacity, "no ports");
+        return;
+    }
+    (void)snprintf(out, capacity, "%zu/%zu ports", outgoing, ports);
+}
+
+static const FlowEdge *flow_edge_for_port(const FlowDocument *document,
+                                          const FlowNode *node, const char *port) {
+    size_t i;
+    if (!document || !node || !port) return NULL;
+    for (i = 0U; i < document->edge_count; i++)
+        if (document->edges[i].source_id == node->id &&
+            strcmp(document->edges[i].source_port, port) == 0)
+            return &document->edges[i];
+    return NULL;
+}
+
+/* The nth outgoing port of a node, in authored order. Mirrors the controller's
+   flow_workspace_selected_port() without moving the workspace's cursor, so the
+   renderer can list every row in one pass. */
+static const char *flow_port_at(const FlowWorkspace *workspace,
+                                const FlowNode *node, size_t index) {
+    const FlowReferenceEntry *entry;
+    size_t seen = 0U;
+    size_t i;
+    if (!workspace || !node) return NULL;
+    if (node->type == FLOW_NODE_START) return index == 0U ? "start" : NULL;
+    entry = workspace->catalog
+        ? flow_reference_find(workspace->catalog, node->type, node->asset_name)
+        : NULL;
+    if (entry) return index < entry->port_count ? entry->ports[index] : NULL;
+    for (i = 0U; i < workspace->document.edge_count; i++) {
+        const FlowEdge *edge = &workspace->document.edges[i];
+        if (edge->source_id != node->id) continue;
+        if (seen++ == index) return edge->source_port;
+    }
+    return NULL;
+}
+
+static void flow_target_label(const FlowDocument *document, FlowNodeId id,
+                              char *out, size_t capacity) {
+    const FlowNode *node = flow_document_find_node(document, id);
+    if (!out || capacity == 0U) return;
+    if (!node) {
+        (void)snprintf(out, capacity, "(missing)");
+        return;
+    }
+    if (node->type == FLOW_NODE_START) {
+        (void)snprintf(out, capacity, "Start");
+        return;
+    }
+    (void)snprintf(out, capacity, "%s: %.20s",
+                   node->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                   node->asset_name);
+}
+
+/* The compact form used inside a node box, where columns are scarce. */
+static void flow_target_short(const FlowDocument *document, FlowNodeId id,
+                              char *out, size_t capacity) {
+    const FlowNode *node = flow_document_find_node(document, id);
+    if (!out || capacity == 0U) return;
+    if (!node) {
+        (void)snprintf(out, capacity, "?");
+        return;
+    }
+    if (node->type == FLOW_NODE_START) {
+        (void)snprintf(out, capacity, "Start");
+        return;
+    }
+    (void)snprintf(out, capacity, "%c:%.20s",
+                   node->type == FLOW_NODE_SCENE ? 'S' : 'M',
+                   node->asset_name);
+}
+
+/* The line above the key list: what the highlighted control will do, in the
+   mode currently on screen. This is the sentence the old panel never had --
+   "Enter" alone does not say whether it opens ports, rewires one, or applies a
+   connection. */
+static void flow_action_hint(const FlowWorkspace *workspace, char *out,
+                             size_t capacity) {
+    const FlowNode *node = flow_workspace_selected_node(workspace);
+    const char *port = flow_workspace_selected_port(workspace);
+    const FlowEdge *edge = flow_workspace_selected_edge(workspace);
+    const FlowNode *target = flow_workspace_selected_target(workspace);
+    const FlowReferenceEntry *asset = flow_workspace_selected_asset(workspace);
+    char node_text[64];
+    char target_text[64];
+    if (!out || capacity == 0U) return;
+    if (workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT) {
+        (void)snprintf(out, capacity,
+                       "Enter confirms the highlighted choice. Esc cancels.");
+        return;
+    }
+    if (!node) {
+        (void)snprintf(out, capacity, "No node selected.");
+        return;
+    }
+    flow_node_label(node, node_text, sizeof(node_text));
+    if (workspace->mode == FLOW_WORKSPACE_NODES) {
+        const size_t links = flow_workspace_connection_count(workspace);
+        if (links == 0U)
+            (void)snprintf(out, capacity,
+                           "Enter opens %s's inspector for Add/Remove; it has no ports yet. Esc closes.",
+                           node_text);
+        else
+            (void)snprintf(out, capacity,
+                           "Enter opens the inspector for %s: its ports, Add node, and Remove. A adds through a free port.",
+                           node_text);
+        return;
+    }
+    if (workspace->mode == FLOW_WORKSPACE_EDGES) {
+        if (!port)
+            (void)snprintf(out, capacity, "No port selected.");
+        else if (edge) {
+            flow_target_label(&workspace->document, edge->target_id,
+                              target_text, sizeof(target_text));
+            (void)snprintf(out, capacity,
+                           "Enter changes where '%s' leads (now %s).", port,
+                           target_text);
+        } else
+            (void)snprintf(out, capacity,
+                           "Enter chooses a target for the free port '%s'.", port);
+        return;
+    }
+    if (asset) {
+        (void)snprintf(out, capacity,
+                       "Enter adds %s: %.20s and connects '%s' to it.",
+                       asset->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                       asset->name, port ? port : "the port");
+        return;
+    }
+    if (target) {
+        flow_target_label(&workspace->document, target->id, target_text,
+                          sizeof(target_text));
+        (void)snprintf(out, capacity, "Enter connects this port to %s.",
+                       target_text);
+        return;
+    }
+    (void)snprintf(out, capacity, "No target selected.");
+}
+
+static const FlowReferenceEntry *flow_absent_asset_at(const FlowWorkspace *workspace,
+                                                      size_t index) {
+    size_t i;
+    size_t seen = 0U;
+    if (!workspace || !workspace->catalog) return NULL;
+    for (i = 0U; i < workspace->catalog->count; i++) {
+        const FlowReferenceEntry *entry = &workspace->catalog->entries[i];
+        size_t node_index;
+        bool present = false;
+        for (node_index = 0U; node_index < workspace->document.node_count;
+             node_index++) {
+            const FlowNode *node = &workspace->document.nodes[node_index];
+            if (node->type == entry->type &&
+                strcmp(node->asset_name, entry->name) == 0) {
+                present = true;
+                break;
+            }
+        }
+        if (present) continue;
+        if (seen++ == index) return entry;
+    }
+    return NULL;
+}
+
+/* The destination dialog's rows. It is the same list the old TARGETS screen
+   showed, but it now appears as a titled modal over the graph. */
+static size_t flow_build_target_rows(const FlowWorkspace *workspace,
+                                     EditorMenuRow *rows, size_t visible,
+                                     char *title, size_t title_capacity,
+                                     char *subtitle, size_t subtitle_capacity) {
+    const size_t existing = workspace->document.node_count > 0U
+        ? workspace->document.node_count - 1U : 0U;
+    const size_t total = flow_workspace_target_count(workspace);
+    const size_t start = ui_editor_panel_window_start(
+        total, workspace->target_index, visible);
+    const FlowNode *source = flow_workspace_selected_node(workspace);
+    const char *port = flow_workspace_selected_port(workspace);
+    char label[64];
+    char line[160];
+    char detail[160];
+    size_t count = 0U;
+    size_t i;
+    bool section = false;
+    if (title && title_capacity > 0U) {
+        if (port)
+            (void)snprintf(title, title_capacity, "CONNECT '%s' TO...", port);
+        else
+            (void)snprintf(title, title_capacity, "CONNECT TO...");
+    }
+    if (subtitle && subtitle_capacity > 0U) {
+        flow_node_label(source, label, sizeof(label));
+        (void)snprintf(subtitle, subtitle_capacity, "%s", label);
+    }
+    if (!rows) return 0U;
+    for (i = start; i < total && count < visible; i++) {
+        if (i >= existing && !section) {
+            if (count < UI_EDITOR_PANEL_MAX_ROWS) {
+                flow_row_set(&rows[count++], "NEW FROM CATALOG", "add + connect",
+                             false, true);
+                section = true;
+            }
+        }
+        if (i < existing) {
+            size_t node_index;
+            size_t seen = 0U;
+            const FlowNode *node = NULL;
+            for (node_index = 0U; node_index < workspace->document.node_count;
+                 node_index++) {
+                const FlowNode *candidate = &workspace->document.nodes[node_index];
+                if (candidate->type == FLOW_NODE_START) continue;
+                if (seen++ == i) {
+                    node = candidate;
+                    break;
+                }
+            }
+            if (!node) continue;
+            (void)snprintf(line, sizeof(line), "%s: %.24s",
+                           node->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                           node->asset_name);
+            flow_row_set(&rows[count++], line, "existing",
+                         workspace->target_index == i, false);
+        } else {
+            const FlowReferenceEntry *entry = flow_absent_asset_at(
+                workspace, i - existing);
+            if (!entry) continue;
+            (void)snprintf(line, sizeof(line), "+ %s: %.24s",
+                           entry->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
+                           entry->name);
+            (void)snprintf(detail, sizeof(detail), "%zu port%s (new)",
+                           entry->port_count,
+                           entry->port_count == 1U ? "" : "s");
+            flow_row_set(&rows[count++], line, detail,
+                         workspace->target_index == i, false);
+        }
+    }
+    if (count == 0U)
+        flow_row_set(&rows[count++], "(no destinations available)", "", false,
+                     false);
+    return count;
+}
+
+static size_t flow_build_close_rows(const FlowWorkspace *workspace,
+                                    EditorMenuRow *rows) {
+    static const char *const choices[] = {"Save", "Discard", "Cancel"};
+    size_t i;
+    for (i = 0U; i < FLOW_WORKSPACE_CLOSE_CHOICE_COUNT; i++)
+        flow_row_set(&rows[i], choices[i], "",
+                     workspace->close_choice == (FlowWorkspaceCloseChoice)i,
+                     false);
+    return FLOW_WORKSPACE_CLOSE_CHOICE_COUNT;
+}
+
+
+/* A destination / close choice is a dialog, not a pane. Center it over the
+   workspace and let it cover the graph so the choice is unmissable. */
+static void flow_render_dialog(Grid *grid, const UiAppWorkbenchPalette *palette,
+                               const UnifiedEditorState *editor,
+                               const EditorMenuRow *rows, size_t count,
+                               const char *title, const char *subtitle,
+                               const char *hint, int top, int bottom) {
+    const int columns = editor_interface_columns(editor, grid);
+    const int lines = editor_interface_rows(editor, grid);
+    const int max_width = columns - 4 > 8 ? columns - 4 : 8;
+    int width = 0;
+    int height;
+    int x;
+    int y;
+    if (!rows || count == 0U) return;
+    ui_editor_panel_measure(rows, count, title, subtitle, hint, NULL, max_width,
+                            NULL, &width);
+    height = ui_editor_panel_planned_height(count, subtitle && subtitle[0], false,
+                                            0, lines);
+    x = (columns - width) / 2;
+    y = top + (bottom - top + 1 - height) / 2;
+    if (y < top) y = top;
+    if (y + height > bottom + 1) y = bottom + 1 - height;
+    if (y < top) y = top;
+    if (x < 1) x = 1;
+    (void)ui_editor_panel_render_plain(grid, x, y, title, subtitle, rows, count,
+                                       hint, NULL, palette);
+}
+
+
+static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *grid,
+                                     const UiAppWorkbenchPalette *palette,
+                                     double now_ms, bool reduced_motion) {
+    const FlowWorkspace *workspace = &editor->flow_workspace;
+    const FlowNode *selected = flow_workspace_selected_node(workspace);
+    EditorMenuRow header[1];
+    EditorMenuRow list[UI_EDITOR_PANEL_MAX_ROWS];
+    size_t header_count = 0U;
+    size_t list_count = 0U;
+    size_t visible;
+    char line[160];
+    char detail[160];
+    char hint[160];
+    char selection[80];
+    const char *note = NULL;
+    int header_bottom;
+    int graph_left = FLOW_GRAPH_PANEL_WIDTH + 2;
+    int graph_top;
+    int graph_right = editor_interface_columns(editor, grid) - 1;
+    int graph_bottom = editor_interface_rows(editor, grid) - 2;
+    FlowGraphLayout layout;
+    EditorMenuRow dialog_rows[UI_EDITOR_PANEL_MAX_ROWS];
+    size_t dialog_count = 0U;
+    char dialog_title[96] = "";
+    char dialog_subtitle[96] = "";
+    const char *dialog_hint = NULL;
+    bool dialog_open = false;
+    size_t i;
+
+    if (!grid || !palette) return;
+    /* A workspace is a pane, not a transparent overlay. Without this clear the
+       live world shows through the graph and the panels look like they float. */
+    grid_clear(grid, palette->canvas);
+
+    if (editor->last_flow_result == FLOW_WORKSPACE_SAVE_FAILED)
+        note = "Flow save failed: use a valid existing path or Save As";
+    else if (editor->last_flow_result == FLOW_WORKSPACE_OK_DURABILITY_WARNING)
+        note = "Flow saved; durability warning";
+    else if (editor->last_flow_result == FLOW_WORKSPACE_INVALID_DOCUMENT)
+        note = "Flow load failed: project game.flow is invalid";
+    else if (editor->last_flow_result == FLOW_WORKSPACE_MUTATION_FAILED)
+        note = workspace->last_document_result != FLOW_DOCUMENT_OK
+            ? editor_flow_document_result(workspace->last_document_result)
+            : editor_flow_reference_result(workspace->last_reference_result);
+    else if (editor->last_flow_result == FLOW_WORKSPACE_CATALOG_FAILED)
+        note = "Flow catalog failed: fix invalid project Scene/Menu assets";
+    if (!note && selected && selected->type != FLOW_NODE_START && workspace->catalog) {
+        const FlowReferenceEntry *selected_entry = flow_reference_find(
+            workspace->catalog, selected->type, selected->asset_name);
+        if (selected_entry && selected_entry->port_count == 0U)
+            note = selected->type == FLOW_NODE_SCENE
+                ? "No flow ports: author an exit_flow trigger in the Scene"
+                : "No flow ports: author a Button port in the Menu";
+    }
+    if (!note && workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT)
+        note = "Unsaved flow changes";
+
+    flow_node_label(selected, selection, sizeof(selection));
+    if (workspace->mode == FLOW_WORKSPACE_TARGETS) {
+        const char *port = flow_workspace_selected_port(workspace);
+        if (port) {
+            char with_port[96];
+            (void)snprintf(with_port, sizeof(with_port), "%.60s > %.20s",
+                           selection, port);
+            (void)snprintf(selection, sizeof(selection), "%.79s", with_port);
+        }
+    }
+    {
+        const char *crumb = workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT
+            ? "NODES > CLOSE"
+            : workspace->mode == FLOW_WORKSPACE_TARGETS
+                ? "NODES > CONNECT"
+                : editor->flow_inspector
+                    ? "NODES > INSPECTOR" : "NODES";
+        (void)snprintf(detail, sizeof(detail), "%s  %s", crumb, selection);
+    }
+    if (editor_interface_rows(editor, grid) >= 30) {
+        char counts[96];
+        (void)snprintf(counts, sizeof(counts), "  %zu node%s / %zu connection%s / %s",
+                       workspace->document.node_count,
+                       workspace->document.node_count == 1U ? "" : "s",
+                       workspace->document.edge_count,
+                       workspace->document.edge_count == 1U ? "" : "s",
+                       flow_workspace_is_dirty(workspace) ? "unsaved" : "saved");
+        (void)snprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
+                       "%s", counts);
+    }
+    if (!note && editor->flow_inspector && selected &&
+        flow_workspace_target_count(workspace) == 0U)
+        note = "No destinations yet: author a Scene or Menu asset first";
+    if (!note && editor->flow_inspector && selected) {
+        const size_t ports = flow_workspace_connection_count(workspace);
+        const size_t used = flow_workspace_outgoing_for(workspace, selected);
+        if (ports > 0U && used >= ports)
+            note = "All ports are connected; disconnect one before adding a node";
+    }
+    if (editor_interface_rows(editor, grid) >= 30) {
+        flow_row_set(&header[header_count++], "Keys",
+                     workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT
+                         ? "Up/Down=choice  Enter=confirm  Esc=cancel"
+                         : workspace->mode == FLOW_WORKSPACE_TARGETS
+                             ? "Up/Down=destination  Enter=connect  Esc=cancel"
+                             : editor->flow_inspector
+                                 ? "Up/Down=row  Enter=act  A=add  Bksp=disconnect  Esc=nodes"
+                                 : "Up/Down=node  Enter=inspect  A=add  Bksp=remove  Esc=close",
+                     false, false);
+    }
+    if (editor->flow_inspector)
+        flow_inspector_hint(editor, hint, sizeof(hint));
+    else
+        flow_action_hint(workspace, hint, sizeof(hint));
+    header_bottom = editor_menu_panel_render(
+        grid, 1, 1, "GAME FLOW", detail,
+        header, header_count, hint, note, now_ms, reduced_motion, palette);
+    graph_top = header_bottom;
+
+
+
+
+    visible = graph_bottom > graph_top + 8
+        ? (size_t)((graph_bottom - graph_top - 8) / 2) : 0U;
+    if (visible > 12U) visible = 12U;
+
+    if (workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT) {
+        dialog_count = flow_build_close_rows(workspace, dialog_rows);
+        (void)snprintf(dialog_title, sizeof(dialog_title), "CLOSE GAME FLOW");
+        (void)snprintf(dialog_subtitle, sizeof(dialog_subtitle),
+                       "Unsaved changes");
+        dialog_hint = "Enter=confirm  Esc=cancel";
+        dialog_open = true;
+    } else if (workspace->mode == FLOW_WORKSPACE_TARGETS) {
+        size_t dialog_visible = visible > 0U ? visible : 6U;
+        if (dialog_visible > 12U) dialog_visible = 12U;
+        dialog_count = flow_build_target_rows(
+            workspace, dialog_rows, dialog_visible,
+            dialog_title, sizeof(dialog_title),
+            dialog_subtitle, sizeof(dialog_subtitle));
+        dialog_hint = "Up/Down=destination  Enter=connect  Esc=cancel";
+        dialog_open = true;
+    } else if (editor->flow_inspector) {
+        size_t inspector_visible = visible > 0U ? visible : 1U;
+        flow_build_inspector_rows(editor, workspace, selected, list, &list_count,
+                                  inspector_visible);
+        if (list_count > 0U)
+            (void)ui_editor_panel_render_plain(
+                grid, 1, graph_top, "INSPECTOR", selection,
+                list, list_count, "Up/Down=row  Enter=act  A=add  Esc=nodes", NULL,
+                palette);
+    } else {
+        const size_t total = workspace->document.node_count;
+        const size_t node_visible = visible > 0U ? visible : 1U;
+        const size_t start = ui_editor_panel_window_start(
+            total, workspace->node_index, node_visible);
+        for (i = start; i < total && list_count < node_visible; i++) {
+            const FlowNode *node = &workspace->document.nodes[i];
+            flow_node_label(node, line, sizeof(line));
+            flow_node_summary(workspace, node, detail, sizeof(detail));
+            flow_row_set(&list[list_count++], line, detail, false,
+                         workspace->node_index == i);
+        }
+        if (list_count > 0U)
+            (void)ui_editor_panel_render_plain(
+                grid, 1, graph_top, "NODES", "",
+                list, list_count, "Up/Down=node  Enter=inspect", NULL,
+                palette);
+    }
+
+    /* A destination or close choice is modal: leave the graph out so the
+       dialog is the only focus on screen. */
+    if (dialog_open) {
+        flow_render_dialog(grid, palette, editor, dialog_rows, dialog_count,
+                           dialog_title, dialog_subtitle, dialog_hint,
+                           graph_top, graph_bottom);
+        return;
+    }
+
+    if (graph_right - graph_left < FLOW_GRAPH_MIN_AREA ||
+        graph_bottom - graph_top < 6) {
+        return;
+    }
+    if (!flow_graph_layout_build(&workspace->document, selected, graph_left, graph_top,
+                                 graph_right - graph_left, graph_bottom - graph_top,
+                                 &layout)) {
+        return;
+    }
+
+    {
+        const FlowEdge *active_edge = NULL;
+        if (editor->flow_inspector && selected) {
+            const char *port = flow_port_at(workspace, selected,
+                                            editor->flow_inspector_index);
+            if (port)
+                active_edge = flow_edge_for_port(&workspace->document, selected, port);
+        } else if (workspace->mode == FLOW_WORKSPACE_EDGES ||
+                   workspace->mode == FLOW_WORKSPACE_TARGETS) {
+            active_edge = flow_workspace_selected_edge(workspace);
+        }
+        for (i = 0U; i < layout.edge_count; i++) {
+            const FlowGraphEdgeRoute *route = &layout.edges[i];
+            const FlowEdge *edge = &workspace->document.edges[route->edge_index];
+            const bool is_active = active_edge && edge->id == active_edge->id;
+            const bool touching = selected &&
+                (layout.nodes[route->source_node].selected ||
+                 layout.nodes[route->target_node].selected);
+            const SDL_Color colour = (is_active || touching)
+                ? palette->primary_text : palette->secondary_text;
+            if (route->source_y == route->target_y) {
+                flow_graph_hline(grid, route->source_x, route->target_x - 1,
+                                 route->source_y, colour, palette->canvas,
+                                 graph_left, graph_top, graph_right, graph_bottom);
+            } else {
+                flow_graph_hline(grid, route->source_x, route->lane_x, route->source_y,
+                                 colour, palette->canvas, graph_left, graph_top,
+                                 graph_right, graph_bottom);
+                flow_graph_vline(grid, route->source_y, route->target_y, route->lane_x,
+                                 colour, palette->canvas, graph_left, graph_top,
+                                 graph_right, graph_bottom);
+                flow_graph_hline(grid, route->lane_x + 1, route->target_x - 1,
+                                 route->target_y, colour, palette->canvas,
+                                 graph_left, graph_top, graph_right, graph_bottom);
+                flow_graph_corner(grid, route->lane_x, route->source_y, colour,
+                                  palette->canvas, graph_left, graph_top,
+                                  graph_right, graph_bottom);
+                flow_graph_corner(grid, route->lane_x, route->target_y, colour,
+                                  palette->canvas, graph_left, graph_top,
+                                  graph_right, graph_bottom);
+            }
+            if (is_active || layout.nodes[route->source_node].selected) {
+                /* The source port rides on the wire in the gap between layers,
+                   where there is room for it and nothing else is drawn. */
+                const int label_y = route->source_y == route->target_y
+                    ? route->source_y : route->target_y;
+                const int label_x = route->source_y == route->target_y
+                    ? route->source_x + 1 : route->lane_x + 1;
+                flow_graph_put(grid, label_x, label_y,
+                               route->target_x - label_x, edge->source_port,
+                               palette->primary_text, palette->canvas,
+                               graph_left, graph_top, graph_right, graph_bottom);
+            }
+        }
+    }
+
+    for (i = 0U; i < layout.node_count; i++) {
+        const FlowGraphNodeBox *box = &layout.nodes[i];
+        const FlowNode *node = &workspace->document.nodes[box->node_index];
+        const FlowReferenceEntry *entry = workspace->catalog
+            ? flow_reference_find(workspace->catalog, node->type, node->asset_name)
+            : NULL;
+        const SDL_Color frame = box->selected ? palette->primary_text
+                                              : palette->secondary_text;
+        int x;
+        int y;
+        if (box->x + box->width <= graph_left || box->x >= graph_right ||
+            box->y + box->height <= graph_top || box->y >= graph_bottom)
+            continue;
+        for (x = 0; x < box->width; x++) {
+            flow_graph_put(grid, box->x + x, box->y, 1,
+                           x == 0 || x == box->width - 1 ? "+" : "-",
+                           frame, palette->canvas, graph_left, graph_top,
+                           graph_right, graph_bottom);
+            flow_graph_put(grid, box->x + x, box->y + box->height - 1, 1,
+                           x == 0 || x == box->width - 1 ? "+" : "-",
+                           frame, palette->canvas, graph_left, graph_top,
+                           graph_right, graph_bottom);
+        }
+        for (y = 1; y < box->height - 1; y++) {
+            flow_graph_put(grid, box->x, box->y + y, 1, "|", frame, palette->canvas,
+                           graph_left, graph_top, graph_right, graph_bottom);
+            flow_graph_put(grid, box->x + box->width - 1, box->y + y, 1, "|",
+                           frame, palette->canvas, graph_left, graph_top,
+                           graph_right, graph_bottom);
+            for (x = 1; x < box->width - 1; x++)
+                flow_graph_put(grid, box->x + x, box->y + y, 1, " ",
+                               box->selected ? palette->primary_text
+                                             : palette->secondary_text,
+                               palette->canvas, graph_left, graph_top,
+                               graph_right, graph_bottom);
+        }
+        (void)snprintf(line, sizeof(line), "[%u] %s", node->id,
+                       node->type == FLOW_NODE_START ? "START" :
+                       node->type == FLOW_NODE_SCENE ? "SCENE" : "MENU");
+        flow_graph_put(grid, box->x + 1, box->y + 1, box->width - 2, line, frame,
+                       palette->canvas, graph_left, graph_top, graph_right, graph_bottom);
+        flow_graph_put(grid, box->x + 1, box->y + 2, box->width - 2,
+                       node->asset_name, frame, palette->canvas, graph_left, graph_top,
+                       graph_right, graph_bottom);
+        if (node->type == FLOW_NODE_START)
+            (void)snprintf(line, sizeof(line), "port: start");
+        else if (!entry)
+            (void)snprintf(line, sizeof(line), "ports unknown");
+        else if (entry->port_count == 0U)
+            (void)snprintf(line, sizeof(line), "no ports");
+        else {
+            size_t used = (size_t)snprintf(line, sizeof(line), "ports: ");
+            size_t port;
+            for (port = 0U; port < entry->port_count && used < sizeof(line); port++) {
+                const int written = snprintf(line + used, sizeof(line) - used,
+                                             "%s%s", port == 0U ? "" : ", ",
+                                             entry->ports[port]);
+                if (written < 0 || (size_t)written >= sizeof(line) - used) break;
+                used += (size_t)written;
+            }
+        }
+        flow_graph_put(grid, box->x + 1, box->y + 3, box->width - 2, line, frame,
+                       palette->canvas, graph_left, graph_top, graph_right, graph_bottom);
+        /* The box already names its first port and where it goes; that is the
+           single fact a reader needs to decide whether a node can be wired. */
+        {
+            const char *first_port = flow_port_at(workspace, node, 0U);
+            if (!first_port) {
+                (void)snprintf(line, sizeof(line), "no outgoing port");
+            } else {
+                const FlowEdge *first_edge = flow_edge_for_port(
+                    &workspace->document, node, first_port);
+                char target[48];
+                if (first_edge) {
+                    flow_target_short(&workspace->document, first_edge->target_id,
+                                      target, sizeof(target));
+                    (void)snprintf(line, sizeof(line), "%.12s > %s", first_port,
+                                   target);
+                } else {
+                    (void)snprintf(line, sizeof(line), "%.12s > free", first_port);
+                }
+            }
+            flow_graph_put(grid, box->x + 1, box->y + 4, box->width - 2, line, frame,
+                           palette->canvas, graph_left, graph_top, graph_right,
+                           graph_bottom);
+        }
+        /* The moving perimeter belongs to the active cursor: the graph node in
+           NODES, the inspector row or dialog row otherwise. The other selection
+           is a bright still frame, so only one indicator ever chases. */
+        if (box->selected && !editor->flow_inspector &&
+            workspace->mode == FLOW_WORKSPACE_NODES)
+            ui_ele_focus_perimeter_draw(grid, box->x, box->y, box->width, box->height,
+                                        now_ms, reduced_motion, palette->primary_text,
+                                        palette->canvas);
+    }
+}
+
+
 void unified_editor_render_text_overlay(
     const UnifiedEditorState *editor,
     Grid *grid,
@@ -6091,161 +6963,7 @@ void unified_editor_render_text_overlay(
         }
 
         if (editor->flow_workspace.active) {
-            const FlowWorkspace *workspace = &editor->flow_workspace;
-            size_t i;
-            row = 1;
-            snprintf(line, sizeof(line), "GAME FLOW  dirty:%s",
-                     flow_workspace_is_dirty(workspace) ? "yes" : "no");
-            grid_print(grid, 1, row++, line, fg, bg);
-            if (editor->last_flow_result == FLOW_WORKSPACE_SAVE_FAILED)
-                grid_print(grid, 1, row++,
-                           "Flow save failed: use a valid existing path or Save As",
-                           warn, bg);
-            else if (editor->last_flow_result ==
-                     FLOW_WORKSPACE_OK_DURABILITY_WARNING)
-                grid_print(grid, 1, row++,
-                           "Flow saved; durability warning",
-                           warn, bg);
-            else if (editor->last_flow_result == FLOW_WORKSPACE_INVALID_DOCUMENT)
-                grid_print(grid, 1, row++,
-                           "Flow load failed: project game.flow is invalid",
-                           warn, bg);
-            else if (editor->last_flow_result == FLOW_WORKSPACE_MUTATION_FAILED)
-            {
-                const char *reason = workspace->last_document_result != FLOW_DOCUMENT_OK
-                    ? editor_flow_document_result(workspace->last_document_result)
-                    : editor_flow_reference_result(workspace->last_reference_result);
-                snprintf(line, sizeof(line), "Flow change rejected: %s", reason);
-                grid_print(grid, 1, row++, line, warn, bg);
-            }
-            else if (editor->last_flow_result == FLOW_WORKSPACE_CATALOG_FAILED)
-                grid_print(grid, 1, row++,
-                           "Flow catalog failed: fix invalid project Scene/Menu assets",
-                           warn, bg);
-            if (workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT) {
-                static const char *choices[] = {"Save", "Discard", "Cancel"};
-                grid_print(grid, 1, row++, "Unsaved flow changes", warn, bg);
-                for (i = 0U; i < FLOW_WORKSPACE_CLOSE_CHOICE_COUNT; i++) {
-                    snprintf(line, sizeof(line), " %s %s",
-                        workspace->close_choice == (FlowWorkspaceCloseChoice)i ? ">" : " ",
-                        choices[i]);
-                    grid_print(grid, 1, row++, line,
-                        workspace->close_choice == (FlowWorkspaceCloseChoice)i ? hi : dim, bg);
-                }
-            } else if (workspace->mode == FLOW_WORKSPACE_TARGETS) {
-                grid_print(grid, 1, row++,
-                           "TARGET  Up/Down  Enter=connect/rewire  Esc=back", fg, bg);
-                for (i = 0U; i < workspace->document.node_count; i++) {
-                    const FlowNode *node = &workspace->document.nodes[i];
-                    if (node->type == FLOW_NODE_START) continue;
-                    snprintf(line, sizeof(line), " %s %s:%s",
-                        flow_workspace_selected_target(workspace) == node ? ">" : " ",
-                        node->type == FLOW_NODE_SCENE ? "Scene" : "Menu", node->asset_name);
-                    grid_print(grid, 1, row++, line,
-                        flow_workspace_selected_target(workspace) == node ? hi : dim, bg);
-                }
-                if (workspace->catalog) {
-                    size_t asset;
-                    for (asset = 0U; asset < workspace->catalog->count; asset++) {
-                        const FlowReferenceEntry *entry = &workspace->catalog->entries[asset];
-                        bool present = false;
-                        size_t node_index;
-                        for (node_index = 0U; node_index < workspace->document.node_count;
-                             node_index++) {
-                            const FlowNode *node = &workspace->document.nodes[node_index];
-                            if (node->type == entry->type &&
-                                strcmp(node->asset_name, entry->name) == 0) present = true;
-                        }
-                        if (present) continue;
-                        snprintf(line, sizeof(line), " %s + %s:%s",
-                            flow_workspace_selected_asset(workspace) == entry ? ">" : " ",
-                            entry->type == FLOW_NODE_SCENE ? "Scene" : "Menu", entry->name);
-                        grid_print(grid, 1, row++, line,
-                            flow_workspace_selected_asset(workspace) == entry ? hi : dim, bg);
-                    }
-                }
-            } else {
-                grid_print(grid, 1, row++, workspace->mode == FLOW_WORKSPACE_NODES
-                    ? "NODES  Up/Down  Enter=connections  Esc=close"
-                    : "CONNECTIONS  Up/Down  Enter=target  Esc=back", fg, bg);
-                if (workspace->mode == FLOW_WORKSPACE_NODES) {
-                    for (i = 0U; i < workspace->document.node_count; i++) {
-                        const FlowNode *node = &workspace->document.nodes[i];
-                        char label[96];
-                        snprintf(label, sizeof(label), "[%u] %s%s%s", node->id,
-                            node->type == FLOW_NODE_START ? "Start" :
-                            node->type == FLOW_NODE_SCENE ? "Scene:" : "Menu:",
-                            node->type == FLOW_NODE_START ? "" : " ", node->asset_name);
-                        (void)ui_nested_inspector_format_row(line, sizeof(line),
-                            workspace->node_index == i, 0U, i, label);
-                        grid_print(grid, 1, row++, line,
-                            workspace->node_index == i ? hi : dim, bg);
-                    }
-                    {
-                        const FlowNode *selected = flow_workspace_selected_node(workspace);
-                        const FlowReferenceEntry *entry = selected && workspace->catalog
-                            ? flow_reference_find(workspace->catalog, selected->type,
-                                                  selected->asset_name) : NULL;
-                        if (selected && selected->type != FLOW_NODE_START && entry &&
-                            entry->port_count == 0U)
-                            grid_print(grid, 1, row++, selected->type == FLOW_NODE_SCENE
-                                ? "No flow ports: author an exit_flow trigger in the Scene"
-                                : "No flow ports: author a Button port in the Menu", warn, bg);
-                    }
-                } else {
-                    const FlowNode *selected = flow_workspace_selected_node(workspace);
-                    const FlowReferenceEntry *selected_entry = selected && workspace->catalog
-                        ? flow_reference_find(workspace->catalog, selected->type,
-                                              selected->asset_name) : NULL;
-                    for (i = 0U; i < flow_workspace_connection_count(workspace); i++) {
-                        const FlowEdge *edge;
-                        const FlowNode *target;
-                        const char *port;
-                        if (!selected) continue;
-                        if (selected->type == FLOW_NODE_START) port = "start";
-                        else if (selected_entry) port = selected_entry->ports[i];
-                        else {
-                            size_t outgoing = 0U;
-                            size_t edge_index;
-                            port = NULL;
-                            for (edge_index = 0U;
-                                 edge_index < workspace->document.edge_count;
-                                 edge_index++) {
-                                const FlowEdge *candidate =
-                                    &workspace->document.edges[edge_index];
-                                if (candidate->source_id == selected->id &&
-                                    outgoing++ == i) {
-                                    port = candidate->source_port;
-                                    break;
-                                }
-                            }
-                        }
-                        if (!port) continue;
-                        edge = NULL;
-                        {
-                            size_t edge_index;
-                            for (edge_index = 0U; edge_index < workspace->document.edge_count;
-                                 edge_index++)
-                                if (workspace->document.edges[edge_index].source_id == selected->id &&
-                                    strcmp(workspace->document.edges[edge_index].source_port, port) == 0)
-                                    edge = &workspace->document.edges[edge_index];
-                        }
-                        target = edge ? flow_document_find_node(
-                            &workspace->document, edge->target_id) : NULL;
-                        if (edge)
-                            snprintf(line, sizeof(line), " %s %s -> %s:%s",
-                                workspace->edge_index == i ? ">" : " ", port,
-                                target && target->type == FLOW_NODE_SCENE ? "Scene" : "Menu",
-                                target ? target->asset_name : "missing");
-                        else snprintf(line, sizeof(line), " %s %s -> (unconnected)",
-                                      workspace->edge_index == i ? ">" : " ", port);
-                        grid_print(grid, 1, row++, line,
-                            workspace->edge_index == i ? hi : dim, bg);
-                    }
-                }
-            }
-            grid_print(grid, 1, grid->height - 1,
-                       "G/Esc=back  Backspace=remove  Ctrl+S=save", dim, bg);
+            editor_render_flow_graph(editor, grid, &palette, now_ms, reduced_motion);
             return;
         }
 
@@ -6679,10 +7397,14 @@ void unified_editor_render_text_overlay(
             if (editor->decal_menu_open) {
                 if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
                     size_t decals = editor_surface_decal_count(editor);
+                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
+                    size_t start;
                     if (editor->selection_set.count > 1U) decals = 0U;
+                    start = ui_editor_panel_window_start(decals, editor->decal_menu_index,
+                                                         visible);
                     grid_print(grid, 1, row++,
                                "   DECALS  Up/Down  Enter=select  Esc=back", fg, bg);
-                    for (i = 0U; i < decals; i++) {
+                    for (i = start; i < decals && i < start + visible; i++) {
                         const SceneDecalInstance *decal = editor_surface_decal_at(editor, i);
                         snprintf(line, sizeof(line), " %s decal:%" PRIu64 "  asset:%u",
                                  editor->decal_menu_index == i ? ">" : " ",
@@ -6696,9 +7418,13 @@ void unified_editor_render_text_overlay(
                                    ? " > Add decal..." : "   Add decal...",
                                editor->decal_menu_index == decals ? hi : dim, bg);
                 } else if (editor->decal_menu_stage == EDITOR_DECAL_MENU_PATTERNS) {
+                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
+                    size_t start = ui_editor_panel_window_start(
+                        editor->decal_shortlist_count, editor->decal_menu_index, visible);
                     grid_print(grid, 1, row++,
                                "   PATTERN  Up/Down  Enter=place  Esc=back", fg, bg);
-                    for (i = 0U; i < editor->decal_shortlist_count; i++) {
+                    for (i = start; i < editor->decal_shortlist_count &&
+                                 i < start + visible; i++) {
                         snprintf(line, sizeof(line), " %s pattern:%u",
                                  editor->decal_menu_index == i ? ">" : " ",
                                  (unsigned)editor->decal_shortlist[i]);

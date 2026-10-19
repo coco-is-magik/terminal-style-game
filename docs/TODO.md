@@ -175,8 +175,10 @@ shipped tokens sit outside it, and neither is a defect yet — they are decision
 - the editor-interface roles still name hues the identity does not: `accent` `#67F5C2`, `focus`
   `#A8FFE1`, `warning` `#FFD166`, `success` `#71F79F`, `error` `#FF6B7A`, `destructive` `#FF8894`,
   `selection_background` `#123D32`, `editor_selection` `#70B7FF`;
-- the **menus' focus perimeter and the tide's wake draw `accent`/`focus`**, so a display surface
-  currently shows a mint hue that the identity does not include.
+- the **scene browser's focus-perimeter base draws `focus`**, so a mode-selection display surface
+  still shows a mint hue the identity does not include. The authored menus' perimeter and the tide's
+  wake now use the shared RGB chase (`ui_theme_chase_colour`), so that part of this note is closed;
+  the scene browser base and the editor-interface roles remain open.
 
 Closing this means either retiring those roles from display surfaces (and drawing the focus marker from
 black/white/primaries) or re-deriving them inside the identity, with the same record discipline as every
@@ -1094,7 +1096,11 @@ See [`archive/r12/R12_I11_PROJECT_CATALOG_AND_GRAPH_CONSTRUCTION_PLAN_2026-09-10
 authored-game Menu workspace. It discovers `menus/*.tui`, transactionally opens or creates
 Menu documents, renders a responsive I4/I5 preview beside a stable-ID hierarchy, edits
 non-root x/y/width/height/scale with bounded undo/redo, and supports atomic Ctrl+S plus
-dirty-close Save/Discard/Cancel. See [`archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`](archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md).
+dirty-close Save/Discard/Cancel. **2026-10-19:** the presentation is preview-first on the
+workbench palette: shared panels for hierarchy/properties/actions, the preview framed and
+right-aligned in the visible region with no material on it, and a windowed single-row property
+list on short frames. See [`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md).
+See [`archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md`](archive/r12/R12_I12_VISUAL_MENU_WORKSPACE_PLAN_2026-09-10.md).
 
 **R12 I13 implemented (2026-09-11):** `E` opens typed element actions in the visual Menu
 workspace. Containers create deterministic Container/Text/Button children with useful
@@ -1174,7 +1180,24 @@ reporting. Target loading remains intentionally out of scope. The compatibility 
 implemented: R12 does not discover, replace, or self-edit the application-owned editor shell,
 `ui_layouts`, `ui_elements`, or application menus.
 
-## Game-flow editor polish and graph UX — **Needs focused product/UI planning**
+## Game-flow editor polish and graph UX — **Node graph landed 2026-10-19; interaction depth open**
+
+**2026-10-19 (interaction pass):** the three-screen `NODES → CONNECTIONS → TARGETS` descent is
+gone. The workspace opens on the selected node's `INSPECTOR` (`Left/Esc` shows `NODES`), with its
+`PORTS` and explicit `ACTIONS`
+(`+ Add node…`, `- Remove node`); `Enter` acts on the focused row, `Backspace` disconnects the
+focused port, and the destination choice is a centred `CONNECT '<port>' TO…` modal with a
+`NEW FROM CATALOG` section. `A` is the same Add action (first free port, first absent catalog
+entry preselected) and refuses with a header reason when every port is connected. The graph
+stays on the right, highlights the focused port's edge, and the inspector row owns the moving
+perimeter. Short (200%-scale) viewports omit the key row, window the inspector around its focused
+row, keep `A=add` in its hint, and constrain dialogs below the header. The R12 controller,
+mutations, history and Save/Discard behaviour are unchanged; new controller entry points
+(`flow_workspace_begin_connection`, `flow_workspace_begin_add_node`,
+`flow_workspace_disconnect_port`, `flow_workspace_free_port_count`) expose the inspector
+operations. Node positions are derived, not persisted. Remaining: wire pointer hit-testing into
+the flow input path, pan/follow controls for very long chains, and native visual acceptance. The
+rest of this item stays as recorded below.
 
 R12 provides a solid foundation for authored flow data, validation, staging, catalog
 composition, and safe graph mutations, but the current game-flow editor is still

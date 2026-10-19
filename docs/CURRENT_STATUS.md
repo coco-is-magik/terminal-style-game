@@ -14,6 +14,23 @@ recorded as open reconciliations in that document and in [`TODO.md`](TODO.md).
 
 ## Current verified foundation
 
+**2026-10-19 — editing workspaces.** The game-flow workspace is now a deterministic node graph and
+the authored-Menu workspace is preview-first on the workbench palette. Both use the shared editor
+panel module; the R12 controllers, mutations, history and Save/Discard behaviour are unchanged. An
+interaction pass replaced the flow workspace's three-screen `NODES → CONNECTIONS → TARGETS`
+descent with a node `INSPECTOR`: the selected node's ports and explicit `+ Add node…` /
+`- Remove node` actions share one cursor, `Enter` acts on the focused row, `Backspace` disconnects
+a port, and the destination choice is a centred `CONNECT '<port>' TO…` modal. The workspace opens
+on the selected node's inspector; `Left/Esc` shows the `NODES` list. It clears
+to the black canvas, the graph highlights the focused port's edge, the inspector row owns the only
+moving perimeter, and short (200%-scale) viewports keep the focused action and `A=add` hint
+visible while dialogs stay below the header. `A` is the explicit Add action and refuses with a
+header reason when every port is connected. Focused ASan/UBSan runs also found and fixed a
+stack-use-after-return in the authored-Menu test mode's preview theme, which now lives in
+`UnifiedEditorState`. See
+[`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md). The rest
+of this page's verified foundation remains as recorded below.
+
 R12 is Verified and closed as of 2026-09-11. R0–R12 are verified roadmap
 foundations, not a claim that the editor or game-making experience is
 feature-complete.
@@ -36,7 +53,8 @@ mirror disposition are complete.
 Native Windows verification is deliberately limited to two product checks under one command:
 strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
 `PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
-compilation and all 64 test runners. The runner starts the VM only
+compilation and all 64 test runners (the suite count at that checkpoint; the current Linux
+aggregate is 81 suites / 923 tests). The runner starts the VM only
 when it is off and never stops it. Windows VM benchmarks, stability workloads, standards,
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM

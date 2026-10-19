@@ -69,6 +69,43 @@ static void test_renders_workspace_candidate_without_host_state(void **state) {
     ui_menu_workspace_clear(&workspace);
 }
 
+static void test_viewport_keeps_the_preview_on_screen(void **state) {
+    UiMenuWorkspace workspace;
+    AssetRegistry assets;
+    UiElementId button;
+    Grid *grid;
+    Cell frame;
+    int origin_x = 0;
+    int origin_y = 0;
+    (void)state;
+    ui_menu_workspace_init(&workspace);
+    assert_true(asset_registry_init(&assets));
+    assert_int_equal(ui_document_create_menu(&workspace.document, "viewport"),
+                     UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&workspace.document,
+        UI_DOCUMENT_ELEMENT_BUTTON, 1U, "play", "PLAY", "play", &button),
+        UI_DOCUMENT_OK);
+    asset_document_state_mark_saved(&workspace.document.state);
+    workspace.saved_document = workspace.document;
+    workspace.active = true;
+    workspace.has_document = true;
+    workspace.mode = UI_MENU_WORKSPACE_HIERARCHY;
+    workspace.element_index = 1U;
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+    assert_true(ui_editor_presentation_render_viewport(
+        &workspace, UI_MENU_WORKSPACE_OK, &assets, &theme, NULL, 0.0, grid, 130, 80));
+    ui_editor_presentation_preview_origin(130, 80, 80, 25, &origin_x, &origin_y);
+    assert_true(origin_x + 80 <= 129);
+    assert_true(origin_y + 25 <= 77);
+    assert_true(grid_get(grid, origin_x - 1, origin_y - 1, &frame));
+    assert_int_equal(frame.glyph, '+');
+    assert_true(grid_contains_text(grid, "AUTHORED MENU WORKSPACE"));
+    grid_destroy(grid);
+    asset_registry_clear(&assets);
+    ui_menu_workspace_clear(&workspace);
+}
+
 static void test_rejects_invalid_arguments(void **state) {
     Grid *grid = grid_create(20, 10);
     (void)state;
@@ -81,6 +118,7 @@ static void test_rejects_invalid_arguments(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_renders_workspace_candidate_without_host_state),
+        cmocka_unit_test(test_viewport_keeps_the_preview_on_screen),
         cmocka_unit_test(test_rejects_invalid_arguments)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

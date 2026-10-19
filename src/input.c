@@ -60,6 +60,7 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_place_trigger_pressed);
     RESET_FIELD(editor_place_object_pressed);
     RESET_FIELD(editor_flow_workspace_pressed);
+    RESET_FIELD(editor_flow_connect_pressed);
     RESET_FIELD(editor_ui_workspace_pressed);
     RESET_FIELD(editor_place_light_pressed);
     RESET_FIELD(editor_jump_pressed);
@@ -182,6 +183,7 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_T: input->editor_place_trigger_pressed = true; break;
         case INPUT_KEY_B: input->editor_place_object_pressed = true; break;
         case INPUT_KEY_G: input->editor_flow_workspace_pressed = true; break;
+        case INPUT_KEY_A: input->editor_flow_connect_pressed = true; break;
         case INPUT_KEY_U:
             if (event->ctrl) input->editor_ui_workspace_pressed = true;
             break;
@@ -211,6 +213,7 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_B: return INPUT_KEY_B;
         case SDLK_G: return INPUT_KEY_G;
         case SDLK_U: return INPUT_KEY_U;
+        case SDLK_A: return INPUT_KEY_A;
         case SDLK_EQUALS: return INPUT_KEY_EQUALS; case SDLK_MINUS: return INPUT_KEY_MINUS;
         case SDLK_0: return INPUT_KEY_ZERO;
         default: return INPUT_KEY_NONE;

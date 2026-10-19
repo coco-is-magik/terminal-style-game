@@ -358,6 +358,14 @@ the canvases, and the new viewport input. The painter's focus model is unchanged
 canvas's only neighbour, so either horizontal key that would leave the canvas enters the menu and either
 horizontal key returns.
 
+## Follow-up 2026-10-19: the two workspaces
+
+The "Not done here" note above left the game-flow and authored-Menu workspaces out because they are
+panes, not menus. That gap is now closed in its first slice: the flow workspace draws a deterministic
+node graph and the Menu workspace is preview-first on the shared panel module. The controller,
+document formats and all editing commands are unchanged. See
+[`2026-10-19-editor-workspaces.md`](2026-10-19-editor-workspaces.md).
+
 **The block is three fixed slots, so the canvas never moves when a frame is added or removed.** The first
 pass sized the block from the frames that *exist*: with one frame the canvas was alone and right-aligned,
 with two it had a neighbour and shifted left, with three it sat in the middle — so the work moved under the

@@ -91,14 +91,19 @@ static const FlowReferenceEntry *selected_node_entry(const FlowWorkspace *worksp
     return flow_reference_find(workspace->catalog, node->type, node->asset_name);
 }
 
-size_t flow_workspace_outgoing_count(const FlowWorkspace *workspace) {
-    const FlowNode *node = flow_workspace_selected_node(workspace);
+size_t flow_workspace_outgoing_for(const FlowWorkspace *workspace,
+                                   const FlowNode *node) {
     size_t count = 0U;
     size_t i;
-    if (!node) return 0U;
+    if (!workspace || !node) return 0U;
     for (i = 0U; i < workspace->document.edge_count; i++)
         if (workspace->document.edges[i].source_id == node->id) count++;
     return count;
+}
+
+size_t flow_workspace_outgoing_count(const FlowWorkspace *workspace) {
+    return flow_workspace_outgoing_for(workspace,
+                                       flow_workspace_selected_node(workspace));
 }
 
 size_t flow_workspace_connection_count(const FlowWorkspace *workspace) {
@@ -396,12 +401,159 @@ static void step_close_choice(FlowWorkspace *workspace, bool previous) {
     workspace->close_choice = (FlowWorkspaceCloseChoice)choice;
 }
 
+/* Open the destination picker for one specific port. This is the operation the
+   inspector's port rows expose; the old UI reached it only by pressing Enter on
+   a node and then Enter again on a port. */
+FlowWorkspaceResult flow_workspace_begin_connection(FlowWorkspace *workspace,
+                                                    size_t node_index,
+                                                    size_t port_index) {
+    size_t count;
+    const FlowEdge *edge;
+    size_t target = 0U;
+    size_t i;
+    if (!workspace) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return FLOW_WORKSPACE_INACTIVE;
+    if (node_index >= workspace->document.node_count) return FLOW_WORKSPACE_NO_ACTION;
+    workspace->node_index = node_index;
+    count = flow_workspace_connection_count(workspace);
+    if (port_index >= count) return FLOW_WORKSPACE_NO_ACTION;
+    if (!enter_nested(workspace, node_index, count, &workspace->edge_index))
+        return FLOW_WORKSPACE_NO_ACTION;
+    workspace->edge_index = port_index;
+    sync_nested_index(workspace, port_index);
+    if (flow_workspace_target_count(workspace) == 0U) {
+        workspace->mode = FLOW_WORKSPACE_EDGES;
+        return FLOW_WORKSPACE_OK;
+    }
+    edge = flow_workspace_selected_edge(workspace);
+    if (edge) {
+        size_t seen = 0U;
+        for (i = 0U; i < workspace->document.node_count; i++) {
+            if (workspace->document.nodes[i].type == FLOW_NODE_START) continue;
+            if (workspace->document.nodes[i].id == edge->target_id) {
+                target = seen;
+                break;
+            }
+            seen++;
+        }
+    }
+    if (!enter_nested(workspace, port_index, flow_workspace_target_count(workspace),
+                      &workspace->target_index)) {
+        workspace->mode = FLOW_WORKSPACE_EDGES;
+        return FLOW_WORKSPACE_OK;
+    }
+    workspace->target_index = target;
+    sync_nested_index(workspace, target);
+    workspace->mode = FLOW_WORKSPACE_TARGETS;
+    return FLOW_WORKSPACE_OK;
+}
+
+/* How many of the selected node's ports have no edge. The inspector uses this
+   to say whether "Add node" can do anything and why when it cannot. */
+size_t flow_workspace_free_port_count(FlowWorkspace *workspace) {
+    size_t count;
+    size_t saved;
+    size_t free_count = 0U;
+    size_t i;
+    if (!workspace || !workspace->active) return 0U;
+    count = flow_workspace_connection_count(workspace);
+    saved = workspace->edge_index;
+    for (i = 0U; i < count; i++) {
+        workspace->edge_index = i;
+        if (!flow_workspace_selected_edge(workspace)) free_count++;
+    }
+    workspace->edge_index = saved;
+    return free_count;
+}
+
+/* The explicit "Add node" action: take the first free port and open the
+   destination picker with the first catalog entry already selected. Unlike the
+   old A shortcut it refuses when every port is connected, because silently
+   rewiring an existing port is not what "Add node" promises. */
+FlowWorkspaceResult flow_workspace_begin_add_node(FlowWorkspace *workspace) {
+    size_t count;
+    size_t chosen = 0U;
+    size_t node_index;
+    size_t i;
+    bool found_free = false;
+    FlowWorkspaceResult result;
+    if (!workspace) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return FLOW_WORKSPACE_INACTIVE;
+    if (!flow_workspace_selected_node(workspace)) return FLOW_WORKSPACE_NO_ACTION;
+    node_index = workspace->node_index;
+    count = flow_workspace_connection_count(workspace);
+    for (i = 0U; i < count; i++) {
+        workspace->edge_index = i;
+        if (!flow_workspace_selected_edge(workspace)) {
+            chosen = i;
+            found_free = true;
+            break;
+        }
+    }
+    if (!found_free) return FLOW_WORKSPACE_NO_ACTION;
+    result = flow_workspace_begin_connection(workspace, node_index, chosen);
+    if (result != FLOW_WORKSPACE_OK || workspace->mode != FLOW_WORKSPACE_TARGETS)
+        return result;
+    if (absent_asset_count(workspace) > 0U) {
+        const size_t existing = workspace->document.node_count > 0U
+            ? workspace->document.node_count - 1U : 0U;
+        workspace->target_index = existing;
+        sync_nested_index(workspace, workspace->target_index);
+    }
+    return FLOW_WORKSPACE_OK;
+}
+
+
+/* The add/connect shortcut. Adding a node is a connect operation in this
+   document model -- every node must stay reachable -- so the shortest honest
+   path to "add a Scene or Menu" is the target list of a free port, where the
+   catalog entries appear as new targets. When every port is already connected
+   the first port is used, so the shortcut still opens a useful rewire. */
+static FlowWorkspaceResult connect_free_port(FlowWorkspace *workspace) {
+    size_t count = flow_workspace_connection_count(workspace);
+    size_t chosen = 0U;
+    size_t node_index;
+    size_t i;
+    bool found_free = false;
+    if (!flow_workspace_selected_node(workspace) || count == 0U)
+        return FLOW_WORKSPACE_NO_ACTION;
+    node_index = workspace->node_index;
+    for (i = 0U; i < count; i++) {
+        workspace->edge_index = i;
+        if (!flow_workspace_selected_edge(workspace)) {
+            chosen = i;
+            found_free = true;
+            break;
+        }
+    }
+    if (!found_free) chosen = 0U;
+    return flow_workspace_begin_connection(workspace, node_index, chosen);
+}
+FlowWorkspaceResult flow_workspace_disconnect_port(FlowWorkspace *workspace,
+                                                   size_t node_index,
+                                                   size_t port_index) {
+    FlowWorkspaceResult result;
+    if (!workspace) return FLOW_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return FLOW_WORKSPACE_INACTIVE;
+    if (node_index >= workspace->document.node_count) return FLOW_WORKSPACE_NO_ACTION;
+    workspace->node_index = node_index;
+    if (port_index >= flow_workspace_connection_count(workspace))
+        return FLOW_WORKSPACE_NO_ACTION;
+    workspace->edge_index = port_index;
+    workspace->mode = FLOW_WORKSPACE_EDGES;
+    result = remove_selection(workspace);
+    workspace->mode = FLOW_WORKSPACE_NODES;
+    return result;
+}
+
+
+
 FlowWorkspaceResult flow_workspace_handle_input(FlowWorkspace *workspace,
                                                 FlowWorkspaceInput input) {
     size_t count;
     if (!workspace) return FLOW_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return FLOW_WORKSPACE_INACTIVE;
-    if (input < FLOW_WORKSPACE_INPUT_PREVIOUS || input > FLOW_WORKSPACE_INPUT_REMOVE)
+    if (input < FLOW_WORKSPACE_INPUT_PREVIOUS || input > FLOW_WORKSPACE_INPUT_CONNECT)
         return FLOW_WORKSPACE_INVALID_ARGUMENT;
     if (input == FLOW_WORKSPACE_INPUT_SAVE) return flow_workspace_save(workspace);
     if (input == FLOW_WORKSPACE_INPUT_UNDO) return flow_workspace_undo(workspace);
@@ -433,6 +585,11 @@ FlowWorkspaceResult flow_workspace_handle_input(FlowWorkspace *workspace,
             return FLOW_WORKSPACE_OK;
         }
         return FLOW_WORKSPACE_NO_ACTION;
+    }
+    if (input == FLOW_WORKSPACE_INPUT_CONNECT) {
+        if (workspace->mode != FLOW_WORKSPACE_NODES)
+            return FLOW_WORKSPACE_NO_ACTION;
+        return connect_free_port(workspace);
     }
     if (input == FLOW_WORKSPACE_INPUT_ESCAPE) {
         if (workspace->mode == FLOW_WORKSPACE_TARGETS) {

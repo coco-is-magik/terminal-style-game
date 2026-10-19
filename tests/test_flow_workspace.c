@@ -11,6 +11,7 @@
 
 #include "../src/flow_workspace.h"
 #include "../src/flow_workspace_internal.h"
+#include "../src/flow_graph.h"
 #include "../src/ui_nested_inspector.h"
 
 static void assert_workspace_save_committed(FlowWorkspaceResult result) {
@@ -438,6 +439,165 @@ static void test_catalog_connect_add_remove_and_history(void **state) {
     assert_int_equal(unlink(path), 0);
 }
 
+static void test_connect_shortcut_opens_free_port_target_list(void **state) {
+    const char *scene_ports[] = {"exit", "secret"};
+    const char *menu_ports[] = {"play"};
+    FlowReferenceEntry entries[] = {
+        {FLOW_NODE_SCENE, "scene", scene_ports, 2U},
+        {FLOW_NODE_MENU, "menu", menu_ports, 1U}
+    };
+    FlowReferenceCatalog catalog = {entries, 2U};
+    FlowDocument document;
+    FlowWorkspace workspace;
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId edge;
+    (void)state;
+
+    flow_document_init(&document);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_SCENE, "scene",
+                                            &scene), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_MENU, "menu",
+                                            &menu), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, 1U, "start", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, scene, "exit", menu, &edge),
+                     FLOW_DOCUMENT_OK);
+    flow_workspace_init(&workspace);
+    assert_int_equal(flow_workspace_open_document(&workspace, &document),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_set_catalog(&workspace, &catalog),
+                     FLOW_WORKSPACE_OK);
+
+    /* Start has one port and it is connected: the shortcut opens its target
+       list at the current target rather than inventing a free port. */
+    workspace.node_index = 0U;
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_CONNECT),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_string_equal(flow_workspace_selected_port(&workspace), "start");
+    assert_int_equal(workspace.target_index, 0U);
+    assert_non_null(flow_workspace_selected_target(&workspace));
+    assert_int_equal(flow_workspace_selected_target(&workspace)->id, scene);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_CONNECT),
+                     FLOW_WORKSPACE_NO_ACTION);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_EDGES);
+    assert_int_equal(workspace.edge_index, 0U);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_NODES);
+
+    /* Scene's first port is connected and its second is free: the shortcut
+       skips the connected one and lands on the free port's target list. */
+    workspace.node_index = 1U;
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_CONNECT),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_int_equal(workspace.edge_index, 1U);
+    assert_string_equal(flow_workspace_selected_port(&workspace), "secret");
+    assert_null(flow_workspace_selected_edge(&workspace));
+    assert_int_equal(workspace.document.node_count, 3U);
+    assert_int_equal(workspace.document.edge_count, 2U);
+    assert_int_equal(workspace.change_count, 0U);
+
+    /* Escape walks back one level at a time and restores the port cursor. */
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_EDGES);
+    assert_int_equal(workspace.edge_index, 1U);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_int_equal(workspace.node_index, 1U);
+
+    workspace.node_index = 2U;
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_CONNECT),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_string_equal(flow_workspace_selected_port(&workspace), "play");
+}
+
+static void test_inspector_begin_connection_and_add_node(void **state) {
+    const char *scene_ports[] = {"exit", "secret"};
+    const char *menu_ports[] = {"play"};
+    const char *bonus_ports[] = {"enter"};
+    FlowReferenceEntry entries[] = {
+        {FLOW_NODE_SCENE, "scene", scene_ports, 2U},
+        {FLOW_NODE_MENU, "menu", menu_ports, 1U},
+        {FLOW_NODE_SCENE, "bonus", bonus_ports, 1U}
+    };
+    FlowReferenceCatalog catalog = {entries, 3U};
+    FlowDocument document;
+    FlowWorkspace workspace;
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId edge;
+    (void)state;
+
+    flow_document_init(&document);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_SCENE, "scene",
+                                            &scene), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&document, FLOW_NODE_MENU, "menu",
+                                            &menu), FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, 1U, "start", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&document, scene, "exit", menu, &edge),
+                     FLOW_DOCUMENT_OK);
+    flow_workspace_init(&workspace);
+    assert_int_equal(flow_workspace_open_document(&workspace, &document),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_set_catalog(&workspace, &catalog),
+                     FLOW_WORKSPACE_OK);
+
+    /* The Scene has one connected and one free port. */
+    workspace.node_index = 1U;
+    assert_int_equal(flow_workspace_free_port_count(&workspace), 1U);
+
+    /* A port row opens the picker at that port's current target. */
+    assert_int_equal(flow_workspace_begin_connection(&workspace, 1U, 0U),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_string_equal(flow_workspace_selected_port(&workspace), "exit");
+    assert_int_equal(flow_workspace_selected_target(&workspace)->id, menu);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_ESCAPE),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_NODES);
+
+    /* Add node takes the first free port and selects the first catalog entry
+       that is not in the document, rather than silently rewiring a used port. */
+    workspace.node_index = 1U;
+    assert_int_equal(flow_workspace_begin_add_node(&workspace), FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, FLOW_WORKSPACE_TARGETS);
+    assert_string_equal(flow_workspace_selected_port(&workspace), "secret");
+    assert_non_null(flow_workspace_selected_asset(&workspace));
+    assert_string_equal(flow_workspace_selected_asset(&workspace)->name, "bonus");
+    assert_int_equal(flow_workspace_handle_input(&workspace,
+                                                 FLOW_WORKSPACE_INPUT_CONFIRM),
+                     FLOW_WORKSPACE_OK);
+    assert_int_equal(workspace.document.node_count, 4U);
+    assert_int_equal(workspace.document.edge_count, 3U);
+
+    /* Start has no free port, so Add node refuses instead of rewiring it. */
+    workspace.node_index = 0U;
+    assert_int_equal(flow_workspace_free_port_count(&workspace), 0U);
+    assert_int_equal(flow_workspace_begin_add_node(&workspace),
+                     FLOW_WORKSPACE_NO_ACTION);
+}
+
 static void test_history_capacity_evicts_oldest_without_disabling_edits(void **state) {
     FlowNodeId scene;
     FlowNodeId menu;
@@ -471,6 +631,50 @@ static void test_history_capacity_evicts_oldest_without_disabling_edits(void **s
     assert_int_equal(flow_workspace_undo(&workspace), FLOW_WORKSPACE_NO_ACTION);
 }
 
+static void test_graph_layout_is_deterministic_and_keeps_selection_visible(void **state) {
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId start_edge;
+    FlowDocument document = document_fixture(&scene, &menu, &start_edge);
+    FlowGraphLayout first;
+    FlowGraphLayout second;
+    const FlowNode *selected;
+    const FlowGraphNodeBox *hit;
+    size_t i;
+    (void)state;
+
+    assert_true(flow_graph_layout_build(&document, NULL, 48, 12, 200, 120, &first));
+    assert_true(flow_graph_layout_build(&document, NULL, 48, 12, 200, 120, &second));
+    assert_int_equal(first.node_count, 3U);
+    assert_int_equal(first.edge_count, 3U);
+    assert_int_equal(first.node_width, second.node_width);
+    for (i = 0U; i < first.node_count; i++) {
+        assert_int_equal(first.nodes[i].x, second.nodes[i].x);
+        assert_int_equal(first.nodes[i].y, second.nodes[i].y);
+        assert_true(first.nodes[i].width >= 20);
+        assert_true(first.nodes[i].height >= 6);
+    }
+    assert_int_equal(first.nodes[1].layer, 1);
+    assert_int_equal(first.nodes[2].layer, 2);
+
+    selected = flow_document_find_node(&document, menu);
+    assert_non_null(selected);
+    assert_true(flow_graph_layout_build(&document, selected, 48, 12, 200, 120, &first));
+    assert_true(first.nodes[2].selected);
+    assert_true(first.nodes[2].x >= 48);
+    assert_true(first.nodes[2].y >= 12);
+    assert_true(first.nodes[2].x + first.nodes[2].width <= 248);
+    assert_true(first.nodes[2].y + first.nodes[2].height <= 132);
+    hit = flow_graph_node_at(&first, first.nodes[2].x + 1, first.nodes[2].y + 1);
+    assert_non_null(hit);
+    assert_int_equal(hit->node_index, 2U);
+    assert_null(flow_graph_node_at(&first, 1, 1));
+    for (i = 0U; i < first.edge_count; i++) {
+        assert_true(first.edges[i].source_node < first.node_count);
+        assert_true(first.edges[i].target_node < first.node_count);
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_shared_nested_inspector_navigation_and_rows),
@@ -482,7 +686,10 @@ int main(void) {
         cmocka_unit_test(test_undo_redo_save_identity_and_branch_truncation),
         cmocka_unit_test(test_dirty_close_default_save_commits_and_closes),
         cmocka_unit_test(test_catalog_connect_add_remove_and_history)
-        ,cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits)
+        ,cmocka_unit_test(test_connect_shortcut_opens_free_port_target_list),
+        cmocka_unit_test(test_inspector_begin_connection_and_add_node),
+        cmocka_unit_test(test_history_capacity_evicts_oldest_without_disabling_edits),
+        cmocka_unit_test(test_graph_layout_is_deterministic_and_keeps_selection_visible)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

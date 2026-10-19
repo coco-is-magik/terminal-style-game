@@ -216,26 +216,53 @@ connects Start to authored `Menu:main_menu`, whose `start_game` Button port conn
 validated direct-child `assets/scenes/*.tscene` scenes and `assets/menus/*.tui` authored
 game menus; application-owned files under `ui_layouts` are not game-flow assets.
 
-- `Up` / `Down`: select a node, validated connected/unconnected port, target, or close choice.
-- `Enter`: descend or connect/rewire the selected port to an existing/catalog target.
-- `Backspace`: remove the selected existing connection or non-Start node when the
-  remaining graph stays valid and reachable.
-- `Escape` or `G`: go back; closing a dirty graph opens Save/Discard/Cancel.
+- `Up` / `Down`: select a node. Once a node's **inspector** is open, move between its visible
+  port rows and the `+ Add node…` / `- Remove node` actions.
+- `Enter`: open the selected node's inspector; inside it, act on the highlighted row. On a port
+  row, `Enter` opens a centred `CONNECT '<port>' TO…` dialog. On `+ Add node…`, it opens the
+  same dialog through the first free port with the first new catalog entry selected. On
+  `- Remove node`, it removes the node if the remaining graph stays valid and reachable. Inside
+  the dialog, `Enter` connects or rewires the selected port.
+- `A`: the same Add action from anywhere in the workspace: take the first free port and open
+  the destination dialog with the catalog preselected. When every port is connected, the header
+  says so and the graph is unchanged.
+- `Backspace`: in the inspector, disconnect the highlighted port; in the node list, remove the
+  selected non-Start node.
+- `Left` / `Escape`: leave the inspector and return to the node list. From the node list,
+  `Escape` or `G` goes back; closing a dirty graph opens Save/Discard/Cancel.
 - `Ctrl+Z` / `Ctrl+Y`: undo/redo staged graph construction and rewiring.
 - `Ctrl+S`: atomically save a graph that already has a path.
+
+The workspace clears to the black canvas, so the world never shows through the graph. It opens on
+the selected node's `INSPECTOR`; `Left` / `Esc` returns to the `NODES` list, and `Enter` on a node
+reopens its inspector. The inspector lists the node's `PORTS` (with each port's current destination
+or `(not connected)`) and its `ACTIONS`, so changing the graph never requires remembering a hidden
+second mode. The graph stays on the right, the selected node's port names ride on the wires, and
+the focused port's edge is bright. The header carries the breadcrumb (`NODES` /
+`NODES > INSPECTOR` / `NODES > CONNECT`), the selected node, graph counts, the key row, and one
+contextual sentence such as `Enter chooses a destination for the free port 'extra_menu'.`
 
 Graph mutations preserve reachability and report specific rejection causes such as
 `would leave a node unreachable`. A selected Scene with no outgoing ports explains that an
 `exit_flow` trigger must be authored in the Scene editor; the Flow workspace does not edit Scene
-or Menu contents itself. For an obvious valid construction workflow, select `Menu:main_menu`,
-then its unconnected `extra_menu` port, then `Menu:testmenu`; Enter atomically adds and connects
+or Menu contents itself. A node with no ports still opens an inspector, where `+ Add node…`
+explains that a port must be authored first. The workspace draws the graph as **Start/Scene/Menu
+node boxes with their ports and orthogonal labelled edges**, laid out deterministically from
+Start; the selected node follows into view. The destination dialog and the close prompt are
+centred below the header, and at short (200%-scale) viewports the key row is omitted, the node
+list collapses to one windowed row, the inspector windows around its focused row, and the dialogs
+stay clear of the header.
+
+For an obvious valid construction workflow, select `Menu:main_menu`, open its inspector, focus
+`extra_menu`, press `Enter`, then choose `Menu:testmenu`; Enter atomically adds and connects
 that Menu without making existing nodes unreachable.
 
 The workspace remains inside the unified editor and suppresses scene movement/look while
 open. I11 can atomically add an existing catalog Scene/Menu while connecting it, connect
 unconnected validated ports, and safely remove edges/nodes. It does not create, rename,
-or edit Scene/Menu assets or their ports, and it does not yet provide a visual Menu
-canvas, hierarchy/property editor, target loading, or application-menu replacement.
+or edit Scene/Menu assets or their ports. The authored-Menu workspace is the visual Menu
+canvas, hierarchy/property editor and runtime Test mode described below; target loading and
+application-menu replacement remain out of scope.
 
 ### Visual authored-Menu workspace
 
@@ -261,7 +288,10 @@ Start Button preview.
 - `Escape` / `Ctrl+U`: go back; leaving a dirty Menu opens Save/Discard/Cancel.
 
 The hierarchy shows stable IDs beside a live responsive preview rendered by the same
-layout and visual adapters used by authored UI runtime code. I13 context actions let a
+layout and visual adapters used by authored UI runtime code. The workspace is **preview-first** on
+the workbench palette: shared panels carry the hierarchy, properties and actions, and the preview
+is framed top-right inside the region the screen shows with no material drawn on it. I13 context
+actions let a
 selected Container create Container/Text/Button children with deterministic unique names
 and useful initial geometry. Text/Button content and unique Button flow ports use staged
 text entry with Enter-to-commit and Escape-to-cancel. Creation, field commits, layout

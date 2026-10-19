@@ -5,14 +5,33 @@
 #include "timing.h"
 #include "ui_editor_host.h"
 #include "ui_editor_presentation.h"
+#include "ui_app_theme_adapter.h"
 
 #include <SDL3/SDL.h>
 
-static const UiRenderTheme editor_theme = {
-    {120, 220, 160, 255}, {0, 40, 20, 255},
-    {20, 20, 20, 255}, {220, 220, 120, 255},
-    {120, 120, 120, 255}, {20, 20, 20, 255}
-};
+static UiRenderTheme editor_theme_from_palette(void) {
+    UiAppWorkbenchPalette palette;
+    UiRenderTheme theme;
+    if (!ui_app_theme_workbench_palette(&palette)) {
+        theme = (UiRenderTheme){{242, 247, 248, 255}, {5, 8, 10, 255},
+                                {5, 8, 10, 255}, {242, 247, 248, 255},
+                                {110, 120, 124, 255}, {5, 8, 10, 255}};
+        return theme;
+    }
+    theme.focused_foreground = (UiDocumentColor){palette.primary_text.r,
+        palette.primary_text.g, palette.primary_text.b, palette.primary_text.a};
+    theme.focused_background = (UiDocumentColor){palette.canvas.r,
+        palette.canvas.g, palette.canvas.b, palette.canvas.a};
+    theme.pressed_foreground = (UiDocumentColor){palette.canvas.r,
+        palette.canvas.g, palette.canvas.b, palette.canvas.a};
+    theme.pressed_background = (UiDocumentColor){palette.primary_text.r,
+        palette.primary_text.g, palette.primary_text.b, palette.primary_text.a};
+    theme.disabled_foreground = (UiDocumentColor){palette.disabled_text.r,
+        palette.disabled_text.g, palette.disabled_text.b, palette.disabled_text.a};
+    theme.disabled_background = (UiDocumentColor){palette.canvas.r,
+        palette.canvas.g, palette.canvas.b, palette.canvas.a};
+    return theme;
+}
 
 static bool text_mode(UiMenuWorkspaceMode mode) {
     return mode == UI_MENU_WORKSPACE_CREATE_NAME ||
@@ -29,6 +48,7 @@ UiEditorRuntimeResult ui_editor_runtime_run(
     AssetRegistry assets;
     InputState input = {0};
     UiEditorHostViewport viewport;
+    UiRenderTheme editor_theme;
     double target_ms;
     bool running = true;
     bool text_input_active = false;
@@ -39,6 +59,7 @@ UiEditorRuntimeResult ui_editor_runtime_run(
         asset_registry_clear(&assets);
         return UI_EDITOR_RUNTIME_LOAD_FAILED;
     }
+    editor_theme = editor_theme_from_palette();
     ui_menu_workspace_init(&workspace);
     last_result = ui_menu_workspace_open(&workspace, asset_root);
     if (last_result != UI_MENU_WORKSPACE_OK) {

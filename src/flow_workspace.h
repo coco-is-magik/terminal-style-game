@@ -30,7 +30,8 @@ typedef enum {
     FLOW_WORKSPACE_INPUT_SAVE,
     FLOW_WORKSPACE_INPUT_UNDO,
     FLOW_WORKSPACE_INPUT_REDO,
-    FLOW_WORKSPACE_INPUT_REMOVE
+    FLOW_WORKSPACE_INPUT_REMOVE,
+    FLOW_WORKSPACE_INPUT_CONNECT
 } FlowWorkspaceInput;
 
 typedef enum {
@@ -83,6 +84,16 @@ FlowWorkspaceResult flow_workspace_save_as(FlowWorkspace *workspace,
                                             const char *path);
 FlowWorkspaceResult flow_workspace_handle_input(FlowWorkspace *workspace,
                                                 FlowWorkspaceInput input);
+/* Inspector operations: open the destination picker for one port, add a node
+   from the catalog through a free port, and disconnect one port. */
+FlowWorkspaceResult flow_workspace_begin_connection(FlowWorkspace *workspace,
+                                                    size_t node_index,
+                                                    size_t port_index);
+FlowWorkspaceResult flow_workspace_begin_add_node(FlowWorkspace *workspace);
+FlowWorkspaceResult flow_workspace_disconnect_port(FlowWorkspace *workspace,
+                                                   size_t node_index,
+                                                   size_t port_index);
+size_t flow_workspace_free_port_count(FlowWorkspace *workspace);
 FlowWorkspaceResult flow_workspace_undo(FlowWorkspace *workspace);
 FlowWorkspaceResult flow_workspace_redo(FlowWorkspace *workspace);
 bool flow_workspace_is_dirty(const FlowWorkspace *workspace);
@@ -94,6 +105,8 @@ const FlowNode *flow_workspace_selected_node(const FlowWorkspace *workspace);
 const FlowEdge *flow_workspace_selected_edge(const FlowWorkspace *workspace);
 const FlowNode *flow_workspace_selected_target(const FlowWorkspace *workspace);
 const char *flow_workspace_selected_port(const FlowWorkspace *workspace);
+size_t flow_workspace_outgoing_for(const FlowWorkspace *workspace,
+                                   const FlowNode *node);
 const FlowReferenceEntry *flow_workspace_selected_asset(
     const FlowWorkspace *workspace
 );

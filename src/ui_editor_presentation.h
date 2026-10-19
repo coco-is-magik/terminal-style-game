@@ -25,4 +25,26 @@ bool ui_editor_presentation_render(
     double now_ms,
     Grid *grid);
 
+/* The same workspace inside the region a raised UI scale leaves on screen. */
+bool ui_editor_presentation_render_viewport(
+    const UiMenuWorkspace *workspace,
+    UiMenuWorkspaceResult last_result,
+    const AssetRegistry *assets,
+    const UiRenderTheme *theme,
+    const UiEditorPresentationDiagnostics *diagnostics,
+    double now_ms,
+    Grid *grid,
+    int viewport_columns,
+    int viewport_rows);
+
+/* The content origin of the preview for a viewport and preview size. The host uses
+   the same function as the renderer so pointer coordinates cannot drift from it. */
+void ui_editor_presentation_preview_origin(
+    int viewport_columns,
+    int viewport_rows,
+    int preview_width,
+    int preview_height,
+    int *out_x,
+    int *out_y);
+
 #endif /* UI_EDITOR_PRESENTATION_H */
