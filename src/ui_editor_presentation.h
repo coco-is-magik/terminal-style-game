@@ -12,6 +12,9 @@ typedef struct {
     const char *target_type;
     const char *target_name;
     unsigned target_id;
+    /* The element under the pointer, marked with a still handle. Presentation only: it
+       never selects, mutates or dirties anything. */
+    UiElementId hover_element_id;
     bool test_mode;
     bool target_valid;
 } UiEditorPresentationDiagnostics;

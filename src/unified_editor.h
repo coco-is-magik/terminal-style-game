@@ -202,8 +202,22 @@ typedef struct {
        presentation only: it never selects, mutates or dirties the flow. */
     bool flow_hover_valid;
     size_t flow_hover_index;
+    /* A press on a box grabs the graph: motion pans the view, release keeps the offset,
+       Escape restores it. The grip owns the pointer until it ends, and node positions
+       stay derived -- panning moves the view, never a node or the document. */
+    bool flow_pan_grabbed;
+    int flow_grab_x;
+    int flow_grab_y;
+    int flow_pan_x;
+    int flow_pan_y;
+    int flow_pan_start_x;
+    int flow_pan_start_y;
     UiMenuWorkspace ui_menu_workspace;
     UiMenuWorkspaceResult last_ui_menu_result;
+    /* The authored element under the pointer in the menu workspace's preview. Hover is
+       presentation only: it never selects, mutates or dirties the document. */
+    bool ui_menu_hover_valid;
+    UiElementId ui_menu_hover_element_id;
     UiMenuRuntime ui_menu_test_runtime;
     FlowDocument ui_menu_test_flow;
     FlowProjectCatalog ui_menu_test_catalog;

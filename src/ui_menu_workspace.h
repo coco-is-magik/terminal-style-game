@@ -194,6 +194,14 @@ bool ui_menu_workspace_reparent_target_available(const UiMenuWorkspace *workspac
                                                   size_t element_index);
 bool ui_menu_workspace_property_available(const UiMenuWorkspace *workspace,
                                           UiMenuProperty property);
+/* The authored element under a preview-local cell: the topmost visible element in paint
+   order, never the screen root (id 1). The pointer press and the hover indicator both
+   read this one test, so what a click selects is what the pointer highlights. While a
+   gesture grips an element, the gripped element is returned rather than re-deciding the
+   hit from wherever the pointer has been dragged to. */
+UiMenuWorkspaceResult ui_menu_workspace_element_at(
+    const UiMenuWorkspace *workspace, int pointer_x, int pointer_y,
+    int viewport_width, int viewport_height, UiElementId *out_element_id);
 UiMenuWorkspaceResult ui_menu_workspace_pointer_press(
     UiMenuWorkspace *workspace, int pointer_x, int pointer_y,
     int viewport_width, int viewport_height);

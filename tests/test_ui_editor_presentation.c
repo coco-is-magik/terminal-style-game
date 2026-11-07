@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "../src/ui_editor_presentation.h"
+#include "../src/ui_app_theme_adapter.h"
 
 static const UiRenderTheme theme = {
     {255, 255, 0, 255}, {0, 0, 80, 255},
@@ -115,11 +116,62 @@ static void test_rejects_invalid_arguments(void **state) {
     grid_destroy(grid);
 }
 
+/* The pointer's mark is a still handle on the element a press would select, at that
+   element's top-left corner; it is not drawn when nothing is hovered. */
+static void test_preview_marks_the_hovered_element(void **state) {
+    UiMenuWorkspace workspace;
+    UiEditorPresentationDiagnostics diagnostics = {0};
+    AssetRegistry assets;
+    UiAppWorkbenchPalette palette;
+    UiEditorSurfaceRegion region;
+    UiElementId button = 0U;
+    Grid *grid;
+    Cell cell;
+    (void)state;
+    ui_menu_workspace_init(&workspace);
+    assert_true(asset_registry_init(&assets));
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    assert_int_equal(ui_document_create_menu(&workspace.document, "hover"),
+                     UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&workspace.document,
+        UI_DOCUMENT_ELEMENT_BUTTON, 1U, "play", "PLAY", "play", &button),
+        UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_set_layout(&workspace.document, button,
+        (UiDocumentLayout){2, 3, 8, 3, UI_DOCUMENT_ANCHOR_START,
+                           UI_DOCUMENT_ANCHOR_START, 100}), UI_DOCUMENT_OK);
+    workspace.active = true;
+    workspace.has_document = true;
+    workspace.mode = UI_MENU_WORKSPACE_HIERARCHY;
+    grid = grid_create(120, 40);
+    assert_non_null(grid);
+    ui_editor_presentation_preview_region(&workspace, 120, 40, &region);
+    assert_true(region.columns > 0 && region.rows > 0);
+
+    diagnostics.hover_element_id = 0U;
+    assert_true(ui_editor_presentation_render(&workspace, UI_MENU_WORKSPACE_OK, &assets,
+                                              &theme, &diagnostics, 0.0, grid));
+    assert_true(grid_get(grid, region.origin_x + 2, region.origin_y + 3, &cell));
+    assert_int_not_equal(cell.glyph, '+');
+
+    diagnostics.hover_element_id = button;
+    grid_clear(grid, palette.canvas);
+    assert_true(ui_editor_presentation_render(&workspace, UI_MENU_WORKSPACE_OK, &assets,
+                                              &theme, &diagnostics, 0.0, grid));
+    assert_true(grid_get(grid, region.origin_x + 2, region.origin_y + 3, &cell));
+    assert_int_equal(cell.glyph, '+');
+    assert_memory_equal(&cell.fg, &palette.primary_text, sizeof(SDL_Color));
+
+    grid_destroy(grid);
+    asset_registry_clear(&assets);
+    ui_menu_workspace_clear(&workspace);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_renders_workspace_candidate_without_host_state),
         cmocka_unit_test(test_viewport_keeps_the_preview_on_screen),
-        cmocka_unit_test(test_rejects_invalid_arguments)
+        cmocka_unit_test(test_rejects_invalid_arguments),
+        cmocka_unit_test(test_preview_marks_the_hovered_element)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

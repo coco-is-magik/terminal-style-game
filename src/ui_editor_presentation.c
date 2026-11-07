@@ -206,6 +206,29 @@ static void render_preview(const UiMenuWorkspace *workspace,
                     break;
                 }
     }
+    /* The pointer's own mark: a still handle on the element a press would select, at the
+       top-left corner so it never collides with the selection handle at the bottom-right.
+       It is skipped when the selection already marks that element. */
+    if ((!diagnostics || !diagnostics->test_mode) && diagnostics &&
+        diagnostics->hover_element_id != 0U &&
+        (!selected || diagnostics->hover_element_id != selected->id)) {
+        UiResolvedElement resolved[UI_DOCUMENT_MAX_ELEMENTS];
+        size_t resolved_count = 0U;
+        if (ui_layout_resolve(document, width, height,
+                              resolved, &resolved_count) == UI_LAYOUT_RESOLVE_OK)
+            for (size_t i = 0U; i < resolved_count; i++)
+                if (resolved[i].element_id == diagnostics->hover_element_id &&
+                    resolved[i].rect.width > 0 && resolved[i].rect.height > 0) {
+                    const int hover_x = resolved[i].rect.x;
+                    const int hover_y = resolved[i].rect.y;
+                    if (hover_x >= resolved[i].clip.x && hover_y >= resolved[i].clip.y &&
+                        hover_x < resolved[i].clip.x + resolved[i].clip.width &&
+                        hover_y < resolved[i].clip.y + resolved[i].clip.height)
+                        (void)grid_set(grid, origin_x + hover_x, origin_y + hover_y,
+                                       '+', palette->primary_text, palette->canvas);
+                    break;
+                }
+    }
 }
 
 

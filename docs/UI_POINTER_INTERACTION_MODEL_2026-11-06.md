@@ -1,6 +1,6 @@
 # Pointer interaction model — requirements and scoped plan
 
-**Status: drafted 2026-11-06; P1 implemented the same day. P2 and P3 await the
+**Status: drafted 2026-11-06; P1 and P2 implemented the same day. P3 awaits the
 decisions in §9.** This is the "requirements discussion and scoped plan" that
 `TODO.md` requires before a substantial item is implemented.
 
@@ -148,17 +148,19 @@ Every pointer action keeps a keyboard path (repo rule, and requirement 12's orde
   second copy of it; P2 extracts that test and both the press and the hover take it
   from there.
 
-### P2 — drag with ownership
+### P2 — drag with ownership — **implemented 2026-11-06**
 
-- Add the grab/ownership record to the per-surface input path and route the authored
-  canvas's existing snapshot logic through it, keeping `ui_menu_workspace_pointer_*`
-  signatures.
-- Node dragging in the flow graph: motion is a *view* offset only — node positions
-  stay derived (see §9 D2) — so the drag pans the layout instead of moving a node,
-  unless D2 says otherwise.
-- Tests: a drag that survives a frame boundary; a drag cancelled by `Esc` leaves no
-  history; a released drag is exactly one undo step; a drag that stays inside one cell
-  changes nothing; a press that hits nothing leaves the pointer to the next layer.
+- `ui_menu_workspace_element_at` is the single authored hit test; the press and the
+  hover indicator both read it.
+- Authored-preview hover: a still `+` handle at the hovered element's top-left corner,
+  carried to the painter by `UiEditorPresentationDiagnostics.hover_element_id`.
+- The flow graph grips the pointer on a press: motion pans the derived layout
+  (`editor_flow_layout_pan` shifts the built layout for painting and hit testing), the
+  release keeps the offset, Escape restores it, and nothing else in the workspace reads
+  the pointer or Escape while the grip holds.
+- Tests: the graph pointer test covers the grab surviving a frame boundary, the offset,
+  the release, and Escape restoring the starting view;
+  `test_preview_marks_the_hovered_element` covers the hover handle and its absence.
 
 ### P3 — the gestures that motivated this document
 

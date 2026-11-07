@@ -87,29 +87,30 @@ static bool point_in_rect(UiResolvedRect rect, int x, int y) {
     return x >= rect.x && y >= rect.y && (int64_t)x < right && (int64_t)y < bottom;
 }
 
-UiMenuWorkspaceResult ui_menu_workspace_pointer_press(
-    UiMenuWorkspace *workspace, int pointer_x, int pointer_y,
-    int viewport_width, int viewport_height
+UiMenuWorkspaceResult ui_menu_workspace_element_at(
+    const UiMenuWorkspace *workspace, int pointer_x, int pointer_y,
+    int viewport_width, int viewport_height, UiElementId *out_element_id
 ) {
     UiResolvedElement resolved[UI_DOCUMENT_MAX_ELEMENTS];
     size_t count = 0U;
     size_t i;
     UiElementId hit_id = 0U;
-    const UiResolvedElement *selected_resolved;
-    const UiDocumentElement *selected;
-    if (!workspace || viewport_width <= 0 || viewport_height <= 0)
+    if (!workspace || !out_element_id || viewport_width <= 0 || viewport_height <= 0)
         return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    *out_element_id = 0U;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
     if (!workspace->has_document ||
         (workspace->mode != UI_MENU_WORKSPACE_HIERARCHY &&
-         workspace->mode != UI_MENU_WORKSPACE_PROPERTIES) || workspace->pointer_before)
+         workspace->mode != UI_MENU_WORKSPACE_PROPERTIES))
         return UI_MENU_WORKSPACE_NO_ACTION;
+    if (workspace->pointer_before) {
+        if (workspace->pointer_element_id == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+        *out_element_id = workspace->pointer_element_id;
+        return UI_MENU_WORKSPACE_OK;
+    }
     if (ui_layout_resolve(&workspace->document, viewport_width, viewport_height,
                           resolved, &count) != UI_LAYOUT_RESOLVE_OK)
         return UI_MENU_WORKSPACE_MUTATION_FAILED;
-    selected = ui_menu_workspace_selected_element(workspace);
-    selected_resolved = selected
-        ? find_resolved_element(resolved, count, selected->id) : NULL;
     for (i = 0U; i < count; i++) {
         const UiDocumentElement *element = ui_document_find_element(
             &workspace->document, resolved[i].element_id);
@@ -120,6 +121,37 @@ UiMenuWorkspaceResult ui_menu_workspace_pointer_press(
             hit_id = element->id;
     }
     if (hit_id == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+    *out_element_id = hit_id;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_pointer_press(
+    UiMenuWorkspace *workspace, int pointer_x, int pointer_y,
+    int viewport_width, int viewport_height
+) {
+    UiResolvedElement resolved[UI_DOCUMENT_MAX_ELEMENTS];
+    size_t count = 0U;
+    UiElementId hit_id = 0U;
+    const UiResolvedElement *selected_resolved;
+    const UiDocumentElement *selected;
+    UiMenuWorkspaceResult result;
+    if (!workspace || viewport_width <= 0 || viewport_height <= 0)
+        return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!workspace->has_document ||
+        (workspace->mode != UI_MENU_WORKSPACE_HIERARCHY &&
+         workspace->mode != UI_MENU_WORKSPACE_PROPERTIES) || workspace->pointer_before)
+        return UI_MENU_WORKSPACE_NO_ACTION;
+    result = ui_menu_workspace_element_at(workspace, pointer_x, pointer_y,
+                                          viewport_width, viewport_height, &hit_id);
+    if (result != UI_MENU_WORKSPACE_OK) return result;
+    if (hit_id == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (ui_layout_resolve(&workspace->document, viewport_width, viewport_height,
+                          resolved, &count) != UI_LAYOUT_RESOLVE_OK)
+        return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    selected = ui_menu_workspace_selected_element(workspace);
+    selected_resolved = selected
+        ? find_resolved_element(resolved, count, selected->id) : NULL;
     workspace->pointer_before = malloc(sizeof(*workspace->pointer_before));
     if (!workspace->pointer_before) return UI_MENU_WORKSPACE_MUTATION_FAILED;
     *workspace->pointer_before = workspace->document;

@@ -4940,6 +4940,55 @@ static void test_flow_graph_pointer_selects_the_node_under_it(void **state) {
         assert_memory_equal(&frame.fg, &palette.primary_text, sizeof(SDL_Color));
     }
 
+    /* A grabbed drag pans the view and survives frame boundaries; the flow is never
+       edited by it, because node positions stay derived. */
+    zero_input(&input);
+    input.mouse_left_pressed = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x;
+    input.mouse_grid_y = box_y;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_true(editor.flow_pan_grabbed);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + 4;
+    input.mouse_grid_y = box_y + 2;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_true(editor.flow_pan_grabbed);
+    assert_int_equal(editor.flow_pan_x, 4);
+    assert_int_equal(editor.flow_pan_y, 2);
+    zero_input(&input);
+    input.mouse_left_released = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + 4;
+    input.mouse_grid_y = box_y + 2;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_false(editor.flow_pan_grabbed);
+    assert_int_equal(editor.flow_pan_x, 4);
+    assert_false(flow_workspace_is_dirty(&editor.flow_workspace));
+
+    /* Escape during a grab restores the view it started from, and the workspace stays
+       open: the grip owns Escape until it ends. */
+    zero_input(&input);
+    input.mouse_left_pressed = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + 4;
+    input.mouse_grid_y = box_y + 2;
+    update_with(&editor, &camera, &input);
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + 10;
+    input.mouse_grid_y = box_y + 6;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_pan_x, 10);
+    zero_input(&input);
+    input.editor_cancel_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+    assert_false(editor.flow_pan_grabbed);
+    assert_int_equal(editor.flow_pan_x, 4);
+    assert_int_equal(editor.flow_pan_y, 2);
+    assert_true(editor.flow_workspace.active);
+
     grid_destroy(grid);
     unified_editor_destroy(&editor);
     remove(path);

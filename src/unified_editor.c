@@ -148,6 +148,13 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->last_flow_result = FLOW_WORKSPACE_OK;
     editor->flow_hover_valid = false;
     editor->flow_hover_index = 0U;
+    editor->flow_pan_grabbed = false;
+    editor->flow_pan_x = 0;
+    editor->flow_pan_y = 0;
+    editor->flow_pan_start_x = 0;
+    editor->flow_pan_start_y = 0;
+    editor->ui_menu_hover_valid = false;
+    editor->ui_menu_hover_element_id = 0U;
     editor->last_ui_menu_result = UI_MENU_WORKSPACE_OK;
     ui_menu_runtime_init(&editor->ui_menu_test_runtime);
     flow_document_init(&editor->ui_menu_test_flow);
@@ -478,13 +485,40 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
                                          EditorInputConsumption *consumed) {
     FlowWorkspace *workspace = &editor->flow_workspace;
     bool handled = false;
-    /* A node box is a control: clicking one selects it, exactly like Up/Down. Selection
-       is workspace state, not a document edit, so the flow is not marked dirty. */
+    /* A grab owns the pointer until it ends: motion pans the view, release keeps the
+       offset, Escape restores it. Nothing else in the workspace reads the pointer or
+       Escape while the grip holds. */
+    if (editor->flow_pan_grabbed) {
+        const bool cancelled = input->editor_cancel_pressed;
+        if (cancelled) {
+            editor->flow_pan_x = editor->flow_pan_start_x;
+            editor->flow_pan_y = editor->flow_pan_start_y;
+        } else if (!input->mouse_left_released && input->mouse_grid_valid) {
+            editor->flow_pan_x = editor->flow_pan_start_x +
+                                 (input->mouse_grid_x - editor->flow_grab_x);
+            editor->flow_pan_y = editor->flow_pan_start_y +
+                                 (input->mouse_grid_y - editor->flow_grab_y);
+        }
+        if (cancelled || input->mouse_left_released || !workspace->active)
+            editor->flow_pan_grabbed = false;
+        if (cancelled) editor_mark_keyboard(consumed);
+        consumed->pointer_consumed = true;
+        return;
+    }
+    /* A node box is a control: pressing one selects it, exactly like Up/Down, and grips
+       the graph so a drag can pan the view. Selection and panning are workspace state,
+       so neither marks the flow dirty. */
     if (input->mouse_left_pressed && input->mouse_grid_valid) {
         size_t index;
         if (editor_flow_graph_hit(editor, columns, rows, input->mouse_grid_x,
-                                  input->mouse_grid_y, &index))
+                                  input->mouse_grid_y, &index)) {
             workspace->node_index = index;
+            editor->flow_pan_grabbed = true;
+            editor->flow_grab_x = input->mouse_grid_x;
+            editor->flow_grab_y = input->mouse_grid_y;
+            editor->flow_pan_start_x = editor->flow_pan_x;
+            editor->flow_pan_start_y = editor->flow_pan_y;
+        }
     }
     /* Hover is recomputed every frame from the same hit test the click uses, and is
        cleared whenever the graph leaves the screen. It is presentation only. */
@@ -522,6 +556,9 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
         editor->flow_inspector = false;
         editor->flow_inspector_index = 0U;
         editor->flow_hover_valid = false;
+        editor->flow_pan_grabbed = false;
+        editor->flow_pan_x = 0;
+        editor->flow_pan_y = 0;
     } else {
         if (workspace->node_index >= workspace->document.node_count)
             workspace->node_index = workspace->document.node_count > 0U
@@ -535,8 +572,33 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
 }
 
 
+/* The preview's hovered element, taken from the same hit test a press uses. A pointer
+   outside the painted preview, or a mode where a press would not select, has no hover. */
+static void editor_update_ui_menu_hover(UnifiedEditorState *editor, const InputState *input,
+                                        int columns, int rows) {
+    UiEditorSurfaceRegion region;
+    UiElementId hover_id = 0U;
+    int x;
+    int y;
+    if (!editor) return;
+    editor->ui_menu_hover_valid = false;
+    editor->ui_menu_hover_element_id = 0U;
+    if (!input || !input->mouse_grid_valid) return;
+    ui_editor_presentation_preview_region(&editor->ui_menu_workspace, columns, rows,
+                                          &region);
+    if (!ui_editor_surface_region_translate(&region, input->mouse_grid_x,
+                                            input->mouse_grid_y, &x, &y))
+        return;
+    if (ui_menu_workspace_element_at(&editor->ui_menu_workspace, x, y, region.columns,
+                                     region.rows, &hover_id) != UI_MENU_WORKSPACE_OK ||
+        hover_id == 0U)
+        return;
+    editor->ui_menu_hover_valid = true;
+    editor->ui_menu_hover_element_id = hover_id;
+}
+
 static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
-    UiMenuWorkspace *workspace,
+    UnifiedEditorState *editor,
     const InputState *input,
     int viewport_columns,
     int viewport_rows,
@@ -545,7 +607,10 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     UiEditorHostViewport viewport = {
         viewport_columns, viewport_rows
     };
-    return ui_editor_host_apply_input(workspace, input, &viewport, handled);
+    UiMenuWorkspaceResult result = ui_editor_host_apply_input(
+        &editor->ui_menu_workspace, input, &viewport, handled);
+    editor_update_ui_menu_hover(editor, input, viewport_columns, viewport_rows);
+    return result;
 }
 
 static const FlowNode *editor_find_menu_flow_node(const FlowDocument *flow,
@@ -4804,8 +4869,7 @@ EditorInputConsumption unified_editor_update(
                 handled = true;
             } else {
                 editor->last_ui_menu_result = editor_update_ui_menu_workspace(
-                    &editor->ui_menu_workspace, input, ui_viewport_columns,
-                    ui_viewport_rows, &handled);
+                    editor, input, ui_viewport_columns, ui_viewport_rows, &handled);
             }
             if (handled) editor_mark_keyboard(&consumed);
             input->forward = false;
@@ -5864,6 +5928,8 @@ static void editor_render_ui_menu_workspace(const UnifiedEditorState *editor,
     diagnostics.target_name = editor->ui_menu_test_target_name;
     diagnostics.target_id = editor->ui_menu_test_target_id;
     diagnostics.test_mode = editor->ui_menu_test_mode;
+    if (editor->ui_menu_hover_valid)
+        diagnostics.hover_element_id = editor->ui_menu_hover_element_id;
     diagnostics.target_valid = editor->ui_menu_test_target_valid;
     {
         UiRenderTheme preview_theme = editor_ui_preview_theme_for(&palette);
@@ -6750,6 +6816,24 @@ static bool editor_flow_graph_region(const UnifiedEditorState *editor, int colum
     return true;
 }
 
+/* Shift a built layout by the view's pan. The layout itself stays derived; the offset
+   moves what is drawn and what is hit, never a node or the document. */
+static void editor_flow_layout_pan(FlowGraphLayout *layout, int pan_x, int pan_y) {
+    size_t i;
+    if (!layout) return;
+    for (i = 0U; i < layout->node_count; i++) {
+        layout->nodes[i].x += pan_x;
+        layout->nodes[i].y += pan_y;
+    }
+    for (i = 0U; i < layout->edge_count; i++) {
+        layout->edges[i].source_x += pan_x;
+        layout->edges[i].source_y += pan_y;
+        layout->edges[i].target_x += pan_x;
+        layout->edges[i].target_y += pan_y;
+        layout->edges[i].lane_x += pan_x;
+    }
+}
+
 /* The node box under a pointer, as the graph is laid out on the visible region. */
 static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns, int rows,
                                   int x, int y, size_t *out_index) {
@@ -6770,6 +6854,7 @@ static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns,
                                  region.origin_x, region.origin_y, region.columns,
                                  region.rows, &layout))
         return false;
+    editor_flow_layout_pan(&layout, editor->flow_pan_x, editor->flow_pan_y);
     box = flow_graph_node_at(&layout, x, y);
     if (!box || box->node_index >= workspace->document.node_count) return false;
     *out_index = box->node_index;
@@ -6940,6 +7025,7 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
                                  &layout)) {
         return;
     }
+    editor_flow_layout_pan(&layout, editor->flow_pan_x, editor->flow_pan_y);
 
     {
         const FlowEdge *active_edge = NULL;

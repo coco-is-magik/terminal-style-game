@@ -33,9 +33,10 @@ editor dialog now draws on the same shared panel — the selected choice is fram
 marked with `>`, long prompt text wraps instead of being cropped, and the block keeps clear of the
 footer — and in the flow workspace's `NODES` step a click on a node box selects that node; see
 [`reviews/2026-11-06-edit-dialog-panels-and-graph-pointer.md`](reviews/2026-11-06-edit-dialog-panels-and-graph-pointer.md).
-The first phase of the pointer model also landed: every editor pointer surface takes its
-rectangle from the painter's own geometry (removing the literal origin that misplaced
-authored-Menu test clicks), and flow-graph node boxes highlight under the pointer; see
+The first two phases of the pointer model also landed: every editor pointer surface takes
+its rectangle from the painter's own geometry (removing the literal origin that misplaced
+authored-Menu test clicks), pointer hover marks the element and node a click would take,
+and a grabbed drag pans the game-flow view without touching the document; see
 [`reviews/2026-11-06-pointer-region-contract.md`](reviews/2026-11-06-pointer-region-contract.md).
 The rest of this page's verified foundation remains as recorded below.
 
@@ -62,7 +63,7 @@ Native Windows verification is deliberately limited to two product checks under 
 strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
 `PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
 compilation and all 64 test runners (the suite count at that checkpoint; the current Linux
-aggregate is 81 suites / 926 tests). The runner starts the VM only
+aggregate is 81 suites / 927 tests). The runner starts the VM only
 when it is off and never stops it. Windows VM benchmarks, stability workloads, standards,
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM
