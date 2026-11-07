@@ -1,14 +1,18 @@
 #include "ui_editor_host.h"
 
+#include "ui_editor_presentation.h"
+
 UiMenuWorkspaceResult ui_editor_host_apply_input(
     UiMenuWorkspace *workspace, const InputState *input,
     const UiEditorHostViewport *viewport, bool *handled
 ) {
     UiEditorAction action = {0};
+    UiEditorSurfaceRegion region;
     bool have_action = false;
     bool text_mode;
-    int preview_width;
-    int preview_height;
+    int pointer_x = 0;
+    int pointer_y = 0;
+    bool pointer_inside;
     if (!workspace || !input || !viewport || !handled ||
         viewport->viewport_columns <= 0 || viewport->viewport_rows <= 0)
         return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
@@ -17,20 +21,24 @@ UiMenuWorkspaceResult ui_editor_host_apply_input(
                 workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
                 workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
                 workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME;
-    ui_menu_workspace_preview_dimensions(workspace, &preview_width, &preview_height);
-    if (preview_width > viewport->viewport_columns - viewport->preview_x - 1)
-        preview_width = viewport->viewport_columns - viewport->preview_x - 1;
-    if (preview_height > viewport->viewport_rows - viewport->preview_y - 2)
-        preview_height = viewport->viewport_rows - viewport->preview_y - 2;
+    /* The preview's rectangle comes from the renderer's own geometry, so a press can
+       only land on a cell that was painted. */
+    ui_editor_presentation_preview_region(workspace, viewport->viewport_columns,
+                                          viewport->viewport_rows, &region);
+    pointer_inside = input->mouse_grid_valid &&
+        ui_editor_surface_region_translate(&region, input->mouse_grid_x,
+                                           input->mouse_grid_y, &pointer_x, &pointer_y);
     if (workspace->pointer_before) {
         if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
             return ui_menu_workspace_pointer_cancel(workspace);
         if (input->mouse_grid_valid &&
             (input->mouse_dx != 0.0f || input->mouse_dy != 0.0f ||
              input->mouse_left_released)) {
+            /* A drag may leave the preview and is clamped by the workspace, so motion
+               keeps the unbounded offset rather than the bounded translation. */
             UiMenuWorkspaceResult result = ui_menu_workspace_pointer_motion(
-                workspace, input->mouse_grid_x - viewport->preview_x,
-                input->mouse_grid_y - viewport->preview_y);
+                workspace, input->mouse_grid_x - region.origin_x,
+                input->mouse_grid_y - region.origin_y);
             if (result != UI_MENU_WORKSPACE_OK) return result;
         }
         return input->mouse_left_released
@@ -51,11 +59,11 @@ UiMenuWorkspaceResult ui_editor_host_apply_input(
         }
         return ui_editor_action_apply(workspace, &action);
     }
-    if (input->mouse_left_pressed && input->mouse_grid_valid &&
-        preview_width > 0 && preview_height > 0) {
-        UiMenuWorkspaceResult result = ui_menu_workspace_pointer_press(
-            workspace, input->mouse_grid_x - viewport->preview_x,
-            input->mouse_grid_y - viewport->preview_y, preview_width, preview_height);
+    if (input->mouse_left_pressed && input->mouse_grid_valid) {
+        UiMenuWorkspaceResult result;
+        if (!pointer_inside) return UI_MENU_WORKSPACE_NO_ACTION;
+        result = ui_menu_workspace_pointer_press(workspace, pointer_x, pointer_y,
+                                                 region.columns, region.rows);
         if (result == UI_MENU_WORKSPACE_OK && input->mouse_left_released)
             return ui_menu_workspace_pointer_release(workspace);
         return result;

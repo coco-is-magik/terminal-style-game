@@ -67,7 +67,7 @@ UiEditorRuntimeResult ui_editor_runtime_run(
         asset_registry_clear(&assets);
         return UI_EDITOR_RUNTIME_LOAD_FAILED;
     }
-    viewport = (UiEditorHostViewport){grid->width, grid->height, 40, 3};
+    viewport = (UiEditorHostViewport){grid->width, grid->height};
     target_ms = timing_target_ms(target_fps);
     (void)SDL_SetWindowTitle(renderer->window, "ASCII FPS - UI Scene Editor");
     while (running) {

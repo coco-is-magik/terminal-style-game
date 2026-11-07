@@ -1,8 +1,8 @@
 # Pointer interaction model — requirements and scoped plan
 
-**Status: drafted 2026-11-06, awaiting the decisions in §9. No implementation is
-proposed until those are answered.** This is the "requirements discussion and scoped
-plan" that `TODO.md` requires before a substantial item is implemented.
+**Status: drafted 2026-11-06; P1 implemented the same day. P2 and P3 await the
+decisions in §9.** This is the "requirements discussion and scoped plan" that
+`TODO.md` requires before a substantial item is implemented.
 
 Reference: requirement 12 of `EDITOR_REQUIREMENTS_AND_REGRESSION_TESTS.md` (input
 priority and consumption); `UI_DESIGN_AND_TEST_STANDARDS.md` (keyboard/pointer
@@ -124,16 +124,29 @@ Every pointer action keeps a keyboard path (repo rule, and requirement 12's orde
 
 ## 8. Phased plan
 
-### P1 — one coordinate contract, click and hover (no document mutation)
+### P1 — one coordinate contract, click and hover (no document mutation) — **implemented 2026-11-06**
 
-- Add the region type and the single translate helper; give the flow graph, the
-  authored preview, and the R12 test-mode surface a shared region provider each.
-- Delete the `40, 3` literals (`src/unified_editor.c:532, 645-650`).
-- Add hover highlighting to the flow graph and the authored preview.
-- Tests: a pointer inside each region resolves to the expected cell; a pointer outside
-  resolves to nothing; the R12 test-mode click lands on a Button at the same cell the
-  painter drew it — the test the literals made impossible.
-- Acceptance: no behaviour change to keyboard paths; no document mutation.
+- `UiEditorSurfaceRegion` plus `ui_editor_presentation_preview_region` and
+  `ui_editor_surface_region_translate` (`ui_editor_presentation.h/.c`). The size
+  clamps moved into the provider, so the renderer, the pointer host and the
+  authored-Menu test surface all take the preview's whole rectangle from one place.
+- `UiEditorHostViewport` lost its `preview_x/preview_y`; the host derives the region
+  itself and translates the press through it. The four `40, 3` literals are gone
+  (`src/unified_editor.c`, `src/ui_editor_runtime.c`).
+- The flow graph's rectangle is now `editor_flow_graph_region`, used by the painter
+  *and* the hit test, as §3 requires.
+- Hover: the flow graph's node box under the pointer takes the bright role while it is
+  hovered (a still frame; the moving perimeter still belongs to one control),
+  recomputed every frame from the same hit test the click uses.
+- Tests: `test_preview_region_matches_the_painted_frame` (the painted `+` corners are
+  exactly the cells outside the region, and a press on the frame reaches nothing),
+  `test_pointer_hosts_produce_identical_history` now presses where the painter draws,
+  and the flow-graph pointer test asserts hover selects nothing, dirties nothing and
+  brightens the box.
+- **Deferred to P2:** hover highlighting on the authored preview. The element hit test
+  still lives inside `ui_menu_workspace_pointer_press`, so a preview hover would be a
+  second copy of it; P2 extracts that test and both the press and the hover take it
+  from there.
 
 ### P2 — drag with ownership
 

@@ -47,4 +47,31 @@ void ui_editor_presentation_preview_origin(
     int *out_x,
     int *out_y);
 
+/* A pointer surface's rectangle in frame cells, and the one rule that turns a frame
+   cell into a surface-local one. A region is produced by the function that paints the
+   surface, so a hit test can only land on something that was drawn. */
+typedef struct {
+    int origin_x;
+    int origin_y;
+    int columns;
+    int rows;
+} UiEditorSurfaceRegion;
+
+/* The preview's whole rectangle -- origin and size -- for a viewport. The renderer,
+   the pointer host and the authored-Menu test surface all take their geometry from
+   here; the size clamps are part of the geometry and must not be repeated elsewhere. */
+void ui_editor_presentation_preview_region(
+    const UiMenuWorkspace *workspace,
+    int viewport_columns,
+    int viewport_rows,
+    UiEditorSurfaceRegion *out_region);
+
+/* False when the point is outside the region; on success the surface-local cell. */
+bool ui_editor_surface_region_translate(
+    const UiEditorSurfaceRegion *region,
+    int grid_x,
+    int grid_y,
+    int *out_x,
+    int *out_y);
+
 #endif /* UI_EDITOR_PRESENTATION_H */

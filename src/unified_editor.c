@@ -146,6 +146,8 @@ static void editor_reset_session_ui(UnifiedEditorState *editor) {
     editor->trigger_field = EDITOR_TRIGGER_FIELD_MIN_X;
     entity_trigger_session_reset(&editor->trigger_session);
     editor->last_flow_result = FLOW_WORKSPACE_OK;
+    editor->flow_hover_valid = false;
+    editor->flow_hover_index = 0U;
     editor->last_ui_menu_result = UI_MENU_WORKSPACE_OK;
     ui_menu_runtime_init(&editor->ui_menu_test_runtime);
     flow_document_init(&editor->ui_menu_test_flow);
@@ -484,6 +486,17 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
                                   input->mouse_grid_y, &index))
             workspace->node_index = index;
     }
+    /* Hover is recomputed every frame from the same hit test the click uses, and is
+       cleared whenever the graph leaves the screen. It is presentation only. */
+    editor->flow_hover_valid = false;
+    if (input->mouse_grid_valid) {
+        size_t hover_index;
+        if (editor_flow_graph_hit(editor, columns, rows, input->mouse_grid_x,
+                                  input->mouse_grid_y, &hover_index)) {
+            editor->flow_hover_valid = true;
+            editor->flow_hover_index = hover_index;
+        }
+    }
     if (input->editor_save_pressed) {
         editor->last_flow_result = flow_workspace_handle_input(
             workspace, FLOW_WORKSPACE_INPUT_SAVE);
@@ -508,6 +521,7 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
     if (!workspace->active) {
         editor->flow_inspector = false;
         editor->flow_inspector_index = 0U;
+        editor->flow_hover_valid = false;
     } else {
         if (workspace->node_index >= workspace->document.node_count)
             workspace->node_index = workspace->document.node_count > 0U
@@ -529,14 +543,8 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     bool *handled
 ) {
     UiEditorHostViewport viewport = {
-        viewport_columns, viewport_rows, 40, 3
+        viewport_columns, viewport_rows
     };
-    int preview_width = 0;
-    int preview_height = 0;
-    ui_menu_workspace_preview_dimensions(workspace, &preview_width, &preview_height);
-    ui_editor_presentation_preview_origin(viewport_columns, viewport_rows,
-                                          preview_width, preview_height,
-                                          &viewport.preview_x, &viewport.preview_y);
     return ui_editor_host_apply_input(workspace, input, &viewport, handled);
 }
 
@@ -624,8 +632,29 @@ static void editor_store_ui_menu_target(UnifiedEditorState *editor,
     editor->ui_menu_test_target_valid = true;
 }
 
+/* The authored-Menu test surface *is* the preview, so its pointer cells come from the
+   preview's own rectangle. The old code subtracted a literal origin, which only matched
+   the painted surface for one preview width. */
+static bool editor_ui_menu_test_pointer(const UnifiedEditorState *editor, int columns,
+                                        int rows, const InputState *input,
+                                        UiMenuRuntimeInput *out) {
+    UiEditorSurfaceRegion region;
+    int x;
+    int y;
+    if (!editor || !input || !out) return false;
+    ui_editor_presentation_preview_region(&editor->ui_menu_workspace, columns, rows,
+                                          &region);
+    if (!ui_editor_surface_region_translate(&region, input->mouse_grid_x,
+                                            input->mouse_grid_y, &x, &y))
+        return false;
+    out->pointer_x = x;
+    out->pointer_y = y;
+    return true;
+}
+
 static UiMenuRuntimeResult editor_update_ui_menu_test(
-    UnifiedEditorState *editor, const InputState *input, bool *handled
+    UnifiedEditorState *editor, const InputState *input, int columns, int rows,
+    bool *handled
 ) {
     UiMenuRuntimeInput runtime_input;
     FlowBindingTargetRequest request = {0U, FLOW_NODE_START, NULL};
@@ -641,13 +670,15 @@ static UiMenuRuntimeResult editor_update_ui_menu_test(
     else if (input->editor_decrease_pressed) runtime_input.type = UI_MENU_INPUT_FOCUS_LEFT;
     else if (input->editor_increase_pressed) runtime_input.type = UI_MENU_INPUT_FOCUS_RIGHT;
     else if (input->mouse_left_pressed && input->mouse_grid_valid) {
+        /* A press off the surface hits nothing: the click is consumed and nothing else
+           in the editor sees it. */
+        if (!editor_ui_menu_test_pointer(editor, columns, rows, input, &runtime_input))
+            return UI_MENU_RUNTIME_OK;
         runtime_input.type = UI_MENU_INPUT_POINTER_DOWN;
-        runtime_input.pointer_x = input->mouse_grid_x - 40;
-        runtime_input.pointer_y = input->mouse_grid_y - 3;
     } else if (input->mouse_left_released && input->mouse_grid_valid) {
+        if (!editor_ui_menu_test_pointer(editor, columns, rows, input, &runtime_input))
+            return UI_MENU_RUNTIME_OK;
         runtime_input.type = UI_MENU_INPUT_POINTER_UP;
-        runtime_input.pointer_x = input->mouse_grid_x - 40;
-        runtime_input.pointer_y = input->mouse_grid_y - 3;
     } else if (input->editor_confirm_pressed) {
         runtime_input = (UiMenuRuntimeInput){UI_MENU_INPUT_CONFIRM_DOWN, 0, 0};
         result = ui_menu_runtime_handle_input(
@@ -4765,7 +4796,7 @@ EditorInputConsumption unified_editor_update(
             bool handled;
             if (editor->ui_menu_test_mode) {
                 editor->last_ui_menu_test_result = editor_update_ui_menu_test(
-                    editor, input, &handled);
+                    editor, input, ui_viewport_columns, ui_viewport_rows, &handled);
             } else if (input->editor_toggle_mode_pressed &&
                        editor->ui_menu_workspace.has_document) {
                 (void)editor_begin_ui_menu_test(
@@ -6700,28 +6731,44 @@ static int editor_flow_graph_top(int rows, size_t header_count, bool has_note) {
     return 1 + ui_editor_panel_planned_height(header_count, true, has_note, 1, rows) + 1;
 }
 
+/* The graph's rectangle on the visible region: the canvas beside the left pane. */
+static bool editor_flow_graph_region(const UnifiedEditorState *editor, int columns,
+                                     int rows, UiEditorSurfaceRegion *out_region) {
+    const int left = FLOW_GRAPH_PANEL_WIDTH + 2;
+    int right;
+    int top;
+    int bottom;
+    if (!editor || !out_region) return false;
+    *out_region = (UiEditorSurfaceRegion){0, 0, 0, 0};
+    if (columns <= 0 || rows <= 0) return false;
+    right = columns - 1;
+    bottom = rows - 2;
+    top = editor_flow_graph_top(rows, rows >= 30 ? 1U : 0U,
+                                editor_flow_note(editor) != NULL);
+    if (right - left < FLOW_GRAPH_MIN_AREA || bottom - top < 6) return false;
+    *out_region = (UiEditorSurfaceRegion){left, top, right - left, bottom - top};
+    return true;
+}
+
 /* The node box under a pointer, as the graph is laid out on the visible region. */
 static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns, int rows,
                                   int x, int y, size_t *out_index) {
     const FlowWorkspace *workspace;
     const FlowGraphNodeBox *box;
     FlowGraphLayout layout;
-    const int left = FLOW_GRAPH_PANEL_WIDTH + 2;
-    int right;
-    int top;
-    int bottom;
-    if (!editor || !out_index || columns <= 0 || rows <= 0) return false;
+    UiEditorSurfaceRegion region;
+    if (!editor || !out_index) return false;
     workspace = &editor->flow_workspace;
     /* A dialog or the node inspector owns the pointer: the graph is not on screen then. */
     if (!workspace->active || workspace->mode != FLOW_WORKSPACE_NODES) return false;
-    right = columns - 1;
-    bottom = rows - 2;
-    top = editor_flow_graph_top(rows, rows >= 30 ? 1U : 0U,
-                                editor_flow_note(editor) != NULL);
-    if (right - left < FLOW_GRAPH_MIN_AREA || bottom - top < 6) return false;
+    if (!editor_flow_graph_region(editor, columns, rows, &region)) return false;
+    /* The layout's boxes are in frame cells, so the region bounds the pointer and the
+       translation result is only the membership test. */
+    if (!ui_editor_surface_region_translate(&region, x, y, NULL, NULL)) return false;
     if (!flow_graph_layout_build(&workspace->document,
                                  flow_workspace_selected_node(workspace),
-                                 left, top, right - left, bottom - top, &layout))
+                                 region.origin_x, region.origin_y, region.columns,
+                                 region.rows, &layout))
         return false;
     box = flow_graph_node_at(&layout, x, y);
     if (!box || box->node_index >= workspace->document.node_count) return false;
@@ -6749,6 +6796,7 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
     int graph_right = editor_interface_columns(editor, grid) - 1;
     int graph_bottom = editor_interface_rows(editor, grid) - 2;
     FlowGraphLayout layout;
+    UiEditorSurfaceRegion graph_region;
     EditorMenuRow dialog_rows[UI_EDITOR_PANEL_MAX_ROWS];
     size_t dialog_count = 0U;
     char dialog_title[96] = "";
@@ -6812,9 +6860,16 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
     (void)editor_menu_panel_render(grid, 1, 1, "GAME FLOW", detail, header,
                                    header_count, hint, note, now_ms, reduced_motion,
                                    palette);
-    /* The graph's first row comes from the same planner the header just rendered with, so
-       a click lands on the box the pointer is over. */
+    /* The graph's rectangle comes from the function the pointer host also calls, so a
+       click can only land on a box that was painted. */
     graph_top = editor_flow_graph_top(graph_bottom + 2, header_count, note != NULL);
+    if (editor_flow_graph_region(editor, graph_right + 1, graph_bottom + 2,
+                                 &graph_region)) {
+        graph_left = graph_region.origin_x;
+        graph_top = graph_region.origin_y;
+        graph_right = graph_region.origin_x + graph_region.columns;
+        graph_bottom = graph_region.origin_y + graph_region.rows;
+    }
 
 
 
@@ -6948,8 +7003,13 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
         const FlowReferenceEntry *entry = workspace->catalog
             ? flow_reference_find(workspace->catalog, node->type, node->asset_name)
             : NULL;
-        const SDL_Color frame = box->selected ? palette->primary_text
-                                              : palette->secondary_text;
+        /* The selected box and the box under the pointer both take the bright role. A
+           hover is a still frame, never a second chase: the moving perimeter belongs to
+           the inspector row or the list cursor alone. */
+        const bool hovered = editor->flow_hover_valid &&
+                             editor->flow_hover_index == box->node_index;
+        const SDL_Color frame = (box->selected || hovered) ? palette->primary_text
+                                                          : palette->secondary_text;
         int x;
         int y;
         if (box->x + box->width <= graph_left || box->x >= graph_right ||

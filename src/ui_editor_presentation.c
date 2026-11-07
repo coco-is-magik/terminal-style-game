@@ -238,6 +238,48 @@ void ui_editor_presentation_preview_origin(int columns, int rows,
     if (out_y) *out_y = y;
 }
 
+void ui_editor_presentation_preview_region(
+    const UiMenuWorkspace *workspace, int viewport_columns, int viewport_rows,
+    UiEditorSurfaceRegion *out_region
+) {
+    int width;
+    int height;
+    int max_width;
+    if (!out_region) return;
+    *out_region = (UiEditorSurfaceRegion){0, 0, 0, 0};
+    if (!workspace || viewport_columns <= 0 || viewport_rows <= 0) return;
+    ui_menu_workspace_preview_dimensions(workspace, &width, &height);
+    /* These clamps are the geometry, not a caller's convenience: the renderer and every
+       pointer surface must agree on the size as well as the origin, or a click lands on
+       a cell the painter never drew. */
+    max_width = viewport_columns - editor_left_width(viewport_columns) - 5;
+    if (max_width < 10) max_width = 10;
+    if (width > max_width) width = max_width;
+    if (height > viewport_rows - 6) height = viewport_rows - 6;
+    if (width > UI_EDITOR_PREVIEW_MAX_WIDTH) width = UI_EDITOR_PREVIEW_MAX_WIDTH;
+    if (height > UI_EDITOR_PREVIEW_MAX_HEIGHT) height = UI_EDITOR_PREVIEW_MAX_HEIGHT;
+    if (width <= 0 || height <= 0) return;
+    ui_editor_presentation_preview_origin(viewport_columns, viewport_rows, width, height,
+                                          &out_region->origin_x, &out_region->origin_y);
+    out_region->columns = width;
+    out_region->rows = height;
+}
+
+bool ui_editor_surface_region_translate(
+    const UiEditorSurfaceRegion *region, int grid_x, int grid_y,
+    int *out_x, int *out_y
+) {
+    int x;
+    int y;
+    if (!region || region->columns <= 0 || region->rows <= 0) return false;
+    x = grid_x - region->origin_x;
+    y = grid_y - region->origin_y;
+    if (x < 0 || y < 0 || x >= region->columns || y >= region->rows) return false;
+    if (out_x) *out_x = x;
+    if (out_y) *out_y = y;
+    return true;
+}
+
 static void row_set(UiEditorPanelRow *row, const char *text, const char *detail,
                     bool focused) {
     if (!row) return;
@@ -586,24 +628,11 @@ bool ui_editor_presentation_render_viewport(
     }
 
     if (preview_document) {
-        int preview_width;
-        int preview_height;
-        int max_width;
-        int origin_x;
-        int origin_y;
-        ui_menu_workspace_preview_dimensions(workspace, &preview_width, &preview_height);
-        max_width = columns - left_width - 5;
-        if (max_width < 10) max_width = 10;
-        if (preview_width > max_width) preview_width = max_width;
-        if (preview_height > limit_rows - 6) preview_height = limit_rows - 6;
-        if (preview_width > UI_EDITOR_PREVIEW_MAX_WIDTH)
-            preview_width = UI_EDITOR_PREVIEW_MAX_WIDTH;
-        if (preview_height > UI_EDITOR_PREVIEW_MAX_HEIGHT)
-            preview_height = UI_EDITOR_PREVIEW_MAX_HEIGHT;
-        ui_editor_presentation_preview_origin(columns, limit_rows, preview_width,
-                                              preview_height, &origin_x, &origin_y);
-        render_preview(workspace, assets, theme, diagnostics, &palette, now_ms, grid,
-                       origin_x, origin_y, preview_width, preview_height);
+        UiEditorSurfaceRegion region;
+        ui_editor_presentation_preview_region(workspace, columns, limit_rows, &region);
+        if (region.columns > 0 && region.rows > 0)
+            render_preview(workspace, assets, theme, diagnostics, &palette, now_ms, grid,
+                           region.origin_x, region.origin_y, region.columns, region.rows);
     }
 
     if (workspace->mode == UI_MENU_WORKSPACE_ACTIONS) {

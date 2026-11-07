@@ -4839,6 +4839,7 @@ static void test_flow_graph_pointer_selects_the_node_under_it(void **state) {
     Camera camera;
     InputState input;
     Grid *grid;
+    UiAppWorkbenchPalette palette;
     FlowDocument flow;
     FlowNodeId scene;
     FlowNodeId menu;
@@ -4917,6 +4918,27 @@ static void test_flow_graph_pointer_selects_the_node_under_it(void **state) {
     input.mouse_grid_y = box_y;
     assert_true(update_with(&editor, &camera, &input).pointer_consumed);
     assert_int_equal(editor.flow_workspace.node_index, menu_index);
+
+    /* Hover: moving over a box without pressing neither selects it nor edits the flow,
+       and the painter gives that box the bright role instead of the secondary one. */
+    zero_input(&input);
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x;
+    input.mouse_grid_y = box_y;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_true(editor.flow_hover_valid);
+    assert_int_equal(editor.flow_hover_index, menu_index);
+    assert_int_equal(editor.flow_workspace.node_index, menu_index);
+    assert_false(flow_workspace_is_dirty(&editor.flow_workspace));
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    {
+        Cell frame;
+        grid_clear(grid, palette.canvas);
+        unified_editor_render_text_overlay(&editor, grid, 0.0, false);
+        assert_true(grid_get(grid, box_x - 1, box_y - 1, &frame));
+        assert_int_equal(frame.glyph, '+');
+        assert_memory_equal(&frame.fg, &palette.primary_text, sizeof(SDL_Color));
+    }
 
     grid_destroy(grid);
     unified_editor_destroy(&editor);

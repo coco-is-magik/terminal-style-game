@@ -219,15 +219,18 @@ Tests can prove callers can emit typed audio events and that the no-audio implem
 is deterministic and safe. Real playback, volume controls, spatial audio, music, and
 asset pipelines require separate planning.
 
-## Mouse and pointer interaction model — **Design drafted 2026-11-06, decisions open**
+## Mouse and pointer interaction model — **P1 implemented 2026-11-06, P2–P3 open**
 
 Mouse use is not yet required for every workflow, but upcoming graph editing, object
 rotation, authored Button activation, canvas editing, and richer scene manipulation need a
 coherent pointer model. The model, its requirements and its phased plan are drafted in
-[`UI_POINTER_INTERACTION_MODEL_2026-11-06.md`](UI_POINTER_INTERACTION_MODEL_2026-11-06.md);
-four decisions — click semantics, what a node drag means, edge auto-scroll, and whether
-wire gestures ship in v1 — are open there and need answers before implementation. The
-agenda the model must satisfy:
+[`UI_POINTER_INTERACTION_MODEL_2026-11-06.md`](UI_POINTER_INTERACTION_MODEL_2026-11-06.md).
+P1 landed: every editor pointer surface takes its rectangle from the painter's own
+geometry, the authored-Menu test surface no longer uses a literal origin, and flow-graph
+node boxes highlight under the pointer
+([record](reviews/2026-11-06-pointer-region-contract.md)). Four decisions — click
+semantics, what a node drag means, edge auto-scroll, and whether wire gestures ship in
+v1 — are still open there and gate P2–P3. The agenda the model must satisfy:
 
 - coordinate conversion across window pixels, logical grid cells, UI scale, authored Menu
   preview scale, and scene/editor views;

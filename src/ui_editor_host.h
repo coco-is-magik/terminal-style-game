@@ -8,8 +8,6 @@
 typedef struct {
     int viewport_columns;
     int viewport_rows;
-    int preview_x;
-    int preview_y;
 } UiEditorHostViewport;
 
 UiMenuWorkspaceResult ui_editor_host_apply_input(

@@ -198,6 +198,10 @@ typedef struct {
        in FlowWorkspace (which stays headless for the tests). */
     bool flow_inspector;
     size_t flow_inspector_index;
+    /* The node box under the pointer while the graph is on screen. Hover is
+       presentation only: it never selects, mutates or dirties the flow. */
+    bool flow_hover_valid;
+    size_t flow_hover_index;
     UiMenuWorkspace ui_menu_workspace;
     UiMenuWorkspaceResult last_ui_menu_result;
     UiMenuRuntime ui_menu_test_runtime;

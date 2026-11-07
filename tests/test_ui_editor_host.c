@@ -37,7 +37,7 @@ static void create_project(char root[64], char menus[96], char path[128]) {
 }
 
 static void apply(UiMenuWorkspace *workspace, InputState input) {
-    UiEditorHostViewport viewport = {120, 40, 40, 3};
+    UiEditorHostViewport viewport = {120, 40};
     bool handled = false;
     assert_int_equal(ui_editor_host_apply_input(
         workspace, &input, &viewport, &handled), UI_MENU_WORKSPACE_OK);
@@ -115,6 +115,7 @@ static void test_pointer_hosts_produce_identical_history(void **state) {
     UiMenuWorkspace standalone;
     UiMenuWorkspace embedded;
     AssetRegistry assets;
+    UiEditorSurfaceRegion region;
     Grid *standalone_grid;
     Grid *embedded_grid;
     InputState input = {0};
@@ -127,16 +128,21 @@ static void test_pointer_hosts_produce_identical_history(void **state) {
     assert_int_equal(ui_menu_workspace_open(&embedded, root), UI_MENU_WORKSPACE_OK);
     input.editor_confirm_pressed = true;
     apply(&standalone, input); apply(&embedded, input);
+    /* Press where the painter puts the element: inside the preview's own rectangle.
+       The old coordinates came from a literal origin, so the drag only reached the
+       document through an offset that did not match what was drawn. */
+    ui_editor_presentation_preview_region(&standalone, 120, 40, &region);
+    assert_true(region.columns > 0 && region.rows > 0);
     memset(&input, 0, sizeof(input));
     input.mouse_grid_valid = true;
-    input.mouse_grid_x = 42;
-    input.mouse_grid_y = 6;
+    input.mouse_grid_x = region.origin_x + 4;
+    input.mouse_grid_y = region.origin_y + 4;
     input.mouse_left_pressed = true;
     apply(&standalone, input); apply(&embedded, input);
     memset(&input, 0, sizeof(input));
     input.mouse_grid_valid = true;
-    input.mouse_grid_x = 44;
-    input.mouse_grid_y = 8;
+    input.mouse_grid_x = region.origin_x + 6;
+    input.mouse_grid_y = region.origin_y + 6;
     input.mouse_dx = 2.0f;
     input.mouse_dy = 2.0f;
     apply(&standalone, input); apply(&embedded, input);
@@ -173,7 +179,7 @@ static void test_pointer_hosts_produce_identical_history(void **state) {
 static void test_invalid_host_input_is_rejected(void **state) {
     UiMenuWorkspace workspace;
     InputState input = {0};
-    UiEditorHostViewport viewport = {120, 40, 40, 3};
+    UiEditorHostViewport viewport = {120, 40};
     bool handled = true;
     (void)state;
     ui_menu_workspace_init(&workspace);
@@ -184,11 +190,68 @@ static void test_invalid_host_input_is_rejected(void **state) {
     ui_menu_workspace_clear(&workspace);
 }
 
+/* The pointer's rectangle is the painter's frame: the '+' corners are exactly the cell
+   outside the region on each side. A press outside the frame hits nothing at all. This
+   is the assertion the literal origin made impossible. */
+static void test_preview_region_matches_the_painted_frame(void **state) {
+    UiMenuWorkspace workspace;
+    AssetRegistry assets;
+    UiEditorSurfaceRegion region;
+    Grid *grid;
+    Cell cell;
+    InputState input = {0};
+    char root[64], menus[96], path[128];
+    (void)state;
+    create_project(root, menus, path);
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    input.editor_confirm_pressed = true;
+    apply(&workspace, input);
+    assert_true(workspace.has_document);
+    ui_editor_presentation_preview_region(&workspace, 120, 40, &region);
+    assert_true(region.columns > 0 && region.rows > 0);
+
+    assert_true(asset_registry_init(&assets));
+    grid = grid_create(120, 40);
+    assert_non_null(grid);
+    assert_true(ui_editor_presentation_render(
+        &workspace, UI_MENU_WORKSPACE_OK, &assets, &theme, NULL, 0.0, grid));
+    assert_true(grid_get(grid, region.origin_x - 1, region.origin_y - 1, &cell));
+    assert_int_equal(cell.glyph, '+');
+    assert_true(grid_get(grid, region.origin_x + region.columns,
+                         region.origin_y + region.rows, &cell));
+    assert_int_equal(cell.glyph, '+');
+    grid_destroy(grid);
+    asset_registry_clear(&assets);
+
+    /* A press on the frame's own column is outside the region: it reaches no control
+       and starts no gesture, so the host reports no action rather than consuming it. */
+    memset(&input, 0, sizeof(input));
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = region.origin_x - 1;
+    input.mouse_grid_y = region.origin_y + 1;
+    input.mouse_left_pressed = true;
+    {
+        UiEditorHostViewport viewport = {120, 40};
+        bool handled = false;
+        assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport,
+                                                    &handled),
+                         UI_MENU_WORKSPACE_NO_ACTION);
+    }
+    assert_null(workspace.pointer_before);
+
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_keyboard_hosts_produce_identical_state_and_cells),
         cmocka_unit_test(test_pointer_hosts_produce_identical_history),
-        cmocka_unit_test(test_invalid_host_input_is_rejected)
+        cmocka_unit_test(test_invalid_host_input_is_rejected),
+        cmocka_unit_test(test_preview_region_matches_the_painted_frame)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
