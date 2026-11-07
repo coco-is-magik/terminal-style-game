@@ -85,7 +85,10 @@ typedef enum {
     EDITOR_PENDING_CHOOSER_LOAD,
     EDITOR_PENDING_NEW,
     EDITOR_PENDING_EXIT_TO_MENU,
-    EDITOR_PENDING_WINDOW_CLOSE
+    EDITOR_PENDING_WINDOW_CLOSE,
+    /* Ctrl+O on a dirty document: the unsaved-changes choice belongs to the moment you
+       ask to leave this document, so it is asked before the chooser opens. */
+    EDITOR_PENDING_OPEN_CHOOSER
 } EditorPendingAction;
 
 /* Resume and Cancel both dismiss the exit prompt without exiting. */

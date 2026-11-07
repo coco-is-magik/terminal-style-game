@@ -4365,6 +4365,9 @@ static void editor_execute_pending_action(UnifiedEditorState *editor) {
             editor->request_window_close = true;
             editor->modal = EDITOR_MODAL_NONE;
             break;
+        case EDITOR_PENDING_OPEN_CHOOSER:
+            (void)unified_editor_begin_native_open(editor, NULL);
+            break;
         case EDITOR_PENDING_NONE:
         default:
             editor->modal = EDITOR_MODAL_NONE;
@@ -5537,7 +5540,9 @@ EditorInputConsumption unified_editor_update(
             editor_begin_save_menu(editor, true, EDITOR_MODAL_NONE);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_open_pressed) {
-            (void)unified_editor_begin_native_open(editor, NULL);
+            /* Ask about unsaved changes before the chooser opens, not after a target is
+               chosen: the choice belongs to leaving this document. */
+            editor_request_destructive_action(editor, EDITOR_PENDING_OPEN_CHOOSER);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_import_pressed) {
             (void)unified_editor_begin_legacy_import(editor, NULL);

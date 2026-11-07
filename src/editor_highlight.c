@@ -123,9 +123,15 @@ static void draw_highlight_cell_coloured(Grid *grid, int x, int y,
 
 /* True when a column is an edge of the shape: the first or last of the run, or beside a
    gap where the surface is cut by occlusion. These are the columns whose interior run is
-   part of the outline. */
-static bool outline_column_is_edge(const HighlightColumn *columns, int index, int count) {
-    if (index <= 0 || index >= count - 1) return true;
+   part of the outline.
+
+   A run that begins or ends at the frame's own edge has no visible side: the shape
+   continues off-screen, and stroking a side run there drew the selection along the
+   window border instead of letting it leave the frame. */
+static bool outline_column_is_edge(const HighlightColumn *columns, int index, int count,
+                                   int first, int grid_width) {
+    if (index <= 0) return first > 0;
+    if (index >= count - 1) return first + count < grid_width;
     return !columns[index - 1].visible || !columns[index + 1].visible;
 }
 
@@ -163,7 +169,7 @@ static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
     for (i = count - 1; i >= 0; i--) {
         int y;
         if (!columns[i].visible) continue;
-        if (outline_column_is_edge(columns, i, count)) {
+        if (outline_column_is_edge(columns, i, count, first, grid->width)) {
             for (y = columns[i].draw_start + 1; y < columns[i].draw_end; y++) {
                 if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
                 path[cells++] = (OutlineCell){first + i, y, OUTLINE_CELL_SIDE};
@@ -183,7 +189,7 @@ static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
     for (i = 0; i < count; i++) {
         int y;
         if (!columns[i].visible) continue;
-        if (outline_column_is_edge(columns, i, count)) {
+        if (outline_column_is_edge(columns, i, count, first, grid->width)) {
             for (y = columns[i].draw_end - 1; y > columns[i].draw_start; y--) {
                 if (cells >= EDITOR_HIGHLIGHT_PATH_MAX) break;
                 path[cells++] = (OutlineCell){first + i, y, OUTLINE_CELL_SIDE};
@@ -197,7 +203,7 @@ static void draw_outline(Grid *grid, const HighlightColumn *columns, int first,
     for (i = 0; i < count; i++) {
         int y;
         if (!columns[i].visible) continue;
-        if (!outline_column_is_edge(columns, i, count)) continue;
+        if (!outline_column_is_edge(columns, i, count, first, grid->width)) continue;
         if (i == 0 || i == count - 1) continue;
         if (!columns[i - 1].visible) continue;
         for (y = columns[i].draw_start + 1; y < columns[i].draw_end; y++) {

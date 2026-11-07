@@ -55,9 +55,13 @@ useful chronology but must not override these accepted requirements.
     limited to sorted, regular, lowercase `.txt` direct children of `assets/maps/`;
     symlinks, subdirectories, other suffixes, editable paths, recent files, New,
     and Save As are outside this workflow.
-18. Choosing a target from a dirty document requires Save, Discard, or Cancel.
-    Escape from the dirty prompt returns to the chooser. Escape from the initial
-    no-document chooser returns to the main menu.
+18. Opening another document with unsaved changes (`Ctrl+O`) requires Save, Discard, or
+    Cancel **before** the chooser appears: the choice belongs to the moment you ask to
+    leave this document, not to the moment you pick the next one. Save or Discard then
+    opens the chooser; Cancel keeps the current document and its edits exactly as they
+    were. Choosing a target is never followed by a second prompt, because the document is
+    no longer dirty at that point. Escape from the initial no-document chooser returns to
+    the main menu.
 19. Catalog refresh, save, and target load are failure-preserving. Discovery
     failure keeps the previous catalog/root and live editor state. Save failure
     remains in the dirty prompt. Target-load failure remains in the chooser and
