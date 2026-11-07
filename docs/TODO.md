@@ -1195,9 +1195,11 @@ row, keep `A=add` in its hint, and constrain dialogs below the header. The R12 c
 mutations, history and Save/Discard behaviour are unchanged; new controller entry points
 (`flow_workspace_begin_connection`, `flow_workspace_begin_add_node`,
 `flow_workspace_disconnect_port`, `flow_workspace_free_port_count`) expose the inspector
-operations. Node positions are derived, not persisted. Remaining: wire pointer hit-testing into
-the flow input path, pan/follow controls for very long chains, and native visual acceptance. The
-rest of this item stays as recorded below.
+operations. Node positions are derived, not persisted. A click on a node box in `NODES` selects that
+node (2026-11-06); the painter and the pointer host take the graph's first row from the same panel
+planner, so a click lands on the box it points at. Remaining: pan/follow controls for very long
+chains, dragging nodes, and native visual acceptance. The rest of this item stays as recorded
+below.
 
 R12 provides a solid foundation for authored flow data, validation, staging, catalog
 composition, and safe graph mutations, but the current game-flow editor is still

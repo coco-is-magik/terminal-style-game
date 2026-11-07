@@ -1118,7 +1118,15 @@ static void test_save_menu_overwrite_and_cancel_are_visible(void **state) {
     assert_non_null(grid);
     unified_editor_render_text_overlay(&ed, grid, 0.0, false);
     assert_true(grid_contains_text(grid, "File exists:"));
-    assert_true(grid_contains_text(grid, "> Overwrite"));
+    /* A dialog's choice is a framed panel row, not a literal '>' printed through the
+       panel: the marker is the shared focus perimeter's job. */
+    assert_true(grid_contains_text(grid, "Overwrite"));
+    assert_false(grid_contains_text(grid, "> Overwrite"));
+    {
+        int frames = 0;
+        assert_int_equal(count_frames_with_band(grid, &frames), 1);
+        assert_int_equal(frames, 1);
+    }
     grid_destroy(grid);
 
     zero_input(&in);
@@ -4755,6 +4763,167 @@ static void test_r4_increment_d_surface_material_and_construction_ui(void **stat
     remove(path);
 }
 
+/* Every editor dialog is one block on the shared panel: the heading, the notice and the
+   choices are drawn inside the visible region the compositor shows, the selected choice
+   takes the focus perimeter instead of a literal '>' printed through the panel, and the
+   block never covers the editor's two footer rows. */
+static void test_edit_dialogs_share_panel_and_visible_region(void **state) {
+    UnifiedEditorState ed;
+    UiAppWorkbenchPalette palette;
+    Grid *grid;
+    const EditorModal modals[] = {
+        EDITOR_MODAL_EXIT_PROMPT, EDITOR_MODAL_DIRTY_OPEN_PROMPT,
+        EDITOR_MODAL_RELOAD_PROMPT, EDITOR_MODAL_MATERIAL_OVERWRITE_PROMPT,
+        EDITOR_MODAL_LIGHT_REMOVE_PROMPT, EDITOR_MENU_SAVE
+    };
+    size_t i;
+    (void)state;
+    assert_int_equal(load_editor(&ed, "map.txt"), 0);
+    assert_true(ui_app_theme_workbench_palette(&palette));
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+    unified_editor_set_interface_viewport(&ed, 130, 80);
+    for (i = 0U; i < sizeof(modals) / sizeof(modals[0]); i++) {
+        int x;
+        int y;
+        int frames = 0;
+        ed.modal = modals[i];
+        ed.save_menu_stage = EDITOR_SAVE_MENU_CONFIRM_OVERWRITE;
+        (void)snprintf(ed.save_as_path, sizeof(ed.save_as_path), "%s",
+                       "assets/scenes/a_long_existing_scene_name.tscene");
+        grid_clear(grid, palette.canvas);
+        unified_editor_render_text_overlay(&ed, grid, 0.0, false);
+        assert_true(grid_contains_text(grid, i == 0U ? "Exit editor" :
+                     i == 1U ? "Unsaved changes" :
+                     i == 2U ? "Reload scene?" :
+                     i == 3U ? "Overwrite" :
+                     i == 4U ? "Remove selected light?" : "SAVE SCENE"));
+        /* The block stops short of the editor's keys: the last two rows still hold them. */
+        assert_true(grid_contains_text(grid, "Ctrl+Z/Y=undo/redo"));
+        /* The dialog is a pane of the editor's own frame, never wider than it. */
+        for (y = 4; y < 78; y++) {
+            for (x = 130; x < grid->width; x++) {
+                const Cell *cell = &grid->cells[y * grid->width + x];
+                assert_false(cell->glyph != ' ' && cell->glyph != 0U);
+            }
+        }
+        if (i == 0U || i == 1U || i == 5U) {
+            assert_int_equal(count_frames_with_band(grid, &frames), 1);
+            assert_int_equal(frames, 1);
+        }
+        /* The marker is the perimeter's job, so the literal is gone. */
+        assert_false(grid_contains_text(grid, "> Resume"));
+        assert_false(grid_contains_text(grid, "> Overwrite"));
+    }
+    /* Reduced motion leaves the same single perimeter, at rest. */
+    ed.modal = EDITOR_MODAL_EXIT_PROMPT;
+    grid_clear(grid, palette.canvas);
+    unified_editor_render_text_overlay(&ed, grid, 110.0, true);
+    assert_true(grid_contains_text(grid, "Resume"));
+    {
+        int frames = 0;
+        assert_int_equal(count_frames_with_band(grid, &frames), 0);
+        assert_int_equal(frames, 1);
+    }
+    grid_destroy(grid);
+    unified_editor_destroy(&ed);
+}
+
+
+/* The graph is a control surface, not a picture: clicking a node box selects that node,
+   exactly like Up/Down does, and pointing at it never edits the flow. A click that lands
+   on the workspace's own chrome, or outside the visible region the pointer host reports,
+   leaves the selection alone. */
+static void test_flow_graph_pointer_selects_the_node_under_it(void **state) {
+    UnifiedEditorState editor;
+    Camera camera;
+    InputState input;
+    Grid *grid;
+    FlowDocument flow;
+    FlowNodeId scene;
+    FlowNodeId menu;
+    FlowEdgeId edge;
+    char path[512];
+    char box_label[32];
+    int box_x = 0;
+    int box_y = 0;
+    size_t menu_index = 0U;
+    size_t i;
+    (void)state;
+    assert_int_equal(load_editor(&editor, "flow_workspace_scene.txt"), 0);
+    camera_init(&camera, 2.5, 2.5, 0.0, PI / 2.0);
+    flow_document_init(&flow);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_SCENE, "mission", &scene),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_add_node(&flow, FLOW_NODE_MENU, "missions", &menu),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, 1U, "start", scene, &edge),
+                     FLOW_DOCUMENT_OK);
+    assert_int_equal(flow_document_connect(&flow, scene, "exit", menu, &edge),
+                     FLOW_DOCUMENT_OK);
+    path_in_tmpdir(path, sizeof(path), "game.flow");
+    assert_flow_save_committed(flow_document_save_as(&flow, path));
+    assert_int_equal(unified_editor_load_flow_workspace(&editor, path),
+                     FLOW_WORKSPACE_OK);
+    assert_true(editor.flow_workspace.active);
+    /* Leave the inspector for the graph itself: the boxes are only on screen in NODES. */
+    zero_input(&input);
+    input.editor_cancel_pressed = true;
+    update_with(&editor, &camera, &input);
+    assert_int_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_NODES);
+    assert_false(editor.flow_inspector);
+
+    grid = grid_create(260, 160);
+    assert_non_null(grid);
+    /* Wide enough that every box of this three-layer graph is drawn whole, so the label
+       the test clicks is the box's own copy and not a clipped fragment. */
+    unified_editor_set_interface_viewport(&editor, 200, 80);
+    unified_editor_render_text_overlay(&editor, grid, 0.0, false);
+    assert_true(grid_contains_text(grid, "GAME FLOW"));
+    for (i = 0U; i < editor.flow_workspace.document.node_count; i++)
+        if (editor.flow_workspace.document.nodes[i].id == menu)
+            menu_index = i;
+    assert_int_equal(editor.flow_workspace.node_index, 0U);
+    /* The box prints "[id] MENU"; the left-hand NODES list spells the same node
+       "Menu: missions", so the caps heading is the box's own, unambiguous label. */
+    (void)snprintf(box_label, sizeof(box_label), "[%u] MENU",
+                   (unsigned)editor.flow_workspace.document.nodes[menu_index].id);
+    assert_true(grid_find_text(grid, box_label, &box_x, &box_y));
+
+    /* Clicking the painted box selects the node it draws. */
+    zero_input(&input);
+    input.mouse_left_pressed = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x;
+    input.mouse_grid_y = box_y;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_int_equal(editor.flow_workspace.node_index, menu_index);
+    assert_false(flow_workspace_is_dirty(&editor.flow_workspace));
+
+    /* The header belongs to the workspace, not to the graph. */
+    zero_input(&input);
+    input.mouse_left_pressed = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 1;
+    input.mouse_grid_y = 1;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_int_equal(editor.flow_workspace.node_index, menu_index);
+
+    /* Outside the reported visible region nothing is under the pointer. */
+    zero_input(&input);
+    input.mouse_left_pressed = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = 210;
+    input.mouse_grid_y = box_y;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_int_equal(editor.flow_workspace.node_index, menu_index);
+
+    grid_destroy(grid);
+    unified_editor_destroy(&editor);
+    remove(path);
+}
+
+
 /* With a submenu open, exactly one indicator moves: the submenu's own cursor. The entry
    whose submenu is open keeps its frame, but that frame carries no chromatic chase, so a
    panel showing both draws two frames and one band. Owner direction, 2026-10-13: "when
@@ -6470,6 +6639,8 @@ int main(void) {
         cmocka_unit_test(test_r4_increment_b_controller_commands_and_safety),
         cmocka_unit_test(test_r4_increment_c_horizontal_hover_and_selection),
         cmocka_unit_test(test_r4_increment_d_surface_material_and_construction_ui),
+        cmocka_unit_test(test_edit_dialogs_share_panel_and_visible_region),
+        cmocka_unit_test(test_flow_graph_pointer_selects_the_node_under_it),
         cmocka_unit_test(test_edit_mode_submenu_moves_only_the_cursor),
         cmocka_unit_test(test_r4_increment_d_ambient_step_numeric_undo_redo_and_escape),
         cmocka_unit_test(test_r4_increment_d_empty_missing_and_runtime_failure_atomic),

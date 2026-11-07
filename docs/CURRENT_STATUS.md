@@ -28,8 +28,12 @@ visible while dialogs stay below the header. `A` is the explicit Add action and 
 header reason when every port is connected. Focused ASan/UBSan runs also found and fixed a
 stack-use-after-return in the authored-Menu test mode's preview theme, which now lives in
 `UnifiedEditorState`. See
-[`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md). The rest
-of this page's verified foundation remains as recorded below.
+[`reviews/2026-10-19-editor-workspaces.md`](reviews/2026-10-19-editor-workspaces.md). Every
+editor dialog now draws on the same shared panel — the selected choice is framed rather than
+marked with `>`, long prompt text wraps instead of being cropped, and the block keeps clear of the
+footer — and in the flow workspace's `NODES` step a click on a node box selects that node; see
+[`reviews/2026-11-06-edit-dialog-panels-and-graph-pointer.md`](reviews/2026-11-06-edit-dialog-panels-and-graph-pointer.md).
+The rest of this page's verified foundation remains as recorded below.
 
 R12 is Verified and closed as of 2026-09-11. R0–R12 are verified roadmap
 foundations, not a claim that the editor or game-making experience is
@@ -54,7 +58,7 @@ Native Windows verification is deliberately limited to two product checks under 
 strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
 `PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
 compilation and all 64 test runners (the suite count at that checkpoint; the current Linux
-aggregate is 81 suites / 923 tests). The runner starts the VM only
+aggregate is 81 suites / 925 tests). The runner starts the VM only
 when it is off and never stops it. Windows VM benchmarks, stability workloads, standards,
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM

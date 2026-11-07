@@ -105,8 +105,10 @@ stays below the header, and the inspector's focused row and `A=add` hint remain 
 
 - Node positions are derived, not persisted. Free positioning needs a sidecar layout or a
   FlowDocument version bump.
-- Graph pointer hit-testing exists in the layout module but is not wired into the flow input path;
-  keyboard navigation remains the accepted path, matching the deferred pointer model.
+- Graph pointer hit-testing was wired into the flow input path on 2026-11-06 (see
+  `reviews/2026-11-06-edit-dialog-panels-and-graph-pointer.md`): in `NODES`, a click on a node box
+  selects that node. Keyboard navigation is unchanged. Dragging nodes, port/wire gestures and
+  pan/follow controls remain deferred.
 - `+ Add node…` requires a free port, because every node must remain reachable in the current
   document model. There is no "add a disconnected node and connect it later" operation; the action
   refuses with a header reason when every port is connected.

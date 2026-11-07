@@ -462,11 +462,28 @@ static bool editor_flow_update_nodes(UnifiedEditorState *editor,
     return false;
 }
 
+/* Shared by the flow workspace's painter and its pointer host: the heading note is a row
+   of the header panel, so its presence moves the graph down, and a click on a node box
+   selects that node. Both are declared here because the update seam runs before the
+   renderer in this file. */
+static const char *editor_flow_note(const UnifiedEditorState *editor);
+static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns, int rows,
+                                  int x, int y, size_t *out_index);
+
 static void editor_update_flow_workspace(UnifiedEditorState *editor,
                                          const InputState *input,
+                                         int columns, int rows,
                                          EditorInputConsumption *consumed) {
     FlowWorkspace *workspace = &editor->flow_workspace;
     bool handled = false;
+    /* A node box is a control: clicking one selects it, exactly like Up/Down. Selection
+       is workspace state, not a document edit, so the flow is not marked dirty. */
+    if (input->mouse_left_pressed && input->mouse_grid_valid) {
+        size_t index;
+        if (editor_flow_graph_hit(editor, columns, rows, input->mouse_grid_x,
+                                  input->mouse_grid_y, &index))
+            workspace->node_index = index;
+    }
     if (input->editor_save_pressed) {
         editor->last_flow_result = flow_workspace_handle_input(
             workspace, FLOW_WORKSPACE_INPUT_SAVE);
@@ -4739,7 +4756,8 @@ EditorInputConsumption unified_editor_update(
         }
 
         if (editor->flow_workspace.active) {
-            editor_update_flow_workspace(editor, input, &consumed);
+            editor_update_flow_workspace(editor, input, ui_viewport_columns,
+                                         ui_viewport_rows, &consumed);
             return consumed;
         }
 
@@ -5919,10 +5937,12 @@ static bool editor_menu_field(Grid *grid, const char *name, double now_ms,
  * own -- but it is still the editor's own text, so it must never read through the menu's:
  * printed straight through the panel, "Document is DIRTY" landed in the middle of
  * "Inspector: sprite instance" and the two lines were illegible. The block is therefore
- * collected first and drawn on a bed of its own, and if the menu has left the dialog no
- * room it slides up until it fits, because a dialog is never cropped: the rows it was
- * given are kept whenever they fit, so the placement is unchanged on the editor's own
- * 160-row frame.
+ * collected first and drawn on the shared editor panel (ui_editor_panel.c): the same bed,
+ * the same living-shore material and the same focus perimeter every menu uses, so the
+ * selected choice is *framed* instead of marked with a literal '>' that prints through
+ * the panel. The dialog is never cropped: text is wrapped to the panel's own column
+ * first, and if the menu has left the dialog no room it slides up until it clears the
+ * footer, because a dialog owns its rows wherever it is placed.
  */
 #define EDITOR_PROMPT_MAX_LINES 16
 typedef struct {
@@ -5941,33 +5961,92 @@ static void editor_prompt_collect(EditorPromptLine *lines, size_t *count, int ro
     (*count)++;
 }
 
+/* The panel clips one line per entry, so prompt text is wrapped to the panel's own text
+   column before it is collected: a save path or a scene diagnostic is never cropped. */
+#define EDITOR_PROMPT_CHUNK 160
+/* ui_editor_panel_collect copies an entry's label into an 80-cell buffer, so a chunk
+   wider than that would be clipped there instead of wrapping here. */
+#define EDITOR_PROMPT_TEXT_MAX 79
+
+static int editor_prompt_text_columns(int columns) {
+    /* The panel's own measure adds pad on both sides plus a two-cell frame, and the panel
+       starts at column 1: the text column keeps the whole dialog inside the region. */
+    int text_columns = columns - 3 - 2 * UI_EDITOR_PANEL_PAD;
+    if (text_columns > EDITOR_PROMPT_TEXT_MAX) text_columns = EDITOR_PROMPT_TEXT_MAX;
+    if (text_columns < 8) text_columns = 8;
+    return text_columns;
+}
+
+/* The number of characters of `text` that fit in one entry, broken at a space. */
+static size_t editor_prompt_break(const char *text, int text_columns) {
+    const size_t length = text ? strlen(text) : 0U;
+    size_t split;
+    if (length <= (size_t)text_columns) return length;
+    split = (size_t)text_columns;
+    while (split > 0U && text[split - 1U] != ' ') split--;
+    return split > 0U ? split - 1U : (size_t)text_columns;
+}
+
+/* Hand one collected line to the panel block, continuing it on the next entry when it
+   is wider than the panel. ui_editor_panel_collect classifies the row by the colour it
+   was drawn with and drops a leading '>' marker, which is what frames the selection. */
+static void editor_prompt_push(UiEditorPanelRow *rows, size_t *count, const char *text,
+                               SDL_Color colour, int text_columns,
+                               const UiAppWorkbenchPalette *palette) {
+    char chunk[EDITOR_PROMPT_CHUNK];
+    const char *rest = text ? text : "";
+    while (*count < UI_EDITOR_PANEL_MAX_ROWS) {
+        size_t take;
+        /* Leading spaces are the source's own indentation; the panel sets its own. */
+        while (*rest == ' ') rest++;
+        if (*rest == '\0') break;
+        take = editor_prompt_break(rest, text_columns);
+        (void)snprintf(chunk, sizeof(chunk), "%.*s", (int)take, rest);
+        ui_editor_panel_collect(rows, count, chunk, colour, palette);
+        rest += take;
+    }
+}
+
+/* Draw the prompt as a dialog on the shared panel, inside the editor's visible region:
+   the first line is the heading, the rest is the block. The dialog keeps clear of the
+   footer's two rows by sliding up, so it is never cropped and never covers the keys. */
 static void editor_prompt_render(Grid *grid, const EditorPromptLine *lines, size_t count,
-                                 const UiAppWorkbenchPalette *palette) {
-    int top;
-    int bottom;
-    int widest = 0;
-    int shift = 0;
+                                 int columns, const UiAppWorkbenchPalette *palette,
+                                 double now_ms, bool reduced_motion) {
+    UiEditorPanelRow rows[UI_EDITOR_PANEL_MAX_ROWS];
+    char title[EDITOR_PROMPT_CHUNK];
+    size_t row_count = 0U;
+    size_t title_columns;
+    int text_columns;
+    int height;
+    int y;
     size_t i;
     if (!grid || !palette || !lines || count == 0U) return;
-    top = lines[0].row;
-    bottom = lines[0].row;
-    for (i = 0U; i < count; i++) {
-        if (lines[i].row < top) top = lines[i].row;
-        if (lines[i].row > bottom) bottom = lines[i].row;
-        if ((int)strlen(lines[i].text) > widest) widest = (int)strlen(lines[i].text);
+    if (columns <= 0 || columns > grid->width) columns = grid->width;
+    text_columns = editor_prompt_text_columns(columns);
+    title_columns = editor_prompt_break(lines[0].text, text_columns);
+    (void)snprintf(title, sizeof(title), "%.*s", (int)title_columns, lines[0].text);
+    if (title_columns < strlen(lines[0].text))
+        editor_prompt_push(rows, &row_count, lines[0].text + title_columns,
+                           lines[0].colour, text_columns, palette);
+    for (i = 1U; i < count; i++)
+        editor_prompt_push(rows, &row_count, lines[i].text, lines[i].colour,
+                           text_columns, palette);
+    y = lines[0].row;
+    if (y < 0) y = 0;
+    height = ui_editor_panel_planned_height(row_count, false, false, y, grid->height);
+    if (y + height > grid->height - 2) {
+        /* The editor's footer owns the last two rows; a dialog the menu has left no room
+           for slides up until it clears them. Moving up only relaxes the fit, so the
+           re-measure cannot fail to converge. */
+        y = grid->height - 2 - height;
+        if (y < 0) y = 0;
+        height = ui_editor_panel_planned_height(row_count, false, false, y, grid->height);
+        if (y + height > grid->height - 2) y = grid->height - 2 - height;
+        if (y < 0) y = 0;
     }
-    /* The editor's footer owns the last two rows: a dialog that the menu has left no room
-       for slides up until it clears them and sits over the menu instead, on its own bed. */
-    if (bottom > grid->height - 3) shift = bottom - (grid->height - 3);
-    if (top - shift < 0) shift = top;
-    top -= shift;
-    bottom -= shift;
-    /* The dialog's bed is exactly its own lines: the menu underneath is covered where the
-       dialog is, and left alone everywhere else. */
-    editor_menu_panel_bed(grid, 0, top, widest + 2, bottom - top + 1, palette);
-    for (i = 0U; i < count; i++)
-        editor_menu_put(grid, 1, lines[i].row - shift, widest + 2, lines[i].text,
-                        lines[i].colour, palette);
+    (void)ui_editor_panel_render(grid, 1, y, title, "", rows, row_count, NULL, NULL,
+                                 now_ms, reduced_motion, palette);
 }
 
 
@@ -6572,40 +6651,13 @@ static void flow_render_dialog(Grid *grid, const UiAppWorkbenchPalette *palette,
 }
 
 
-static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *grid,
-                                     const UiAppWorkbenchPalette *palette,
-                                     double now_ms, bool reduced_motion) {
+/* The one note the flow workspace shows under its heading, if any. It is a row of the
+   header panel, so its presence moves the graph down by one: painting and hit testing
+   both read it here rather than deciding separately. */
+static const char *editor_flow_note(const UnifiedEditorState *editor) {
     const FlowWorkspace *workspace = &editor->flow_workspace;
     const FlowNode *selected = flow_workspace_selected_node(workspace);
-    EditorMenuRow header[1];
-    EditorMenuRow list[UI_EDITOR_PANEL_MAX_ROWS];
-    size_t header_count = 0U;
-    size_t list_count = 0U;
-    size_t visible;
-    char line[160];
-    char detail[160];
-    char hint[160];
-    char selection[80];
     const char *note = NULL;
-    int header_bottom;
-    int graph_left = FLOW_GRAPH_PANEL_WIDTH + 2;
-    int graph_top;
-    int graph_right = editor_interface_columns(editor, grid) - 1;
-    int graph_bottom = editor_interface_rows(editor, grid) - 2;
-    FlowGraphLayout layout;
-    EditorMenuRow dialog_rows[UI_EDITOR_PANEL_MAX_ROWS];
-    size_t dialog_count = 0U;
-    char dialog_title[96] = "";
-    char dialog_subtitle[96] = "";
-    const char *dialog_hint = NULL;
-    bool dialog_open = false;
-    size_t i;
-
-    if (!grid || !palette) return;
-    /* A workspace is a pane, not a transparent overlay. Without this clear the
-       live world shows through the graph and the panels look like they float. */
-    grid_clear(grid, palette->canvas);
-
     if (editor->last_flow_result == FLOW_WORKSPACE_SAVE_FAILED)
         note = "Flow save failed: use a valid existing path or Save As";
     else if (editor->last_flow_result == FLOW_WORKSPACE_OK_DURABILITY_WARNING)
@@ -6628,6 +6680,89 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
     }
     if (!note && workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT)
         note = "Unsaved flow changes";
+    if (!note && editor->flow_inspector && selected &&
+        flow_workspace_target_count(workspace) == 0U)
+        note = "No destinations yet: author a Scene or Menu asset first";
+    if (!note && editor->flow_inspector && selected) {
+        const size_t ports = flow_workspace_connection_count(workspace);
+        const size_t used = flow_workspace_outgoing_for(workspace, selected);
+        if (ports > 0U && used >= ports)
+            note = "All ports are connected; disconnect one before adding a node";
+    }
+    return note;
+}
+
+/* The graph's rect: the header panel owns the top-left corner and the graph starts on the
+   first row clear of it. The header's height comes from the shared panel planner, so the
+   painted graph and the hit test cannot disagree. The planner's two-row rhythm only
+   closes up on a display too short to draw a graph at all, which the callers reject. */
+static int editor_flow_graph_top(int rows, size_t header_count, bool has_note) {
+    return 1 + ui_editor_panel_planned_height(header_count, true, has_note, 1, rows) + 1;
+}
+
+/* The node box under a pointer, as the graph is laid out on the visible region. */
+static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns, int rows,
+                                  int x, int y, size_t *out_index) {
+    const FlowWorkspace *workspace;
+    const FlowGraphNodeBox *box;
+    FlowGraphLayout layout;
+    const int left = FLOW_GRAPH_PANEL_WIDTH + 2;
+    int right;
+    int top;
+    int bottom;
+    if (!editor || !out_index || columns <= 0 || rows <= 0) return false;
+    workspace = &editor->flow_workspace;
+    /* A dialog or the node inspector owns the pointer: the graph is not on screen then. */
+    if (!workspace->active || workspace->mode != FLOW_WORKSPACE_NODES) return false;
+    right = columns - 1;
+    bottom = rows - 2;
+    top = editor_flow_graph_top(rows, rows >= 30 ? 1U : 0U,
+                                editor_flow_note(editor) != NULL);
+    if (right - left < FLOW_GRAPH_MIN_AREA || bottom - top < 6) return false;
+    if (!flow_graph_layout_build(&workspace->document,
+                                 flow_workspace_selected_node(workspace),
+                                 left, top, right - left, bottom - top, &layout))
+        return false;
+    box = flow_graph_node_at(&layout, x, y);
+    if (!box || box->node_index >= workspace->document.node_count) return false;
+    *out_index = box->node_index;
+    return true;
+}
+
+static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *grid,
+                                     const UiAppWorkbenchPalette *palette,
+                                     double now_ms, bool reduced_motion) {
+    const FlowWorkspace *workspace = &editor->flow_workspace;
+    const FlowNode *selected = flow_workspace_selected_node(workspace);
+    EditorMenuRow header[1];
+    EditorMenuRow list[UI_EDITOR_PANEL_MAX_ROWS];
+    size_t header_count = 0U;
+    size_t list_count = 0U;
+    size_t visible;
+    char line[160];
+    char detail[160];
+    char hint[160];
+    char selection[80];
+    const char *note = NULL;
+    int graph_left = FLOW_GRAPH_PANEL_WIDTH + 2;
+    int graph_top;
+    int graph_right = editor_interface_columns(editor, grid) - 1;
+    int graph_bottom = editor_interface_rows(editor, grid) - 2;
+    FlowGraphLayout layout;
+    EditorMenuRow dialog_rows[UI_EDITOR_PANEL_MAX_ROWS];
+    size_t dialog_count = 0U;
+    char dialog_title[96] = "";
+    char dialog_subtitle[96] = "";
+    const char *dialog_hint = NULL;
+    bool dialog_open = false;
+    size_t i;
+
+    if (!grid || !palette) return;
+    /* A workspace is a pane, not a transparent overlay. Without this clear the
+       live world shows through the graph and the panels look like they float. */
+    grid_clear(grid, palette->canvas);
+
+    note = editor_flow_note(editor);
 
     flow_node_label(selected, selection, sizeof(selection));
     if (workspace->mode == FLOW_WORKSPACE_TARGETS) {
@@ -6659,15 +6794,6 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
         (void)snprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
                        "%s", counts);
     }
-    if (!note && editor->flow_inspector && selected &&
-        flow_workspace_target_count(workspace) == 0U)
-        note = "No destinations yet: author a Scene or Menu asset first";
-    if (!note && editor->flow_inspector && selected) {
-        const size_t ports = flow_workspace_connection_count(workspace);
-        const size_t used = flow_workspace_outgoing_for(workspace, selected);
-        if (ports > 0U && used >= ports)
-            note = "All ports are connected; disconnect one before adding a node";
-    }
     if (editor_interface_rows(editor, grid) >= 30) {
         flow_row_set(&header[header_count++], "Keys",
                      workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT
@@ -6683,10 +6809,12 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
         flow_inspector_hint(editor, hint, sizeof(hint));
     else
         flow_action_hint(workspace, hint, sizeof(hint));
-    header_bottom = editor_menu_panel_render(
-        grid, 1, 1, "GAME FLOW", detail,
-        header, header_count, hint, note, now_ms, reduced_motion, palette);
-    graph_top = header_bottom;
+    (void)editor_menu_panel_render(grid, 1, 1, "GAME FLOW", detail, header,
+                                   header_count, hint, note, now_ms, reduced_motion,
+                                   palette);
+    /* The graph's first row comes from the same planner the header just rendered with, so
+       a click lands on the box the pointer is over. */
+    graph_top = editor_flow_graph_top(graph_bottom + 2, header_count, note != NULL);
 
 
 
@@ -7778,7 +7906,9 @@ void unified_editor_render_text_overlay(
             }
         }
 #undef grid_print
-        editor_prompt_render(grid, prompt, prompt_count, &palette);
+        editor_prompt_render(grid, prompt, prompt_count,
+                             editor_interface_columns(editor, grid), &palette, now_ms,
+                             reduced_motion);
         grid_print(grid, 1, grid->height - 2,
                    "Tab=walk/edit E=select G=game flow Ctrl+U=Menu UI L=place light P=new sprite canvas B=object",
                    dim, bg);
