@@ -31,12 +31,16 @@ typedef enum {
     EDITOR_SURFACE_FIELD_CONSTRUCTION,
     EDITOR_SURFACE_FIELD_AMBIENT,
     EDITOR_SURFACE_FIELD_DECALS,
+    /* OPTICS sits with the surface properties, not with the map-wide movement
+       fields: the inspector paints Decals, then Optics, then Height/Remove/Gravity/
+       Movement, and the arrow keys walk in that same order. Keep this enum in the
+       painted order -- when the two disagree the cursor appears to jump rows. */
+    EDITOR_SURFACE_FIELD_OPTICS,
     EDITOR_SURFACE_FIELD_HEIGHT,
     EDITOR_SURFACE_FIELD_REMOVE,
     EDITOR_SURFACE_FIELD_GRAVITY_DIRECTION,
     EDITOR_SURFACE_FIELD_GRAVITY_SCALE,
     EDITOR_SURFACE_FIELD_MOVEMENT,
-    EDITOR_SURFACE_FIELD_OPTICS,
     EDITOR_SURFACE_FIELD_COUNT
 } EditorSurfaceField;
 

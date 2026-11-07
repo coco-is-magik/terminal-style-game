@@ -4989,6 +4989,37 @@ static void test_flow_graph_pointer_selects_the_node_under_it(void **state) {
     assert_int_equal(editor.flow_pan_y, 2);
     assert_true(editor.flow_workspace.active);
 
+    /* The pointer works wherever the graph is drawn: with the inspector open, a press on
+       a box still selects that box and grips the view. The box has moved with the view's
+       pan, so the press goes where it is painted now -- the hit test follows the pan. */
+    zero_input(&input);
+    editor.flow_inspector = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + editor.flow_pan_x;
+    input.mouse_grid_y = box_y + editor.flow_pan_y;
+    input.mouse_left_pressed = true;
+    assert_true(update_with(&editor, &camera, &input).pointer_consumed);
+    assert_true(editor.flow_pan_grabbed);
+    zero_input(&input);
+    input.mouse_left_released = true;
+    input.mouse_grid_valid = true;
+    input.mouse_grid_x = box_x + editor.flow_pan_x;
+    input.mouse_grid_y = box_y + editor.flow_pan_y;
+    update_with(&editor, &camera, &input);
+    assert_false(editor.flow_pan_grabbed);
+
+    /* Right pans the view and never enters a mode, even with the inspector open: it used
+       to activate the focused inspector row, which opened the destination dialog. */
+    {
+        const int pan_before = editor.flow_pan_x;
+        zero_input(&input);
+        input.editor_increase_pressed = true;
+        assert_true(update_with(&editor, &camera, &input).keyboard_consumed);
+        assert_int_equal(editor.flow_pan_x, pan_before + 4);
+        assert_true(editor.flow_inspector);
+        assert_int_not_equal(editor.flow_workspace.mode, FLOW_WORKSPACE_TARGETS);
+    }
+
     grid_destroy(grid);
     unified_editor_destroy(&editor);
     remove(path);

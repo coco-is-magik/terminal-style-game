@@ -394,12 +394,11 @@ static bool editor_flow_update_inspector(UnifiedEditorState *editor,
         editor->last_flow_result = FLOW_WORKSPACE_OK;
         return true;
     }
-    if (input->editor_confirm_pressed || input->editor_increase_pressed) {
+    if (input->editor_confirm_pressed) {
         editor_flow_activate_inspector(editor);
         return true;
     }
-    if (input->editor_cancel_pressed || input->editor_decrease_pressed ||
-        input->editor_flow_workspace_pressed) {
+    if (input->editor_cancel_pressed || input->editor_flow_workspace_pressed) {
         editor->flow_inspector = false;
         editor->last_flow_result = FLOW_WORKSPACE_OK;
         return true;
@@ -440,7 +439,7 @@ static bool editor_flow_update_nodes(UnifiedEditorState *editor,
                 ? FLOW_WORKSPACE_INPUT_PREVIOUS : FLOW_WORKSPACE_INPUT_NEXT);
         return true;
     }
-    if (input->editor_confirm_pressed || input->editor_increase_pressed) {
+    if (input->editor_confirm_pressed) {
         editor->flow_inspector = true;
         editor->flow_inspector_index = 0U;
         workspace->edge_index = 0U;
@@ -479,6 +478,22 @@ static const char *editor_flow_note(const UnifiedEditorState *editor);
 static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns, int rows,
                                   int x, int y, size_t *out_index);
 
+/* How far one Right/Left press moves the graph view. The view is panned, never a node:
+   node positions stay derived. */
+#define EDITOR_FLOW_PAN_STEP 4
+#define EDITOR_FLOW_PAN_LIMIT 512
+
+static void editor_flow_pan_clamp(UnifiedEditorState *editor) {
+    if (editor->flow_pan_x > EDITOR_FLOW_PAN_LIMIT)
+        editor->flow_pan_x = EDITOR_FLOW_PAN_LIMIT;
+    if (editor->flow_pan_x < -EDITOR_FLOW_PAN_LIMIT)
+        editor->flow_pan_x = -EDITOR_FLOW_PAN_LIMIT;
+    if (editor->flow_pan_y > EDITOR_FLOW_PAN_LIMIT)
+        editor->flow_pan_y = EDITOR_FLOW_PAN_LIMIT;
+    if (editor->flow_pan_y < -EDITOR_FLOW_PAN_LIMIT)
+        editor->flow_pan_y = -EDITOR_FLOW_PAN_LIMIT;
+}
+
 static void editor_update_flow_workspace(UnifiedEditorState *editor,
                                          const InputState *input,
                                          int columns, int rows,
@@ -504,6 +519,15 @@ static void editor_update_flow_workspace(UnifiedEditorState *editor,
         if (cancelled) editor_mark_keyboard(consumed);
         consumed->pointer_consumed = true;
         return;
+    }
+    /* Right/Left pan the view. They never change mode: a key that changes mode cannot
+       also be a cursor, which is why Right used to read as Enter here. Enter and Escape
+       remain the only mode keys, and the pointer pans by dragging. */
+    if (input->editor_increase_pressed || input->editor_decrease_pressed) {
+        editor->flow_pan_x += input->editor_increase_pressed
+            ? EDITOR_FLOW_PAN_STEP : -EDITOR_FLOW_PAN_STEP;
+        editor_flow_pan_clamp(editor);
+        editor_mark_keyboard(consumed);
     }
     /* A node box is a control: pressing one selects it, exactly like Up/Down, and grips
        the graph so a drag can pan the view. Selection and panning are workspace state,
@@ -3935,9 +3959,10 @@ static void editor_step_surface_field(UnifiedEditorState *editor, int direction)
                 editor->surface_field > EDITOR_SURFACE_FIELD_HEIGHT)) ||
              (editor->selection_set.count > 1U &&
               editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS) ||
+             /* A wall face has no height, removal or movement fields; optics now sits
+                before them in the enum, so everything from HEIGHT on is skipped. */
              (editor->selection.type == SELECTION_WALL_FACE &&
-              editor->surface_field >= EDITOR_SURFACE_FIELD_HEIGHT &&
-              editor->surface_field != EDITOR_SURFACE_FIELD_OPTICS));
+              editor->surface_field >= EDITOR_SURFACE_FIELD_HEIGHT));
 }
 
 static void editor_handle_surface_confirm(UnifiedEditorState *editor) {
@@ -6843,8 +6868,14 @@ static bool editor_flow_graph_hit(const UnifiedEditorState *editor, int columns,
     UiEditorSurfaceRegion region;
     if (!editor || !out_index) return false;
     workspace = &editor->flow_workspace;
-    /* A dialog or the node inspector owns the pointer: the graph is not on screen then. */
-    if (!workspace->active || workspace->mode != FLOW_WORKSPACE_NODES) return false;
+    /* The graph is a control surface wherever it is drawn, so the inspector does not
+       take the pointer away from it: a click selects the node it points at and the
+       inspector follows that node. Only the modal target and close dialogs own the
+       pointer, because they are drawn over the graph. */
+    if (!workspace->active) return false;
+    if (workspace->mode == FLOW_WORKSPACE_TARGETS ||
+        workspace->mode == FLOW_WORKSPACE_CLOSE_PROMPT)
+        return false;
     if (!editor_flow_graph_region(editor, columns, rows, &region)) return false;
     /* The layout's boxes are in frame cells, so the region bounds the pointer and the
        translation result is only the membership test. */
@@ -6934,8 +6965,8 @@ static void editor_render_flow_graph(const UnifiedEditorState *editor, Grid *gri
                          : workspace->mode == FLOW_WORKSPACE_TARGETS
                              ? "Up/Down=destination  Enter=connect  Esc=cancel"
                              : editor->flow_inspector
-                                 ? "Up/Down=row  Enter=act  A=add  Bksp=disconnect  Esc=nodes"
-                                 : "Up/Down=node  Enter=inspect  A=add  Bksp=remove  Esc=close",
+                                 ? "Up/Down=row  Enter=act  A=add  Bksp=disconnect  Left/Right=pan  Esc=nodes"
+                                 : "Up/Down=node  Enter=inspect  A=add  Bksp=remove  Left/Right=pan  Esc=close",
                      false, false);
     }
     if (editor->flow_inspector)
@@ -7474,6 +7505,65 @@ void unified_editor_render_text_overlay(
             grid_print(grid, 1, row++, line,
                        editor->surface_field == EDITOR_SURFACE_FIELD_DECALS ? hi : dim,
                        bg);
+            if (editor->decal_menu_open) {
+                if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
+                    size_t decals = editor_surface_decal_count(editor);
+                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
+                    size_t start;
+                    if (editor->selection_set.count > 1U) decals = 0U;
+                    start = ui_editor_panel_window_start(decals, editor->decal_menu_index,
+                                                         visible);
+                    grid_print(grid, 1, row++,
+                               "   DECALS  Up/Down  Enter=select  Esc=back", fg, bg);
+                    for (i = start; i < decals && i < start + visible; i++) {
+                        const SceneDecalInstance *decal = editor_surface_decal_at(editor, i);
+                        snprintf(line, sizeof(line), " %s decal:%" PRIu64 "  asset:%u",
+                                 editor->decal_menu_index == i ? ">" : " ",
+                                 decal ? decal->id : 0U,
+                                 decal ? (unsigned)decal->asset.id : 0U);
+                        grid_print(grid, 1, row++, line,
+                                   editor->decal_menu_index == i ? hi : dim, bg);
+                    }
+                    grid_print(grid, 1, row++,
+                               editor->decal_menu_index == decals
+                                   ? " > Add decal..." : "   Add decal...",
+                               editor->decal_menu_index == decals ? hi : dim, bg);
+                } else if (editor->decal_menu_stage == EDITOR_DECAL_MENU_PATTERNS) {
+                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
+                    size_t start = ui_editor_panel_window_start(
+                        editor->decal_shortlist_count, editor->decal_menu_index, visible);
+                    grid_print(grid, 1, row++,
+                               "   PATTERN  Up/Down  Enter=place  Esc=back", fg, bg);
+                    for (i = start; i < editor->decal_shortlist_count &&
+                                 i < start + visible; i++) {
+                        snprintf(line, sizeof(line), " %s pattern:%u",
+                                 editor->decal_menu_index == i ? ">" : " ",
+                                 (unsigned)editor->decal_shortlist[i]);
+                        grid_print(grid, 1, row++, line,
+                                   editor->decal_menu_index == i ? hi : dim, bg);
+                    }
+                    grid_print(grid, 1, row++,
+                               editor->decal_menu_index == editor->decal_shortlist_count
+                                   ? " > Create empty..." : "   Create empty...",
+                               editor->decal_menu_index == editor->decal_shortlist_count
+                                   ? hi : dim, bg);
+                } else {
+                    grid_print(grid, 1, row++,
+                               "   CREATE EMPTY  Up/Down=field Left/Right=size",
+                               fg, bg);
+                    snprintf(line, sizeof(line), " %s Columns:  %zu",
+                             !editor->decal_create_edit_rows ? ">" : " ",
+                             editor->decal_create_cols);
+                    grid_print(grid, 1, row++, line,
+                               !editor->decal_create_edit_rows ? hi : dim, bg);
+                    snprintf(line, sizeof(line), " %s Rows:  %zu",
+                             editor->decal_create_edit_rows ? ">" : " ",
+                             editor->decal_create_rows);
+                    grid_print(grid, 1, row++, line,
+                               editor->decal_create_edit_rows ? hi : dim, bg);
+                    grid_print(grid, 1, row++, "   Enter=create and place  Esc=back", dim, bg);
+                }
+            }
             if (editor->selection_set.count <= 1U) {
                 snprintf(line, sizeof(line), " %s Optics...  Enter=open",
                          editor->surface_field == EDITOR_SURFACE_FIELD_OPTICS &&
@@ -7666,65 +7756,6 @@ void unified_editor_render_text_overlay(
                                    editor->movement_field == (EditorMovementField)i ? hi : dim,
                                    bg);
                     }
-                }
-            }
-            if (editor->decal_menu_open) {
-                if (editor->decal_menu_stage == EDITOR_DECAL_MENU_LIST) {
-                    size_t decals = editor_surface_decal_count(editor);
-                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
-                    size_t start;
-                    if (editor->selection_set.count > 1U) decals = 0U;
-                    start = ui_editor_panel_window_start(decals, editor->decal_menu_index,
-                                                         visible);
-                    grid_print(grid, 1, row++,
-                               "   DECALS  Up/Down  Enter=select  Esc=back", fg, bg);
-                    for (i = start; i < decals && i < start + visible; i++) {
-                        const SceneDecalInstance *decal = editor_surface_decal_at(editor, i);
-                        snprintf(line, sizeof(line), " %s decal:%" PRIu64 "  asset:%u",
-                                 editor->decal_menu_index == i ? ">" : " ",
-                                 decal ? decal->id : 0U,
-                                 decal ? (unsigned)decal->asset.id : 0U);
-                        grid_print(grid, 1, row++, line,
-                                   editor->decal_menu_index == i ? hi : dim, bg);
-                    }
-                    grid_print(grid, 1, row++,
-                               editor->decal_menu_index == decals
-                                   ? " > Add decal..." : "   Add decal...",
-                               editor->decal_menu_index == decals ? hi : dim, bg);
-                } else if (editor->decal_menu_stage == EDITOR_DECAL_MENU_PATTERNS) {
-                    size_t visible = UI_EDITOR_PANEL_MAX_ROWS - 3U;
-                    size_t start = ui_editor_panel_window_start(
-                        editor->decal_shortlist_count, editor->decal_menu_index, visible);
-                    grid_print(grid, 1, row++,
-                               "   PATTERN  Up/Down  Enter=place  Esc=back", fg, bg);
-                    for (i = start; i < editor->decal_shortlist_count &&
-                                 i < start + visible; i++) {
-                        snprintf(line, sizeof(line), " %s pattern:%u",
-                                 editor->decal_menu_index == i ? ">" : " ",
-                                 (unsigned)editor->decal_shortlist[i]);
-                        grid_print(grid, 1, row++, line,
-                                   editor->decal_menu_index == i ? hi : dim, bg);
-                    }
-                    grid_print(grid, 1, row++,
-                               editor->decal_menu_index == editor->decal_shortlist_count
-                                   ? " > Create empty..." : "   Create empty...",
-                               editor->decal_menu_index == editor->decal_shortlist_count
-                                   ? hi : dim, bg);
-                } else {
-                    grid_print(grid, 1, row++,
-                               "   CREATE EMPTY  Up/Down=field Left/Right=size",
-                               fg, bg);
-                    snprintf(line, sizeof(line), " %s Columns:  %zu",
-                             !editor->decal_create_edit_rows ? ">" : " ",
-                             editor->decal_create_cols);
-                    grid_print(grid, 1, row++, line,
-                               !editor->decal_create_edit_rows ? hi : dim, bg);
-                    snprintf(line, sizeof(line), " %s Rows:  %zu",
-                             editor->decal_create_edit_rows ? ">" : " ",
-                             editor->decal_create_rows);
-                    grid_print(grid, 1, row++, line,
-                               editor->decal_create_edit_rows ? hi : dim, bg);
-                    grid_print(grid, 1, row++, "   Enter=create and place  Esc=back", dim, bg);
                 }
             }
             if (presentation.note) grid_print(grid, 1, row++, presentation.note, warn, bg);
