@@ -100,3 +100,24 @@ Still open: P3 (rotation preview, display-backed Button activation through the r
 pointer, wire gestures), and the authored canvas's grip is still expressed by its
 document snapshot rather than by the flow graph's explicit grab record — one semantic,
 two spellings, to be unified when P3 touches it.
+
+## Verification coverage, same day — the UI gate did not include the editor
+
+Reviewing the UI layer turned up a hole in the checking rather than in the code.
+`UI_DESIGN_AND_TEST_STANDARDS.md` presents `make test-ui-standards` as the automated gate
+for accepted UI rules, but the editor's own UI rules are asserted in `test-unified-editor`
+— the panel bed and material, two-column alignment, the single moving indicator, framed
+dialog choices inside the reported region — and that runner was not one of the gate's
+owners. A green `make test-ui-standards` therefore said nothing about editor chrome.
+
+Fixed here: `make test-ui-standards` now runs `test-unified-editor` as its twenty-third
+owner, and the standards document lists it, with the pointer item that said native pointer
+behaviour was "undefined for V1-3" now pointing at this model's region/ownership contract
+while keeping display-backed clicking explicitly deferred.
+
+Evidence: `make test-ui-standards` exit 0 with the editor suite inside it (104 tests,
+`test_flow_graph_pointer_selects_the_node_under_it` visible in its transcript);
+`make ui-workbench-frame` exit 0 (display-free 260x160 frame, checksum recorded);
+`make standards-core check-static-analysis-policy` exit 0; and no hardcoded colour
+literal in any file this work touched. Display-backed acceptance at 125%/150%/200% with
+Reduced Motion was **not** run — it needs an X11 session — and is not claimed.

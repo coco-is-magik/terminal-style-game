@@ -6,7 +6,7 @@ theme-token decisions that still require product review.
 
 ## Current automated gate
 
-`make test-ui-standards` runs the twenty-two focused UI rule owners:
+`make test-ui-standards` runs the twenty-three focused UI rule owners:
 
 - `test-ui-ele` — legacy application UI parsing, hierarchy, alignment, visibility,
   focus/action data, z-order, strict recognized fields, and bounded substitution;
@@ -62,7 +62,11 @@ theme-token decisions that still require product review.
   report-only flow/system requests, context enter/exit snapshots, deterministic playback,
   Reduced Motion, and external-output preservation on failure;
 - `test-ui-menu-workspace` — staged authoring, hierarchy commands, exact bounded
-  history, pointer move/resize transactions, preview settings, and persistence.
+  history, pointer move/resize transactions, preview settings, and persistence;
+- `test-unified-editor` — the editor's own UI rules, which are not application-UI
+  rules: the shared panel's bed, material, two-column alignment and single moving
+  indicator; framed dialog choices wrapped inside the reported visible region; and the
+  editor surfaces' pointer region, hover and grab.
 
 The gate is part of the complete `make test` inventory through its individual
 runners. The named aggregate exists to give UI work a focused, reviewable command.
@@ -108,7 +112,11 @@ runners. The named aggregate exists to give UI work a focused, reviewable comman
 - Keyboard Enter is the accepted authored Test-mode activation path.
 - Pointer down/up activation semantics are covered at the headless runtime boundary,
   but reliable application-edge, display-backed clicking remains deferred and must
-  not be claimed by this gate.
+  not be claimed by this gate. The editor-owned pointer contract — one region per
+  surface taken from the painter, ownership until release, grid-quantised motion and a
+  keyboard equivalent for every gesture — is defined in
+  [`UI_POINTER_INTERACTION_MODEL_2026-11-06.md`](UI_POINTER_INTERACTION_MODEL_2026-11-06.md)
+  and asserted by `test-unified-editor` and `test-ui-editor-host`.
 - Hidden, disabled, fully clipped, and otherwise ineligible elements cannot activate.
 - Press/activation mismatch and invalid input preserve externally visible outputs.
 
@@ -274,7 +282,9 @@ still require their own decisions before they become final enforceable presentat
 - menu-depth and information-density limits;
 - tactile feedback and audio-cue mapping;
 - exact contrast targets and theme variants;
-- native pointer behavior after display coordinate conversion remains undefined for V1-3;
+- native pointer behavior after display coordinate conversion: the editor-owned contract
+  is defined in [`UI_POINTER_INTERACTION_MODEL_2026-11-06.md`](UI_POINTER_INTERACTION_MODEL_2026-11-06.md),
+  but display-backed application-edge clicking remains undefined and unverified for V1-3;
 - screenshot/pixel appearance across render backends and fonts remains undefined.
 
 These decisions are now tracked as D1-D7 in
