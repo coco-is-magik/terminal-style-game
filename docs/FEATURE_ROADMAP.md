@@ -393,8 +393,12 @@ one-bounce correctness and performance remain within the accepted envelope.
 
 **Status:** I1 pause-context motion is implemented and passes automated gates: stable menu,
 separate decorative layer, explicit-time enter/exit, and session-only reduced motion. Native
-visual review is pending; no second context is authorized. Pointer-coordinate requirements
-remain in scope. See
+visual review is pending; no second context is authorized. **The pointer-coordinate requirement
+is now delivered**: editor pointer surfaces take their geometry from the painter, ownership runs
+until release, hover and grab/pan exist, and the semantics are defined in
+[`UI_POINTER_INTERACTION_MODEL_2026-11-06.md`](UI_POINTER_INTERACTION_MODEL_2026-11-06.md) with
+records `reviews/2026-11-06-pointer-region-contract.md`. What remains for this phase is the
+display-backed native review, not the coordinate model. See
 [`V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md`](V1_3_PAUSE_CONTEXT_MOTION_I1_PLAN_2026-09-16.md).
 The separate application UI asset workbench increment is implemented and verified: dedicated
 launch, four bounded contexts, immediate atomic element writes, compatible style presets, and
@@ -430,10 +434,15 @@ acceptance pass without changing persistence or input priority.
 
 ## V1-4 — Unicode, font, and character-model research
 
-**Status:** Committed v1 outcome; Ready for Q1 after V1-0. The three font dimensions this
-phase and V1-5–V1-7 must satisfy — per-asset real font files (including animated face
-changes), non-ASCII/emoji/block-glyph support, and safe external paste including ASCII
-art — are written out as an options register in
+**Status:** Research recorded 2026-11-06 in
+[`reviews/2026-11-06-v1-4-font-character-model-research.md`](reviews/2026-11-06-v1-4-font-character-model-research.md).
+Dependency evaluation (item 1), the determinism/parity rule set (item 4) and a glyph-identity,
+catalog and serialization proposal (item 5) are answered. Fallback-font selection (item 2) and
+raster-profile measurement (item 3) are scoped with criteria, a plan and the 41,600-cell /
+8.33 ms budget, and are **blocked on the dependency decision that record asks for**. The three
+font dimensions this phase and V1-5–V1-7 must satisfy — per-asset real font files (including
+animated face changes), non-ASCII/emoji/block-glyph support, and safe external paste including
+ASCII art — remain written out as an options register in
 [`TODO.md`](TODO.md#fonts-glyphs-and-paste--decision-register-options--decisions-needed-before-v1-5),
 to be decided as each phase starts rather than up front.
 
