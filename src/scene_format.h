@@ -41,6 +41,11 @@ typedef struct {
     size_t optical_material_capacity;
     OpticalCellOverride *optical_cell_overrides;
     size_t optical_cell_override_count;
+    /* Allocated capacity for the array above. The count comes from a pre-pass over the
+       file, so the parse must never write past what was actually allocated: a crafted
+       file whose records do not match its declared count would otherwise index past the
+       heap buffer. */
+    size_t optical_cell_override_capacity;
     SceneInstanceId next_instance_id;
     char *legacy_source_path;
     int east_growth[SCENE_MAX_WIDTH];
@@ -145,6 +150,21 @@ SceneFormatResult scene_format_serialize(
 #ifndef SCENE_LOAD_MEMORY_BUDGET_PERCENT
 #define SCENE_LOAD_MEMORY_BUDGET_PERCENT 25
 #endif
+
+/* The configured size ceiling: the largest cell count this build accepts for a map, over
+   and above the machine-memory check. The format ceiling says what a *file* may declare;
+   this says what *this deployment* is configured to load. Equal to the format ceiling by
+   default so nothing narrows unexpectedly, and lowerable per build or fork with
+   -DSCENE_LOAD_MAX_CELLS=n. A map larger than this is refused as input, not as an
+   allocation failure: it is a configured bound, so the rejection is deterministic and
+   portable rather than dependent on the host. */
+#ifndef SCENE_LOAD_MAX_CELLS
+#define SCENE_LOAD_MAX_CELLS ((size_t)SCENE_MAX_WIDTH * (size_t)SCENE_MAX_HEIGHT)
+#endif
+
+/* True when a map of `cells` cells is inside the configured ceiling. Pure, so the policy
+   can be tested with injected values. */
+bool scene_format_load_fits_configured_size(size_t cells, size_t max_cells);
 
 /* Bytes a load needs for a map of this size: the material grid, the light map, and (for
    v2+ scenes) the authored-cell array. Pure arithmetic, so it is testable without a

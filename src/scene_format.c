@@ -142,6 +142,11 @@ bool scene_format_load_cost_bytes(int width, int height, bool authored_cells,
     return true;
 }
 
+bool scene_format_load_fits_configured_size(size_t cells, size_t max_cells) {
+    if (max_cells == 0U) return cells == 0U;
+    return cells <= max_cells;
+}
+
 bool scene_format_load_fits_budget(size_t cost_bytes, size_t installed_bytes) {
     size_t budget;
     if (installed_bytes == 0U) return true;   /* unknown: no policy applies */
@@ -990,6 +995,11 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
                       NULL, "invalid dimensions", 0U, 0U);
     /* Refuse a scene that fits the format ceiling but not this host's memory, before any of
        it is allocated. Unknown installed memory keeps the pre-guard behaviour. */
+    /* Configured size first: a map larger than this build is configured to load is refused
+       as input, deterministically and identically on every host. Then the machine check. */
+    if (!scene_format_load_fits_configured_size(count, SCENE_LOAD_MAX_CELLS))
+        return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
+                      "map", "map exceeds the configured cell ceiling", 0U, 0U);
     if (scene_format_load_cost_bytes(candidate->map.width, candidate->map.height,
                                      candidate->source_version >= SCENE_VERSION_V2,
                                      &cost) &&
@@ -1042,6 +1052,7 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
             optical_cells, sizeof(*candidate->optical_cell_overrides));
         if (!candidate->optical_cell_overrides) goto allocation_failed;
     }
+    candidate->optical_cell_override_capacity = optical_cells;
     return SCENE_FORMAT_OK;
 allocation_failed:
     set_error(diagnostic, SCENE_DIAGNOSTIC_ENV_ALLOCATION, path, NULL, NULL,
@@ -2101,6 +2112,18 @@ SceneFormatResult scene_format_parse(const char *source, size_t source_size,
                                         SCENE_DIAGNOSTIC_INPUT_NUMERIC, path,
                                         "optical_cell", NULL,
                                         "optical cell index is out of range",
+                                        line.number, header.id);
+                        goto done;
+                    }
+                    if (optical_cell_index >=
+                        temporary.optical_cell_override_capacity) {
+                        /* The array was sized from a pre-pass over the file. A file whose
+                           records do not match that count must be refused, never written
+                           past the allocation. */
+                        result = reject(diagnostic,
+                                        SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path,
+                                        "optical_cell", NULL,
+                                        "more optical cell overrides than the file declares",
                                         line.number, header.id);
                         goto done;
                     }

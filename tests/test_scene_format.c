@@ -1202,6 +1202,14 @@ static void test_load_cost_and_memory_budget(void **state) {
     assert_true(scene_format_load_fits_budget(1024U * 1024U, 1024U * 1024U * 1024U));
     assert_false(scene_format_load_fits_budget(1024U * 1024U * 1024U,
                                                1024U * 1024U * 1024U));
+
+    /* Configured size is a separate, portable bound: a map over it is refused as input,
+       whatever the host's memory says. */
+    assert_true(scene_format_load_fits_configured_size(100U, 100U));
+    assert_false(scene_format_load_fits_configured_size(101U, 100U));
+    assert_true(scene_format_load_fits_configured_size(0U, 0U));
+    assert_false(scene_format_load_fits_configured_size(1U, 0U));
+    assert_true(SCENE_LOAD_MAX_CELLS > 0U);
 }
 
 int main(void) {
