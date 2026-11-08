@@ -243,6 +243,80 @@ the agenda the model must satisfy remains:
 - reliable display-backed Button activation in R12 Test mode;
 - tests for real-window or display-backed behavior where practical.
 
+## Fonts, glyphs, and paste — decision register (options) — **Decisions needed before V1-5**
+
+The three dimensions below are the font programme the owner asked to have written out.
+Nothing here is decided; the options are recorded so V1-4 (research), V1-5 (identity,
+raster, cache, SMC migration), V1-6 (Unicode UI, editing, clipboard, IME) and V1-7
+(glyph-art formats) can start with the choices in hand.
+
+Why these are decisions and not tasks: the ceiling is not the font, it is the **cell**.
+`Cell.glyph` is a `uint8_t`; `renderer_create` rejects any cell that is not exactly 8×8;
+the only face is `font8x8_basic[128][8]`, compiled into the binary; and every asset
+schema (`Material.glyphs[4]`, `PatternCell`, `ui_elements content=`, `.tui content=`)
+stores a byte. Each option below is really an option about that stack.
+
+### A. Real font files, chosen per asset, animatable
+
+A1. **Glyph identity in the cell** — (a) add a `font_id` byte beside `glyph` (256 faces
+    per cell, +1 byte/cell ≈ +128 KB at the current 512×256 caps); (b) replace `glyph`
+    with a packed 32-bit `(font_id, glyph)` (+3 bytes/cell ≈ +384 KB); (c) keep
+    `glyph` and add a *profile* id that implies a whole look — least flexible, least
+    schema churn.
+A2. **Cell metrics** — (a) normalise every face onto one cell box, monospaced to the
+    cell (keeps the renderer contract, allows many faces); (b) a small set of *cell
+    profiles* (8×8, 8×16, 12×12…) with mixed profiles in one grid (touches renderer,
+    raycast column mapping, layout resolver, hit testing, occlusion); (c) fully
+    variable cells, i.e. a new renderer.
+A3. **Raster source** — (a) SDL_ttf at **build** time into atlas pages (deterministic,
+    no runtime dependency, no cache eviction); (b) SDL_ttf at **runtime** with an LRU
+    cache (flexible; needs pre-warm, eviction and load-failure diagnostics);
+    (c) baked bitmap faces only, a named hand-authored set (cheapest, no TTF).
+A4. **Which assets carry a face** — material, sprite/decal pattern cells, `ui_elements`,
+    authored `.tui` elements, editor chrome. Each is a schema + parser + validation +
+    default decision; absent means "profile default", which is the migration story.
+A5. **ASCII-art alignment** — (a) art is authored against a named face and the editor
+    warns when the effective face differs; (b) art records its face and refuses to
+    render under another; (c) art is font-agnostic by contract (only glyphs whose
+    advance equals the cell).
+A6. **Animated font changes** — (a) font id is animation-observable state, sampled like
+    colour; (b) animations may switch face only at boundaries, never per frame;
+    (c) faces are static per asset, not animatable.
+A7. **Tooling** — pick and preview a face per asset, plus an alignment preview for art.
+
+### B. Non-ASCII: other languages, custom symbols, emoji, block and shade glyphs
+
+B1. **Encoding to identity** — (a) UTF-32 codepoint per cell; (b) interned glyph id per
+    (face, codepoint, presentation selector); (c) cluster id into a grapheme table.
+B2. **Width classes** — (a) double-width glyphs occupy two cells (glyph +
+    continuation), full stop; (b) refuse wide characters outside faces declared
+    wide-safe; (c) variable-width cells (see A2c).
+B3. **Clusters** — (a) one visual cell may hold a grapheme cluster (combining marks,
+    emoji ZWJ sequences); (b) single codepoints only, clusters refused.
+B4. **Missing glyphs** — (a) per-face fallback stack, then a tofu box; (b) strict: a
+    missing glyph is a load-time validation error; (c) silent replacement character.
+B5. **Font assets and packaging** — licensing, load-failure diagnostics per
+    `ERROR_CATALOG.md`, and carrying faces through export/packaging (V1-19).
+B6. **Block and shade art** — require coverage of U+2500–259F in a face declared
+    art-safe, or author those glyphs explicitly per face.
+
+### C. External paste, safely (especially ASCII art)
+
+C1. **Trust boundary** — (a) one validator shared by typed and pasted text; (b) a
+    separate paste sanitiser. (a) is fewer places to audit.
+C2. **Control characters** — strip or reject ESC (pasted terminal art is full of ANSI
+    SGR), BEL and other C0/C1; normalise CRLF; decide tab handling (expand for art).
+C3. **Spoofing** — bidi overrides, zero-width characters and lookalikes: strip, permit
+    and visibly mark, or refuse. Filenames must never accept them.
+C4. **Width and clusters on paste** — refuse wide/mixed-width art, or accept it under a
+    documented continuation-cell rule (pairs with B2).
+C5. **ASCII-art specifics** — preserve column alignment absolutely (never re-wrap);
+    pad or reject ragged rows explicitly; distinguish *paste as art* (into a sprite or
+    decal canvas) from *paste as text*; refuse rather than mangle.
+C6. **Limits** — bounded buffer and cell cap checked before allocating, with typed
+    diagnostics for every rejection.
+C7. **Platform** — SDL clipboard APIs only; no OSC 52, no shelling out, no network.
+
 ## Cross-cutting decisions for later discussion
 
 ### Versioned scene persistence — **Resolved 2026-08-28 (R1–R11 chain)**
@@ -533,6 +607,29 @@ support for dimensions/origin.
 
 Decide automatic versus explicit resize, growth granularity, maximum size, and
 whether contraction refuses, prompts for, or undoably captures occupied crops.
+
+## Bounded map generation, verticality, and portals — **Plan written; 5 decisions open**
+
+**Wanted:** large maps generated offline (bounded, pre-made, importable into the editor),
+multiple biome-specific algorithms, and vertical worlds built from Doom-style tricks rather
+than true 3D geometry.
+
+**Record:** [`MAP_GENERATION_AND_VERTICALITY_PLAN_2026-11-06.md`](MAP_GENERATION_AND_VERTICALITY_PLAN_2026-11-06.md)
+— constraint set, staged pipeline (base field → shape → validate → decorate → link levels →
+serialise), progress/cancel options, the portal cut rule and what cannot be faked, per-biome
+algorithm families, memory analysis, determinism, validation, editor integration, and a phased
+plan (M0–M5). Roadmap position: **V1-G**, a cross-phase enabler.
+
+**Decisions open (plan §10):**
+1. map-size caps — stay at 512×256, raise the default, or derive policy from installed RAM with
+   a load-time guard;
+2. levels — one map per level linked by portals, or wait for a multi-level model;
+3. seed provenance — sidecar `<name>.tscene.gen` or an in-format key block;
+4. execution — sliced in the frame loop plus a CLI, threads only if ever justified;
+5. placement — a `mapgen` module plus `tools/mapgen`, with a "New generated scene" chooser entry.
+
+**Known non-goals:** runtime/streamed generation, a true multi-level model in one map, and
+portal *rendering* (see-through to a non-adjacent space).
 
 ## Per-face wall materials — **Needs model/format design**
 

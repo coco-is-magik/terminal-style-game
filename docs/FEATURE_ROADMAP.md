@@ -251,6 +251,10 @@ V1-20 benchmark project, release proofs, Linux/Windows v1.0
 Research and format design for export begin before V1-19: every new asset and runtime
 system must expose typed transitive dependencies and keep editor-only data separable.
 
+**V1-G runs beside the chain**: bounded map generation, verticality and portals are a
+cross-phase enabler with their own decisions, needed before V1-12 produces content and before
+V1-14 places actors. Its gates do not sit in the sequence above.
+
 ## Verified foundation summary
 
 R0-R12 remain **Verified foundation**. They establish repository/editor health,
@@ -426,7 +430,12 @@ acceptance pass without changing persistence or input priority.
 
 ## V1-4 — Unicode, font, and character-model research
 
-**Status:** Committed v1 outcome; Ready for Q1 after V1-0.
+**Status:** Committed v1 outcome; Ready for Q1 after V1-0. The three font dimensions this
+phase and V1-5–V1-7 must satisfy — per-asset real font files (including animated face
+changes), non-ASCII/emoji/block-glyph support, and safe external paste including ASCII
+art — are written out as an options register in
+[`TODO.md`](TODO.md#fonts-glyphs-and-paste--decision-register-options--decisions-needed-before-v1-5),
+to be decided as each phase starts rather than up front.
 
 **Purpose:** Select a deterministic, portable character model and dependency set before
 changing the one-byte framebuffer and asset formats.
@@ -652,6 +661,30 @@ trace and independent benchmark fixture.
 
 **Exit gate:** Category fixtures, integrated scenes, one-bounce safety, performance,
 stability, and manual optical acceptance pass.
+
+## V1-G — Bounded map generation, verticality, and portals (cross-phase enabler)
+
+**Status:** Committed v1 outcome; plan recorded 2026-11-06 in
+[`MAP_GENERATION_AND_VERTICALITY_PLAN_2026-11-06.md`](MAP_GENERATION_AND_VERTICALITY_PLAN_2026-11-06.md).
+Not a sequential phase: its decisions gate V1-12's content work and its output feeds V1-12 and
+V1-14, so it can begin as soon as its own decisions (plan §10) are answered.
+
+Bounded maps are generated offline by staged, deterministic pipelines and written as ordinary
+`.tscene` scenes, so the editor imports them with no new path and nothing streams during play.
+Verticality is expressed with baked non-euclidean tricks — portal cuts at natural occluders,
+sibling levels linked by `game.flow` edges — rather than true 3D geometry, because the renderer
+is a column raycaster with a horizon-offset camera. Each biome is a purpose-built algorithm
+behind one pipeline contract (progress, cancel, validation, portal emission) and takes an actor
+envelope so generated spaces are navigable.
+
+**Rollback point:** the map-size policy and the "adopt a generated Map" seam are independent of
+any generator; the portal contract is independent of any biome; each biome algorithm is
+independent of the others. Any of them can be dropped without unwinding the rest.
+
+**Exit gate:** a generated level opens in the editor, validates (connectivity, border sealing,
+no unreachable pockets), replays identically from its seed, and survives a save/load round trip;
+a portal pair transitions without a visible seam; and an oversized scene is refused by the
+load-time size guard with a typed diagnostic rather than failing to allocate.
 
 ## V1-12 — Native project execution and Start Game replacement
 
