@@ -1180,6 +1180,30 @@ static void test_v11_flow_exit_migration_round_trip_and_diagnostics(void **state
     scene_format_candidate_destroy(&candidate);
 }
 
+static void test_load_cost_and_memory_budget(void **state) {
+    size_t plain = 0U;
+    size_t authored = 0U;
+    size_t doubled = 0U;
+    (void)state;
+    /* Cost covers the material grid and light map; a v2+ scene also allocates authored
+       cells, so it must cost strictly more. Cost scales with area. */
+    assert_true(scene_format_load_cost_bytes(10, 6, false, &plain));
+    assert_true(scene_format_load_cost_bytes(10, 6, true, &authored));
+    assert_true(scene_format_load_cost_bytes(20, 6, false, &doubled));
+    assert_true(plain > 0U);
+    assert_true(authored > plain);
+    assert_int_equal(doubled, plain * 2U);
+    assert_false(scene_format_load_cost_bytes(10, 6, false, NULL));
+    assert_int_equal(scene_format_load_cost_bytes(0, 6, false, &plain), 0);
+
+    /* Unknown installed memory means no policy applies; otherwise the budget is a
+       fraction of installed memory, so a scene costing the whole machine never fits. */
+    assert_true(scene_format_load_fits_budget(SIZE_MAX, 0U));
+    assert_true(scene_format_load_fits_budget(1024U * 1024U, 1024U * 1024U * 1024U));
+    assert_false(scene_format_load_fits_budget(1024U * 1024U * 1024U,
+                                               1024U * 1024U * 1024U));
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_and_canonical_round_trip),
@@ -1205,7 +1229,8 @@ int main(void) {
         cmocka_unit_test(test_v6_optical_migration_canonical_round_trip_and_diagnostics),
         cmocka_unit_test(test_v7_spot_migration_round_trip_and_diagnostics),
         cmocka_unit_test(test_v8_sprite_migration_round_trip_and_diagnostics),
-        cmocka_unit_test(test_v9_trigger_migration_round_trip_and_diagnostics)
+        cmocka_unit_test(test_v9_trigger_migration_round_trip_and_diagnostics),
+        cmocka_unit_test(test_load_cost_and_memory_budget)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

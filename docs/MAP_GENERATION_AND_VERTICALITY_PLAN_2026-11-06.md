@@ -153,15 +153,25 @@ cheap because the header carries the dimensions before anything allocates.
 
 **Decided 2026-11-06 (owner): options 1 + 3.** The ceiling is raised to
 **2048 × 1024** (`SCENE_MAX_WIDTH`/`SCENE_MAX_HEIGHT`, worst case ≈ 50 MB) and a RAM-derived
-load-time guard refuses an oversized scene with a typed diagnostic. Landed: the ceiling, the
-docs that state it, and a verified green build and suite at the new limits (the two cost
-consequences checked were the document/parse-candidate growth arrays, now ~12 KB, and the
-heightfield trace scratch, now `SCENE_MAX_WIDTH + SCENE_MAX_HEIGHT + 2` = 3074 intervals).
-**Not yet landed: the guard itself.** Its check is pure and belongs beside
-`allocate_candidate_arrays` in `scene_format.c`, but the *installed-memory query* may not live
-there — the format layer stays free of SDL and of platform calls — so it needs a small
-`platform_memory` module (or an injected budget) plus build wiring. That placement is the only
-open piece, and it is recorded rather than improvised.
+load-time guard refuses an oversized scene with a typed diagnostic.
+
+Landed: the ceiling; the guard (`src/platform_memory.c` measures installed memory,
+`scene_format_load_cost_bytes`/`scene_format_load_fits_budget` are the pure policy, the check
+sits in `allocate_candidate_arrays` before any allocation, and the refusal is
+`SCENE_DIAGNOSTIC_ENV_MEMORY_BUDGET` → `TSG-SCENE-ENV-0008` with its catalog entry). The policy
+is a documented build-time default (`SCENE_LOAD_MEMORY_BUDGET_PERCENT`, 25%) so it can be raised
+or lowered per host without touching the load path; unknown installed memory means no budget and
+the pre-guard behaviour, not a guess.
+
+Cost consequences checked before landing: the document and parse-candidate growth arrays go from
+~3 KB to ~12 KB, and the heightfield trace scratch becomes
+`SCENE_MAX_WIDTH + SCENE_MAX_HEIGHT + 2` = 3074 intervals. Verified: app and affected runners
+build, `test-scene-format` covers the pure cost/budget arithmetic with injected values,
+`make test` is green at the new limits, `make standards` exit 0.
+
+Follow-up recorded rather than improvised: promote the budget **fraction** into `config.ini` so it
+is runtime data. That needs `SRC_CONFIG` in the format layer's dependencies, which it does not
+link today; the build-time default exists precisely so this is a knob, not a rewrite.
 
 ## 7. Determinism
 

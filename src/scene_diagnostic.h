@@ -43,6 +43,9 @@ typedef enum {
     SCENE_DIAGNOSTIC_ENV_REPLACE,
     SCENE_DIAGNOSTIC_ENV_ID_EXHAUSTED,
     SCENE_DIAGNOSTIC_ENV_DIRECTORY_SYNC,
+    /* A scene's cells fit the format's size ceiling but not this host's memory
+       budget: the load is refused before allocating rather than failing later. */
+    SCENE_DIAGNOSTIC_ENV_MEMORY_BUDGET,
     SCENE_DIAGNOSTIC_BUG_PREMATURE_COMMIT,
     SCENE_DIAGNOSTIC_BUG_LOAD_MUTATED_LIVE,
     SCENE_DIAGNOSTIC_BUG_SAVE_MUTATED_IDENTITY,

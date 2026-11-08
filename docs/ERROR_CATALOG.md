@@ -83,6 +83,7 @@ different meaning.
 | `TSG-SCENE-ENV-0005` | Atomic destination replacement fails | Preserve old destination and dirty state; report temp-file recovery action |
 | `TSG-SCENE-ENV-0006` | Instance ID namespace is exhausted during creation | Reject command without mutation; preserve `next_instance_id` and history |
 | `TSG-SCENE-ENV-0007` | Destination rename committed, but parent-directory sync failed | Save is committed and document identity becomes clean; warn that crash durability is uncertain and advise retry |
+| `TSG-SCENE-ENV-0008` | A scene's cell count fits the format ceiling but its load cost exceeds this host's memory budget (`SCENE_LOAD_MEMORY_BUDGET_PERCENT` of installed memory) | Refuse the load before allocating; the live document and its history are untouched |
 
 ### Scene internal invariant failures
 

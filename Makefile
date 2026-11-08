@@ -271,10 +271,11 @@ SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
 SRC_PLATFORM_CATALOG := src/platform_catalog.c
 SRC_PLATFORM_NUMBER := src/platform_number.c
+SRC_PLATFORM_MEMORY := src/platform_memory.c
 SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c \
 	$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
-SRC_SCENE_FORMAT := src/scene_format.c $(SRC_PLATFORM_NUMBER)
+SRC_SCENE_FORMAT := src/scene_format.c $(SRC_PLATFORM_NUMBER) $(SRC_PLATFORM_MEMORY)
 SRC_SCENE_BLOCK_CODEC := src/scene_block_codec.c
 SRC_COMMAND_SYSTEM := src/command_system.c
 SRC_EDITOR_SELECTION := src/editor_selection.c

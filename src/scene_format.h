@@ -130,4 +130,31 @@ SceneFormatResult scene_format_serialize(
     SceneDiagnostic *out_diagnostic
 );
 
+/* ---- Load-time memory policy ----
+ *
+ * The format ceiling (SCENE_MAX_WIDTH/HEIGHT) says what a file may contain; this policy says
+ * what a given host will accept before allocating. The fraction is deliberately a build-time
+ * default, not a magic number in the load path: override it with
+ * -DSCENE_LOAD_MEMORY_BUDGET_PERCENT=n for a bigger or smaller host budget. `config.ini`
+ * promotion is recorded as a follow-up because the format layer does not link the config
+ * module today.
+ *
+ * Unknown installed memory (0) means "no budget": the ceiling and the allocation-failure
+ * diagnostic still apply, so behaviour degrades to the pre-guard path rather than guessing.
+ */
+#ifndef SCENE_LOAD_MEMORY_BUDGET_PERCENT
+#define SCENE_LOAD_MEMORY_BUDGET_PERCENT 25
+#endif
+
+/* Bytes a load needs for a map of this size: the material grid, the light map, and (for
+   v2+ scenes) the authored-cell array. Pure arithmetic, so it is testable without a
+   machine-specific budget. Returns false on overflow. */
+bool scene_format_load_cost_bytes(int width, int height, bool authored_cells,
+                                  size_t *out_bytes);
+
+/* True when a load of `cost_bytes` fits `installed_bytes` under the policy above.
+   `installed_bytes` of 0 means unknown, which always fits. Pure, so the policy can be
+   tested with injected values. */
+bool scene_format_load_fits_budget(size_t cost_bytes, size_t installed_bytes);
+
 #endif /* SCENE_FORMAT_H */

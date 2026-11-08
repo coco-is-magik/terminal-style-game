@@ -3,6 +3,7 @@
 #include "scene_format.h"
 
 #include "checked_size.h"
+#include "platform_memory.h"
 #include "platform_number.h"
 #include "scene_block_codec.h"
 
@@ -116,6 +117,36 @@ static SceneFormatResult reject(SceneDiagnostic *diagnostic,
                                 SceneInstanceId id) {
     set_error(diagnostic, code, path, section, field, detail, line, id);
     return SCENE_FORMAT_REJECTED;
+}
+
+bool scene_format_load_cost_bytes(int width, int height, bool authored_cells,
+                                  size_t *out_bytes) {
+    size_t cells;
+    size_t cells_bytes;
+    size_t light_bytes;
+    size_t authored_bytes = 0U;
+    size_t total;
+    if (!out_bytes || width < 1 || height < 1) return false;
+    if (!checked_size_2d(width, height, &cells)) return false;
+    if (!checked_size_bytes(cells, sizeof(MapCell), &cells_bytes)) return false;
+    if (!checked_size_bytes(cells, sizeof(LightLevel), &light_bytes)) return false;
+    if (authored_cells &&
+        !checked_size_bytes(cells, sizeof(SceneAuthoredCell), &authored_bytes))
+        return false;
+    /* Each term is already bounded by the format ceiling, but add with an explicit
+       overflow check rather than trusting the ceiling to stay small. */
+    if (cells_bytes > SIZE_MAX - light_bytes) return false;
+    total = cells_bytes + light_bytes;
+    if (total > SIZE_MAX - authored_bytes) return false;
+    *out_bytes = total + authored_bytes;
+    return true;
+}
+
+bool scene_format_load_fits_budget(size_t cost_bytes, size_t installed_bytes) {
+    size_t budget;
+    if (installed_bytes == 0U) return true;   /* unknown: no policy applies */
+    budget = installed_bytes / 100U * (size_t)SCENE_LOAD_MEMORY_BUDGET_PERCENT;
+    return cost_bytes <= budget;
 }
 
 void scene_format_candidate_init(SceneFormatCandidate *candidate) {
@@ -953,9 +984,18 @@ static SceneFormatResult allocate_candidate_arrays(SceneFormatCandidate *candida
                                                    const char *path,
                                                    SceneDiagnostic *diagnostic) {
     size_t count;
+    size_t cost;
     if (!checked_size_2d(candidate->map.width, candidate->map.height, &count))
         return reject(diagnostic, SCENE_DIAGNOSTIC_INPUT_DIMENSIONS, path, NULL,
                       NULL, "invalid dimensions", 0U, 0U);
+    /* Refuse a scene that fits the format ceiling but not this host's memory, before any of
+       it is allocated. Unknown installed memory keeps the pre-guard behaviour. */
+    if (scene_format_load_cost_bytes(candidate->map.width, candidate->map.height,
+                                     candidate->source_version >= SCENE_VERSION_V2,
+                                     &cost) &&
+        !scene_format_load_fits_budget(cost, platform_memory_installed_bytes()))
+        return reject(diagnostic, SCENE_DIAGNOSTIC_ENV_MEMORY_BUDGET, path, NULL,
+                      "map", "scene exceeds this host's load memory budget", 0U, 0U);
     candidate->map.cells = calloc(count, sizeof(*candidate->map.cells));
     if (!candidate->map.cells) goto allocation_failed;
     /* light_map must be allocated here, not just in map_create().  The
