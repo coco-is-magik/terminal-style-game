@@ -29,8 +29,14 @@
 #define SCENE_LINE_MAX_BYTES 4096U
 #define SCENE_NAME_MAX 64U
 #define SCENE_PATH_MAX 1024U
-#define SCENE_MAX_WIDTH 512
-#define SCENE_MAX_HEIGHT 256
+/* Hard format limits. These are a *policy ceiling*, not an allocation strategy: maps are
+   heap `width × height` and any size up to these bounds is legal. They size a few fixed
+   scratch arrays (document growth lists, format parse candidate, heightfield trace
+   intervals), so they are compile-time by necessity and a scene is only portable between
+   builds that agree on them. Raised from 512x256 by the V1-G map-size decision; the
+   load-time cost guard in scene loading refuses a scene too large for the host's memory. */
+#define SCENE_MAX_WIDTH 2048
+#define SCENE_MAX_HEIGHT 1024
 #define SCENE_MAX_LIGHTS 64U
 #define SCENE_MAX_DECALS 256U
 #define SCENE_MAX_SPRITES 128U

@@ -151,6 +151,18 @@ bounds checks:
 warning); 4 when gigantic maps become a real goal. The load-time warning is unconditional and
 cheap because the header carries the dimensions before anything allocates.
 
+**Decided 2026-11-06 (owner): options 1 + 3.** The ceiling is raised to
+**2048 × 1024** (`SCENE_MAX_WIDTH`/`SCENE_MAX_HEIGHT`, worst case ≈ 50 MB) and a RAM-derived
+load-time guard refuses an oversized scene with a typed diagnostic. Landed: the ceiling, the
+docs that state it, and a verified green build and suite at the new limits (the two cost
+consequences checked were the document/parse-candidate growth arrays, now ~12 KB, and the
+heightfield trace scratch, now `SCENE_MAX_WIDTH + SCENE_MAX_HEIGHT + 2` = 3074 intervals).
+**Not yet landed: the guard itself.** Its check is pure and belongs beside
+`allocate_candidate_arrays` in `scene_format.c`, but the *installed-memory query* may not live
+there — the format layer stays free of SDL and of platform calls — so it needs a small
+`platform_memory` module (or an injected budget) plus build wiring. That placement is the only
+open piece, and it is recorded rather than improvised.
+
 ## 7. Determinism
 
 - Use integer/hash noise, not floating-point gradients, or the same seed produces different
@@ -178,7 +190,8 @@ no navmesh — that is V1-14's problem — only a grid flood fill.
 
 ## 10. Decisions to answer before implementation
 
-1. **Caps** — stay at 512×256, raise the default, or go RAM-derived policy (§6)?
+1. **Caps** — **answered 2026-11-06:** raised to 2048×1024 with a RAM-derived load-time guard
+   (§6). The ceiling has landed; the guard's placement is the only open piece.
 2. **Levels** — one map per level linked by portals (recommended by §4), or wait for a
    multi-level model?
 3. **Seed storage** — sidecar or in-format key block (§7)?

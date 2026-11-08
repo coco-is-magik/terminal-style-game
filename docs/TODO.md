@@ -621,8 +621,8 @@ algorithm families, memory analysis, determinism, validation, editor integration
 plan (M0–M5). Roadmap position: **V1-G**, a cross-phase enabler.
 
 **Decisions open (plan §10):**
-1. map-size caps — stay at 512×256, raise the default, or derive policy from installed RAM with
-   a load-time guard;
+1. ~~map-size caps~~ — **answered 2026-11-06:** ceiling raised to 2048×1024 with a RAM-derived
+   load-time guard; the ceiling has landed, the guard's platform-memory placement is still open;
 2. levels — one map per level linked by portals, or wait for a multi-level model;
 3. seed provenance — sidecar `<name>.tscene.gen` or an in-format key block;
 4. execution — sliced in the frame loop plus a CLI, threads only if ever justified;
