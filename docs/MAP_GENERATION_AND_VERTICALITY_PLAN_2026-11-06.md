@@ -219,6 +219,27 @@ problems in playtest: flood-fill from the spawn, prove every exit/door is reacha
 border leaks, reject isolated pockets, and refuse or repair with a typed diagnostic. This needs
 no navmesh — that is V1-14's problem — only a grid flood fill.
 
+### 8.1 What the skeleton already guarantees (and what it does not)
+
+`src/mapgen` (rooms-and-corridors, splitmix64, no floating point) and `tools/mapgen` landed as
+the first slice. Guarantees the tests hold it to across seeds: border always solid, spawn cell
+(1,1) open, **every open cell reachable from spawn** (test-side flood fill), identical bytes for
+identical parameters, different bytes for different parameters, and every unusable parameter
+refused rather than clamped. `tools/mapgen` is its own acceptance test — it writes a `.tscene`
+and then reloads it through `scene_document_load_native`, so an unloadable generated scene fails
+at generation time, not in the editor.
+
+Deliberately not yet done: sealed-pocket rejection, verticality/portals, decoration, biome
+vocabulary, themed material palettes, and persistence of the seed. Those are §5/§7/§10 work on
+top of an interface that does not have to change to absorb them — `seed` is a parameter, not
+stored state, precisely so the storage decision stays open.
+
+Recorded observation from the first slice: the native save path requires a `.tscene` suffix, and
+the document loader refuses `config_get() == NULL`. Both are pre-existing document contracts;
+the tool states them up front (`--out PATH.tscene`) and calls `config_init_defaults()` rather
+than papering over either.
+
+
 ## 9. Editor integration
 
 - The map chooser gains **"New generated scene"** → a parameters screen (algorithm, size, seed,
