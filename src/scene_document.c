@@ -23,6 +23,7 @@
 #include "config.h"
 #include "checked_size.h"
 #include "platform_fs.h"
+#include "platform_memory.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -345,7 +346,6 @@ bool scene_document_find_material_reference(
 }
 
 SceneLoadResult scene_document_create_new(SceneDocument *document) {
-    SceneFormatCandidate candidate;
     const EngineConfig *config;
     Map *map;
     int x;
@@ -365,6 +365,56 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
                             y == map->height - 1
                         ? config->default_material_id : 0);
         }
+    }
+    /* A new scene is just an adopted empty room: one path, so generated content and the
+       editor's own New command cannot drift apart in their defaults. */
+    return scene_document_adopt_map(document, map, NULL);
+}
+
+SceneLoadResult scene_document_adopt_map(SceneDocument *document, Map *map,
+                                         const SceneMovementParameters *movement) {
+    SceneFormatCandidate candidate;
+    const EngineConfig *config;
+    size_t cells;
+    size_t cost;
+    bool accepted;
+    if (!document || !map || !map->cells || !map->light_map) {
+        if (map) {
+            free(map->cells);
+            free(map->light_map);
+            free(map);
+        }
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    config = config_get();
+    if (!config) {
+        free(map->cells);
+        free(map->light_map);
+        free(map);
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    /* The same two bounds a file load must pass, in the same order: the configured
+       ceiling is portable and decided first, the host budget second. */
+    accepted = map->width >= 1 && map->height >= 1 &&
+               map->width <= SCENE_MAX_WIDTH && map->height <= SCENE_MAX_HEIGHT &&
+               checked_size_2d(map->width, map->height, &cells) &&
+               scene_format_load_fits_configured_size(cells, SCENE_LOAD_MAX_CELLS) &&
+               scene_format_load_cost_bytes(map->width, map->height, true, &cost) &&
+               scene_format_load_fits_budget(cost, platform_memory_installed_bytes());
+    if (!accepted) {
+        /* Decide the verdict before releasing anything: reading the map after the free
+           would be a use-after-free, which is exactly the class of bug this seam is meant
+           to keep out. */
+        bool within_configured_size =
+            map->width >= 1 && map->height >= 1 &&
+            map->width <= SCENE_MAX_WIDTH && map->height <= SCENE_MAX_HEIGHT &&
+            checked_size_2d(map->width, map->height, &cells) &&
+            scene_format_load_fits_configured_size(cells, SCENE_LOAD_MAX_CELLS);
+        free(map->cells);
+        free(map->light_map);
+        free(map);
+        return within_configured_size ? SCENE_LOAD_OUT_OF_MEMORY
+                                      : SCENE_LOAD_VALIDATION_FAILED;
     }
     scene_format_candidate_init(&candidate);
     candidate.map = *map;
@@ -387,6 +437,7 @@ SceneLoadResult scene_document_create_new(SceneDocument *document) {
         scene_format_candidate_destroy(&candidate);
         return SCENE_LOAD_VALIDATION_FAILED;
     }
+    if (movement) candidate.movement = *movement;
     scene_document_commit_candidate(document, &candidate, NULL, true, false,
                                     NULL, 0U);
     scene_format_candidate_destroy(&candidate);

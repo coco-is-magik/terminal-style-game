@@ -173,6 +173,34 @@ Follow-up recorded rather than improvised: promote the budget **fraction** into 
 is runtime data. That needs `SRC_CONFIG` in the format layer's dependencies, which it does not
 link today; the build-time default exists precisely so this is a knob, not a rewrite.
 
+### 6.1 Two guards, and the seam generated maps enter through
+
+Three bounds now exist and are deliberately distinct:
+
+| Bound | Question | Refusal |
+| --- | --- | --- |
+| Format ceiling (`SCENE_MAX_WIDTH/HEIGHT`) | what may a *file* declare? | `INPUT_DIMENSIONS` at parse |
+| Configured ceiling (`SCENE_LOAD_MAX_CELLS`) | is this map too big for what this build is configured to load? | `INPUT_DIMENSIONS`, deterministic and identical on every host |
+| Host budget (`SCENE_LOAD_MEMORY_BUDGET_PERCENT`) | can *this machine's* memory afford it? | `TSG-SCENE-ENV-0008` |
+
+The configured ceiling is the one that answers the security question rather than the comfort
+question: it is decided before any allocation and does not vary with the host, so a map cannot be
+made to behave differently on a larger machine. It defaults to the format ceiling so nothing
+narrows by accident, and `-DSCENE_LOAD_MAX_CELLS=n` lowers it per build or fork.
+
+Hardening landed alongside it: the optical cell override array is sized from a pre-pass over the
+file while the parse fills it with its own counter, and nothing compared the two. The candidate
+now records its allocated capacity and the parse refuses past it. No exploitable mismatch was
+demonstrated against today's pre-pass — the bound exists so that any future divergence there is a
+typed rejection rather than a heap write.
+
+**The seam (`scene_document_adopt_map`).** Generated content enters the document the same way a
+file does, through the candidate → migration → transactional-commit pipeline, and passes the same
+three bounds. `scene_document_create_new` is now implemented *in terms of* it (a new scene is an
+adopted empty room), so the editor's New command and the generator cannot drift apart in their
+defaults. The call consumes the caller's `Map`; the caller never keeps a handle after handing it
+over. That is where `src/mapgen` will plug in: generators produce a `Map`, the document adopts it.
+
 ## 7. Determinism
 
 - Use integer/hash noise, not floating-point gradients, or the same seed produces different

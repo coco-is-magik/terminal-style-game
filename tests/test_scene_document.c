@@ -1399,6 +1399,62 @@ static void test_accessors_null_safe(void **state) {
     scene_document_destroy(NULL);
 }
 
+static void test_adopt_map_generated_content(void **state) {
+    SceneDocument doc;
+    const EngineConfig *config = config_get();
+    const Map *map;
+    SceneMovementParameters movement = scene_movement_parameters_default();
+    Map *generated = map_create(16, 12);
+    (void)state;
+    assert_non_null(generated);
+    /* A distinctive layout the document can be checked against: one shelf row of material
+       3 across the middle, everything else empty. */
+    for (int y = 0; y < generated->height; y++)
+        for (int x = 0; x < generated->width; x++)
+            map_set(generated, x, y, (y == 5) ? 3 : 0);
+    movement.gravity_magnitude = 12.5;
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_adopt_map(&doc, generated, &movement),
+                     SCENE_LOAD_OK);
+    map = scene_document_get_map(&doc);
+    assert_non_null(map);
+    assert_int_equal(map->width, 16);
+    assert_int_equal(map->height, 12);
+    assert_int_equal(doc.authored_cell_count, 192U);
+    for (int y = 0; y < map->height; y++) {
+        for (int x = 0; x < map->width; x++) {
+            assert_int_equal(map->cells[y * map->width + x].material_id,
+                             (y == 5) ? 3 : 0);
+        }
+    }
+    /* Document identity defaults are the same ones a new scene gets. */
+    assert_string_equal(scene_document_get_name(&doc), "untitled");
+    assert_null(scene_document_get_path(&doc));
+    assert_int_equal(scene_document_get_next_instance_id(&doc), 1U);
+    assert_float_equal(scene_document_get_ambient_intensity(&doc),
+                       config->ambient_light, 0.0);
+    /* The optional movement override is carried through, not overwritten by defaults. */
+    assert_float_equal(doc.movement.gravity_magnitude, 12.5, 0.0);
+    scene_document_destroy(&doc);
+}
+
+static void test_adopt_map_rejects_unusable_input(void **state) {
+    SceneDocument doc;
+    Map *hollow;
+    (void)state;
+    scene_document_init(&doc);
+    assert_int_equal(scene_document_adopt_map(&doc, NULL, NULL),
+                     SCENE_LOAD_VALIDATION_FAILED);
+    /* A map whose storage was never filled must be refused, not indexed. */
+    hollow = map_create(4, 4);
+    assert_non_null(hollow);
+    free(hollow->cells);
+    hollow->cells = NULL;
+    assert_int_equal(scene_document_adopt_map(&doc, hollow, NULL),
+                     SCENE_LOAD_VALIDATION_FAILED);
+    scene_document_destroy(&doc);
+}
+
 static void test_create_new_exact_defaults(void **state) {
     SceneDocument doc;
     const EngineConfig *config = config_get();
@@ -2005,6 +2061,8 @@ int main(void) {
         cmocka_unit_test(test_native_save_repair_block_preserves_destination),
         cmocka_unit_test(test_get_wall_material_oob),
         cmocka_unit_test(test_accessors_null_safe),
+        cmocka_unit_test(test_adopt_map_generated_content),
+        cmocka_unit_test(test_adopt_map_rejects_unusable_input),
         cmocka_unit_test(test_create_new_exact_defaults),
         cmocka_unit_test(test_native_load_allocates_light_map),
         cmocka_unit_test(test_native_load_light_map_is_populated_by_current_lighting),

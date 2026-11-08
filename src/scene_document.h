@@ -132,6 +132,23 @@ bool scene_document_find_material_reference(
 
 SceneLoadResult scene_document_create_new(SceneDocument *document);
 
+/* Adopt a caller-built map as a new document: the entry point for generated content.
+   The document is replaced transactionally, exactly as `load` and `create_new` do, and the
+   adopted map receives the same defaults a new scene does: identity, spawn, and authored
+   cells via the existing migrations.
+
+   The same two bounds that guard a file load guard this: the configured cell ceiling
+   (`SCENE_LOAD_MAX_CELLS`, refused as `SCENE_LOAD_VALIDATION_FAILED`) and the host memory
+   budget (refused as `SCENE_LOAD_OUT_OF_MEMORY`). Generated content is untrusted in the
+   same sense as a file is: a generator bug must not be able to hand the document a map it
+   cannot hold.
+
+   Ownership: the call consumes `map` and everything it points to. On success and on
+   failure alike, the caller must not touch or free it afterwards. `movement` is optional;
+   NULL keeps the scene defaults. */
+SceneLoadResult scene_document_adopt_map(SceneDocument *document, Map *map,
+                                         const SceneMovementParameters *movement);
+
 SceneLoadResult scene_document_load(
     SceneDocument *document,
     const char *path
