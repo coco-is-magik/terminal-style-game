@@ -124,6 +124,7 @@ TEST_NUMBER_PARSE_RUNNER     := $(BUILD_DIR)/test-number-parse
 TEST_SCENE_DOCUMENT_RUNNER   := $(BUILD_DIR)/test-scene-document
 TEST_SCENE_FORMAT_RUNNER     := $(BUILD_DIR)/test-scene-format
 TEST_MAPGEN_RUNNER           := $(BUILD_DIR)/test-mapgen
+TEST_MAPGEN_SEED_RUNNER      := $(BUILD_DIR)/test-mapgen-seed
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
 TEST_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/test-editor-highlight
@@ -276,7 +277,7 @@ SRC_PLATFORM_NUMBER := src/platform_number.c
 SRC_PLATFORM_MEMORY := src/platform_memory.c
 SRC_SCENE_DOCUMENT := src/scene_document.c src/optical_runtime_view.c \
 	$(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS)
-SRC_MAPGEN := src/mapgen.c $(SRC_MAP) $(SRC_CHECKED_SIZE)
+SRC_MAPGEN := src/mapgen.c src/mapgen_seed.c $(SRC_MAP) $(SRC_CHECKED_SIZE)
 SRC_SCENE_DIAGNOSTIC := src/scene_diagnostic.c
 SRC_SCENE_FORMAT := src/scene_format.c $(SRC_PLATFORM_NUMBER) $(SRC_PLATFORM_MEMORY)
 SRC_SCENE_BLOCK_CODEC := src/scene_block_codec.c
@@ -695,8 +696,12 @@ $(TEST_MAPGEN_RUNNER): tests/test_mapgen.c $(SRC_MAPGEN) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_mapgen.c $(SRC_MAPGEN) \
 		-o $(TEST_MAPGEN_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c $(TEST_SCENE_DOCUMENT_SRC) | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c $(TEST_SCENE_DOCUMENT_SRC) \
+$(TEST_MAPGEN_SEED_RUNNER): tests/test_mapgen_seed.c src/mapgen_seed.c src/mapgen.c $(SRC_MAP) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_mapgen_seed.c src/mapgen_seed.c src/mapgen.c \
+		$(SRC_MAP) $(SRC_CHECKED_SIZE) -o $(TEST_MAPGEN_SEED_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
@@ -1246,6 +1251,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1304,6 +1310,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_SCENE_DOCUMENT_RUNNER)
 	./$(TEST_SCENE_FORMAT_RUNNER)
 	./$(TEST_MAPGEN_RUNNER)
+	./$(TEST_MAPGEN_SEED_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)

@@ -239,6 +239,37 @@ the document loader refuses `config_get() == NULL`. Both are pre-existing docume
 the tool states them up front (`--out PATH.tscene`) and calls `config_init_defaults()` rather
 than papering over either.
 
+### 8.2 Seed persistence: the sidecar, decided by building it
+
+Decision 3 in §10 is answered: **a sidecar** (`PATH.tscene.mapgen`), holding only the parameters
+needed to reproduce the map — `mapgen_version`, `seed`, `width`, `height`, `solid_material`,
+`room_attempts`, `room_min_size`, `room_max_size`. Chosen over the alternatives for reasons that
+turned out to be checkable rather than aesthetic:
+
+- **The scene format is untouched.** Its parser has a strict unknown-key policy and a versioned
+  schema; provenance in the scene would mean either a schema change or a tolerated-key exception
+  in the one place the project is most strict. Neither is worth it for metadata.
+- **The sidecar versions itself.** `mapgen_version` is refused when unsupported, so the sidecar
+  can change shape independently of scenes — which is the actual requirement, since generation
+  will gain biomes and verticality while the scene format stays put.
+- **Losing it degrades gracefully.** A scene without a sidecar is still a perfectly good scene;
+  it simply cannot be regenerated. That is the right failure mode for metadata.
+
+The codec (`src/mapgen_seed`) is pure text in/out with no file access, so the tool owns the file
+today and an editor "regenerate" command can reuse the parse tomorrow without either owning it.
+Reading is strict on purpose: unknown key, duplicate key, missing key, unparseable value, two `=`
+on a line, or an unsupported version are all refusals, and a refusal leaves the caller's
+parameters untouched. A missing key is *not* defaulted — defaulting would silently produce a
+different map than the one asked for, which is worse than an error. Hand-edited padding (aligned
+columns, CRLF, blank lines) is accepted, because those are formatting, not meaning.
+
+`tools/mapgen --reproduce PATH.tscene` is the acceptance test: it reads the sidecar, regenerates,
+loads the scene, and compares every cell. Verified by hand: a correct record reports
+`regenerates exactly`; changing the seed by one reports `does not match its generation record`;
+an unknown key, a missing sidecar and a malformed record are each refused. So "the seed is
+persisted" is demonstrated, not asserted.
+
+
 
 ## 9. Editor integration
 
