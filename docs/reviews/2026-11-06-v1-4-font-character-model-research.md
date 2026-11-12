@@ -138,14 +138,32 @@ Candidate raster profiles to measure: 8×8 (current), 8×16, 12×12, 16×16, inc
 
 ## 7. Recommendation and the decision needed
 
-**Recommendation: baked bitmap profiles as the default UI face, plus an optional FreeType-backed
-profile for arbitrary TTF.** The default application and editor appearance comes from curated
-baked profiles — perfect determinism, no cache risk, no new dependency on the baseline path — and
-assets that want a real TTF opt into a FreeType profile where the cost is paid deliberately.
-Method: **B or A** for the TTF path (A and B are materially the same dependency); **D** for the
-baseline; **C** (HarfBuzz) only when shaping is required by a shipping language.
+**Answered 2026-11-06 — see
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](../V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md).**
+The record selects baked bitmap profiles produced by a **build-time** FreeType bake tool (D1/D2),
+vendored `utf8proc` for UTF-8/NFC/segmentation (D3), no HarfBuzz in v1 (D4), bidi deferred to
+V1-6 under an LGPL-free constraint (D5), declared cell profiles rather than one global 8×8 (D6),
+the packed 32-bit `GlyphRef` from §4 (D7), and Noto Sans Mono/CJK (OFL-1.1) as the candidate
+faces to be proven by a coverage test (D9). Items 2 and 3 are therefore unblocked: they are now
+work, not decisions.
 
-**Decisions needed to finish V1-4 (items 2 and 3):**
+The recommendation this section originally made is retained below for the reasoning trail, with
+the one part the decision overruled called out.
+
+**Original recommendation: baked bitmap profiles as the default UI face, plus an optional
+FreeType-backed profile for arbitrary TTF.** The default application and editor appearance comes
+from curated baked profiles — perfect determinism, no cache risk, no new dependency on the
+baseline path — and assets that want a real TTF opt into a FreeType profile where the cost is
+paid deliberately. Method: **B or A** for the TTF path (A and B are materially the same
+dependency); **D** for the baseline; **C** (HarfBuzz) only when shaping is required by a shipping
+language.
+
+**Overruled by the decision:** "curated baked profiles" was read here as art that someone
+authors. At 33,000 required glyphs that is not authorable, so the decision keeps the *bitmap*
+baseline but produces it with a build-time bake tool instead — same shipping shape, achievable
+production.
+
+**Decisions this record asked for:**
 
 1. **Baseline face source** — baked bitmap profiles (recommended, no new dependency) or TTF from
    day one?

@@ -243,12 +243,22 @@ the agenda the model must satisfy remains:
 - reliable display-backed Button activation in R12 Test mode;
 - tests for real-window or display-backed behavior where practical.
 
-## Fonts, glyphs, and paste — decision register (options) — **Decisions needed before V1-5**
+## Fonts, glyphs, and paste — decision register (options) — **Core decisions recorded 2026-11-06**
 
-The three dimensions below are the font programme the owner asked to have written out.
-Nothing here is decided; the options are recorded so V1-4 (research), V1-5 (identity,
-raster, cache, SMC migration), V1-6 (Unicode UI, editing, clipboard, IME) and V1-7
-(glyph-art formats) can start with the choices in hand.
+The three dimensions below are the font programme the owner asked to have written out. The
+dependency and representation questions are now **answered** in
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md):
+baked bitmap profiles produced by a build-time FreeType bake (A3a + A3c), vendored `utf8proc`
+for UTF-8/NFC/segmentation, no runtime rasteriser, no HarfBuzz in v1, bidi deferred to V1-6
+under an LGPL-free constraint, declared cell profiles (A2b) with 8×8 retained for glyph art, and
+the packed 32-bit `GlyphRef` (A1b/B1b) with the ASCII adapter as the migration path. Faces are
+Noto Sans Mono/CJK (OFL-1.1) *pending* a coverage test that must prove them.
+
+Axes still open, to be decided as their phase starts: A4 (which assets carry a face), A5
+(ASCII-art alignment contract), A6 (animated face changes — pencils down until A4 exists), A7
+(tooling), B2 width classes, B3 clusters beyond one-versus-many, B6 block/shade coverage source,
+and all of C (paste safety) which is V1-6 work. The options are kept below because those choices
+are still live; the ceiling they all bend around has not changed.
 
 Why these are decisions and not tasks: the ceiling is not the font, it is the **cell**.
 `Cell.glyph` is a `uint8_t`; `renderer_create` rejects any cell that is not exactly 8×8;

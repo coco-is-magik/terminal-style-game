@@ -434,17 +434,14 @@ acceptance pass without changing persistence or input priority.
 
 ## V1-4 — Unicode, font, and character-model research
 
-**Status:** Research recorded 2026-11-06 in
-[`reviews/2026-11-06-v1-4-font-character-model-research.md`](reviews/2026-11-06-v1-4-font-character-model-research.md).
-Dependency evaluation (item 1), the determinism/parity rule set (item 4) and a glyph-identity,
-catalog and serialization proposal (item 5) are answered. Fallback-font selection (item 2) and
-raster-profile measurement (item 3) are scoped with criteria, a plan and the 41,600-cell /
-8.33 ms budget, and are **blocked on the dependency decision that record asks for**. The three
-font dimensions this phase and V1-5–V1-7 must satisfy — per-asset real font files (including
-animated face changes), non-ASCII/emoji/block-glyph support, and safe external paste including
-ASCII art — remain written out as an options register in
-[`TODO.md`](TODO.md#fonts-glyphs-and-paste--decision-register-options--decisions-needed-before-v1-5),
-to be decided as each phase starts rather than up front.
+**Status:** **Decided 2026-11-06 — V1-4 closed.** Research in
+[`reviews/2026-11-06-v1-4-font-character-model-research.md`](reviews/2026-11-06-v1-4-font-character-model-research.md);
+dependency decision in
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md),
+which selects a build-time FreeType bake into committed bitmap profiles, vendored `utf8proc` for
+UTF-8/NFC/segmentation, no runtime rasteriser, and the 32-bit `GlyphRef` identity. Items 2
+(fallback fonts) and 3 (raster-profile measurement) are unblocked and are now V1-5's first tasks
+rather than open decisions.
 
 **Purpose:** Select a deterministic, portable character model and dependency set before
 changing the one-byte framebuffer and asset formats.
@@ -486,7 +483,9 @@ direction with measured evidence.
 
 ## V1-5 — Glyph identity, raster service, cache, and mandatory SMC migration
 
-**Status:** Committed v1 outcome; blocked on V1-4.
+**Status:** Committed v1 outcome; **unblocked 2026-11-06** by
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md)
+(D1–D8). First task: the bake tool plus raster-profile measurement, which is also V1-4 item 3.
 
 **Purpose:** Replace raw byte glyph identity and the built-in 128-glyph 8x8 rasterizer
 without sacrificing deterministic grid rendering or SMC gains.
