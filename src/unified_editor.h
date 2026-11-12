@@ -18,6 +18,7 @@
 #include "grid.h"
 #include "input.h"
 #include "map_catalog.h"
+#include "mapgen.h"
 #include "material_document.h"
 #include "object_document.h"
 #include "scene_document.h"
@@ -88,7 +89,11 @@ typedef enum {
     EDITOR_PENDING_WINDOW_CLOSE,
     /* Ctrl+O on a dirty document: the unsaved-changes choice belongs to the moment you
        ask to leave this document, so it is asked before the chooser opens. */
-    EDITOR_PENDING_OPEN_CHOOSER
+    EDITOR_PENDING_OPEN_CHOOSER,
+    /* Replace the document with a generated one. The parameters ride in
+       `pending_generate`, captured at request time so the confirmation prompt cannot
+       change what was asked for. */
+    EDITOR_PENDING_NEW_GENERATED
 } EditorPendingAction;
 
 /* Resume and Cancel both dismiss the exit prompt without exiting. */
@@ -175,6 +180,9 @@ typedef struct {
     size_t pending_map_index;
     EditorChooserKind chooser_kind;
     EditorPendingAction pending_action;
+    /* Captured when a generated-scene request is made, so the answer to the
+       unsaved-changes prompt applies to the request the user actually made. */
+    MapgenParameters pending_generate;
     char save_as_name[65];
     size_t save_as_name_length;
     char save_as_path[1024];
@@ -378,6 +386,22 @@ SceneLoadResult unified_editor_open_native(UnifiedEditorState *editor,
 SceneLoadResult unified_editor_import_legacy(UnifiedEditorState *editor,
                                              const char *path);
 SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor);
+
+/* Replace the document with a generated one. Same transactional shape as New: the document is
+   only swapped if generation, adoption and the runtime build all succeed, so a failed
+   generation leaves the open scene untouched. Invalid parameters are refused before any
+   allocation. The generated document is an ordinary dirty scene with no path -- it must be
+   saved before it can be reopened. */
+SceneLoadResult unified_editor_new_generated_scene(
+    UnifiedEditorState *editor,
+    const MapgenParameters *parameters
+);
+
+/* Ask for a generated scene, honouring the unsaved-changes prompt first. The parameters are
+   captured here, so cancelling costs nothing and confirming regenerates exactly what was
+   requested. */
+void unified_editor_request_new_generated(UnifiedEditorState *editor,
+                                          const MapgenParameters *parameters);
 FlowWorkspaceResult unified_editor_open_flow_workspace(UnifiedEditorState *editor);
 FlowWorkspaceResult unified_editor_load_flow_workspace(UnifiedEditorState *editor,
                                                        const char *path);

@@ -282,11 +282,47 @@ persisted" is demonstrated, not asserted.
 
 1. **Caps** — **answered 2026-11-06:** raised to 2048×1024 with a RAM-derived load-time guard
    (§6). The ceiling has landed; the guard's placement is the only open piece.
-2. **Levels** — one map per level linked by portals (recommended by §4), or wait for a
-   multi-level model?
-3. **Seed storage** — sidecar or in-format key block (§7)?
-4. **Execution model** — sliced in the frame loop (recommended) plus CLI, threads later if ever?
-5. **Where it lives** — a `mapgen` module + CLI, with the chooser entry in §9?
+2. **Levels** — **deferred beyond M1, deliberately.** One map per level linked by portals is
+   still the recommended shape, but portals are a *scene format* change (a new record with its
+   own validation, migration and diagnostics), and doing that at the same time as the generator
+   would mean two format-affecting changes in flight at once. M1 ships single-level generation;
+   the level/portal model becomes its own slice with its own format version and its own tests.
+   Nothing in M1 blocks it: a generated map is an ordinary scene, so it can gain portal records
+   later exactly as hand-authored scenes will.
+3. **Seed storage** — **answered 2026-11-06: the sidecar** (`PATH.tscene.mapgen`), built and
+   proved by `tools/mapgen --reproduce` (§8.2).
+4. **Execution model** — **answered 2026-11-06: synchronous bake, generation completes before
+   the document is adopted.** Measured rather than assumed: the default 24×16 map with 12 rooms
+   generates in well under a millisecond, and the largest legal map the configured ceiling allows
+   is a bounded loop over cells already allocated. A progress bar for sub-millisecond work would
+   be theatre, and slicing into the frame loop would mean a half-built document with a state
+   machine to guard it. The seam (`scene_document_adopt_map`) takes a finished map, so adding
+   slicing later is a change *behind* it, not through it — `tools/mapgen` already proves a
+   synchronous caller is sufficient for every current use.
+5. **Where it lives** — **answered: `src/mapgen.c` (pure generator) + `src/mapgen_seed.c` (pure
+   provenance codec) + `tools/mapgen.c` (headless CLI), reached from the editor through
+   `unified_editor_new_generated_scene`.** No SDL, no platform calls and no allocation policy in
+   either library module, so they link into the app, the tools and the test runners unchanged.
+   Biomes, when they exist, become `src/mapgen_biome*.c` behind the same interface rather than
+   growing this file.
+
+### M1 status: complete
+
+Landed: adopted-map seam (§6.1), deterministic generator (§8.1), seed persistence (§8.2), and the
+editor entry — `unified_editor_new_generated_scene` plus
+`unified_editor_request_new_generated`, which captures the parameters at request time so the
+unsaved-changes prompt applies to the request actually made. The action is reachable in the app
+on **Ctrl+Shift+N** (Ctrl+N stays an empty room; same intent, different source). Generated
+documents are ordinary scenes: no path, dirty, saveable, hand-editable afterwards, and playable
+immediately because the runtime world is rebuilt from the candidate before the swap.
+
+Open follow-ups, recorded not hidden: seed/size entry UI (the binding uses
+`mapgen_parameters_default()`, i.e. seed 1, so every generated map stays reproducible — a seed
+field is a presentation addition), the parameter screen of §9, an overlay hint row for the new
+shortcut, and writing a `.mapgen` sidecar from the editor (the codec and the format exist; the
+editor path does not call them yet, so an editor-generated map is reproducible only by
+re-entering the known default parameters). Those are additions on top of finished function.
+
 
 ## 11. Phased plan
 

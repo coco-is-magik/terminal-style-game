@@ -1033,6 +1033,7 @@ int app_main(int argc, char* argv[]) {
                 input.editor_open_pressed = false;
                 input.editor_import_pressed = false;
                 input.editor_new_pressed = false;
+                input.editor_new_generated_pressed = false;
                 input.editor_reload_pressed = false;
                 input.editor_text_backspace_pressed = false;
                 input.editor_previous_pressed = false;

@@ -109,6 +109,7 @@ typedef struct {
     bool editor_open_pressed;        /* Ctrl+O — native scene chooser */
     bool editor_import_pressed;      /* Ctrl+I — legacy map chooser */
     bool editor_new_pressed;         /* Ctrl+N */
+    bool editor_new_generated_pressed; /* Ctrl+Shift+N — new scene from the map generator */
     bool editor_reload_pressed;      /* F5 — reload scene */
     bool editor_text_backspace_pressed; /* Backspace — edit active text field */
     bool editor_previous_pressed;    /* Up — picker previous */

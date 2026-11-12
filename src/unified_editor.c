@@ -1812,6 +1812,33 @@ SceneLoadResult unified_editor_import_legacy(UnifiedEditorState *editor,
     return editor_replace_document(editor, path, scene_document_import_legacy);
 }
 
+/* Shared tail of every "replace the document with a brand new one" operation. The candidates
+   are already built, migrated and validated; this swaps them in and resets all per-document
+   editor state. It consumes both candidates: on return they are reinitialised to empty, so the
+   caller owns them again and may destroy them (which is then a no-op). Keeping this in one place
+   is what stops New and New-generated drifting apart in their post-commit state. */
+static void editor_adopt_new_document(UnifiedEditorState *editor,
+                                      SceneDocument *new_document,
+                                      WorldState *new_runtime) {
+    scene_document_destroy(&editor->document);
+    world_clear(&editor->runtime_world);
+    editor->document = *new_document;
+    editor->runtime_world = *new_runtime;
+    scene_document_init(new_document);
+    world_init(new_runtime);
+    vertical_physics_init(&editor->vertical_physics);
+    command_history_destroy(&editor->history);
+    command_history_init(&editor->history, editor->document.current_state);
+    editor_clear_selection(editor);
+    editor->inspector_open = false;
+    editor->inspector_kind = EDITOR_INSPECTOR_NONE;
+    editor->modal = EDITOR_MODAL_NONE;
+    editor->status = EDITOR_STATUS_NONE;
+    if (!editor_rebuild_asset_shortlists(editor)) {
+        editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+    }
+}
+
 SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor) {
     SceneDocument candidate_document;
     WorldState candidate_runtime;
@@ -1829,20 +1856,52 @@ SceneLoadResult unified_editor_new_scene(UnifiedEditorState *editor) {
         editor->status = EDITOR_STATUS_LOAD_FAILED;
         return result == SCENE_LOAD_OK ? SCENE_LOAD_VALIDATION_FAILED : result;
     }
-    scene_document_destroy(&editor->document);
-    world_clear(&editor->runtime_world);
-    editor->document = candidate_document;
-    editor->runtime_world = candidate_runtime;
-    vertical_physics_init(&editor->vertical_physics);
-    command_history_destroy(&editor->history);
-    command_history_init(&editor->history, editor->document.current_state);
-    editor_clear_selection(editor);
-    editor->inspector_open = false;
-    editor->modal = EDITOR_MODAL_NONE;
-    editor->status = EDITOR_STATUS_NONE;
-    if (!editor_rebuild_asset_shortlists(editor)) {
+    editor_adopt_new_document(editor, &candidate_document, &candidate_runtime);
+    scene_document_destroy(&candidate_document);
+    world_clear(&candidate_runtime);
+    return SCENE_LOAD_OK;
+}
+
+SceneLoadResult unified_editor_new_generated_scene(
+    UnifiedEditorState *editor, const MapgenParameters *parameters) {
+    SceneDocument candidate_document;
+    WorldState candidate_runtime;
+    SceneLoadResult result;
+    Map *map;
+    if (!editor || !editor->active || !parameters)
+        return SCENE_LOAD_VALIDATION_FAILED;
+    /* Validate before allocating: a bad request must not cost an allocation. */
+    if (!mapgen_parameters_valid(parameters)) return SCENE_LOAD_VALIDATION_FAILED;
+    scene_document_init(&candidate_document);
+    world_init(&candidate_runtime);
+    map = map_create(parameters->width, parameters->height);
+    if (!map) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
         editor->status = EDITOR_STATUS_OUT_OF_MEMORY;
+        return SCENE_LOAD_OUT_OF_MEMORY;
     }
+    if (!mapgen_generate(parameters, map, NULL)) {
+        map_destroy(map);
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return SCENE_LOAD_VALIDATION_FAILED;
+    }
+    /* adopt takes ownership of the map whatever it returns. */
+    result = scene_document_adopt_map(&candidate_document, map, NULL);
+    if (result != SCENE_LOAD_OK ||
+        scene_document_build_runtime_world(&candidate_document, editor->assets,
+                                           &candidate_runtime) !=
+            SCENE_RUNTIME_BUILD_OK) {
+        scene_document_destroy(&candidate_document);
+        world_clear(&candidate_runtime);
+        editor->status = EDITOR_STATUS_LOAD_FAILED;
+        return result == SCENE_LOAD_OK ? SCENE_LOAD_VALIDATION_FAILED : result;
+    }
+    editor_adopt_new_document(editor, &candidate_document, &candidate_runtime);
+    scene_document_destroy(&candidate_document);
+    world_clear(&candidate_runtime);
     return SCENE_LOAD_OK;
 }
 
@@ -4357,6 +4416,9 @@ static void editor_execute_pending_action(UnifiedEditorState *editor) {
         case EDITOR_PENDING_NEW:
             (void)unified_editor_new_scene(editor);
             break;
+        case EDITOR_PENDING_NEW_GENERATED:
+            (void)unified_editor_new_generated_scene(editor, &editor->pending_generate);
+            break;
         case EDITOR_PENDING_EXIT_TO_MENU:
             editor->request_exit_to_main_menu = true;
             editor->modal = EDITOR_MODAL_NONE;
@@ -4390,6 +4452,15 @@ static void editor_request_destructive_action(UnifiedEditorState *editor,
 
 void unified_editor_request_new(UnifiedEditorState *editor) {
     editor_request_destructive_action(editor, EDITOR_PENDING_NEW);
+}
+
+void unified_editor_request_new_generated(UnifiedEditorState *editor,
+                                          const MapgenParameters *parameters) {
+    if (!editor || !editor->active || !parameters) return;
+    /* Capture first: whatever the unsaved-changes prompt answers, the request it applies to is
+       the one that was made. */
+    editor->pending_generate = *parameters;
+    editor_request_destructive_action(editor, EDITOR_PENDING_NEW_GENERATED);
 }
 
 void unified_editor_request_window_close(UnifiedEditorState *editor) {
@@ -4864,6 +4935,7 @@ EditorInputConsumption unified_editor_update(
                        input->editor_open_pressed ||
                        input->editor_import_pressed ||
                        input->editor_new_pressed ||
+                       input->editor_new_generated_pressed ||
                        input->editor_reload_pressed ||
                        input->editor_text_backspace_pressed ||
                        input->editor_previous_pressed ||
@@ -5549,6 +5621,13 @@ EditorInputConsumption unified_editor_update(
             editor_mark_keyboard(&consumed);
         } else if (input->editor_new_pressed) {
             unified_editor_request_new(editor);
+            editor_mark_keyboard(&consumed);
+        } else if (input->editor_new_generated_pressed) {
+            /* Default parameters for now: the seed and size screen is a presentation
+               follow-up, and defaulting keeps every generated map reproducible (seed 1)
+               rather than inventing a new seed the user never sees and cannot re-enter. */
+            MapgenParameters parameters = mapgen_parameters_default();
+            unified_editor_request_new_generated(editor, &parameters);
             editor_mark_keyboard(&consumed);
         } else if (input->editor_reload_pressed) {
             editor_handle_reload_request(editor);

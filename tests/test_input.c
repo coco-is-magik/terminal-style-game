@@ -122,6 +122,28 @@ static void test_editor_open_requires_ctrl_and_nonrepeat(void **state) {
     assert_true(input.editor_open_pressed);
 }
 
+static void test_ctrl_shift_n_generates_and_ctrl_n_does_not(void **state) {
+    InputState input = {0};
+    InputEvent event = {
+        INPUT_EVENT_KEY_DOWN, INPUT_KEY_N, false, true, true, 0, 0, 0, NULL
+    };
+    (void)state;
+
+    /* Ctrl+Shift+N asks for a generated scene and must not also look like plain Ctrl+N,
+       or one keystroke would trigger two different destructive replacements. */
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_new_generated_pressed);
+    assert_false(input.editor_new_pressed);
+
+    input_begin_frame(&input);
+    assert_false(input.editor_new_generated_pressed);
+
+    event.shift = false;
+    input_apply_event(&input, &event, false);
+    assert_true(input.editor_new_pressed);
+    assert_false(input.editor_new_generated_pressed);
+}
+
 static void test_r2_editor_shortcuts(void **state) {
     InputState input = {0};
     InputEvent event = {
@@ -376,6 +398,7 @@ int main(void) {
         cmocka_unit_test(test_quit_and_headless_filter),
         cmocka_unit_test(test_key_and_editor_shortcuts),
         cmocka_unit_test(test_editor_open_requires_ctrl_and_nonrepeat),
+        cmocka_unit_test(test_ctrl_shift_n_generates_and_ctrl_n_does_not),
         cmocka_unit_test(test_r2_editor_shortcuts),
         cmocka_unit_test(test_ctrl_shortcut_suppresses_movement),
         cmocka_unit_test(test_editor_backspace_is_an_edge),

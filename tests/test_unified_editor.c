@@ -3217,6 +3217,73 @@ static void test_load_success_resets_history_and_selection(void **state) {
     unified_editor_destroy(&ed);
 }
 
+static void test_new_generated_scene_installs_generated_map(void **state) {
+    UnifiedEditorState ed;
+    MapgenParameters parameters = mapgen_parameters_default();
+    (void)state;
+    assert_true(unified_editor_init(&ed, &g_assets));
+    parameters.seed = UINT64_C(31);
+    assert_int_equal(unified_editor_new_generated_scene(&ed, &parameters),
+                     SCENE_LOAD_OK);
+    assert_true(unified_editor_has_document(&ed));
+    /* The generated document is an ordinary scene: no path, dirty, saveable. */
+    assert_null(ed.document.path);
+    assert_true(scene_document_is_dirty(&ed.document));
+    assert_int_equal(ed.document.map.width, parameters.width);
+    assert_int_equal(ed.document.map.height, parameters.height);
+    /* Every generated cell names a known material: rock where the generator said rock, void
+       elsewhere. A generated scene must never reference a material that does not exist. */
+    for (int i = 0; i < ed.document.map.width * ed.document.map.height; i++) {
+        int material = ed.document.map.cells[i].material_id;
+        assert_true(material == 0 || material == parameters.solid_material);
+    }
+    /* The runtime world was rebuilt from the new document: spawn from the document, no lights
+       because the generator places none. */
+    assert_float_equal(ed.runtime_world.spawn_pos.x, 1.5, 0.0);
+    assert_float_equal(ed.runtime_world.spawn_pos.y, 1.5, 0.0);
+    assert_int_equal(ed.runtime_world.num_lights, 0);
+    assert_int_equal(ed.status, EDITOR_STATUS_NONE);
+    unified_editor_destroy(&ed);
+}
+
+static void test_new_generated_scene_refuses_bad_requests(void **state) {
+    UnifiedEditorState ed;
+    MapgenParameters bad = mapgen_parameters_default();
+    MapCell *installed_cells;
+    (void)state;
+    assert_true(unified_editor_init(&ed, &g_assets));
+    assert_int_equal(unified_editor_new_scene(&ed), SCENE_LOAD_OK);
+    installed_cells = ed.document.map.cells;
+    assert_non_null(installed_cells);
+    /* Invalid parameters are refused before anything is allocated or replaced. */
+    assert_int_equal(unified_editor_new_generated_scene(&ed, NULL),
+                     SCENE_LOAD_VALIDATION_FAILED);
+    bad.width = MAPGEN_MIN_DIMENSION - 1;
+    assert_int_equal(unified_editor_new_generated_scene(&ed, &bad),
+                     SCENE_LOAD_VALIDATION_FAILED);
+    /* A failed request leaves the open document exactly where it was. */
+    assert_ptr_equal(ed.document.map.cells, installed_cells);
+    assert_int_equal(ed.document.map.width, 10);
+    unified_editor_destroy(&ed);
+}
+
+static void test_request_new_generated_captures_parameters(void **state) {
+    UnifiedEditorState ed;
+    MapgenParameters parameters = mapgen_parameters_default();
+    (void)state;
+    assert_true(unified_editor_init(&ed, &g_assets));
+    parameters.seed = UINT64_C(77);
+    parameters.width = 20;
+    parameters.height = 12;
+    assert_true(mapgen_parameters_valid(&parameters));
+    /* No document is open, so the request executes immediately rather than prompting. */
+    unified_editor_request_new_generated(&ed, &parameters);
+    assert_true(unified_editor_has_document(&ed));
+    assert_int_equal(ed.document.map.width, 20);
+    assert_int_equal(ed.document.map.height, 12);
+    unified_editor_destroy(&ed);
+}
+
 static void test_load_failure_preserves_state(void **state) {
     (void)state;
     char good[512];
@@ -6769,6 +6836,9 @@ int main(void) {
         cmocka_unit_test(test_managed_sprite_directory_is_typed_and_state_preserving),
         cmocka_unit_test(test_sprite_warning_commit_updates_registry_and_editor_status),
         /* Registry-replacement workflow runs last to avoid cross-test fixture coupling. */
+        cmocka_unit_test(test_new_generated_scene_installs_generated_map),
+        cmocka_unit_test(test_new_generated_scene_refuses_bad_requests),
+        cmocka_unit_test(test_request_new_generated_captures_parameters),
         cmocka_unit_test(test_object_sprite_picker_assignment_and_undo),
     };
     return cmocka_run_group_tests(tests, group_setup, group_teardown);
