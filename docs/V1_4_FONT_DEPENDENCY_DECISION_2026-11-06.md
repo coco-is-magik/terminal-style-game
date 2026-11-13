@@ -109,12 +109,20 @@ cell=8x8
   errors, in `--list-fonts`, and in the generated set's provenance.
 - `coverage=` and `cell=` are declarations the converter checks against the file, not notes.
 
-Two commands carry the contract:
+Two commands carry the contract. **Both now exist** (`tools/fontconv.c`); `--convert` lands
+with the fit policy below.
 
-| Command | Purpose |
-|---|---|
-| `--list-fonts` | What is installed, what is missing, which hashes matched, which `source=` to fetch from |
-| `--convert <face>` | Verify hashes, convert, report per-glyph failures; refuse rather than guess |
+| Command | Purpose | State |
+|---|---|---|
+| `--list-fonts` | What is installed, what is missing, which hashes matched, which `source=` to fetch from | **implemented** — no FreeType needed, so it works on the machine where a mismatch is being diagnosed |
+| `--convert <face>` | Verify hashes, convert, report per-glyph failures; refuse rather than guess | **next**: needs the fit policy (`D11`) |
+
+The verifier's output is checked end to end against coreutils: `fontconv --list-fonts` agrees
+with `sha256sum` on a 600 KB font file, exits 0 when every declared file matches, 1 when one is
+missing or mismatched (printing expected and installed digests plus the declaring `source=`), and
+2 when the manifest cannot be read or is malformed (printing the line and the key). A tool a build
+step depends on has to distinguish "the fonts are wrong" from "I could not check the fonts", or
+the build will repair the wrong thing.
 
 Failure output names the facts, not a verdict — for example: `misaki 8x8: 47 glyphs exceed the
 cell (worst: U+9AD9 at 9x8, +1 column); rerun with --squash to compress 1 column, or choose a

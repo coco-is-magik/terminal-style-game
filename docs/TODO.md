@@ -263,6 +263,19 @@ Axes still open, to be decided as their phase starts: A4 (which assets carry a f
 and all of C (paste safety) which is V1-6 work. The options are kept below because those choices
 are still live; the ceiling they all bend around has not changed.
 
+**Implemented 2026-11-06** (first slice of V1-5, all under `make test`): `src/sha256` (FIPS 180-4,
+checked against published vectors including the million-`a` case), `src/font_manifest` (strict
+`key=value` codec: unknown/duplicate/missing keys, unpaired `file`/`sha256`, `cell` that is not
+8x8, canonical text that round-trips), and `tools/fontconv --list-fonts` (`make fontconv`), which
+verifies installed files against the manifest and exits 0/1/2 as verified / mismatch-or-missing /
+could-not-check. No font data is committed and `assets/fonts/` is ignored, so a checkout carries
+the contract and not the bytes.
+
+**Next:** the fit policy (`D11`) — probe, exact failure report, and `squash` / `scale` /
+`normalize` as opt-in — then `--convert` with FreeType at build time, then the determinism test
+(convert twice, compare digests). Those come before any runtime glyph work: a converter whose
+failure modes are unknown cannot be trusted to produce the glyphs the renderer reads.
+
 Why these are decisions and not tasks: the ceiling is not the font, it is the **cell**.
 `Cell.glyph` is a `uint8_t`; `renderer_create` rejects any cell that is not exactly 8×8;
 the only face is `font8x8_basic[128][8]`, compiled into the binary; and every asset

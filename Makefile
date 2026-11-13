@@ -125,6 +125,9 @@ TEST_SCENE_DOCUMENT_RUNNER   := $(BUILD_DIR)/test-scene-document
 TEST_SCENE_FORMAT_RUNNER     := $(BUILD_DIR)/test-scene-format
 TEST_MAPGEN_RUNNER           := $(BUILD_DIR)/test-mapgen
 TEST_MAPGEN_SEED_RUNNER      := $(BUILD_DIR)/test-mapgen-seed
+TEST_SHA256_RUNNER           := $(BUILD_DIR)/test-sha256
+TEST_FONT_MANIFEST_RUNNER    := $(BUILD_DIR)/test-font-manifest
+FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
 TEST_EDITOR_HIGHLIGHT_RUNNER := $(BUILD_DIR)/test-editor-highlight
@@ -212,7 +215,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke
+.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke fontconv
 .PHONY: ui-motion-demo ui-workbench ui-editor
 
 
@@ -701,9 +704,21 @@ $(TEST_MAPGEN_SEED_RUNNER): tests/test_mapgen_seed.c src/mapgen_seed.c src/mapge
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_mapgen_seed.c src/mapgen_seed.c src/mapgen.c \
 		$(SRC_MAP) $(SRC_CHECKED_SIZE) -o $(TEST_MAPGEN_SEED_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_SHA256_RUNNER): tests/test_sha256.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_sha256.c src/sha256.c \
+		-o $(TEST_SHA256_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_FONT_MANIFEST_RUNNER): tests/test_font_manifest.c src/font_manifest.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_font_manifest.c src/font_manifest.c src/sha256.c \
+		-o $(TEST_FONT_MANIFEST_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
+
+$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tools/fontconv.c src/font_manifest.c src/sha256.c \
+		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) \
@@ -1252,7 +1267,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1312,6 +1327,8 @@ test: $(TEST_RUNNERS)
 	./$(TEST_SCENE_FORMAT_RUNNER)
 	./$(TEST_MAPGEN_RUNNER)
 	./$(TEST_MAPGEN_SEED_RUNNER)
+	./$(TEST_SHA256_RUNNER)
+	./$(TEST_FONT_MANIFEST_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1437,6 +1454,8 @@ ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 	./$(UI_WORKBENCH_FRAME_TOOL) --context main
 
 mapgen: $(MAPGEN_TOOL)
+
+fontconv: $(FONTCONV_TOOL)
 
 check-ui-workbench-policy:
 	@echo "Checking workbench token and host boundaries..."
