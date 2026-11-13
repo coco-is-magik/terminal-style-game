@@ -136,16 +136,26 @@ Candidate raster profiles to measure: 8×8 (current), 8×16, 12×12, 16×16, inc
 
 **Blocked on:** the dependency decision (§7); profiles cannot be rasterised without a rasteriser.
 
+**Resolved 2026-11-06:** there is nothing to measure here. The decision record fixes the cell at
+8×8 and answers item 3 with a fact rather than a measurement — 8×8 CJK bitmap faces already exist
+in production (Misaki, JIS first and second level), so "CJK needs a taller cell" was false. What
+survives from this section is the *per-font* part: whether a particular font's glyphs fit 8×8 is
+the converter's report (overflow, clipping, coverage), not a profile choice, and legibility stays
+the owner's eye — a judgement, not a benchmark.
+
 ## 7. Recommendation and the decision needed
 
 **Answered 2026-11-06 — see
 [`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](../V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md).**
-The record selects baked bitmap profiles produced by a **build-time** FreeType bake tool (D1/D2),
-vendored `utf8proc` for UTF-8/NFC/segmentation (D3), no HarfBuzz in v1 (D4), bidi deferred to
-V1-6 under an LGPL-free constraint (D5), declared cell profiles rather than one global 8×8 (D6),
-the packed 32-bit `GlyphRef` from §4 (D7), and Noto Sans Mono/CJK (OFL-1.1) as the candidate
-faces to be proven by a coverage test (D9). Items 2 and 3 are therefore unblocked: they are now
-work, not decisions.
+The record selects bitmap glyphs converted **locally at build time** with FreeType from
+user-supplied font files, with **no glyph data committed** (D1/D2); vendored `utf8proc` for
+UTF-8/NFC/segmentation (D3); no HarfBuzz in v1 (D4); bidi deferred to V1-6 under an LGPL-free
+constraint (D5); a **fixed 8×8 cell, no profiles** (D6 — 8×8 CJK is proven by existing bitmap
+faces such as Misaki); the packed 32-bit `GlyphRef` from §4 (D7); user-supplied fonts declared and
+hash-verified through a font manifest (D9/D12); and conversion that **aborts with the exact reason**
+rather than silently fitting, with squash/scale/normalise as opt-in remedies (D11). Items 2 and 3
+are therefore unblocked — and item 3 shrinks, because there is no cell-size question left to
+measure.
 
 The recommendation this section originally made is retained below for the reasoning trail, with
 the one part the decision overruled called out.

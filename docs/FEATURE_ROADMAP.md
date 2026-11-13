@@ -438,10 +438,10 @@ acceptance pass without changing persistence or input priority.
 [`reviews/2026-11-06-v1-4-font-character-model-research.md`](reviews/2026-11-06-v1-4-font-character-model-research.md);
 dependency decision in
 [`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md),
-which selects a build-time FreeType bake into committed bitmap profiles, vendored `utf8proc` for
-UTF-8/NFC/segmentation, no runtime rasteriser, and the 32-bit `GlyphRef` identity. Items 2
-(fallback fonts) and 3 (raster-profile measurement) are unblocked and are now V1-5's first tasks
-rather than open decisions.
+which selects glyphs converted locally at build time from user-supplied, hash-verified fonts with
+no glyph data committed, vendored `utf8proc` for UTF-8/NFC/segmentation, no runtime rasteriser,
+and the 32-bit `GlyphRef` identity. The cell stays 8×8: 8×8 CJK bitmap faces exist, so there is no
+cell-size question to measure and no taller text profile to design around.
 
 **Purpose:** Select a deterministic, portable character model and dependency set before
 changing the one-byte framebuffer and asset formats.
@@ -485,7 +485,8 @@ direction with measured evidence.
 
 **Status:** Committed v1 outcome; **unblocked 2026-11-06** by
 [`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md)
-(D1–D8). First task: the bake tool plus raster-profile measurement, which is also V1-4 item 3.
+(D1–D12). First task: the converter, its determinism test and the font manifest — a fixed 8×8
+cell, so there is no raster-profile question left.
 
 **Purpose:** Replace raw byte glyph identity and the built-in 128-glyph 8x8 rasterizer
 without sacrificing deterministic grid rendering or SMC gains.

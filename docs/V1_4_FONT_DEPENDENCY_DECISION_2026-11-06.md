@@ -13,6 +13,24 @@ It supersedes the *recommendation* in research §7 where they differ — §7 off
 with hand-authored art as a serious option; this record rejects hand-authoring for the required
 script set and says why.
 
+**Revision 2026-11-06, owner review.** Two of the choices below (`D2`, `D6`) were wrong and are
+replaced in place, marked **[revised]**. The correction was factual, not stylistic: this record
+argued for taller cells because CJK "cannot be read at 8×8", and that is false — 8×8 CJK bitmapped
+fonts exist in production (Misaki: JIS first and second level, ~6,355 kanji plus kana, most glyphs
+inset inside 7×7 so adjacent characters do not touch). Out of that came the rest of the owner's
+correction, which this record now states as its own:
+
+1. **The converter's job is font → 8×8. Supplying a font that fits is the user's job.** The cell
+   size is a fixed property of the renderer, not something the font pipeline negotiates.
+2. **No glyph images in the repository.** Tens of thousands of committed cell images would be
+   unreviewable and would turn every font tweak into a binary diff.
+3. **The contract is verification, not artefact.** The font manifest records each font's name,
+   file hash(es) and source URL, so two installs can prove they converted the same bytes, and
+   anyone can find the font again.
+4. **A failed conversion must say exactly why and abort.** Fitting remedies exist as explicit,
+   off-by-default options (`D11`).
+
+
 ## Objective
 
 Retire the `uint8_t` glyph and the 128-glyph 8×8 face **without** buying any of these:
@@ -33,111 +51,170 @@ Retire the `uint8_t` glyph and the 128-glyph 8×8 face **without** buying any of
 | Raster/shaping dependencies | **none**; `vendor/dist` holds SDL3, SDL3_mixer, cmocka, enet | directory listing |
 | Frame envelope | 41,600 cells (260×160) in 8.33 ms @120 fps | `UI_DISPLAY_SURFACE_TARGET_2026-10-07.md` |
 | Required scripts | CJK ideographs, kana, hangul, common Latin, punctuation/box drawing, combining sequences | V1-4 locked product model |
+| 8×8 CJK is achievable | Misaki: 8×8 Japanese bitmapped font, JIS 1st+2nd level, most glyphs inset inside 7×7 so neighbours do not touch, free (M+ licence), TTF form carries embedded bitmaps | <https://littlelimit.net/misaki.htm> |
 | Governance | every dependency pinned, hash-verified, image-owned | build + platform profiles |
 
 The decisive number is the **required glyph count**: CJK Unified Ideographs (URO) 20,992 +
-hangul syllables 11,172 + kana/latin/punctuation ≈ 33,000 glyphs. That is the fact that rules
-out hand-authored art: nobody draws 33,000 cell images, and a curated Latin-only face would fail
-the locked model's first priority.
+hangul syllables 11,172 + kana/latin/punctuation ≈ 33,000 glyphs. That rules out hand-authored
+art — nobody draws 33,000 cell images.
+
+It does **not** force larger cells, which is where the first draft of this record went wrong.
+Two facts separate cleanly: the glyph *count* makes hand art impossible, and the glyph *size* is
+already solved by existing 8×8 CJK bitmap faces. Conflating them produced a proposal to redesign
+the cell grid for a problem the grid did not have. The renderer's cell stays 8×8; how many glyphs
+a given install can display becomes a property of the font the user supplies, which is why the
+manifest must declare coverage rather than this record assuming it.
 
 ## The decision
 
-**Bake offline with FreeType; ship bitmaps; keep the runtime dependency surface at zero for
-rasterisation.**
+**Convert with FreeType at build time, from fonts the user supplies; commit no glyph data; make the
+font manifest the contract; keep the runtime dependency surface at zero for rasterisation.**
 
 | # | Decision | Chosen | Rejected, and why |
 |---|---|---|---|
-| **D1** | Baseline face source | **Baked bitmap profiles** (register A3c) | TTF at runtime — pays a dependency on every platform for a face set that never changes at runtime |
-| **D2** | How profiles are produced | **Build-time bake tool over a pinned TTF using FreeType; output committed with recorded hashes** (register A3a) | Hand-authored art (33k glyphs is not authorable); runtime FreeType (cache misses, dependency) |
+| **D1** | Glyph form at runtime | **Bitmap glyphs**, converted ahead of time | TTF at runtime — pays a dependency on every platform for a face set that never changes at runtime |
+| **D2** | Where conversion happens **[revised]** | **Locally, at build/install, from user-supplied font files.** The converter plus a font manifest ship; **no glyph images are committed**. Two installs agree because they converted the same font bytes (verified, `D12`) with the same converter, not because a blob was checked in | Committed glyph images (the first draft): tens of thousands of unreviewable binary files, every font tweak a binary diff, and a blob nobody can regenerate; runtime FreeType (cache misses, dependency) |
 | **D3** | UTF-8 / NFC / grapheme segmentation | **Vendored `utf8proc` (MIT), pinned** | ICU (enormous, data-heavy, locale surface); hand-rolled tables (a correctness trap) |
-| **D4** | Shaping | **Not in v1.** Bake-time only, if a cluster ever needs it | HarfBuzz at runtime — no required script needs context-dependent shaping; CJK/kana/hangul are one-to-one |
-| **D5** | Bidi | **Deferred to V1-6, constrained**: table-driven UAX#9 subset generated at bake time; until then RTL is refused with a typed diagnostic | fribidi — LGPL conflicts with the static and export paths (V1-19) |
-| **D6** | Cell metrics | **Declared profiles**, not one global 8×8: 8×8 (glyph art, unchanged), 8×16 (primary text), plus measured 12×12/16×16 for accessibility | Variable cells (a new renderer, out of scope); per-glyph scaling (breaks the grid) |
-| **D7** | Glyph identity | **Packed 32-bit `GlyphRef`**: 2-bit kind (blank/transparent/missing/ink), 4-bit profile, 26-bit catalog index | Per-cell `font_id` byte (register A1a) — cannot express blank vs transparent vs missing distinctly |
-| **D8** | Fallback | **Declared per-profile chain, then the missing state**, visible diagnostic in authored content | System fonts, silent tofu, replacement character — all forbidden by the locked model |
-| **D9** | Fonts | **Noto Sans Mono + Noto Sans Mono CJK (OFL-1.1)**; DejaVu Sans Mono as the box-drawing candidate — settled by the coverage test, not by assumption | Unifont (GPL with font exception — export risk); assuming coverage without the test |
-| **D10** | Unicode version | **Pinned to the vendored data release** (utf8proc + bake tool), recorded at vendor time | Floating "latest" — makes parity unprovable |
+| **D4** | Shaping | **Not in v1.** Conversion-time only, if a cluster ever needs it | HarfBuzz at runtime — no required script needs context-dependent shaping; CJK/kana/hangul are one-to-one |
+| **D5** | Bidi | **Deferred to V1-6, constrained**: table-driven UAX#9 subset generated at conversion time; until then RTL is refused with a typed diagnostic | fribidi — LGPL conflicts with the static and export paths (V1-19) |
+| **D6** | Cell metrics **[revised]** | **8×8, always — one cell size, no profiles.** The converter fits the font to the cell; the user chooses a font that fits. Proven achievable for CJK by existing 8×8 bitmap faces | The first draft's 8×16/12×12/16×16 profiles: unnecessary (8×8 CJK exists), they changed the visual language for no gain, and they let an unfitting font off the hook instead of reporting it |
+| **D7** | Glyph identity | **Packed 32-bit `GlyphRef`**: 2-bit kind (blank/transparent/missing/ink), 4-bit face slot, 26-bit catalog index | Per-cell `font_id` byte (register A1a) — cannot express blank vs transparent vs missing distinctly |
+| **D8** | Fallback | **Declared per-face chain, then the missing state**, visible diagnostic in authored content and in the converter's report | System fonts, silent tofu, replacement character — all forbidden by the locked model |
+| **D9** | Fonts | **The user's, declared in the manifest.** Misaki (8×8 native, JIS 1st+2nd, M+ licence) is the reference that proves 8×8 CJK and the first thing the converter must handle; Noto Sans Mono/CJK (OFL-1.1) covers Latin and beyond-JIS CJK. Which fonts ship with a given build is a manifest question, not a code question | Unifont (GPL with font exception — export risk); assuming a font fits without converting it |
+| **D10** | Unicode version | **Pinned to the vendored data release** (utf8proc + converter), recorded at vendor time | Floating "latest" — makes parity unprovable |
+| **D11** | Conversion failure **[new]** | **Never silent: state exactly what did not fit and abort.** Source metrics, cell size, the specific glyph(s) and which bit overflowed. Fitting remedies — `squash` (anisotropic), `scale` (downscale with a declared threshold), `normalize` (re-baseline/advance/pad to the cell) — are **off by default, opt-in per font or per glyph range**, and each prints why it is being offered and what it will cost legibility | Silent auto-fit (hides an unsuitable font until the art is unreadable); refusing without remedy (leaves a 7×7 or 16×16 font stuck when a one-flag fix exists) |
+| **D12** | Font verification **[new]** | **A font manifest is the contract**: per font, the name, every file's SHA-256, the source URL, the licence, the version, the declared coverage and the declared source metrics. The converter refuses a file whose hash does not match and prints the URL it expected; `--list-fonts` reports what is installed and what is missing. A generated glyph set records the hash it came from, so a stale set is detectable rather than merely suspicious | "Works on my machine" font sets with no identity (two installs silently differ); trusting filenames or font family names (both are trivially edited and routinely wrong) |
 
-### Why build-time FreeType is not the dependency the governance rule forbids
+
+### The manifest and the converter's surface (what `D12` and `D11` look like)
+
+A `key=value` text file, matching the format every other asset here uses (`assets/settings.txt`,
+`assets/ui_layouts/*.txt`), one block per face:
+
+```
+font=jp
+name=Misaki Gothic
+file=misaki_gothic.ttf
+sha256=<64 hex>
+source=https://littlelimit.net/misaki.htm
+licence=M+ FONTS
+version=2021-05-05
+coverage=JIS X 0208
+cell=8x8
+```
+
+- `sha256=` repeats when a face is several files (per weight or per script), each paired with its
+  own `file=`. A face is the set of files the block names, all verified or none.
+- `source=` exists so the font can be found again without guessing — it is printed verbatim in
+  errors, in `--list-fonts`, and in the generated set's provenance.
+- `coverage=` and `cell=` are declarations the converter checks against the file, not notes.
+
+Two commands carry the contract:
+
+| Command | Purpose |
+|---|---|
+| `--list-fonts` | What is installed, what is missing, which hashes matched, which `source=` to fetch from |
+| `--convert <face>` | Verify hashes, convert, report per-glyph failures; refuse rather than guess |
+
+Failure output names the facts, not a verdict — for example: `misaki 8x8: 47 glyphs exceed the
+cell (worst: U+9AD9 at 9x8, +1 column); rerun with --squash to compress 1 column, or choose a
+font whose declared metrics fit`. Remedies are the opt-in flags from `D11`, and each states what
+it will do before it does it.
+
+### Why build-time conversion is not the dependency the governance rule forbids
 
 The rule exists so a *shipped binary* needs nothing outside the pinned image and so identical
-inputs produce identical pixels everywhere. Build-time-only use satisfies both:
+inputs produce identical pixels everywhere. Conversion-time-only use satisfies both:
 
 - **Runtime surface unchanged.** No `libfreetype` in the link path, the platform images or the
   exported build. The binary's dependency set stays exactly what it is today.
-- **Parity gets stronger, not weaker.** Rasterisation happens **once**, on one machine, and the
-  pixels are committed. Cross-platform parity stops being a hope about library versions and
-  becomes a hash check. The research §3 rule set still applies — to the bake rather than the
-  frame: no hinting, fixed AA mode, one rounding function, integer baseline.
-- **It matches how this project already handles content.** Maps are baked offline by `mapgen`
-  and shipped as data; glyphs become data the same way, and the test shape follows too
-  (`--reproduce` for maps ≈ re-bake hash equality for fonts).
-- **CI without FreeType still builds.** The bake tool is a developer/CI prerequisite, not a build
-  prerequisite; the committed artefacts are what the build consumes.
+- **Parity rests on identity, not on a blob.** Same converter version + same font file bytes
+  (proved by `D12`'s SHA-256) = same pixels. This is a *weaker guarantee than a committed
+  artefact in one way and a stronger one in another*: there is no blob to rot, but the guarantee
+  now depends on the converter being deterministic, so determinism is a tested property of the
+  tool rather than a fact about a file. The test is mapgen's `--reproduce` idea: convert on a
+  second machine (or twice in CI) and compare digests. The research §3 rules apply to the
+  conversion, not the frame: no hinting, fixed AA mode, one rounding function, integer baseline.
+- **It keeps content out of git that git is bad at.** The rejected alternative put ~272 KB–1 MB of
+  generated bitmap data in the repository as tens of thousands of files. Fonts already are the
+  input; the converter is the recipe; committing the cake as well invites the recipe and the cake
+  to disagree.
+- **The shipped build is still self-contained.** A release build converts once and embeds the
+  result. Players install nothing and need no font.
 
-The honest cost: a bake tool to write and audit, FreeType on the bake machine, and the discipline
-that a re-bake is a reviewed artefact change rather than a side effect. That is strictly less
-than 33,000 hand-authored glyphs or a runtime dependency on four platforms.
+The honest costs, since this is the trade that got made:
+
+- **A source checkout needs the fonts present to build glyph data.** That is a real prerequisite
+  where the previous draft had none. It must fail loudly and helpfully — the error names the
+  missing font, its expected hash and the URL to fetch it from (`D11`, `D12`).
+- **The converter becomes load-bearing for every build path**, so it is not optional tooling and
+  belongs in the verified tool set with its own tests.
+- **FreeType becomes a host tool** on developer and CI machines. Where the *converter* gets it
+  from — vendored build or system package — is a packaging detail of the tool, not of the game.
+
+That is strictly less than 33,000 hand-authored glyphs, a runtime dependency on four platforms,
+or a repository full of generated images nobody will review.
 
 ### Atlas budget (declared, not discovered)
 
-1bpp masks over the bounded required set (≈33,000 glyphs + ≈1,000 Latin/punctuation):
+One cell size means one budget line. 1bpp masks over the bounded required set (≈34,000 glyphs):
 
-| Profile | Bytes/glyph (1bpp) | 34k glyphs | With 4-level AA (2bpp) |
+| Cell | Bytes/glyph (1bpp) | 34k glyphs | With 4-level AA (2bpp) |
 |---|---|---|---|
-| 8×8 (glyph art) | 8 | 272 KB | 544 KB |
-| **8×16 (primary text)** | 16 | **544 KB** | **1.09 MB** |
-| 12×12 | 18 | 612 KB | 1.22 MB |
-| 16×16 | 32 | 1.09 MB | 2.18 MB |
+| **8×8** | 8 | **272 KB** | **544 KB** |
 
-**Declared cap: 2 MB per resident profile, 4 MB resident total.** The atlas is fully resident
-(no eviction, no per-frame allocation), so the 8.33 ms budget sees a texture read, not a raster.
-Cold cost exists only at load, where research item 3's measurement plan applies.
+**Declared cap: 1 MB resident for the glyph set, whatever faces the manifest declares.** The set
+is fully resident (no eviction, no per-frame allocation), so the 8.33 ms budget sees a texture
+read, not a raster. A font whose coverage would exceed the cap is a manifest-level discussion, not
+a silent overflow. Cold cost exists only at load.
 
 
 ## Consequences for the phases this unblocks
 
-**V1-5 (identity, raster service, cache, SMC migration)** implements D1–D8. Order that respects
+**V1-5 (identity, raster service, cache, SMC migration)** implements D1–D12. Order that respects
 the existing rollback point: typed `GlyphRef` + ASCII adapter first (old readers untouched), then
-the catalog + human-readable glyph table in the scene, then the baked-profile atlas behind the
-same interface the current atlas has, then SMC adapters. `Cell` grows to 4 bytes of glyph; that
-touches dirty comparison, packed state, stream signatures, checksums, restore behaviour and every
-SMC adapter — the list V1-5 item 5 already names, unchanged by this decision.
+the catalog + human-readable glyph table in the scene, then the converted glyph set behind the same
+interface the current atlas has, then SMC adapters. `Cell` grows to 4 bytes of glyph; that touches
+dirty comparison, packed state, stream signatures, checksums, restore behaviour and every SMC
+adapter — the list V1-5 item 5 already names, unchanged by this decision.
 
 **V1-6 (Unicode UI, editing, clipboard, IME)** gets three of its groundwork pieces from here:
 strict UTF-8 + NFC + segmentation (`utf8proc`), the missing-glyph diagnostic it must surface, and
 the RTL refusal that stands in until bidi lands. Paste validation shares the same validator as
 typed text (register C1a) — this decision adds no second path.
 
-**V1-7 (glyph-art formats)** inherits D6/D7: one art cell is one profile+index under the 8×8
-profile, so existing art and the 8×8 aesthetic survive the migration by construction.
+**V1-7 (glyph-art formats)** inherits D6/D7: one art cell is one face slot + index at 8×8, so
+existing art and the 8×8 aesthetic survive the migration by construction.
 
 **Not decided here, deliberately:**
 
-- **Raster profile measurement** (research item 3) — the decision unblocks it but does not answer
-  it. Candidate profiles must be baked and measured against the 41,600-cell / 8.33 ms envelope,
-  with CJK legibility reviewed by eye. That work is the first task V1-5 can start with.
-- **Fallback font files** (research item 2) — criteria exist; hashes, licences and the coverage
-  test are produced when the bake tool exists, not before. D9 names the candidates so the
-  coverage test has an expected answer to falsify.
+- **Which fonts ship in the default manifest** (research item 2) — Misaki is the reference case and
+  Noto the coverage case, but the shipping set, its licences and its exact file hashes belong to
+  the manifest the converter is delivered with, not to a decision made before the converter exists.
 - **Bidi implementation** — V1-6, constrained as in D5.
-- **Whether FreeType is vendored into the repo or treated as a host tool** — a packaging detail
-  for the bake tool, not for the shipped product; either choice keeps the runtime surface at
-  zero. Recorded so it is not mistaken for an unconsidered gap.
+- **Where the converter gets FreeType from** — a packaging detail for the tool, not for the shipped
+  product; either choice keeps the runtime surface at zero. Recorded so it is not mistaken for an
+  unconsidered gap.
+- **What "legible at 8×8" means for a given script** — that is a judgement per font. The converter
+  reports facts (overflow, clipping, coverage); it cannot rule on taste, and it must not pretend to
+  by silently rescaling.
 
 ## Risks, stated plainly
 
-- **The bake tool is new code with new failure modes** (font parsing, licence metadata,
-  reproducible output). Mitigation: it is build-time only, its output is reviewable bytes, and
-  its first test is re-bake equality — the same property that makes the maps trustworthy.
-- **A committed artefact can rot silently** if the tool changes without a re-bake. Mitigation:
-  the hash check runs in CI, so "artefact does not match tool" is a failure rather than a drift.
-- **The 8×16 profile changes the visual language** of the application. That is a design decision
-  the owner must accept at review, not something this record can settle; V1-5 keeps 8×8 for
-  glyph art regardless, so the aesthetic is preserved where it matters most.
-- **`utf8proc` is a real runtime dependency** — small, MIT, pure C, no allocation surprises, but
-  it is pinned and image-owned like everything else, and it must be added to the vendoring
-  records before use.
+- **The converter is new code with new failure modes** (font parsing, hash verification, fitting
+  remedies, reproducible output). Mitigation: its first test is determinism — convert twice/fleet-wide
+  and compare digests — and every failure path is required to name the font, the glyph and the
+  reason.
+- **Nothing is committed, so a build can fail where the previous draft would not.** Fonts must be
+  present and hash-correct before glyph data can be produced. Mitigation: `--list-fonts` makes the
+  state inspectable, the error names the URL, and CI proves a clean checkout + documented font
+  install is sufficient.
+- **Coverage is now the user's choice, so two installs may render different character sets.** That
+  is intended — but it means "the game supports Japanese" is a manifest claim, never a code claim.
+  The missing-glyph state must stay visible so the difference can never pass as a bug in the art.
+- **`utf8proc` is a real runtime dependency** — small, MIT, pure C, no allocation surprises, but it
+  is pinned and image-owned like everything else, and it must be added to the vendoring records
+  before use.
 
 ## Exit-gate mapping (V1-4)
 
@@ -145,12 +222,13 @@ profile, so existing art and the 8×8 aesthetic survive the migration by constru
 |---|---|
 | Dependencies selected | **decided** (D1–D4, D10) |
 | Unicode version | **decided as a rule** — pinned to vendored data at vendor time (D10) |
-| Fallback fonts | **selected** (D9); hashes/licences/coverage test follow with the bake tool |
-| Raster profile | **direction decided** (D6); measurement is the first V1-5 task |
-| Parity contract | **decided** — bake-once + hash equality, with the research §3 rules applied at bake |
-| Resource budgets | **declared** — 2 MB/profile, 4 MB resident, fully resident atlas |
+| Fallback fonts | **answered** (D9): the user's fonts, declared and verified per manifest (D12) |
+| Raster profile | **answered** (D6 revised): 8×8 only, no profile question left open |
+| Parity contract | **decided** — font-hash + converter determinism, with the research §3 rules applied at conversion (D2, D12) |
+| Resource budgets | **declared** — 1 MB resident glyph set, fully resident |
 | Glyph identity and format direction | **decided** (D7) |
+| Failure behaviour | **decided** (D11): abort with the exact reason; fitting is opt-in |
 
-V1-4 is **closed**. V1-5 is **unblocked** and may begin at its first task (bake tool + profile
-measurement) without further decisions.
+V1-4 is **closed**. V1-5 is **unblocked** and may begin at its first task (the converter, its
+determinism test, and the font manifest) without further decisions.
 

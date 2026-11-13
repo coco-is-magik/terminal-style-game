@@ -248,11 +248,14 @@ the agenda the model must satisfy remains:
 The three dimensions below are the font programme the owner asked to have written out. The
 dependency and representation questions are now **answered** in
 [`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md):
-baked bitmap profiles produced by a build-time FreeType bake (A3a + A3c), vendored `utf8proc`
-for UTF-8/NFC/segmentation, no runtime rasteriser, no HarfBuzz in v1, bidi deferred to V1-6
-under an LGPL-free constraint, declared cell profiles (A2b) with 8×8 retained for glyph art, and
-the packed 32-bit `GlyphRef` (A1b/B1b) with the ASCII adapter as the migration path. Faces are
-Noto Sans Mono/CJK (OFL-1.1) *pending* a coverage test that must prove them.
+glyphs are converted locally at build time with FreeType from **user-supplied font files**, and
+**no glyph data is committed** — the contract is a font manifest carrying name, per-file SHA-256
+and source URL, so two installs can prove they converted the same bytes (A3a, revised); vendored
+`utf8proc` for UTF-8/NFC/segmentation; no runtime rasteriser; no HarfBuzz in v1; bidi deferred to
+V1-6 under an LGPL-free constraint; a **fixed 8×8 cell** — 8×8 CJK bitmap faces exist, so taller
+text profiles were a solution to a problem that does not exist (A2b, revised); the packed 32-bit
+`GlyphRef` (A1b/B1b); and conversion that aborts with the exact failing glyph and offers squash,
+scale or normalise as **opt-in** remedies rather than fitting silently.
 
 Axes still open, to be decided as their phase starts: A4 (which assets carry a face), A5
 (ASCII-art alignment contract), A6 (animated face changes — pencils down until A4 exists), A7
@@ -278,10 +281,17 @@ A2. **Cell metrics** — (a) normalise every face onto one cell box, monospaced 
     profiles* (8×8, 8×16, 12×12…) with mixed profiles in one grid (touches renderer,
     raycast column mapping, layout resolver, hit testing, occlusion); (c) fully
     variable cells, i.e. a new renderer.
+    *(Decided 2026-11-06: **A2a, one 8×8 cell.** A2b was built on a false premise —
+    8×8 CJK bitmap faces exist, so the taller profiles solved nothing and changed the
+    visual language for free.)*
 A3. **Raster source** — (a) SDL_ttf at **build** time into atlas pages (deterministic,
     no runtime dependency, no cache eviction); (b) SDL_ttf at **runtime** with an LRU
     cache (flexible; needs pre-warm, eviction and load-failure diagnostics);
     (c) baked bitmap faces only, a named hand-authored set (cheapest, no TTF).
+    *(Decided 2026-11-06: **A3a, revised** — conversion at build time over fonts the user
+    supplies, but no generated glyph data committed; a font manifest of names, file hashes
+    and source URLs is the contract, and a failed conversion aborts with the exact glyph
+    and reason, offering squash/scale/normalise as opt-in remedies.)*
 A4. **Which assets carry a face** — material, sprite/decal pattern cells, `ui_elements`,
     authored `.tui` elements, editor chrome. Each is a schema + parser + validation +
     default decision; absent means "profile default", which is the migration story.
