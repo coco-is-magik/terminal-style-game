@@ -315,6 +315,12 @@ B3. **Clusters** — (a) one visual cell may hold a grapheme cluster (combining 
     emoji ZWJ sequences); (b) single codepoints only, clusters refused.
 B4. **Missing glyphs** — (a) per-face fallback stack, then a tofu box; (b) strict: a
     missing glyph is a load-time validation error; (c) silent replacement character.
+    *(Decided 2026-11-06: **none of the three.** No fallback chain — a glyph the declared
+    face lacks is never borrowed from anywhere — and no load-time rejection either, because
+    absent text must stay inspectable. The cell renders a derived sentinel (`X`, red
+    background, purple foreground, outside the theme) and raises `TSG-ASSET-ENV-0001` once
+    per (face, codepoint). Same rule as the missing-decal `!`/`#` checker: derived, never
+    serialised. See the decision record's "missing-glyph sentinel".)*
 B5. **Font assets and packaging** — licensing, load-failure diagnostics per
     `ERROR_CATALOG.md`, and carrying faces through export/packaging (V1-19).
 B6. **Block and shade art** — require coverage of U+2500–259F in a face declared

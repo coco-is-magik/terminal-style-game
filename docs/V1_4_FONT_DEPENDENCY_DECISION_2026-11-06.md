@@ -79,7 +79,7 @@ font manifest the contract; keep the runtime dependency surface at zero for rast
 | **D5** | Bidi | **Deferred to V1-6, constrained**: table-driven UAX#9 subset generated at conversion time; until then RTL is refused with a typed diagnostic | fribidi — LGPL conflicts with the static and export paths (V1-19) |
 | **D6** | Cell metrics **[revised]** | **8×8, always — one cell size, no profiles.** The converter fits the font to the cell; the user chooses a font that fits. Proven achievable for CJK by existing 8×8 bitmap faces | The first draft's 8×16/12×12/16×16 profiles: unnecessary (8×8 CJK exists), they changed the visual language for no gain, and they let an unfitting font off the hook instead of reporting it |
 | **D7** | Glyph identity | **Packed 32-bit `GlyphRef`**: 2-bit kind (blank/transparent/missing/ink), 4-bit face slot, 26-bit catalog index | Per-cell `font_id` byte (register A1a) — cannot express blank vs transparent vs missing distinctly |
-| **D8** | Fallback | **Declared per-face chain, then the missing state**, visible diagnostic in authored content and in the converter's report | System fonts, silent tofu, replacement character — all forbidden by the locked model |
+| **D8** | Missing glyph **[revised]** | **No fallback at all.** A glyph the cell's declared face lacks is never borrowed from another face, the system, or a substitute character — it renders as the derived sentinel (`X`, red background, purple foreground) and raises one diagnostic per (face, codepoint) | Per-face fallback stack (the first draft): it makes "which font drew this?" unknowable, hides coverage gaps behind a chain nobody audits, and turns one missing glyph into a resolution-order question. Tofu box: quiet enough to ship by accident. Replacement character: silent |
 | **D9** | Fonts | **The user's, declared in the manifest.** Misaki (8×8 native, JIS 1st+2nd, M+ licence) is the reference that proves 8×8 CJK and the first thing the converter must handle; Noto Sans Mono/CJK (OFL-1.1) covers Latin and beyond-JIS CJK. Which fonts ship with a given build is a manifest question, not a code question | Unifont (GPL with font exception — export risk); assuming a font fits without converting it |
 | **D10** | Unicode version | **Pinned to the vendored data release** (utf8proc + converter), recorded at vendor time | Floating "latest" — makes parity unprovable |
 | **D11** | Conversion failure **[new]** | **Never silent: state exactly what did not fit and abort.** Source metrics, cell size, the specific glyph(s) and which bit overflowed. Fitting remedies — `squash` (anisotropic), `scale` (downscale with a declared threshold), `normalize` (re-baseline/advance/pad to the cell) — are **off by default, opt-in per font or per glyph range**, and each prints why it is being offered and what it will cost legibility | Silent auto-fit (hides an unsuitable font until the art is unreadable); refusing without remedy (leaves a 7×7 or 16×16 font stuck when a one-flag fix exists) |
@@ -120,6 +120,32 @@ Failure output names the facts, not a verdict — for example: `misaki 8x8: 47 g
 cell (worst: U+9AD9 at 9x8, +1 column); rerun with --squash to compress 1 column, or choose a
 font whose declared metrics fit`. Remedies are the opt-in flags from `D11`, and each states what
 it will do before it does it.
+
+### The missing-glyph sentinel (what `D8` looks like)
+
+The precedent is already in this codebase: `asset_registry_get_missing_decal_pattern()`
+(`src/assets.c`) — a process-lifetime 2×2 `!`/`#` checker for a missing decal reference. Derived on
+demand, never serialised, impossible to author or overwrite. A missing glyph follows the same rule.
+
+**The cell: glyph `X`, purple foreground on a red background.** Both wrong at once, so the cell
+reads as broken before it reads as a character. The `X` also carries the signal without colour —
+it survives greyscale screenshots, colour-blind viewing and a monitor with saturation turned down.
+
+- **Derived, never stored.** It is `GlyphRef` kind `missing` (`D7`): no catalog entry, no new
+  identity space, nothing written into a scene, a stream or a save file. A document reopened
+  against a thinner font re-derives it, so there is no stale sentinel to trust.
+- **Not text.** The contrast floor governs text; this is a diagnostic mark. It is *meant* to be
+  ugly, it is outside the look identity, and it is not themeable — a theme that could restyle it
+  could also hide it.
+- **Colour resolution.** "Purple" resolves to the palette's magenta `#FF2BD6`, the only
+  purple-family value the project owns; the background is the palette red `#FF2B2B`. A hue outside
+  those two constants is a new token and a look-record amendment, so it is flagged here rather
+  than invented quietly.
+- **Where it must survive:** runtime, editor preview, glyph-art view, `capture`/restore, and the
+  packed `Cell` state — so SMC streams and checksums carry `kind=missing` instead of degrading it
+  to a blank.
+- **Once, not per frame.** Glyph resolution raises `TSG-ASSET-ENV-0001` once per (face, codepoint)
+  per process. A screenful of missing kanji is forty diagnostics, not 41,600 per second.
 
 ### Why build-time conversion is not the dependency the governance rule forbids
 
@@ -222,7 +248,8 @@ existing art and the 8×8 aesthetic survive the migration by construction.
 |---|---|
 | Dependencies selected | **decided** (D1–D4, D10) |
 | Unicode version | **decided as a rule** — pinned to vendored data at vendor time (D10) |
-| Fallback fonts | **answered** (D9): the user's fonts, declared and verified per manifest (D12) |
+| Fallback fonts | **answered** (D9, D12): the user's fonts, declared and verified per manifest — and no fallback chain exists at all (D8) |
+| Missing-glyph behaviour | **decided** (D8): derived `X` sentinel, red background, purple foreground, one diagnostic per (face, codepoint); never serialised |
 | Raster profile | **answered** (D6 revised): 8×8 only, no profile question left open |
 | Parity contract | **decided** — font-hash + converter determinism, with the research §3 rules applied at conversion (D2, D12) |
 | Resource budgets | **declared** — 1 MB resident glyph set, fully resident |

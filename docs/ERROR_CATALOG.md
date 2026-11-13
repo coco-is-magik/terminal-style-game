@@ -184,6 +184,22 @@ different meaning.
   enter/exit review
 - **Introduced:** 2026-09-16
 
+## Asset and font capability failures
+
+### TSG-ASSET-ENV-0001 — A cell's declared face lacks the glyph the document requires
+
+- **Status:** Planned (V1-5)
+- **Category/severity:** ENV / warning — visible in the cell, non-fatal, the run continues
+- **Owner/site:** glyph resolution in the render path; canonical site fixed when V1-5 lands
+- **Detection:** a cell's `GlyphRef` resolves to a codepoint that the cell's declared face does not contain
+- **Context:** face name, face SHA-256 prefix, codepoint (U+XXXX), first offending cell coordinate, count of affected cells this frame
+- **Meaning:** the document requires a character the installed font does not provide
+- **Recovery:** none attempted by design — there is no fallback chain (`D8`); the cell renders the sentinel (`X`, red background, purple foreground) and rendering continues
+- **Preserved state:** the document, its glyph references and the generated glyph set are unchanged; nothing is serialised
+- **Action:** install a face with the required coverage, or change the face for those cells
+- **Verification:** `test-glyph-missing-sentinel` (planned) — asserts the sentinel glyph and exact colours, that exactly one diagnostic is raised per (face, codepoint) regardless of frame count, and that nothing about the sentinel reaches a save or a stream
+- **Introduced:** 2026-11-06
+
 ## Entry template
 
 ```markdown
