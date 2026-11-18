@@ -70,6 +70,19 @@ LIBS := -L"$(VENDOR_DIR)/lib64" -lSDL3 -lSDL3_mixer -lenet $(PLATFORM_LIBS) -lm
 TEST_LIBS := -L"$(VENDOR_DIR)/lib64" -lcmocka -lSDL3 -lSDL3_mixer -lenet $(PLATFORM_LIBS) -lm
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/dist/lib64'
 
+# FreeType is a host tool for the font converter only (V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md,
+# D2): it never enters the game's link path. When it is absent, fontconv still builds and its
+# verifier still works; only --convert reports that it cannot convert.
+FREETYPE_CFLAGS := $(shell pkg-config --cflags freetype2 2>/dev/null)
+FREETYPE_LIBS := $(shell pkg-config --libs freetype2 2>/dev/null)
+ifeq ($(strip $(FREETYPE_LIBS)),)
+FONTCONV_FREETYPE := -DFONTCONV_HAVE_FREETYPE=0
+FONTCONV_FREETYPE_LIBS :=
+else
+FONTCONV_FREETYPE := -DFONTCONV_HAVE_FREETYPE=1
+FONTCONV_FREETYPE_LIBS := $(FREETYPE_LIBS)
+endif
+
 ifeq ($(USE_SMC_STATE_TRACKER),1)
   SMC_DIR := vendor/src/smc
   SMC_INCLUDES := -I"$(SMC_DIR)/include" -I"$(SMC_DIR)/src/c"
@@ -721,9 +734,10 @@ $(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUM
 	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
 
-$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tools/fontconv.c src/font_manifest.c src/sha256.c \
-		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(RPATH)
+$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) $(FREETYPE_CFLAGS) $(FONTCONV_FREETYPE) \
+		tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c \
+		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(FONTCONV_FREETYPE_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) \

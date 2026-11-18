@@ -307,6 +307,26 @@ static void test_describe_is_bounded_and_named(void **state) {
     assert_string_equal(font_fit_mode_name(FONT_FIT_MODE_NORMALIZE), "normalize");
 }
 
+/* The cell's bit order is not a detail: it is the renderer's convention, and reversing it would
+   mirror every converted glyph in the game while every test that only checked "some ink exists"
+   still passed. renderer.c rasterises with `row_pixels[0] = (row & 1)` … `row_pixels[7] =
+   (row & 128)`, so bit 0 is the leftmost pixel. This test pins that, and names where it comes
+   from, so a future change to either side has to change both deliberately. */
+static void test_leftmost_pixel_is_bit_zero_matching_the_renderer(void **state) {
+    FontFitMask mask = make_mask(8U, 8U);
+    FontFitCell cell;
+    (void)state;
+    assert_true(font_fit_mask_set(&mask, 0U, 0U)); /* top-left corner only */
+    assert_int_equal(font_fit_apply(&mask, FONT_FIT_MODE_NONE, &cell, NULL), FONT_FIT_OK);
+    assert_int_equal(cell.rows[0], 0x01U);
+    font_fit_mask_init(&mask);
+    mask.width = 8U;
+    mask.height = 8U;
+    assert_true(font_fit_mask_set(&mask, 7U, 0U)); /* top-right corner only */
+    assert_int_equal(font_fit_apply(&mask, FONT_FIT_MODE_NONE, &cell, NULL), FONT_FIT_OK);
+    assert_int_equal(cell.rows[0], 0x80U);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_a_glyph_that_already_fits_is_untouched),
@@ -323,7 +343,8 @@ int main(void) {
         cmocka_unit_test(test_source_that_fits_is_not_moved_by_strict_mode),
         cmocka_unit_test(test_apply_does_not_modify_its_input),
         cmocka_unit_test(test_determinism_and_bounds),
-        cmocka_unit_test(test_describe_is_bounded_and_named)
+        cmocka_unit_test(test_describe_is_bounded_and_named),
+        cmocka_unit_test(test_leftmost_pixel_is_bit_zero_matching_the_renderer)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

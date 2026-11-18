@@ -280,19 +280,20 @@ output, and a test keeps it parseable and keeps its digests fake. Filling the ex
 digests verifies the archive, which is how its shape was confirmed.
 
 
-**Next:** `--convert` — FreeType decoding at build time — then the determinism test (convert
-twice, compare digests).
+**Next:** the determinism test in CI (convert twice on two machines, compare digests), then the
+runtime side: `GlyphRef`, the glyph catalog in the scene, and the atlas reading the set.
 
-`src/font_fit` landed 2026-11-06 as the `D11` policy: a decoded 1bpp mask in, either an 8×8 cell
-out or a refusal naming the overshoot and both remedies. Four modes with distinct jobs (`none`,
-`squash` for one-axis overflow, `scale` for 16×16 strikes, `normalize` for ink that fits but sits
-in the wrong box), integer arithmetic only, and 15 tests asserting exact cell bytes — including
-that a 16×16 one-pixel ring survives scaling at 8×8 as a ring, because a threshold that erases
-strokes would produce a legible-looking font with missing strokes.
+`--convert` landed 2026-11-06 and was measured on the real archive: Misaki's TTF ships embedded
+8×8 bitmaps, so its 7,171 glyphs convert through `none` with zero refusals and zero re-rendering;
+two runs are byte-identical; at `--size 16` the run refuses 7,094 glyphs naming the exact
+overshoot and writes nothing, while `--fit scale` converts them and reproduces the font's own 8×8
+bitmaps for full-width glyphs byte for byte. That is the evidence behind the quarter-coverage
+threshold: a box-filtered 16 px outline lands on the designer's bitmap rather than near it.
 
-The first thing `--convert` has to probe: Misaki's TTF ships **embedded 8×8 bitmaps** alongside
-its outlines, so FreeType can hand back the strike directly and this face needs `none`, not
-fitting at all. Which path a font takes is a fact to report per face, not an assumption to bake in.
+Also learned while measuring, for the width-class question (`B2`): Misaki reports 7,003 full-width
+and 168 half-width advances, so mixed Latin/Japanese text cannot be one cell per codepoint without
+deciding what a half-width glyph does in an 8×8 cell. The converter reports the split; the decision
+belongs to B2.
 
 Why these are decisions and not tasks: the ceiling is not the font, it is the **cell**.
 `Cell.glyph` is a `uint8_t`; `renderer_create` rejects any cell that is not exactly 8×8;

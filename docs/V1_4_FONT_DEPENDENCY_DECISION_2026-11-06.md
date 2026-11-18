@@ -115,7 +115,7 @@ with the fit policy below.
 | Command | Purpose | State |
 |---|---|---|
 | `--list-fonts` | What is installed, what is missing, which hashes matched, which `source=` to fetch from | **implemented** — no FreeType needed, so it works on the machine where a mismatch is being diagnosed |
-| `--convert <face>` | Verify hashes, convert, report per-glyph failures; refuse rather than guess | **next**: needs the fit policy (`D11`) |
+| `--convert <face> --out PATH` | Verify hashes, convert, report per-glyph failures; refuse rather than guess | **implemented** — FreeType at build time only; `--fit` selects a remedy, `--size` the decode size, `--file` the file of a multi-file face |
 
 The verifier's output is checked end to end against real vendor files. Downloaded
 `misaki_ttf_2021-05-05.zip` from <https://littlelimit.net/misaki.htm> (794,317 bytes, matching the
@@ -168,6 +168,45 @@ Three decisions inside that worth knowing:
 - **The refusal names the remedy and the cost**, and for `normalize` it quotes the *ink* overshoot
   rather than the strike's: a 16×16 strike holding 10×10 of ink is two columns too wide, not eight,
   and a message that says eight sends the user to the wrong fix.
+
+### What `--convert` does, and what it measured
+
+Decodes with FreeType at build time, fits through `src/font_fit`, and writes a deterministic set:
+`"TSGFONT1"`, cell size, entry count, a provenance digest, then 16-byte entries sorted by
+codepoint (u32 codepoint, u8 mode, u8 rows[8], padding). Hashing the output is the reproducibility
+check; two runs are byte-identical.
+
+Measured on the real Misaki archive, which is the case the whole design was built to survive:
+
+| Case | Result |
+|---|---|
+| `misaki_gothic.ttf`, default | **embedded 8×8 bitmap strike** used, 7,171 glyphs, **0 refused, 0 unsupported**, all `none` |
+| same, run twice | **byte-identical** output and digests |
+| same, `--size 16` | rendering outlines at 16 px: **7,094 refusals**, eight named with exact overshoot (`U+0021 2x12 … 0 column(s) and 4 row(s)`), **no set written**, exit 1 |
+| same, `--size 16 --fit squash` | 7,171 converted; strokes double — visibly cruder |
+| same, `--size 16 --fit scale` | 7,171 converted; **full-width glyphs reproduce the font's own 8×8 bitmaps byte for byte** (U+3042 identical); half-width glyphs match in shape but sit centred rather than at their origin, which is exactly the cost `scale` states |
+| `NotoColorEmoji.ttf` | refuses: no 8×8 strike, no 8 px size, and it lists the strikes it does have (109×109 colour) |
+
+Two things that came out of running it rather than reasoning about it:
+
+- **The strike is used when it exists.** Misaki's TTF carries its own 8×8 bitmaps, so the converter
+  takes them instead of re-rasterising outlines — the designer's pixels, not a guess at them. The
+  path is printed every run, because which path a face takes is a fact about that face.
+- **`scale` at factor 2 reproduces native 8×8 glyphs.** That is independent evidence for the
+  quarter-coverage threshold: a 16 px outline of あ, box-filtered to 8×8, lands on precisely the
+  bitmap the font ships. A half-coverage threshold would have produced a different glyph, and a
+  blank one for hairlines.
+
+Also reported, not decided: the advance distribution (7,003 full-width, 168 half-width for
+Misaki). That is the input the width-class question (register B2) needs, and it is why the tool
+prints it rather than hiding it.
+
+**Cell bit order is the renderer's, and pinned by test:** bit 0 is the leftmost pixel, matching
+`renderer.c` (`row_pixels[0] = (row & 1)` … `row_pixels[7] = (row & 128)`) and `glyph_atlas.c`.
+Reversing it would mirror every glyph in the game while any test that only counted ink still
+passed, so `test_font_fit` asserts both corners of the cell.
+
+
 
 ### The missing-glyph sentinel (what `D8` looks like)
 
