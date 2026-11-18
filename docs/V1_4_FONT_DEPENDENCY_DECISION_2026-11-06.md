@@ -117,12 +117,26 @@ with the fit policy below.
 | `--list-fonts` | What is installed, what is missing, which hashes matched, which `source=` to fetch from | **implemented** — no FreeType needed, so it works on the machine where a mismatch is being diagnosed |
 | `--convert <face>` | Verify hashes, convert, report per-glyph failures; refuse rather than guess | **next**: needs the fit policy (`D11`) |
 
-The verifier's output is checked end to end against coreutils: `fontconv --list-fonts` agrees
-with `sha256sum` on a 600 KB font file, exits 0 when every declared file matches, 1 when one is
-missing or mismatched (printing expected and installed digests plus the declaring `source=`), and
-2 when the manifest cannot be read or is malformed (printing the line and the key). A tool a build
-step depends on has to distinguish "the fonts are wrong" from "I could not check the fonts", or
-the build will repair the wrong thing.
+The verifier's output is checked end to end against real vendor files. Downloaded
+`misaki_ttf_2021-05-05.zip` from <https://littlelimit.net/misaki.htm> (794,317 bytes, matching the
+size the page states), extracted three 1.1 MB TTFs, and generated a **local** manifest from their
+real digests — never committed, because D2 says the bytes do not live here:
+
+| Case | Result |
+|---|---|
+| Three real files, two faces (one with two files) | `PASS`, exit 0 |
+| `misaki_mincho.ttf` copied over `misaki_gothic.ttf` (wrong style fetched) | `HASH-MISMATCH`, both digests, exit 1 |
+| `misaki_mincho.ttf` deleted | `MISSING` + "obtain it from <url>", exit 1 |
+| Example manifest with placeholder digests | parses; every file reports `HASH-MISMATCH` against the real installed digest |
+
+`assets/fonts.example.txt` is what ships instead of a manifest: the Misaki shape, the required
+keys, and a passing run's output — with 64-zero digests, so it identifies nothing and cannot be
+mistaken for a claim about anyone's bytes. A test parses that file and asserts its digests are
+still placeholders, so it cannot rot into a stale claim; filling it in with the real digests
+verifies the real archive, which is how its shape was confirmed rather than assumed.
+
+A tool a build step depends on has to distinguish "the fonts are wrong" from "I could not check
+the fonts", or the build will repair the wrong thing, so the three exit codes are the interface.
 
 Failure output names the facts, not a verdict — for example: `misaki 8x8: 47 glyphs exceed the
 cell (worst: U+9AD9 at 9x8, +1 column); rerun with --squash to compress 1 column, or choose a

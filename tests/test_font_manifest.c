@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <cmocka.h>
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../src/font_manifest.h"
@@ -337,6 +339,57 @@ static void test_result_names_are_stable(void **state) {
                         "DUPLICATE_FACE");
 }
 
+/* The shipped example is documentation, and documentation that no longer parses is worse than
+   none: someone will follow it, get a rejection, and conclude the format is broken. This test
+   reads the real file from the repository, so the example cannot drift out of the format without
+   failing the suite. It is run from the repository root, like every other runner. */
+static void test_shipped_example_manifest_is_valid(void **state) {
+    static const char path[] = "assets/fonts.example.txt";
+    FontManifest manifest;
+    FontManifestDiagnostic diagnostic;
+    char *text = NULL;
+    long size;
+    FILE *file = fopen(path, "rb");
+    (void)state;
+    assert_non_null(file);
+    assert_int_equal(fseek(file, 0L, SEEK_END), 0);
+    size = ftell(file);
+    assert_true(size > 0L);
+    assert_true((size_t)size < FONT_MANIFEST_TEXT_MAX);
+    assert_int_equal(fseek(file, 0L, SEEK_SET), 0);
+    text = malloc((size_t)size + 1U);
+    assert_non_null(text);
+    assert_int_equal(fread(text, 1U, (size_t)size, file), (size_t)size);
+    text[size] = '\0';
+    assert_int_equal(fclose(file), 0);
+
+    assert_int_equal(font_manifest_read_text(text, &manifest, &diagnostic), FONT_MANIFEST_OK);
+    free(text);
+
+    /* The shape the example documents: a two-file face and a one-file face, both Japanese, both
+       at the renderer's cell size. */
+    assert_int_equal(manifest.face_count, 2U);
+    assert_non_null(font_manifest_find_face(&manifest, "misaki-gothic"));
+    assert_non_null(font_manifest_find_face(&manifest, "misaki-mincho"));
+    assert_int_equal(manifest.faces[0].file_count, 2U);
+    assert_int_equal(manifest.faces[1].file_count, 1U);
+    /* Every digest in the example is a placeholder. If one ever becomes a real digest, the file
+       has stopped being an example and started being a stale claim about someone's bytes. */
+    {
+        uint8_t zero[SHA256_DIGEST_SIZE];
+        unsigned face_index;
+        memset(zero, 0, sizeof(zero));
+        for (face_index = 0U; face_index < manifest.face_count; face_index++) {
+            unsigned file_index;
+            for (file_index = 0U; file_index < manifest.faces[face_index].file_count;
+                 file_index++) {
+                assert_memory_equal(manifest.faces[face_index].files[file_index].sha256, zero,
+                                    sizeof(zero));
+            }
+        }
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_valid_manifest_parses_every_field),
@@ -347,7 +400,8 @@ int main(void) {
         cmocka_unit_test(test_values_are_validated_not_coerced),
         cmocka_unit_test(test_rejection_leaves_the_caller_manifest_untouched),
         cmocka_unit_test(test_writer_reports_small_buffers_and_incomplete_faces),
-        cmocka_unit_test(test_result_names_are_stable)
+        cmocka_unit_test(test_result_names_are_stable),
+        cmocka_unit_test(test_shipped_example_manifest_is_valid)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

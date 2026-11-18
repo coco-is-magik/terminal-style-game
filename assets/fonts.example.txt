@@ -1,0 +1,62 @@
+# fonts.example.txt — a worked example of the font manifest. THIS IS NOT A MANIFEST.
+#
+# The real one is assets/fonts.txt, and it is deliberately not committed: its digests only mean
+# something for the exact bytes somebody downloaded, and font files are not in this repository
+# (V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md, D2/D12). This file shows the shape, the spelling
+# and the rules, and every digest below is 64 zeros — a placeholder that identifies nothing.
+#
+# To make a real one:
+#   1. download the fonts named below (source= is the page they come from)
+#   2. hash every file:
+#        sha256sum misaki_gothic.ttf misaki_gothic_2nd.ttf misaki_mincho.ttf
+#   3. copy the blocks into assets/fonts.txt and replace each digest with the real one
+#   4. check it:
+#        make fontconv
+#        ./build/fontconv --manifest assets/fonts.txt --list-fonts
+#
+# A correct manifest, verified against the real 2021-05-05 archive, prints this and exits 0:
+#
+#   manifest assets/fonts.txt
+#   fonts    assets/fonts
+#   face misaki-gothic — Misaki Gothic (and 2nd) (misaki.txt: free, ..., cell=8x8)
+#     OK             misaki_gothic.ttf
+#     OK             misaki_gothic_2nd.ttf
+#     declared       version=2021-05-05 coverage=JIS X 0208
+#   face misaki-mincho — Misaki Mincho (misaki.txt: free, ..., cell=8x8)
+#     OK             misaki_mincho.ttf
+#     declared       version=2021-05-05 coverage=JIS X 0208
+#   PASS: every declared file is installed and matches its manifest hash
+#
+# Anything else is a real answer, not a nuisance:
+#   MISSING        the file is not there; the output prints the source= URL to fetch it from
+#   HASH-MISMATCH  the bytes differ from the declared ones (usually a different build or the
+#                  wrong style); expected and installed digests are both printed
+#   exit 2         the manifest itself is wrong; the line and the key are named
+#
+# Rules the parser enforces, so a typo fails loudly instead of converting the wrong bytes:
+#   font, name, at least one file+sha256 pair, source and licence are required; cell must be 8x8,
+#   because that is the renderer's cell and a manifest may not negotiate it; file and sha256 pair
+#   up in that order, one hash per file; no singleton key may repeat; `#` comments and blank lines
+#   are ignored; the first '=' on a line separates key from value, so a URL may contain '='.
+
+font=misaki-gothic
+name=Misaki Gothic (and 2nd)
+file=misaki_gothic.ttf
+sha256=0000000000000000000000000000000000000000000000000000000000000000
+file=misaki_gothic_2nd.ttf
+sha256=0000000000000000000000000000000000000000000000000000000000000000
+source=https://littlelimit.net/misaki.htm
+licence=misaki.txt: free, unlimited copy/redistribute, no warranty
+version=2021-05-05
+coverage=JIS X 0208
+cell=8x8
+
+font=misaki-mincho
+name=Misaki Mincho
+file=misaki_mincho.ttf
+sha256=0000000000000000000000000000000000000000000000000000000000000000
+source=https://littlelimit.net/misaki.htm
+licence=misaki.txt: free, unlimited copy/redistribute, no warranty
+version=2021-05-05
+coverage=JIS X 0208
+cell=8x8

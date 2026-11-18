@@ -9,6 +9,39 @@ either the runtime (`asset_loader.c`) or the editor modules (`decal_io.c`,
 A simple digit grid.  Each row is a line of characters:
 
 - `'0'` — empty/void tile (passable)
+
+## Fonts (`assets/fonts.txt` — not committed; `assets/fonts.example.txt` shows the format)
+
+Font files are **not** in this repository and neither is the real manifest: glyphs are converted
+locally from fonts the user supplies, and a manifest's digests only mean anything for the exact
+bytes someone downloaded (`../docs/V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`, D2/D12).
+`assets/fonts.example.txt` is a worked example — the real Misaki archive's shape, with placeholder
+digests — showing the `key=value` format, the required keys, and what a passing run prints.
+
+```
+font=misaki-gothic
+name=Misaki Gothic (and 2nd)
+file=misaki_gothic.ttf
+sha256=<64 hex>
+file=misaki_gothic_2nd.ttf
+sha256=<64 hex>
+source=https://littlelimit.net/misaki.htm
+licence=misaki.txt: free, unlimited copy/redistribute, no warranty
+version=2021-05-05
+coverage=JIS X 0208
+cell=8x8
+```
+
+`file` and `sha256` pair up in that order, one hash per file; `font`, `name`, `source`, `licence`
+and at least one pair are required; `cell` must be `8x8`, because the renderer's cell is not a font
+decision; `#` comments and blank lines are ignored. Unknown keys, duplicate keys, an unpaired
+`file`/`sha256`, and a manifest whose first line is not `font=` are rejected with a line number and
+the offending key.
+
+Verify an installed set with `make fontconv` then `./build/fontconv --manifest assets/fonts.txt
+--list-fonts`: exit 0 when every declared file matches, 1 when one is missing or differs (printing
+both digests and the `source=` URL), 2 when the manifest itself is wrong.
+
 - `'1'`–`'9'` — solid wall using that material ID
 - any other character — solid wall using `default_material_id` from `config.ini`
 

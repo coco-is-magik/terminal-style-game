@@ -271,6 +271,15 @@ verifies installed files against the manifest and exits 0/1/2 as verified / mism
 could-not-check. No font data is committed and `assets/fonts/` is ignored, so a checkout carries
 the contract and not the bytes.
 
+Exercised against the real archive: `misaki_ttf_2021-05-05.zip` downloaded from
+<https://littlelimit.net/misaki.htm>, three 1.1 MB TTFs, a local manifest generated from their real
+digests — `PASS` exit 0 for the good set, `HASH-MISMATCH` when the wrong style is copied over a
+declared name, `MISSING` when one is deleted. That local manifest is **not** committed;
+`assets/fonts.example.txt` ships instead, with 64-zero placeholder digests and a passing run's
+output, and a test keeps it parseable and keeps its digests fake. Filling the example in with real
+digests verifies the archive, which is how its shape was confirmed.
+
+
 **Next:** the fit policy (`D11`) — probe, exact failure report, and `squash` / `scale` /
 `normalize` as opt-in — then `--convert` with FreeType at build time, then the determinism test
 (convert twice, compare digests). Those come before any runtime glyph work: a converter whose
