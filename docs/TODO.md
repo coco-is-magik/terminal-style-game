@@ -280,10 +280,19 @@ output, and a test keeps it parseable and keeps its digests fake. Filling the ex
 digests verifies the archive, which is how its shape was confirmed.
 
 
-**Next:** the fit policy (`D11`) — probe, exact failure report, and `squash` / `scale` /
-`normalize` as opt-in — then `--convert` with FreeType at build time, then the determinism test
-(convert twice, compare digests). Those come before any runtime glyph work: a converter whose
-failure modes are unknown cannot be trusted to produce the glyphs the renderer reads.
+**Next:** `--convert` — FreeType decoding at build time — then the determinism test (convert
+twice, compare digests).
+
+`src/font_fit` landed 2026-11-06 as the `D11` policy: a decoded 1bpp mask in, either an 8×8 cell
+out or a refusal naming the overshoot and both remedies. Four modes with distinct jobs (`none`,
+`squash` for one-axis overflow, `scale` for 16×16 strikes, `normalize` for ink that fits but sits
+in the wrong box), integer arithmetic only, and 15 tests asserting exact cell bytes — including
+that a 16×16 one-pixel ring survives scaling at 8×8 as a ring, because a threshold that erases
+strokes would produce a legible-looking font with missing strokes.
+
+The first thing `--convert` has to probe: Misaki's TTF ships **embedded 8×8 bitmaps** alongside
+its outlines, so FreeType can hand back the strike directly and this face needs `none`, not
+fitting at all. Which path a font takes is a fact to report per face, not an assumption to bake in.
 
 Why these are decisions and not tasks: the ceiling is not the font, it is the **cell**.
 `Cell.glyph` is a `uint8_t`; `renderer_create` rejects any cell that is not exactly 8×8;

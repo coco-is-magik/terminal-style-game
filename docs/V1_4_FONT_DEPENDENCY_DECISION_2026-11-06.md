@@ -82,7 +82,7 @@ font manifest the contract; keep the runtime dependency surface at zero for rast
 | **D8** | Missing glyph **[revised]** | **No fallback at all.** A glyph the cell's declared face lacks is never borrowed from another face, the system, or a substitute character — it renders as the derived sentinel (`X`, red background, purple foreground) and raises one diagnostic per (face, codepoint) | Per-face fallback stack (the first draft): it makes "which font drew this?" unknowable, hides coverage gaps behind a chain nobody audits, and turns one missing glyph into a resolution-order question. Tofu box: quiet enough to ship by accident. Replacement character: silent |
 | **D9** | Fonts | **The user's, declared in the manifest.** Misaki (8×8 native, JIS 1st+2nd, M+ licence) is the reference that proves 8×8 CJK and the first thing the converter must handle; Noto Sans Mono/CJK (OFL-1.1) covers Latin and beyond-JIS CJK. Which fonts ship with a given build is a manifest question, not a code question | Unifont (GPL with font exception — export risk); assuming a font fits without converting it |
 | **D10** | Unicode version | **Pinned to the vendored data release** (utf8proc + converter), recorded at vendor time | Floating "latest" — makes parity unprovable |
-| **D11** | Conversion failure **[new]** | **Never silent: state exactly what did not fit and abort.** Source metrics, cell size, the specific glyph(s) and which bit overflowed. Fitting remedies — `squash` (anisotropic), `scale` (downscale with a declared threshold), `normalize` (re-baseline/advance/pad to the cell) — are **off by default, opt-in per font or per glyph range**, and each prints why it is being offered and what it will cost legibility | Silent auto-fit (hides an unsuitable font until the art is unreadable); refusing without remedy (leaves a 7×7 or 16×16 font stuck when a one-flag fix exists) |
+| **D11** | Conversion failure **[new, implemented]** | **Never silent: state exactly what did not fit and abort.** Source metrics, cell size, the specific glyph(s) and which bit overflowed. Fitting remedies — `squash` (anisotropic), `scale` (downscale with a declared threshold), `normalize` (re-baseline/advance/pad to the cell) — are **off by default, opt-in per font or per glyph range**, and each prints why it is being offered and what it will cost legibility. Policy and pixel behaviour are `src/font_fit` (see below); the CLI wiring lands with `--convert` | Silent auto-fit (hides an unsuitable font until the art is unreadable); refusing without remedy (leaves a 7×7 or 16×16 font stuck when a one-flag fix exists) |
 | **D12** | Font verification **[new]** | **A font manifest is the contract**: per font, the name, every file's SHA-256, the source URL, the licence, the version, the declared coverage and the declared source metrics. The converter refuses a file whose hash does not match and prints the URL it expected; `--list-fonts` reports what is installed and what is missing. A generated glyph set records the hash it came from, so a stale set is detectable rather than merely suspicious | "Works on my machine" font sets with no identity (two installs silently differ); trusting filenames or font family names (both are trivially edited and routinely wrong) |
 
 
@@ -142,6 +142,32 @@ Failure output names the facts, not a verdict — for example: `misaki 8x8: 47 g
 cell (worst: U+9AD9 at 9x8, +1 column); rerun with --squash to compress 1 column, or choose a
 font whose declared metrics fit`. Remedies are the opt-in flags from `D11`, and each states what
 it will do before it does it.
+
+### The fit policy (what `D11` looks like, and now is)
+
+`src/font_fit` is the policy and nothing else: a decoded 1bpp mask in, either an 8×8 cell out or a
+refusal carrying the overshoot. No allocation, no FreeType, no printing — so the behaviour is
+testable with synthetic masks and identical on every machine. Four modes, and the difference
+between them is a real decision rather than an ordering:
+
+| Mode | What it does | Right for | Cost |
+|---|---|---|---|
+| `none` | the strike must already be ≤ 8×8; placed at its own origin | native 8×8 bitmap faces (Misaki) | none — and it is the default |
+| `squash` | anisotropic nearest-neighbour, applied **only to axes that overflow** | 9×8, the one-column-off case | drops the unsampled column/row |
+| `scale` | isotropic box filter by the integer factor that brings the longer axis to 8, then centre | 16×16 strikes | thickens hairlines |
+| `normalize` | crop to ink, centre horizontally, ink bottom on row 7. **No resampling** | "present but placed for a different box" | none, but refuses when the ink itself is too big |
+
+Three decisions inside that worth knowing:
+
+- **Squash does not touch an axis that already fits.** Stretching a small bitmap up to the cell is
+  a different and usually wrong choice, so a mode named squash does not make it on the side.
+- **The scale threshold is a quarter, not a half.** At 8×8 a hairline that survives is worth a
+  slightly bolder stroke; a half-coverage threshold erases 1px strokes entirely, which produces a
+  legible-looking font with missing strokes — that reads as a broken glyph, not a scaled one. A
+  test scales a 16×16 one-pixel ring and asserts the ring is still a 1px ring at 8×8.
+- **The refusal names the remedy and the cost**, and for `normalize` it quotes the *ink* overshoot
+  rather than the strike's: a 16×16 strike holding 10×10 of ink is two columns too wide, not eight,
+  and a message that says eight sends the user to the wrong fix.
 
 ### The missing-glyph sentinel (what `D8` looks like)
 
