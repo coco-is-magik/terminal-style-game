@@ -208,6 +208,34 @@ passed, so `test_font_fit` asserts both corners of the cell.
 
 
 
+### The set reader, and the determinism check
+
+`src/glyph_set` is the only definition of the set's byte layout: `fontconv` encodes through it and
+the runtime will decode through it, so producer and consumer cannot drift the way two
+implementations of one format always do. Decoding is strict for the reasons a file from a build
+step deserves: magic, cell size, exact length (trailing bytes are a *different* file, not a longer
+one), count ceiling before any size arithmetic, ascending and unique codepoints (which is what makes
+lookup a binary search and the writer deterministic), and mode values the fit policy can actually
+produce. Each rejection is a distinct named result with the offending entry's index and codepoint,
+and no rejection writes through the caller's pointer.
+
+`fontconv --check-set PATH` closes the loop: it validates a converted set with that reader and
+prints sample glyphs as ASCII art. Verified against the real artefact — the 7,171-glyph, 114,784-byte
+Misaki set reads back with the right provenance and the right pixels, a truncated copy reports
+`TRUNCATED`, a TTF passed by mistake reports `BAD_MAGIC`, and an absent file is distinguishable from
+a corrupt one by exit code (2 versus 1).
+
+Sharing the encoder cost nothing: after moving the format into `src/glyph_set`, converting Misaki
+again produced **the same digest as before the refactor** (`5e85b3e4…`), which is the check that
+made the move safe rather than hopeful.
+
+**`make font-determinism FACE=<face>`** is the CI-shaped version of that claim: convert twice,
+`cmp` the bytes, then validate. When fonts are absent it reports `FAIL-TOOL` naming the missing
+manifest, per `VERIFICATION_POLICY.md`, rather than passing vacuously — a determinism check that
+silently skips is worse than no check, because the green line is believed.
+
+
+
 ### The missing-glyph sentinel (what `D8` looks like)
 
 The precedent is already in this codebase: `asset_registry_get_missing_decal_pattern()`

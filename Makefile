@@ -141,6 +141,7 @@ TEST_MAPGEN_SEED_RUNNER      := $(BUILD_DIR)/test-mapgen-seed
 TEST_SHA256_RUNNER           := $(BUILD_DIR)/test-sha256
 TEST_FONT_MANIFEST_RUNNER    := $(BUILD_DIR)/test-font-manifest
 TEST_FONT_FIT_RUNNER         := $(BUILD_DIR)/test-font-fit
+TEST_GLYPH_SET_RUNNER        := $(BUILD_DIR)/test-glyph-set
 FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
@@ -229,7 +230,7 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
-.PHONY: all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke fontconv
+.PHONY: font-determinism all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke fontconv
 .PHONY: ui-motion-demo ui-workbench ui-editor
 
 
@@ -730,13 +731,17 @@ $(TEST_FONT_FIT_RUNNER): tests/test_font_fit.c src/font_fit.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_font_fit.c src/font_fit.c \
 		-o $(TEST_FONT_FIT_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_GLYPH_SET_RUNNER): tests/test_glyph_set.c src/glyph_set.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_set.c src/glyph_set.c src/sha256.c \
+		-o $(TEST_GLYPH_SET_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
 
-$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c | dirs
+$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(FREETYPE_CFLAGS) $(FONTCONV_FREETYPE) \
-		tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c \
+		tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c \
 		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(FONTCONV_FREETYPE_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
@@ -1286,7 +1291,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1348,7 +1353,8 @@ test: $(TEST_RUNNERS)
 	./$(TEST_MAPGEN_SEED_RUNNER)
 	./$(TEST_SHA256_RUNNER)
 	./$(TEST_FONT_MANIFEST_RUNNER)
-	./$(TEST_FONT_FIT_RUNNER)
+		./$(TEST_FONT_FIT_RUNNER)
+	./$(TEST_GLYPH_SET_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1476,6 +1482,44 @@ ui-workbench-frame: $(UI_WORKBENCH_FRAME_TOOL)
 mapgen: $(MAPGEN_TOOL)
 
 fontconv: $(FONTCONV_TOOL)
+
+# Determinism, as a check the build can run rather than a claim the docs make: convert the same
+# face twice and require the bytes to match. It needs fonts installed, so its absence is reported
+# as FAIL-TOOL with the missing prerequisite named (VERIFICATION_POLICY.md) instead of passing
+# vacuously.
+#
+#   make font-determinism FACE=misaki-gothic [MANIFEST=assets/fonts.txt] [FONTS_DIR=assets/fonts]
+font-determinism: $(FONTCONV_TOOL)
+	@test -n "$(FACE)" || { \
+		echo "FAIL-TOOL: FACE is required, e.g. make font-determinism FACE=misaki-gothic"; \
+		echo "           (the face must be declared in $(or $(MANIFEST),assets/fonts.txt))"; \
+		exit 3; }
+	@test -f "$(or $(MANIFEST),assets/fonts.txt)" || { \
+		echo "FAIL-TOOL: no manifest at $(or $(MANIFEST),assets/fonts.txt): fonts are not installed"; \
+		exit 3; }
+	@mkdir -p $(BUILD_DIR)
+	@$(FONTCONV_TOOL) --manifest $(or $(MANIFEST),assets/fonts.txt) \
+		$(if $(FONTS_DIR),--fonts-dir $(FONTS_DIR),) \
+		--convert $(FACE) $(if $(FILE_NAME),--file $(FILE_NAME),) \
+		$(if $(FIT),--fit $(FIT),) $(if $(SIZE),--size $(SIZE),) \
+		--out $(BUILD_DIR)/font-determinism-a.tsgfont > $(BUILD_DIR)/font-determinism-a.log 2>&1 || { \
+		echo "FAIL-PRODUCT: conversion failed; see $(BUILD_DIR)/font-determinism-a.log"; \
+		tail -5 $(BUILD_DIR)/font-determinism-a.log; exit 1; }
+	@$(FONTCONV_TOOL) --manifest $(or $(MANIFEST),assets/fonts.txt) \
+		$(if $(FONTS_DIR),--fonts-dir $(FONTS_DIR),) \
+		--convert $(FACE) $(if $(FILE_NAME),--file $(FILE_NAME),) \
+		$(if $(FIT),--fit $(FIT),) $(if $(SIZE),--size $(SIZE),) \
+		--out $(BUILD_DIR)/font-determinism-b.tsgfont > $(BUILD_DIR)/font-determinism-b.log 2>&1 || { \
+		echo "FAIL-PRODUCT: second conversion failed; see $(BUILD_DIR)/font-determinism-b.log"; \
+		tail -5 $(BUILD_DIR)/font-determinism-b.log; exit 1; }
+	@cmp -s $(BUILD_DIR)/font-determinism-a.tsgfont $(BUILD_DIR)/font-determinism-b.tsgfont || { \
+		echo "FAIL-PRODUCT: two conversions of $(FACE) produced different bytes"; \
+		grep '^digest' $(BUILD_DIR)/font-determinism-a.log; \
+		grep '^digest' $(BUILD_DIR)/font-determinism-b.log; \
+		exit 1; }
+	@grep -E '^(path|glyphs|fit|digest|source)' $(BUILD_DIR)/font-determinism-a.log | sed 's/^/  /'
+	@echo "PASS: $(FACE) converts deterministically and the set validates:"
+	@$(FONTCONV_TOOL) --check-set $(BUILD_DIR)/font-determinism-a.tsgfont | head -3 | sed 's/^/  /'
 
 check-ui-workbench-policy:
 	@echo "Checking workbench token and host boundaries..."

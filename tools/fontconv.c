@@ -19,6 +19,7 @@
 
 #include "../src/font_manifest.h"
 #include "../src/font_fit.h"
+#include "../src/glyph_set.h"
 #include "../src/sha256.h"
 
 #include <errno.h>
@@ -35,18 +36,16 @@
 #define FONTCONV_READ_CHUNK 65536U
 /* Bounded refusal report: enough to see the shape of the problem, never a wall of text. */
 #define FONTCONV_MAX_REPORTED_REFUSALS 8U
-/* "TSGFONT" + version. A reader that does not know this string must refuse the file rather than
-   guess at its layout. */
-static const char FONTCONV_SET_MAGIC[8] = {'T', 'S', 'G', 'F', 'O', 'N', 'T', '1'};
-#define FONTCONV_SET_ENTRY_SIZE 16U   /* u32 codepoint, u8 mode, u8 rows[8], u8 reserved[3] */
-#define FONTCONV_SET_HEADER_SIZE 48U  /* magic, cell, count, reserved, provenance digest */
 
 static void usage(FILE *out) {
     fprintf(out,
             "usage: fontconv --manifest PATH [--fonts-dir DIR] --list-fonts\n"
             "       fontconv --manifest PATH [--fonts-dir DIR] --convert FACE --out PATH\n"
             "               [--file NAME] [--size N] [--fit none|squash|scale|normalize]\n"
+            "       fontconv --check-set PATH\n"
             "  --list-fonts    report every face and file: present, absent, or hash mismatch\n"
+            "  --check-set     validate a converted set with the reader the runtime uses, and\n"
+            "                  print sample glyphs. Needs no manifest and no FreeType.\n"
             "  --convert       verify the face's hashes, then convert every codepoint the font\n"
             "                  provides into an 8x8 glyph set. Refuses rather than fitting unless\n"
             "                  --fit names a remedy; the default is none.\n"
@@ -250,39 +249,6 @@ static void provenance_digest(const FontManifestFace *face, uint8_t out[SHA256_D
     sha256_final(&context, out);
 }
 
-static void put_u32(uint8_t *buffer, uint32_t value) {
-    buffer[0] = (uint8_t)(value & 0xFFU);
-    buffer[1] = (uint8_t)((value >> 8U) & 0xFFU);
-    buffer[2] = (uint8_t)((value >> 16U) & 0xFFU);
-    buffer[3] = (uint8_t)((value >> 24U) & 0xFFU);
-}
-
-/* Serialise the set: header, then entries in ascending codepoint order. Little-endian and fixed
-   width on purpose — the file is a build artefact that must compare byte for byte across
-   machines, so nothing in it may depend on the host. */
-static bool write_glyph_set(const char *path, const uint8_t *entries, unsigned entry_count,
-                            const uint8_t provenance[SHA256_DIGEST_SIZE]) {
-    uint8_t header[FONTCONV_SET_HEADER_SIZE];
-    FILE *file;
-    memset(header, 0, sizeof(header));
-    memcpy(header, FONTCONV_SET_MAGIC, sizeof(FONTCONV_SET_MAGIC));
-    put_u32(header + 8U, FONT_FIT_CELL_SIZE);
-    put_u32(header + 12U, (uint32_t)entry_count);
-    memcpy(header + 16U, provenance, SHA256_DIGEST_SIZE);
-    file = fopen(path, "wb");
-    if (!file) return false;
-    if (fwrite(header, 1U, sizeof(header), file) != sizeof(header)) {
-        fclose(file);
-        return false;
-    }
-    if (entry_count > 0U &&
-        fwrite(entries, 1U, (size_t)entry_count * FONTCONV_SET_ENTRY_SIZE, file) !=
-            (size_t)entry_count * FONTCONV_SET_ENTRY_SIZE) {
-        fclose(file);
-        return false;
-    }
-    return fclose(file) == 0;
-}
 #endif /* FONTCONV_HAVE_FREETYPE */
 
 #if FONTCONV_HAVE_FREETYPE
@@ -297,7 +263,7 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
     FT_Face ft_face = NULL;
     FT_ULong codepoint;
     FT_UInt glyph_index;
-    uint8_t *entries = NULL;
+    GlyphSetEntry *entries = NULL;
     unsigned capacity = 0U;
     unsigned entry_count = 0U;
     ConversionTally tally;
@@ -401,7 +367,7 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
          codepoint = FT_Get_Next_Char(ft_face, codepoint, &glyph_index)) {
         capacity++;
     }
-    entries = malloc((size_t)capacity * FONTCONV_SET_ENTRY_SIZE);
+    entries = malloc((size_t)capacity * sizeof(*entries));
     if (!entries) {
         fprintf(stderr, "fontconv: cannot hold %u glyphs\n", capacity);
         FT_Done_Face(ft_face);
@@ -414,7 +380,7 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
         FontFitMask mask;
         FontFitCell cell;
         FontFitReport report;
-        uint8_t *entry = entries + (size_t)entry_count * FONTCONV_SET_ENTRY_SIZE;
+        GlyphSetEntry *entry = &entries[entry_count];
         if (FT_Load_Glyph(ft_face, glyph_index,
                           FT_LOAD_MONOCHROME | FT_LOAD_RENDER | FT_LOAD_TARGET_MONO) != 0) {
             tally.unsupported++;
@@ -431,11 +397,11 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
         } else {
             tally.half_width++;
         }
-        memset(entry, 0, FONTCONV_SET_ENTRY_SIZE);
-        put_u32(entry, (uint32_t)codepoint);
+        memset(entry, 0, sizeof(*entry));
+        entry->codepoint = (uint32_t)codepoint;
         if (mask.width == 0U || mask.height == 0U) {
             /* Space and friends: a legitimate blank glyph, not a fit failure. */
-            entry[4] = (uint8_t)FONT_FIT_MODE_NONE;
+            entry->mode = (uint8_t)FONT_FIT_MODE_NONE;
             tally.blank++;
             tally.mode_counts[FONT_FIT_MODE_NONE]++;
             entry_count++;
@@ -454,8 +420,8 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
             }
             continue;
         }
-        entry[4] = (uint8_t)mode;
-        memcpy(entry + 5U, cell.rows, FONT_FIT_CELL_SIZE);
+        entry->mode = (uint8_t)mode;
+        memcpy(entry->rows, cell.rows, GLYPH_SET_CELL_SIZE);
         tally.converted++;
         tally.mode_counts[mode]++;
         entry_count++;
@@ -485,10 +451,27 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
     }
 
     provenance_digest(face, provenance);
-    if (!write_glyph_set(out_path, entries, entry_count, provenance)) {
-        fprintf(stderr, "fontconv: cannot write '%s'\n", out_path);
-        exit_code = 2;
-        goto done;
+    {
+        /* Encoded by src/glyph_set, the same module the runtime will read it with: one definition
+           of the layout, so the producer cannot drift from the consumer. */
+        size_t encoded = glyph_set_encoded_size(entry_count);
+        uint8_t *bytes = encoded > 0U ? malloc(encoded) : NULL;
+        FILE *out;
+        if (!bytes || !glyph_set_write(entries, entry_count, provenance, bytes, encoded, NULL)) {
+            free(bytes);
+            fprintf(stderr, "fontconv: cannot encode the glyph set\n");
+            exit_code = 2;
+            goto done;
+        }
+        out = fopen(out_path, "wb");
+        if (!out || fwrite(bytes, 1U, encoded, out) != encoded || fclose(out) != 0) {
+            if (out) fclose(out);
+            free(bytes);
+            fprintf(stderr, "fontconv: cannot write '%s'\n", out_path);
+            exit_code = 2;
+            goto done;
+        }
+        free(bytes);
     }
     {
         uint8_t digest[SHA256_DIGEST_SIZE];
@@ -504,7 +487,7 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
         sha256_to_hex(digest, set_digest);
         sha256_to_hex(provenance, provenance_hex);
         printf("set      %s (%u entries, %u bytes)\n", out_path, entry_count,
-               (unsigned)(FONTCONV_SET_HEADER_SIZE + entry_count * FONTCONV_SET_ENTRY_SIZE));
+               (unsigned)glyph_set_encoded_size(entry_count));
         /* Both digests are printed so two machines can compare without moving the file: same
            source and same set digest is the reproducibility claim, checkable in one line. */
         printf("digest   %s\n", set_digest);
@@ -521,6 +504,80 @@ done:
 
 
 
+/* Read a set back, validate it with the same module the runtime will use, and show what is in it.
+   This is the loop-closing check: the producer and the consumer are two different code paths, and
+   only running one against the other's bytes proves they agree. */
+static int check_set(const char *path) {
+    uint8_t *bytes = NULL;
+    long size;
+    FILE *file = fopen(path, "rb");
+    GlyphSet set;
+    GlyphSetError error;
+    GlyphSetResult parsed;
+    static const uint32_t SAMPLES[4] = {0x0041U, 0x3042U, 0x2588U, 0x3001U};
+    unsigned index;
+
+    if (!file) {
+        fprintf(stderr, "fontconv: cannot read '%s': %s\n", path, strerror(errno));
+        return 2;
+    }
+    if (fseek(file, 0L, SEEK_END) != 0 || (size = ftell(file)) < 0) {
+        fclose(file);
+        fprintf(stderr, "fontconv: cannot size '%s'\n", path);
+        return 2;
+    }
+    rewind(file);
+    bytes = malloc((size_t)size);
+    if (!bytes || fread(bytes, 1U, (size_t)size, file) != (size_t)size) {
+        free(bytes);
+        fclose(file);
+        fprintf(stderr, "fontconv: cannot read '%s' fully\n", path);
+        return 2;
+    }
+    fclose(file);
+
+    parsed = glyph_set_from_bytes(bytes, (size_t)size, &set, &error);
+    if (parsed != GLYPH_SET_OK) {
+        /* A set that fails here would have been read by the renderer next; naming the entry is
+           the difference between a five-minute fix and an afternoon. */
+        if (parsed == GLYPH_SET_BAD_MODE || parsed == GLYPH_SET_UNSORTED ||
+            parsed == GLYPH_SET_DUPLICATE_CODEPOINT) {
+            fprintf(stderr, "fontconv: %s: %s at entry %u (U+%04X)\n", path,
+                    glyph_set_result_name(parsed), error.index, error.codepoint);
+        } else {
+            fprintf(stderr, "fontconv: %s: %s\n", path, glyph_set_result_name(parsed));
+        }
+        free(bytes);
+        return 1;
+    }
+
+    {
+        char provenance_hex[SHA256_HEX_SIZE];
+        sha256_to_hex(set.provenance, provenance_hex);
+        printf("set        %s\n", path);
+        printf("format     TSGFONT1, cell %u, %u glyphs, %ld bytes\n", GLYPH_SET_CELL_SIZE,
+               set.glyph_count, size);
+        printf("provenance %s\n", provenance_hex);
+    }
+    for (index = 0U; index < sizeof(SAMPLES) / sizeof(SAMPLES[0]); index++) {
+        GlyphSetEntry entry;
+        unsigned row;
+        if (!glyph_set_lookup(&set, SAMPLES[index], &entry)) continue;
+        printf("U+%04X  mode %s\n", entry.codepoint, font_fit_mode_name((FontFitMode)entry.mode));
+        for (row = 0U; row < GLYPH_SET_CELL_SIZE; row++) {
+            unsigned column;
+            printf("  |");
+            /* Bit 0 is the leftmost pixel, per renderer.c, so print it left to right. */
+            for (column = 0U; column < GLYPH_SET_CELL_SIZE; column++) {
+                printf("%c", (entry.rows[row] >> column) & 1U ? '#' : '.');
+            }
+            printf("|\n");
+        }
+    }
+    free(bytes);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *manifest_path = NULL;
     const char *fonts_dir = NULL;
@@ -531,6 +588,7 @@ int main(int argc, char **argv) {
     FontFitMode fit_mode = FONT_FIT_MODE_NONE;
     unsigned pixel_size = FONT_FIT_CELL_SIZE;
     bool list_fonts = false;
+    const char *check_set_path = NULL;
     char derived_dir[FONTCONV_PATH_MAX];
     char *text;
     FontManifest manifest;
@@ -543,6 +601,8 @@ int main(int argc, char **argv) {
     for (argument = 1; argument < argc; argument++) {
         if (strcmp(argv[argument], "--list-fonts") == 0) {
             list_fonts = true;
+        } else if (strcmp(argv[argument], "--check-set") == 0 && argument + 1 < argc) {
+            check_set_path = argv[++argument];
         } else if (strcmp(argv[argument], "--convert") == 0 && argument + 1 < argc) {
             convert_face_id = argv[++argument];
         } else if (strcmp(argv[argument], "--out") == 0 && argument + 1 < argc) {
@@ -574,6 +634,10 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
+
+    /* Checking a set needs no manifest: it is the consumer side, exercised against whatever bytes
+       it is handed. */
+    if (check_set_path) return check_set(check_set_path);
 
     if (!manifest_path || (!list_fonts && !convert_face_id)) {
         if (!list_fonts && !convert_face_id) {

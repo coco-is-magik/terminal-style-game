@@ -280,8 +280,16 @@ output, and a test keeps it parseable and keeps its digests fake. Filling the ex
 digests verifies the archive, which is how its shape was confirmed.
 
 
-**Next:** the determinism test in CI (convert twice on two machines, compare digests), then the
-runtime side: `GlyphRef`, the glyph catalog in the scene, and the atlas reading the set.
+**Next:** the runtime wiring — a `GlyphRef` in the cell, the glyph catalog in the scene, and the
+atlas reading a set through `src/glyph_set`. Nothing in the game uses a converted set yet; the
+renderer still draws `font8x8_basic`, so there is no visual change and no regression surface.
+
+Landed 2026-11-06, on top of the converter: `src/glyph_set` (the single definition of the set's
+byte layout, strict validation with a named result per rejection, binary-search lookup) and
+`make font-determinism FACE=<face>` (convert twice, compare bytes, validate the result; reports
+`FAIL-TOOL` naming the missing manifest when fonts are absent rather than passing vacuously).
+`fontconv --check-set` reads a real set back through that same module and prints sample glyphs,
+which is how the producer and consumer were shown to agree on the 114,784-byte Misaki artefact.
 
 `--convert` landed 2026-11-06 and was measured on the real archive: Misaki's TTF ships embedded
 8×8 bitmaps, so its 7,171 glyphs convert through `none` with zero refusals and zero re-rendering;
