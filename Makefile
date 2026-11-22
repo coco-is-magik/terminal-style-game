@@ -231,6 +231,29 @@ BENCH_SPRITE_RENDER_RUNNER := $(BUILD_DIR)/benchmark-sprite-render
 
 
 
+# ---- Header dependencies ---------------------------------------------------------------
+# Every binary here is a single gcc call over an explicit source list, so per-object .d files
+# would mean restructuring the build. Until then a coarse stamp is the honest option: every
+# binary depends on a file that is touched whenever any header changes, so editing a header
+# rebuilds everything instead of silently leaving stale runners behind.
+#
+# The staleness this fixes was real and it lied: after grid.h changed, `make test` rebuilt 18 of
+# ~90 runners from their explicit source lists and reported green, while the other 72 were still
+# testing the old layout (V1_5_CELL_IDENTITY_DECISION_2026-11-22.md records the incident).
+#
+# The target list is derived from the variables themselves, so a runner added later inherits the
+# dependency without anyone remembering to add it.
+HEADERS := $(wildcard src/*.h) $(wildcard tests/*.h) $(wildcard tools/*.h) \
+           $(wildcard vendor/src/smc/include/*.h)
+HEADER_STAMP        := $(BUILD_DIR)/.headers.stamp
+BINARY_VARIABLES    := $(filter %_RUNNER %_TOOL,$(.VARIABLES))
+ALL_BINARY_TARGETS  := $(APP) $(foreach header_binary,$(BINARY_VARIABLES),$($(header_binary)))
+
+$(HEADER_STAMP): $(HEADERS) | dirs
+	@touch $@
+
+$(ALL_BINARY_TARGETS): $(HEADER_STAMP)
+
 .PHONY: font-determinism all run ui-theme-demo test test-build test-ui-standards check standards standards-core clean dirs verification-environment benchmark benchmark-headless stability stability-fast stability-headless benchmark-raycast benchmark-editor-highlight stability-editor-highlight stability-surface-render benchmark-surface-render benchmark-ui-field stability-ui-field stability-optical-render benchmark-colored-lighting benchmark-sprite-render r9-p1-memory-report benchmark-r9-multihit-trace benchmark-r9-optical-compositor benchmark-r9-mirror-trace benchmark-optical-runtime-view benchmark-heightfield-selective benchmark-optical-render asan ubsan sanitize leak leak-native leak-image leak-image-self-test test-leak-classifier test-platform-harness display-acceptance-linux platform-image-ubuntu-gcc platform-image-ubuntu-clang platform-image-fedora-gcc platform-image-alpine-gcc platform-images platform-test-ubuntu-gcc platform-test-ubuntu-clang platform-test-fedora-gcc platform-test-alpine-gcc platform-test-windows platform-bootstrap-windows-dependencies platform-survey platform-check coverage style check-static-analysis-policy check-unsafe-calls check-project-structure check-test-inventory check-legacy-unused check-current-renderer check-ui-workbench-frame matrix matrix-one smoke fontconv
 .PHONY: ui-motion-demo ui-workbench ui-editor
 
