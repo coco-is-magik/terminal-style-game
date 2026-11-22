@@ -269,10 +269,16 @@ research only, no decision taken:
 - **unscii** is an independent arrival at this programme's premise (an art-compatible Unicode
   bitmap font family; its author's stated reason is the same chicken-and-egg problem V1-4 exists
   to break). `unscii-8` is 8×8 and **public domain**, with the block/shade/box-drawing coverage
-  that `B6` is asking for, and the source ships a bitmap→font converter like ours. Candidate
-  reference face; a `.hex` (Unifont hexdump) input path for `fontconv` would let bitmap-only faces
-  convert with **no FreeType at all** — small, self-contained, and the strongest idea in that
-  review.
+  that `B6` is asking for, and the source ships a bitmap→font converter like ours. It is now the
+  **third face in `assets/fonts.example.txt`**, beside Misaki.
+
+  Measured while adding it: the **vectorised TTF cannot be used** — no 8×8 strike, outlines
+  rasterised at 8 px, **227 of 3,159 glyphs overflow the cell**, exit 1, no set written. The
+  `.hex` (Unifont hexdump, 3,191 glyphs, one line each) is the real artefact and needs no
+  rasteriser. Consequence: a **`.hex` input path for `fontconv`** is the next worthwhile font-side
+  increment — small, orthogonal to the cell migration, and it removes a host dependency. Note for
+  whoever writes it: hex is MSB-first, our cells are LSB-first, so bits reverse within each byte.
+
 - **ertdfgcvb Play** is the editor half: per-cell `main(coord, context)` with `pre`/`post`, shader
   -like by design, console-plus-hotkeys, programs as permalinks, Apache-2.0 code and **fonts
   deliberately not in the repository** (an independent arrival at our D2 rule). It is a better

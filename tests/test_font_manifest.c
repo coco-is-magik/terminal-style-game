@@ -366,13 +366,19 @@ static void test_shipped_example_manifest_is_valid(void **state) {
     assert_int_equal(font_manifest_read_text(text, &manifest, &diagnostic), FONT_MANIFEST_OK);
     free(text);
 
-    /* The shape the example documents: a two-file face and a one-file face, both Japanese, both
-       at the renderer's cell size. */
-    assert_int_equal(manifest.face_count, 2U);
+    /* The shape the example documents: two Misaki faces (one of them two files) and the
+       public-domain Unscii face, all at the renderer's cell size. */
+    assert_int_equal(manifest.face_count, 3U);
     assert_non_null(font_manifest_find_face(&manifest, "misaki-gothic"));
     assert_non_null(font_manifest_find_face(&manifest, "misaki-mincho"));
+    assert_non_null(font_manifest_find_face(&manifest, "unscii-8"));
     assert_int_equal(manifest.faces[0].file_count, 2U);
     assert_int_equal(manifest.faces[1].file_count, 1U);
+    assert_int_equal(manifest.faces[2].file_count, 1U);
+    /* Unscii is listed as the hexdump, not the vectorised TTF: the TTF cannot reproduce its own
+       bitmaps at 8 px (measured), and the example should not teach the lossy path. */
+    assert_string_equal(manifest.faces[2].files[0].file, "unscii-8.hex");
+    assert_non_null(strstr(manifest.faces[2].licence, "Public Domain"));
     /* Every digest in the example is a placeholder. If one ever becomes a real digest, the file
        has stopped being an example and started being a stale claim about someone's bytes. */
     {

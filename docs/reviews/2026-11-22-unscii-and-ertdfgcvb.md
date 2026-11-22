@@ -194,3 +194,124 @@ work and the font work rest on would stop being checkable.
    V1-7 (glyph-art formats) rather than the font programme?
 4. **Should the PUA mapping sidecar be scoped now** with `B6`, given unscii documents the same need?
 
+
+## Second pass — the owner's answers, and what each one implies (2026-11-22)
+
+### 1. Two example faces, side by side — done, and measured while doing it
+
+`assets/fonts.example.txt` now carries three faces: Misaki Gothic (two files), Misaki Mincho, and
+**Unscii 8**. Still 64-zero digests; the example's test asserts the new shape and that the digests
+stay fake.
+
+Adding it produced the measurement that answers question 2. Downloading `unscii-8.ttf` and
+`unscii-8.hex` and converting through our own tool:
+
+| Input | Result |
+|---|---|
+| `unscii-8.ttf` | "no 8x8 strike; rendering outlines at 8 px" → 2,932 glyphs, **227 refused** (9×9, 6×9, 8×9…), **exit 1, no set written** |
+| `unscii-8.hex` | 3,191 lines, one glyph each: `00041:183C66667E666600` decodes to the classic 2-pixel 'A' exactly as the author drew it |
+
+So **the vectorised TTF is lossy for our purpose.** It cannot reproduce unscii's own bitmaps at
+8 px, because it is a vectorisation *of* them, and rasterising at 8 ppem bleeds into neighbouring
+rows. The `.hex` is the artefact, and it needs no rasteriser at all. That is why the example lists
+`unscii-8.hex` rather than `unscii-8.ttf`, and the header says so.
+
+Bit order, which a hex reader must get right: Unifont hex is **MSB-first** (bit 7 leftmost), our
+cells are **LSB-first** (bit 0 leftmost, `renderer.c`). Verified with `U+0045`:
+`7E60607C60607E00` renders as an `E` only MSB-first, and the correct LSB-first cell bytes are the
+bit-reversal of each byte (0x60 → 0x06). Same failure class as the mirrored-glyph bug caught
+earlier, so it is written down rather than discovered twice.
+
+### 2. `.hex` before or after the cell identity migration — implications of both
+
+**Before:**
+- The second example face stops being a promise and becomes *verified*: "unscii converts, here is
+  the digest" instead of "unscii should convert".
+- It removes FreeType from the deterministic path for every bitmap-native face, so `fontconv`
+  converts on a machine with no FreeType — the `FAIL-TOOL` case shrinks instead of being documented.
+- It is **orthogonal**: the reader touches `glyph_set` input and `font_fit` only. It does not touch
+  `Cell`, `CellState`, SMC, the block codec or the save path, so it cannot destabilise the migration
+  or be destabilised by it.
+- Bounded: one reader, strict parsing, its own tests, one flag.
+- Cost: a second input format to maintain, and **nothing becomes visible** in the game.
+
+**After:**
+- Keeps attention on the only change that alters what a user sees.
+- Fewer things in flight at once.
+- Cost: `B6` coverage stays unanswered by measurement, the example face stays unverified, and two
+  large changes then land close together — worse to bisect if either misbehaves.
+
+**Recommendation: before.** Not because it is urgent, but because it is small, orthogonal, and it
+retires an open question by evidence rather than by argument. If the owner prefers the migration
+first, nothing is lost structurally — only the "unscii works" claim stays unproven for longer.
+
+
+### 3. Where the generator belongs — settled by this repository's own standards
+
+The repo's rules decide this more than taste does: single-purpose modules, narrow public headers,
+prefixes by module, no circular includes, ownership stated in the header. Applied:
+
+- `src/font_*` depends on **nothing but bytes** — no `Cell`, no `Grid`, no document, no editor.
+  That is why they are unit-testable and why the converter links no renderer.
+- A generator produces **cells in a document**: it needs the document model, undo/history,
+  validation, selection and a provenance record.
+- Putting it in the font programme therefore makes font modules depend on the document model —
+  inverting the direction the current design deliberately holds (`document → font`, never back).
+- V1-7 is about **formats** for glyph art; a generator is an **authoring tool** that emits content.
+  Its real precedent is `mapgen`: offline, tool-side, writes an ordinary document plus a provenance
+  sidecar.
+
+**Recommendation:** a new authoring item, not the font programme — a pure
+`rule + parameters + (x, y) → glyph` module consumed by a tool command and later the editor, with
+mapgen's shape: deterministic, provenance-recorded, tested as a pure function. Its only contact with
+the font work is one-way: it may *ask which glyph to use* through `glyph_source`, which reads
+`font_*`; nothing in `font_*` ever learns a generator exists.
+
+Maintainability consequence: one module, no UI coupling, identical behaviour in tool, editor and
+tests — and its determinism gate is the one already built for maps.
+
+### 4. PUA mapping sidecar — implications
+
+- **Identity.** A document cell stores a codepoint. If art glyphs live in PUA, then either documents
+  store PUA (ambiguous across faces, ugly in the file) or the **converter** maps PUA → Unicode once
+  and the set becomes canonical. The second keeps D7's single identity space; the first leaks a
+  font's private numbering into authored content.
+- **Ordering.** The mapping must be applied *before* the set is written, so the set stays sorted and
+  unique. Two PUA codepoints mapping to one Unicode codepoint is a **named rejection**, not
+  last-wins — last-wins silently picks one artist's glyph over another's.
+- **Scope.** Only faces that actually use PUA need it (unscii does; Misaki does not). Mandatory
+  tables add maintenance; optional ones add one manifest key — a format change to a file we own,
+  cheap now but versioned forever.
+- **Risk of omission.** Those art glyphs are unreachable unless a user types PUA codepoints, and
+  they are precisely the block/shade/art characters `B6` is about.
+
+**Recommendation:** do not build it yet, and do not add the key speculatively. Record the two
+constraints that will shape it: mapping happens **at conversion time, never at render time**, and
+the output set stays sorted, unique, with collisions rejected.
+
+## Owner notes from the playground screenshot, recorded
+
+The layout that works there: **live output left (largest pane), code in the middle, command palette
+right**. Three observations worth keeping, none of them a decision:
+
+1. **Layers are implicit there, explicit here.** Play layers via buffer writes, `post` overlays and
+   windows; this project layers via underlay/overlay depths, zones and the compositor. Ours is the
+   stronger model — inspectable and testable — but theirs is *presented* better: a user can see what
+   is on top. Borrow the presentation, not the mechanism.
+2. **"Save and load individual elements"** is the strongest small addition named. This project
+   already has per-element documents (decals, `ui_ele`, layouts, sprites, materials, palettes); what
+   is missing is treating them as **palette pieces to stamp** within a session rather than files to
+   open. An editor-surface feature, not a format change.
+3. **"Expressiveness per keystroke"** should become a measured design metric rather than a feeling:
+   count keystrokes (or commands) to produce a given composition in our editor versus the script
+   approach. It does not require abandoning the painter model; it shows where the painter is
+   genuinely slow.
+
+**Resolution, measured from our own target document:** this project's display surface is
+**260 × 160 = 41,600 cells of 8 × 8 at 120 fps**; Play states a maximised window holds "about
+5–8000 monospaced characters" at roughly twice the glyph height. So the suspicion is correct:
+**ours is five to eight times denser, and each glyph is about half as tall.** Ours is a dense canvas
+where the whole screen is the artwork; theirs is a readable terminal where the code is the artwork.
+That explains most of the ergonomic gap, and it is not a defect — but it means our legibility budget
+has to come from glyph design and UI scale presets, never from reducing the cell count.
+
