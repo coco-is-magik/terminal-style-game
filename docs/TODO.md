@@ -263,6 +263,24 @@ Axes still open, to be decided as their phase starts: A4 (which assets carry a f
 and all of C (paste safety) which is V1-6 work. The options are kept below because those choices
 are still live; the ceiling they all bend around has not changed.
 
+**Inputs gathered 2026-11-22** — [`reviews/2026-11-22-unscii-and-ertdfgcvb.md`](reviews/2026-11-22-unscii-and-ertdfgcvb.md),
+research only, no decision taken:
+
+- **unscii** is an independent arrival at this programme's premise (an art-compatible Unicode
+  bitmap font family; its author's stated reason is the same chicken-and-egg problem V1-4 exists
+  to break). `unscii-8` is 8×8 and **public domain**, with the block/shade/box-drawing coverage
+  that `B6` is asking for, and the source ships a bitmap→font converter like ours. Candidate
+  reference face; a `.hex` (Unifont hexdump) input path for `fontconv` would let bitmap-only faces
+  convert with **no FreeType at all** — small, self-contained, and the strongest idea in that
+  review.
+- **ertdfgcvb Play** is the editor half: per-cell `main(coord, context)` with `pre`/`post`, shader
+  -like by design, console-plus-hotkeys, programs as permalinks, Apache-2.0 code and **fonts
+  deliberately not in the repository** (an independent arrival at our D2 rule). It is a better
+  generator and we are a better canvas; the compatible adaptation is a generator that **bakes**
+  into authored cells, exactly as `mapgen` bakes scenes — never a user-code runtime, which would
+  make every frame non-deterministic by construction.
+
+
 **Implemented 2026-11-06** (first slice of V1-5, all under `make test`): `src/sha256` (FIPS 180-4,
 checked against published vectors including the million-`a` case), `src/font_manifest` (strict
 `key=value` codec: unknown/duplicate/missing keys, unpaired `file`/`sha256`, `cell` that is not
