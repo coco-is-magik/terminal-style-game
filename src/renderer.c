@@ -473,11 +473,10 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
 #else
     /* Stream mode: feed grid fields directly to SMC without packing */
     if (cell_count > 0) {
-        smc_state_stream_t streams[3] = {
-            { &grid->cells[0].glyph, sizeof(Cell), 1 },
-            { &grid->cells[0].fg.r,  sizeof(Cell), 3 },
-            { &grid->cells[0].bg.r,  sizeof(Cell), 3 },
-        };
+        /* Field sizes come from the shared definition, not from literals here: a literal is how
+           the 16-bit glyph widening went unnoticed by this path in the first place. */
+        smc_state_stream_t streams[3];
+        cell_state_streams(grid->cells, streams);
         rc = smc_indexed_state_tracker_diff_streams(streams, 3, cell_count,
                                                      dirty_indices, cell_count,
                                                      &dirty_count);

@@ -162,6 +162,9 @@ TEST_PLATFORM_CAPABILITIES_RUNNER := $(BUILD_DIR)/test-platform-capabilities
 TEST_PLATFORM_NUMBER_RUNNER := $(BUILD_DIR)/test-platform-number
 TEST_SMC_STATE_RUNNER        := $(BUILD_DIR)/test-smc-state-tracker
 TEST_SMC_INDEXED_RUNNER      := $(BUILD_DIR)/test-smc-indexed-state-tracker
+# Same source, built as the stream tracker: the stream path is the shipping default and compares
+# fields with explicit byte sizes, so it needs its own binary to be exercised at all.
+TEST_SMC_STREAM_RUNNER       := $(BUILD_DIR)/test-smc-stream-state-tracker
 TEST_BENCHMARK_RUNNER        := $(BUILD_DIR)/test-benchmark-session
 TEST_APP_MODULES_RUNNER      := $(BUILD_DIR)/test-app-modules
 TEST_CONFIG_RUNNER           := $(BUILD_DIR)/test-config
@@ -878,6 +881,16 @@ $(TEST_SMC_INDEXED_RUNNER): tests/test_smc_indexed_state_tracker.c src/smc_index
 		vendor/src/smc/src/c/smc_runtime_stub.c vendor/src/smc/src/c/smc_artifact.c \
 		vendor/src/smc/src/c/smc_state.c -o $(TEST_SMC_INDEXED_RUNNER) $(TEST_LIBS) $(RPATH)
 
+# The same test source built with the stream flag, because stream mode is a different comparison
+# path (per-field sizes rather than a packed state) and it is the configuration that ships. Without
+# its own binary the stream-only assertions would be compiled out and silently pass.
+$(TEST_SMC_STREAM_RUNNER): tests/test_smc_indexed_state_tracker.c src/smc_indexed_state_tracker.c | dirs
+	$(CC) $(CFLAGS) -DUSE_SMC_STREAM_STATE_TRACKER=1 $(INCLUDES) \
+		-I"vendor/src/smc/include" -I"vendor/src/smc/src/c" \
+		tests/test_smc_indexed_state_tracker.c src/smc_indexed_state_tracker.c \
+		vendor/src/smc/src/c/smc_runtime_stub.c vendor/src/smc/src/c/smc_artifact.c \
+		vendor/src/smc/src/c/smc_state.c -o $(TEST_SMC_STREAM_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_BENCHMARK_RUNNER): tests/test_benchmark_session.c src/benchmark_session.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_benchmark_session.c src/benchmark_session.c \
 		-o $(TEST_BENCHMARK_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -1324,7 +1337,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) \
 	$(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) \
 	$(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) \
-	$(TEST_SMC_INDEXED_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) \
+	$(TEST_SMC_INDEXED_RUNNER) $(TEST_SMC_STREAM_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) \
 	$(TEST_CONFIG_RUNNER) $(TEST_ASSET_LOADER_RUNNER) \
 	$(TEST_DECAL_PROJECTION_RUNNER) $(TEST_UI_PREFERENCES_RUNNER) \
 	$(TEST_UI_COMPOSITOR_RUNNER) $(TEST_UI_THEME_RUNNER) \
@@ -1398,6 +1411,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_APP_OPTIONS_RUNNER)
 	./$(TEST_SMC_STATE_RUNNER)
 	./$(TEST_SMC_INDEXED_RUNNER)
+	./$(TEST_SMC_STREAM_RUNNER)
 	./$(TEST_BENCHMARK_RUNNER)
 	./$(TEST_APP_MODULES_RUNNER)
 	./$(TEST_CONFIG_RUNNER)

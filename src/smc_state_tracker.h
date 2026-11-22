@@ -47,6 +47,36 @@ typedef struct {
  * glyph widened from 8 to 16 bits, so every colour field moved; a fingerprint
  * that still packed the old offsets would compare colours as glyphs and let
  * stale pixels through, which is why this layout is asserted by tests. */
+/* Byte sizes of the fields the stream path compares, derived from the types rather than written
+   as literals. The bug this prevents is specific and was real: when Cell.glyph widened from 8 to
+   16 bits, a hardcoded `1` here kept comparing only the low byte, so a codepoint change that
+   altered only the high byte was judged unchanged and the cell kept stale pixels — with no error
+   anywhere and every existing test still green. Constants derived from the type cannot drift.
+ *
+ * SMC requires the sum of the stream field sizes to equal the configured state size, so both are
+ * computed from these. */
+#define CELL_STREAM_GLYPH_BYTES ((size_t)sizeof(((Cell *)0)->glyph))
+#define CELL_STREAM_COLOR_BYTES 3U /* fg RGB, bg RGB; alpha never affects the raster */
+#define CELL_STREAM_STATE_BYTES (CELL_STREAM_GLYPH_BYTES + CELL_STREAM_COLOR_BYTES + \
+                                 CELL_STREAM_COLOR_BYTES)
+
+#if defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || \
+    defined(USE_SMC_STREAM_STATE_TRACKER)
+/* The three stream descriptors the renderer feeds SMC, defined once so the renderer and the test
+   that guards it cannot disagree about the field sizes. */
+static inline void cell_state_streams(const Cell *cells, smc_state_stream_t out[3]) {
+    out[0].data = &cells[0].glyph;
+    out[0].stride = sizeof(Cell);
+    out[0].field_size = CELL_STREAM_GLYPH_BYTES;
+    out[1].data = &cells[0].fg.r;
+    out[1].stride = sizeof(Cell);
+    out[1].field_size = CELL_STREAM_COLOR_BYTES;
+    out[2].data = &cells[0].bg.r;
+    out[2].stride = sizeof(Cell);
+    out[2].field_size = CELL_STREAM_COLOR_BYTES;
+}
+#endif
+
 typedef uint64_t CellState;
 
 static inline CellState pack_cell_state(const Cell *cell) {

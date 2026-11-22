@@ -60,9 +60,62 @@ static void test_lifecycle_batch_and_bounds(void **state) {
     smc_indexed_state_tracker_shutdown();
 }
 
+/* The stream path is the default build mode, and it compares *fields* with an explicit byte size
+   per field rather than a packed state. That is why widening Cell.glyph from 8 to 16 bits had to be
+   followed through here: with the field size left at 1, a codepoint change that altered only the
+   high byte compared equal and the cell kept stale pixels, silently, in the shipping configuration.
+
+   This test drives the same descriptors the renderer uses (cell_state_streams) and requires a
+   high-byte-only change to be reported dirty. It would have failed before the fix. */
+#if defined(USE_SMC_STREAM_STATE_TRACKER)
+static void test_stream_mode_sees_a_high_byte_codepoint_change(void **state) {
+    static Cell previous[2];
+    static Cell current[2];
+    uint32_t dirty[2] = {0U, 0U};
+    size_t dirty_count = 0U;
+    size_t index;
+    (void)state;
+
+    memset(previous, 0, sizeof(previous));
+    for (index = 0U; index < 2U; index++) {
+        previous[index].glyph = 0x0041U; /* 'A' */
+        previous[index].fg = (SDL_Color){0x10U, 0x20U, 0x30U, 0xFFU};
+        previous[index].bg = (SDL_Color){0x40U, 0x50U, 0x60U, 0xFFU};
+    }
+    current[0] = previous[0];
+    current[0].glyph = 0x0141U; /* same low byte, different codepoint */
+    current[1] = previous[1];   /* untouched: must not be reported */
+
+    smc_indexed_state_tracker_shutdown();
+    assert_int_equal(smc_indexed_state_tracker_init(2U), 0);
+
+    {
+        smc_state_stream_t streams[3];
+        /* Prime the tracker with the previous frame, then diff the current one. */
+        cell_state_streams(previous, streams);
+        assert_int_equal(smc_indexed_state_tracker_diff_streams(streams, 3U, 2U, dirty, 2U,
+                                                                &dirty_count),
+                         0);
+        dirty[0] = 0U;
+        dirty[1] = 0U;
+        dirty_count = 0U;
+        cell_state_streams(current, streams);
+        assert_int_equal(smc_indexed_state_tracker_diff_streams(streams, 3U, 2U, dirty, 2U,
+                                                                &dirty_count),
+                         0);
+        assert_int_equal(dirty_count, 1U);
+        assert_int_equal(dirty[0], 0U);
+    }
+    smc_indexed_state_tracker_shutdown();
+}
+#endif /* USE_SMC_STREAM_STATE_TRACKER: this test exists only where the path exists */
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_lifecycle_batch_and_bounds),
+#if defined(USE_SMC_STREAM_STATE_TRACKER)
+        cmocka_unit_test(test_stream_mode_sees_a_high_byte_codepoint_change),
+#endif
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

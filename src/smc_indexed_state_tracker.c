@@ -18,7 +18,9 @@ int smc_indexed_state_tracker_init(size_t cell_count) {
     cfg.count = cell_count;
     cfg.memory_budget_bytes = 0;
 #if defined(USE_SMC_STREAM_STATE_TRACKER)
-    cfg.state_size = 7; /* 1 + 3 + 3 for glyph, fg RGB, bg RGB */
+    /* glyph + fg RGB + bg RGB, derived from the types: SMC requires the sum of the
+       stream field sizes to equal this exactly. */
+    cfg.state_size = CELL_STREAM_STATE_BYTES;
 #else
     cfg.state_size = sizeof(CellState); /* 8-byte packed state */
 #endif
