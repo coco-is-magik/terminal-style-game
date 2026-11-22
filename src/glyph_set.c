@@ -26,6 +26,10 @@ static uint32_t read_u32(const uint8_t *buffer) {
            ((uint32_t)buffer[3] << 24U);
 }
 
+bool glyph_set_codepoint_is_addressable(uint32_t codepoint) {
+    return codepoint <= GLYPH_SET_MAX_CODEPOINT;
+}
+
 size_t glyph_set_encoded_size(unsigned count) {
     if (count > GLYPH_SET_MAX_GLYPHS) return 0U;
     return (size_t)GLYPH_SET_HEADER_SIZE + (size_t)count * GLYPH_SET_ENTRY_SIZE;
@@ -51,6 +55,8 @@ bool glyph_set_write(const GlyphSetEntry *entries, unsigned count,
     for (index = 0U; index < count; index++) {
         uint8_t *entry = buffer + GLYPH_SET_HEADER_SIZE + (size_t)index * GLYPH_SET_ENTRY_SIZE;
         if (entries[index].mode > MAX_MODE) return false;
+        /* Emitting an unaddressable codepoint would produce a file this module itself rejects. */
+        if (!glyph_set_codepoint_is_addressable(entries[index].codepoint)) return false;
         put_u32(entry, entries[index].codepoint);
         entry[4] = entries[index].mode;
         memcpy(entry + 5U, entries[index].rows, GLYPH_SET_CELL_SIZE);
@@ -71,6 +77,7 @@ const char *glyph_set_result_name(GlyphSetResult result) {
     case GLYPH_SET_UNSORTED: return "UNSORTED";
     case GLYPH_SET_DUPLICATE_CODEPOINT: return "DUPLICATE_CODEPOINT";
     case GLYPH_SET_BAD_MODE: return "BAD_MODE";
+    case GLYPH_SET_CODEPOINT_TOO_WIDE: return "CODEPOINT_TOO_WIDE";
     case GLYPH_SET_BUFFER_TOO_SMALL: return "BUFFER_TOO_SMALL";
     default: return "UNKNOWN_RESULT";
     }
@@ -122,6 +129,12 @@ GlyphSetResult glyph_set_from_bytes(const uint8_t *data, size_t size, GlyphSet *
         const uint8_t *entry = data + GLYPH_SET_HEADER_SIZE + (size_t)index * GLYPH_SET_ENTRY_SIZE;
         uint32_t codepoint = read_u32(entry);
         if (entry[4] > 3U) return reject(out_error, GLYPH_SET_BAD_MODE, index, codepoint);
+        /* A set cannot have been produced by this pipeline and contain one of these: the converter
+           refuses to write them. So it is corruption or a stale format, and saying which entry is
+           the difference between a five-minute fix and an afternoon. */
+        if (!glyph_set_codepoint_is_addressable(codepoint)) {
+            return reject(out_error, GLYPH_SET_CODEPOINT_TOO_WIDE, index, codepoint);
+        }
         if (index > 0U) {
             /* Ascending and unique is what makes lookup a binary search and what makes the writer
                deterministic; a set that violates it was not produced by this pipeline. */

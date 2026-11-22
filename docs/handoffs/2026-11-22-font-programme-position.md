@@ -9,7 +9,11 @@ everything below is committed on `dev` at `828018e`; the working tree is clean.
 
 The decision record this all descends from is
 [`../V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](../V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md)
-(D1–D12). Read that first; it is the authority. This file is the map of the territory around it.
+(D1–D12). Read that first; it is the authority. The cell-identity question that was open in the
+first version of this handoff is now **decided** in
+[`../V1_5_CELL_IDENTITY_DECISION_2026-11-22.md`](../V1_5_CELL_IDENTITY_DECISION_2026-11-22.md)
+(16-bit codepoint, 64-bit state unchanged in shape, and a loud enumerated warning above U+FFFF).
+This file is the map of the territory around them.
 
 ## Roadmap position
 

@@ -207,6 +207,10 @@ typedef struct {
     unsigned unsupported;
     unsigned half_width;
     unsigned full_width;
+    /* Above the cell's 16-bit ceiling: excluded from the set, counted and named (D4). */
+    unsigned above_ceiling;
+    unsigned above_ceiling_reported;
+    uint32_t above_ceiling_examples[FONTCONV_MAX_REPORTED_REFUSALS];
     unsigned refused_reported;
     unsigned mode_counts[4];
 } ConversionTally;
@@ -398,6 +402,14 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
         } else {
             tally.half_width++;
         }
+        if (!glyph_set_codepoint_is_addressable((uint32_t)codepoint)) {
+            /* Left out, but never silently: the cell holds 16 bits and the report below says so. */
+            if (tally.above_ceiling_reported < FONTCONV_MAX_REPORTED_REFUSALS) {
+                tally.above_ceiling_examples[tally.above_ceiling_reported++] = (uint32_t)codepoint;
+            }
+            tally.above_ceiling++;
+            continue;
+        }
         memset(entry, 0, sizeof(*entry));
         entry->codepoint = (uint32_t)codepoint;
         if (mask.width == 0U || mask.height == 0U) {
@@ -434,6 +446,34 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
     printf("fit      none %u, squash %u, scale %u, normalize %u\n",
            tally.mode_counts[FONT_FIT_MODE_NONE], tally.mode_counts[FONT_FIT_MODE_SQUASH],
            tally.mode_counts[FONT_FIT_MODE_SCALE], tally.mode_counts[FONT_FIT_MODE_NORMALIZE]);
+
+    if (tally.above_ceiling > 0U) {
+        /* D4 of V1_5_CELL_IDENTITY_DECISION_2026-11-22: loud, enumerated, and not fatal. A font
+           with astral glyphs is still worth using for its BMP ones, but the user must never be left
+           hunting for a character that was excluded for a reason nobody told them. */
+        unsigned index;
+        printf("\n");
+        printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        printf("  %u GLYPH(S) ABOVE THE CELL CEILING WERE LEFT OUT OF THIS SET\n",
+               tally.above_ceiling);
+        printf("  A cell holds a 16-bit codepoint, so it can address U+0000–U+FFFF and no\n");
+        printf("  further. These codepoints are ABOVE that range and are NOT in the set:\n");
+        for (index = 0U; index < tally.above_ceiling_reported; index++) {
+            printf("      U+%05X\n", tally.above_ceiling_examples[index]);
+        }
+        if (tally.above_ceiling > tally.above_ceiling_reported) {
+            printf("      ... and %u more\n", tally.above_ceiling - tally.above_ceiling_reported);
+        }
+        printf("  This is expected for emoji and rare CJK extension planes; nothing is broken.\n");
+        printf("  If these characters are required, the cell ceiling has to change first —\n");
+        printf("  see docs/V1_5_CELL_IDENTITY_DECISION_2026-11-22.md (D1, D5).\n");
+        /* Only claim completeness when there is a set to be complete. A run that aborts below for
+           unfit glyphs must not tell the reader the result is otherwise fine. */
+        if (tally.refused == 0U && tally.unsupported == 0U) {
+            printf("  The set is otherwise complete for U+0000–FFFF.\n");
+        }
+        printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+    }
 
     if (tally.refused > 0U || tally.unsupported > 0U) {
         /* D11: abort rather than fit silently, and say what to do about it. */
@@ -566,7 +606,8 @@ static int load_set_file(const char *path, uint8_t **out_bytes, GlyphSet *out_se
         /* A set that fails here would have been read by the renderer next; naming the entry is the
            difference between a five-minute fix and an afternoon. */
         if (parsed == GLYPH_SET_BAD_MODE || parsed == GLYPH_SET_UNSORTED ||
-            parsed == GLYPH_SET_DUPLICATE_CODEPOINT) {
+            parsed == GLYPH_SET_DUPLICATE_CODEPOINT ||
+            parsed == GLYPH_SET_CODEPOINT_TOO_WIDE) {
             fprintf(stderr, "fontconv: %s: %s at entry %u (U+%04X)\n", path,
                     glyph_set_result_name(parsed), error.index, error.codepoint);
         } else {

@@ -242,6 +242,53 @@ static void test_result_names_are_stable(void **state) {
     assert_string_equal(glyph_set_result_name(GLYPH_SET_BAD_MODE), "BAD_MODE");
 }
 
+
+/* The cell holds a 16-bit codepoint (V1_5_CELL_IDENTITY_DECISION_2026-11-22, D1). The set format can
+   physically store a u32, so the ceiling has to be enforced deliberately in both directions: the
+   writer refuses to emit one, and the reader rejects a file that contains one — because such a file
+   cannot have come from this pipeline, and reading it as ordinary data would mean a glyph sitting in
+   a set that the renderer can never reach. */
+static void test_the_codepoint_ceiling_is_enforced_both_ways(void **state) {
+    GlyphSetEntry entries[3];
+    GlyphSet set;
+    GlyphSetError error;
+    uint8_t buffer[256];
+    size_t length = 0U;
+    unsigned count = build_three(entries);
+    (void)state;
+
+    assert_true(glyph_set_codepoint_is_addressable(0x0000U));
+    assert_true(glyph_set_codepoint_is_addressable(0x0041U));
+    assert_true(glyph_set_codepoint_is_addressable(0x3042U));
+    assert_true(glyph_set_codepoint_is_addressable(GLYPH_SET_MAX_CODEPOINT));
+    assert_false(glyph_set_codepoint_is_addressable(GLYPH_SET_MAX_CODEPOINT + 1U));
+    assert_false(glyph_set_codepoint_is_addressable(0x1F600U));
+    assert_false(glyph_set_codepoint_is_addressable(0x10FFFFU));
+
+    /* Writer: an unaddressable entry is a refusal, not a silently dropped row. */
+    assert_true(glyph_set_write(entries, count, PROVENANCE, buffer, sizeof(buffer), &length));
+    entries[2].codepoint = 0x1F600U;
+    assert_false(glyph_set_write(entries, count, PROVENANCE, buffer, sizeof(buffer), NULL));
+    entries[2].codepoint = 0x3042U;
+
+    /* Reader: craft a set whose last entry is astral, in ascending order so nothing else fires
+       first, and require the named rejection with the entry identified. */
+    assert_true(glyph_set_write(entries, count, PROVENANCE, buffer, sizeof(buffer), &length));
+    {
+        size_t last = GLYPH_SET_HEADER_SIZE + 2U * GLYPH_SET_ENTRY_SIZE;
+        buffer[last + 0U] = 0x00U;
+        buffer[last + 1U] = 0xF6U;
+        buffer[last + 2U] = 0x01U;
+        buffer[last + 3U] = 0x00U; /* U+0001F600 */
+    }
+    assert_int_equal(glyph_set_from_bytes(buffer, length, &set, &error),
+                     GLYPH_SET_CODEPOINT_TOO_WIDE);
+    assert_int_equal(error.index, 2U);
+    assert_int_equal(error.codepoint, 0x1F600U);
+    assert_string_equal(glyph_set_result_name(GLYPH_SET_CODEPOINT_TOO_WIDE),
+                        "CODEPOINT_TOO_WIDE");
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_round_trip_preserves_entries_and_provenance),
@@ -250,6 +297,7 @@ int main(void) {
         cmocka_unit_test(test_structural_rejections_are_named),
         cmocka_unit_test(test_entry_rejections_name_the_offending_entry),
         cmocka_unit_test(test_lookup_handles_the_edges_of_the_search),
+        cmocka_unit_test(test_the_codepoint_ceiling_is_enforced_both_ways),
         cmocka_unit_test(test_result_names_are_stable)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

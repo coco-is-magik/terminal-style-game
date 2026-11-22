@@ -10,6 +10,13 @@
 #   misaki-*    CJK at 8x8, proof the cell size is achievable for a non-Latin script at all
 #   unscii-8    public domain, art-first, block/shade/box-drawing coverage (register B6)
 #
+# THE CEILING: a cell holds a 16-bit codepoint, so nothing above U+FFFF can be rendered
+# (docs/V1_5_CELL_IDENTITY_DECISION_2026-11-22.md, D1). If a font you point at contains such
+# glyphs, `--convert` leaves them out and prints a loud, enumerated warning naming every excluded
+# codepoint; the rest of the set is still written and usable. Real examples measured 2026-11-22:
+# Noto Sans Mono has 92 codepoints above U+FFFF (first U+10780), Noto Sans Symbols2 has 1,608.
+# This is expected for emoji and rare CJK extension planes. It is not a broken glyph.
+#
 # Two input formats are worth knowing about, because they are not equivalent:
 #   .ttf/.otf   may carry an embedded bitmap strike (Misaki does: 8x8, exact) or may only be a
 #               vectorisation (unscii's TTF is vectorised from its bitmaps, so rendering it at

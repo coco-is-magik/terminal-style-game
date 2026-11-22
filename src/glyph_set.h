@@ -41,6 +41,12 @@
    and a bound keeps a corrupt count from asking for an unbounded allocation. */
 #define GLYPH_SET_MAX_GLYPHS 65536U
 
+/* The cell holds a 16-bit codepoint (V1_5_CELL_IDENTITY_DECISION_2026-11-22.md, D1), so a glyph set
+   may not contain anything the cell cannot address. Enforcing it here — at the only place that knows
+   the format — means the converter cannot emit what the reader refuses, and a set containing an
+   astral codepoint is a corruption rather than a curiosity. */
+#define GLYPH_SET_MAX_CODEPOINT 0xFFFFU
+
 typedef enum {
     GLYPH_SET_OK = 0,
     GLYPH_SET_INVALID_ARGUMENT,
@@ -52,6 +58,8 @@ typedef enum {
     GLYPH_SET_UNSORTED,
     GLYPH_SET_DUPLICATE_CODEPOINT,
     GLYPH_SET_BAD_MODE,
+    /* Above the cell's ceiling: the format can store it, the renderer can never address it. */
+    GLYPH_SET_CODEPOINT_TOO_WIDE,
     GLYPH_SET_BUFFER_TOO_SMALL
 } GlyphSetResult;
 
@@ -78,6 +86,10 @@ typedef struct {
     uint8_t mode;
     uint8_t rows[GLYPH_SET_CELL_SIZE];
 } GlyphSetEntry;
+
+/* True when the cell can address this codepoint. Exposed so the converter can filter and count
+   rather than discovering the problem one entry at a time. */
+bool glyph_set_codepoint_is_addressable(uint32_t codepoint);
 
 /* Bytes needed to encode `count` entries. 0 when count exceeds the ceiling, so a caller cannot
    compute a size it will then fail to honour. */
