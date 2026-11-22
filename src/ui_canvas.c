@@ -38,7 +38,7 @@ void ui_canvas_clear(UiCanvas *canvas) {
     memset(canvas->touched, 0, count * sizeof(*canvas->touched));
 }
 
-bool ui_canvas_set(UiCanvas *canvas, int x, int y, uint8_t glyph,
+bool ui_canvas_set(UiCanvas *canvas, int x, int y, uint16_t glyph,
                    SDL_Color fg, SDL_Color bg) {
     size_t index;
     if (!canvas || x < 0 || y < 0 || x >= canvas->width || y >= canvas->height) {

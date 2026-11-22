@@ -19,12 +19,16 @@
 /**
  * Cell — A single character cell in the grid
  *
- * glyph — ASCII or extended character code (0–255)
+ * glyph — a Unicode codepoint in the BMP (U+0000–FFFF); 0 is blank and 0xFFFF is
+ *         transparent (V1_5_CELL_IDENTITY_DECISION_2026-11-22.md). "Missing" is not a
+ *         stored value: glyph_source decides it at draw time.
  * fg    — Foreground colour (the glyph itself)
  * bg    — Background colour (the cell behind the glyph)
+ *
+ * 16 bits, not 32, because the state fingerprint is one 64-bit word: 16 + 24 + 24 = 64.
  */
 typedef struct {
-    uint8_t glyph;            /* Character to display */
+    uint16_t glyph;           /* Source codepoint in the BMP */
     SDL_Color fg;             /* Foreground colour */
     SDL_Color bg;             /* Background colour */
 } Cell;
@@ -57,7 +61,7 @@ void   grid_destroy(Grid *grid);
 void   grid_clear(Grid *grid, SDL_Color bg);
 bool   grid_clear_region_zero(Grid *grid, int x, int y, int width, int height);
 void   grid_swap_prev(Grid *grid);   /* Swap cells/prev_cells after frame */
-bool   grid_set(Grid *grid, int x, int y, uint8_t glyph, SDL_Color fg, SDL_Color bg);
+bool   grid_set(Grid *grid, int x, int y, uint16_t glyph, SDL_Color fg, SDL_Color bg);
 bool   grid_get(Grid *grid, int x, int y, Cell *out_cell);
 void   grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Color bg);
 

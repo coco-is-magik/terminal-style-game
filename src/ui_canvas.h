@@ -16,7 +16,7 @@ typedef struct {
 UiCanvas *ui_canvas_create(int width, int height);
 void ui_canvas_destroy(UiCanvas *canvas);
 void ui_canvas_clear(UiCanvas *canvas);
-bool ui_canvas_set(UiCanvas *canvas, int x, int y, uint8_t glyph,
+bool ui_canvas_set(UiCanvas *canvas, int x, int y, uint16_t glyph,
                    SDL_Color fg, SDL_Color bg);
 void ui_canvas_print(UiCanvas *canvas, int x, int y, const char *text,
                      SDL_Color fg, SDL_Color bg);

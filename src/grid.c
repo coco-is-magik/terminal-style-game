@@ -188,7 +188,7 @@ bool grid_clear_region_zero(Grid *grid, int x, int y, int width, int height) {
  * @param bg    Background colour behind the glyph
  * @return      true on success, false if grid is NULL or coordinates are out of bounds
  */
-bool grid_set(Grid *grid, int x, int y, uint8_t glyph, SDL_Color fg, SDL_Color bg) {
+bool grid_set(Grid *grid, int x, int y, uint16_t glyph, SDL_Color fg, SDL_Color bg) {
     if (!grid || !grid->cells) return false;
     if (x < 0 || x >= grid->width || y < 0 || y >= grid->height) return false;
 

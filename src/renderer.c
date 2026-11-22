@@ -56,9 +56,11 @@
 /* C99 compile-time assertions for Cell layout used by stream mode */
 #define CASSERT(name, expr) typedef char name[(expr) ? 1 : -1]
 CASSERT(cell_glyph_offset_0, offsetof(Cell, glyph) == 0);
-CASSERT(cell_fg_offset_1, offsetof(Cell, fg) == 1);
-CASSERT(cell_bg_offset_5, offsetof(Cell, bg) == 5);
-CASSERT(cell_size_9, sizeof(Cell) == 9);
+/* 16-bit glyph (V1_5_CELL_IDENTITY_DECISION_2026-11-22): the codepoint occupies two
+   bytes, so fg moves to 2 and bg to 6, and the cell grows to 10. */
+CASSERT(cell_fg_offset_2, offsetof(Cell, fg) == 2);
+CASSERT(cell_bg_offset_6, offsetof(Cell, bg) == 6);
+CASSERT(cell_size_10, sizeof(Cell) == 10);
 CASSERT(color_r_offset_0, offsetof(SDL_Color, r) == 0);
 CASSERT(color_g_offset_1, offsetof(SDL_Color, g) == 1);
 CASSERT(color_b_offset_2, offsetof(SDL_Color, b) == 2);

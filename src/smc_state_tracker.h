@@ -40,18 +40,24 @@ typedef struct {
  * raster output (no alpha - COLOR_TO_UINT32 ignores it for opaque pixels).
  *
  * Packed into a uint64_t so the SMC batch path can use the 8-byte fixed-size
- * kernel.  The bit layout is stable and explicit; no padding is exposed. */
+ * kernel.  The bit layout is stable and explicit; no padding is exposed.
+ *
+ * Layout (V1_5_CELL_IDENTITY_DECISION_2026-11-22.md, D2): 16-bit codepoint at 0,
+ * fg RGB at 16/24/32, bg RGB at 40/48/56 -- 64 bits exactly, no spare bits. The
+ * glyph widened from 8 to 16 bits, so every colour field moved; a fingerprint
+ * that still packed the old offsets would compare colours as glyphs and let
+ * stale pixels through, which is why this layout is asserted by tests. */
 typedef uint64_t CellState;
 
 static inline CellState pack_cell_state(const Cell *cell) {
     CellState state = 0;
-    state |= ((CellState)cell->glyph)      << 0;
-    state |= ((CellState)cell->fg.r)       << 8;
-    state |= ((CellState)cell->fg.g)       << 16;
-    state |= ((CellState)cell->fg.b)       << 24;
-    state |= ((CellState)cell->bg.r)       << 32;
-    state |= ((CellState)cell->bg.g)       << 40;
-    state |= ((CellState)cell->bg.b)       << 48;
+    state |= ((CellState)(cell->glyph & 0xFFFFU)) << 0;
+    state |= ((CellState)cell->fg.r)       << 16;
+    state |= ((CellState)cell->fg.g)       << 24;
+    state |= ((CellState)cell->fg.b)       << 32;
+    state |= ((CellState)cell->bg.r)       << 40;
+    state |= ((CellState)cell->bg.g)       << 48;
+    state |= ((CellState)cell->bg.b)       << 56;
     return state;
 }
 

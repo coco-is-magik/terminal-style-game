@@ -93,11 +93,20 @@ field's *meaning*, not the word width. Nothing is built for it today.
 
 1. **`glyph_set`** gains the ceiling invariant and its named rejection (independent of the cell; can
    land first and is worth doing first, because the converter must not emit what the reader refuses).
+   — **landed 2026-11-22**, with `GLYPH_SET_CODEPOINT_TOO_WIDE` naming the entry, and the converter's
+   enumerated banner verified against Noto Sans Mono (92 excluded) and a hand-crafted astral entry.
 2. **`fontconv --convert`** stops emitting above-ceiling glyphs, counts them, and prints the banner.
+   — **landed** with step 1.
 3. **`grid_set` / `ui_canvas_set`** take a wider glyph; 132 call sites re-typed, each read for intent
-   (some pass `' '`, some `0`, some a literal).
+   (some pass `' '`, some `0`, some a literal). — **landed**: both take `uint16_t`, and the call sites
+   needed no edits because widening an argument is implicit; the ones that needed attention were the
+   places that *read* a glyph back into an 8-bit local, and those turned out to be `PatternCell` (decal
+   and sprite art), a different type that this decision does not touch.
 4. **`Cell` + `CellState`** field widths and offsets, `pack_cell_state`, and every reader of the packed
-   bits.
+   bits. — **landed**: `Cell.glyph` is `uint16_t`, `Cell` is 10 bytes, `pack_cell_state` puts the
+   codepoint at bit 0 and the colours at 16/24/32/40/48/56. The repository already guarded the layout
+   with `CASSERT`s on `offsetof(Cell, fg) == 1` and `sizeof(Cell) == 9`; those fired the moment the
+   field changed, which is exactly what they were for, and now assert 2/6/10.
 5. **Streams, checksums, block codec, capture/restore**, then `make matrix` re-baselined.
 6. **`glyph_source`** and the renderer draw from a codepoint rather than a byte, calling the resolver
    that already exists.
