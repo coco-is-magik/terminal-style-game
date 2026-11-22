@@ -305,10 +305,15 @@ digests verifies the archive, which is how its shape was confirmed.
 
 
 **Next:** the gate for anything visible in the game — the **cell identity migration**. `Cell.glyph`
-is a byte and `CellState` packs glyph + fg + bg into a `uint64_t`, so a codepoint wider than 255
-cannot travel: widening the identity means redesigning `CellState`, then stream signatures,
-checksums, the block codec and the save path, and re-baselining the SMC matrix. That is V1-5 item 5
-and it deserves its own pass; 124 call sites across 20 files is the measure of it.
+is a byte and `CellState` packs glyph + fg + bg into a `uint64_t` (56 of 64 bits used), so a codepoint
+wider than 255 cannot travel. Measured blast radius (2026-11-22): 15 direct `cell->glyph` reads, but
+87 `grid_set` and 45 `ui_canvas_set` call sites to re-type — and **no scene-format impact**, since
+scenes store decals and objects, not cells. The real fork is `CellState`: 128-bit state, or a 64-bit
+glyph handle. That is a decision before it is code, and it deserves its own record.
+
+An earlier note here said "124 call sites across 20 files"; that was a search result, not a
+measurement — it counted decal `glyph_step` and UI `glyph_set` strings. Corrected with the
+per-quantity table in the handoff.
 
 Landed 2026-11-06, so that migration starts from a working resolver rather than a blank page:
 `src/glyph_source` answers "which face draws this codepoint, or is it missing" in one place —

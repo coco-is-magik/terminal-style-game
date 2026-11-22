@@ -78,16 +78,45 @@ Against the **real** Misaki archive (`misaki_ttf_2021-05-05.zip`, 794,317 bytes)
 
 **The cell identity migration is the gate for anything visible.** `Cell.glyph` is a `uint8_t` and
 `CellState` packs glyph + fg + bg into a `uint64_t`, so a codepoint above 255 cannot travel.
+
+Corrected blast radius (measured 2026-11-22, replacing an earlier estimate of "124 sites across 20
+files" that counted decal `glyph_step` and UI `glyph_set` strings — the lesson being that the first
+number was searched, not measured):
+
+| Quantity | Count |
+|---|---|
+| direct `cell->glyph` field reads | 15, across 10 files |
+| `grid_set(..., uint8_t glyph, ...)` call sites | 87, across 13 files |
+| `ui_canvas_set` call sites | 45 |
+| test files touching `.glyph` | 26 |
+| **scene file format impact** | **none** — scenes store decals and objects, not cells |
+| `glyph_block_cache` key | already `uint32_t glyph_id`, so it upgrades for free |
+
+So the work is dominated by the **API signature** (`grid_set`/`ui_canvas_set` take `uint8_t`), not
+by field reads, and no save-format migration is required. The genuinely hard part is `CellState`:
+56 of its 64 bits are used (8 glyph + 24 fg + 24 bg), so a 32-bit glyph does not fit and the
+representation is a **decision that has not been made** — see the fork below.
+
 Widening it means, in dependency order:
 
-1. `CellState` representation (it cannot stay 64 bits with a 32-bit glyph plus two colours);
-2. dirty comparison and packed-state paths that assume one byte of glyph;
-3. SMC stream signatures, checksums, block codec, capture/restore;
-4. the scene save path;
+1. a decision on the `CellState` representation (see below);
+2. `grid_set` / `ui_canvas_set` signatures and their 132 call sites (mechanical, but each one needs
+   reading for intent — some pass `' '`, some pass `0`);
+3. dirty comparison and packed-state paths that assume one byte of glyph;
+4. SMC stream signatures, checksums, block codec, capture/restore;
 5. `make matrix` re-baselined — the eight tracker modes are the parity gate.
 
-Measure of the change: **124 `glyph` sites across 20 files**. This is V1-5 item 5, and it is the
-reason the resolver was built first: when the migration lands, the draw path calls
+**The `CellState` fork, which is why this needs a decision record before code:**
+
+- **128-bit state** (two `uint64_t`, or a 16-byte struct) — semantics are exact, no collisions; the
+  SMC batch kernel changes shape and the parity gate must be re-baselined. Straightforward, costly.
+- **Keep 64 bits, use an 8-bit glyph *handle*** into a registry — kernel unchanged, but state
+  equality across frames becomes subtle: two different glyphs must never share a slot within a
+  frame's lifetime, and that invariant is exactly the kind that fails once and silently.
+- **Shrink colour precision** to buy bits — rejected on sight: the look is locked and colour is the
+  medium.
+
+This is the reason the resolver was built first: when the migration lands, the draw path calls
 `glyph_source_resolve` instead of inventing a second rule.
 
 ## Reproducing the position from scratch
