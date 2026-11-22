@@ -20,6 +20,7 @@
 #include "../src/font_manifest.h"
 #include "../src/font_fit.h"
 #include "../src/glyph_set.h"
+#include "../src/glyph_source.h"
 #include "../src/sha256.h"
 
 #include <errno.h>
@@ -504,19 +505,43 @@ done:
 
 
 
-/* Read a set back, validate it with the same module the runtime will use, and show what is in it.
-   This is the loop-closing check: the producer and the consumer are two different code paths, and
-   only running one against the other's bytes proves they agree. */
-static int check_set(const char *path) {
+/* Draw codepoints as cells, through the resolver the game will use. This is a viewer, not a
+   renderer: it exists so a human can see what a conversion produced without launching the game,
+   and so the precedence and sentinel rules are exercised against real converted data. */
+static void render_glyph(const GlyphSource *source, uint32_t codepoint) {
+    GlyphSourceGlyph glyph = glyph_source_resolve(source, codepoint);
+    unsigned row;
+    unsigned column;
+    printf("U+%04X  %s", codepoint, glyph_source_kind_name(glyph.kind));
+    if (glyph.kind == GLYPH_SOURCE_SET) printf(", fit %s", font_fit_mode_name((FontFitMode)glyph.mode));
+    if (glyph_source_is_missing(&glyph)) {
+        /* Say the colour, not just the condition: the sentinel is only distinguishable if the
+           caller paints it as recorded. */
+        printf(" — sentinel; paint fg #%02X%02X%02X on bg #%02X%02X%02X",
+               GLYPH_SOURCE_SENTINEL_FG_R, GLYPH_SOURCE_SENTINEL_FG_G,
+               GLYPH_SOURCE_SENTINEL_FG_B, GLYPH_SOURCE_SENTINEL_BG_R,
+               GLYPH_SOURCE_SENTINEL_BG_G, GLYPH_SOURCE_SENTINEL_BG_B);
+    }
+    printf("\n");
+    for (row = 0U; row < GLYPH_SOURCE_CELL_SIZE; row++) {
+        printf("  |");
+        for (column = 0U; column < GLYPH_SOURCE_CELL_SIZE; column++) {
+            printf("%c", (glyph.rows[row] >> column) & 1U ? '#' : '.');
+        }
+        printf("|\n");
+    }
+}
+
+/* Read and validate a set file. 0 loaded, 1 invalid (a typed diagnosis is printed), 2 unreadable.
+   Shared by --check-set and --render so the failure wording cannot diverge between them. */
+static int load_set_file(const char *path, uint8_t **out_bytes, GlyphSet *out_set) {
     uint8_t *bytes = NULL;
     long size;
     FILE *file = fopen(path, "rb");
-    GlyphSet set;
     GlyphSetError error;
     GlyphSetResult parsed;
-    static const uint32_t SAMPLES[4] = {0x0041U, 0x3042U, 0x2588U, 0x3001U};
-    unsigned index;
 
+    *out_bytes = NULL;
     if (!file) {
         fprintf(stderr, "fontconv: cannot read '%s': %s\n", path, strerror(errno));
         return 2;
@@ -536,10 +561,10 @@ static int check_set(const char *path) {
     }
     fclose(file);
 
-    parsed = glyph_set_from_bytes(bytes, (size_t)size, &set, &error);
+    parsed = glyph_set_from_bytes(bytes, (size_t)size, out_set, &error);
     if (parsed != GLYPH_SET_OK) {
-        /* A set that fails here would have been read by the renderer next; naming the entry is
-           the difference between a five-minute fix and an afternoon. */
+        /* A set that fails here would have been read by the renderer next; naming the entry is the
+           difference between a five-minute fix and an afternoon. */
         if (parsed == GLYPH_SET_BAD_MODE || parsed == GLYPH_SET_UNSORTED ||
             parsed == GLYPH_SET_DUPLICATE_CODEPOINT) {
             fprintf(stderr, "fontconv: %s: %s at entry %u (U+%04X)\n", path,
@@ -550,32 +575,62 @@ static int check_set(const char *path) {
         free(bytes);
         return 1;
     }
+    *out_bytes = bytes;
+    return 0;
+}
+
+/* Read a set back, validate it with the same module the runtime will use, and show what is in it.
+   This is the loop-closing check: the producer and the consumer are two different code paths, and
+   only running one against the other's bytes proves they agree. */
+static int check_set(const char *path) {
+    uint8_t *bytes = NULL;
+    GlyphSet set;
+    GlyphSource source;
+    int loaded = load_set_file(path, &bytes, &set);
+    if (loaded != 0) return loaded;
 
     {
         char provenance_hex[SHA256_HEX_SIZE];
         sha256_to_hex(set.provenance, provenance_hex);
         printf("set        %s\n", path);
-        printf("format     TSGFONT1, cell %u, %u glyphs, %ld bytes\n", GLYPH_SET_CELL_SIZE,
-               set.glyph_count, size);
+        printf("format     TSGFONT1, cell %u, %u glyphs, %u bytes\n", GLYPH_SET_CELL_SIZE,
+               set.glyph_count, (unsigned)set.size);
         printf("provenance %s\n", provenance_hex);
     }
-    for (index = 0U; index < sizeof(SAMPLES) / sizeof(SAMPLES[0]); index++) {
-        GlyphSetEntry entry;
-        unsigned row;
-        if (!glyph_set_lookup(&set, SAMPLES[index], &entry)) continue;
-        printf("U+%04X  mode %s\n", entry.codepoint, font_fit_mode_name((FontFitMode)entry.mode));
-        for (row = 0U; row < GLYPH_SET_CELL_SIZE; row++) {
-            unsigned column;
-            printf("  |");
-            /* Bit 0 is the leftmost pixel, per renderer.c, so print it left to right. */
-            for (column = 0U; column < GLYPH_SET_CELL_SIZE; column++) {
-                printf("%c", (entry.rows[row] >> column) & 1U ? '#' : '.');
-            }
-            printf("|\n");
-        }
-    }
+    /* Sample through the resolver rather than through the raw table: what is printed is what a
+       draw path would see, including the sentinel if a sample is absent from this set. */
+    glyph_source_init(&source, &set);
+    render_glyph(&source, 0x0041U);
+    render_glyph(&source, 0x3042U);
+    render_glyph(&source, 0x2588U);
     free(bytes);
     return 0;
+}
+
+/* Parse a comma/space separated list of hex codepoints ("3042, 41, 2588" or "U+3042"). Bounded by
+   `capacity`; returns the count parsed, or 0 on a malformed entry — a typo in a codepoint should
+   stop the render rather than silently draw a different character. */
+static unsigned parse_codepoints(const char *text, uint32_t *out_codepoints, unsigned capacity) {
+    const char *cursor = text;
+    unsigned count = 0U;
+    while (*cursor != '\0') {
+        char *end = NULL;
+        unsigned long value;
+        while (*cursor == ',' || *cursor == ' ' || *cursor == '\t') cursor++;
+        if (*cursor == '\0') break;
+        if (count == capacity) return 0U;
+        if (cursor[0] == 'U' && cursor[1] == '+') cursor += 2;
+        else if (cursor[0] == 'u' && cursor[1] == '+') cursor += 2;
+        if (!((*cursor >= '0' && *cursor <= '9') || (*cursor >= 'a' && *cursor <= 'f') ||
+              (*cursor >= 'A' && *cursor <= 'F')))
+            return 0U;
+        value = strtoul(cursor, &end, 16);
+        if (!end || end == cursor || value > 0x10FFFFUL) return 0U;
+        if (*end != '\0' && *end != ',' && *end != ' ' && *end != '\t') return 0U;
+        out_codepoints[count++] = (uint32_t)value;
+        cursor = end;
+    }
+    return count;
 }
 
 int main(int argc, char **argv) {
@@ -589,6 +644,7 @@ int main(int argc, char **argv) {
     unsigned pixel_size = FONT_FIT_CELL_SIZE;
     bool list_fonts = false;
     const char *check_set_path = NULL;
+    const char *render_text = NULL;
     char derived_dir[FONTCONV_PATH_MAX];
     char *text;
     FontManifest manifest;
@@ -601,6 +657,8 @@ int main(int argc, char **argv) {
     for (argument = 1; argument < argc; argument++) {
         if (strcmp(argv[argument], "--list-fonts") == 0) {
             list_fonts = true;
+        } else if (strcmp(argv[argument], "--render") == 0 && argument + 1 < argc) {
+            render_text = argv[++argument];
         } else if (strcmp(argv[argument], "--check-set") == 0 && argument + 1 < argc) {
             check_set_path = argv[++argument];
         } else if (strcmp(argv[argument], "--convert") == 0 && argument + 1 < argc) {
@@ -636,7 +694,33 @@ int main(int argc, char **argv) {
     }
 
     /* Checking a set needs no manifest: it is the consumer side, exercised against whatever bytes
-       it is handed. */
+       it is handed. Rendering needs a set only if one is offered, and takes precedence: asking to
+       draw specific codepoints is a more specific request than "show me samples". */
+    if (render_text) {
+        uint32_t codepoints[16];
+        unsigned count = parse_codepoints(render_text, codepoints, 16U);
+        GlyphSource source;
+        unsigned index;
+        if (count == 0U) {
+            fprintf(stderr, "fontconv: --render needs hex codepoints, e.g. --render 41,3042,2588\n");
+            return 2;
+        }
+        /* Rendering is useful with no set at all: it then shows the built-in face and the sentinel,
+           which is exactly what the application renders today. */
+        {
+            uint8_t *set_bytes = NULL;
+            GlyphSet set;
+            int loaded = 0;
+            if (check_set_path) {
+                loaded = load_set_file(check_set_path, &set_bytes, &set);
+                if (loaded != 0) return loaded;
+            }
+            glyph_source_init(&source, check_set_path ? &set : NULL);
+            for (index = 0U; index < count; index++) render_glyph(&source, codepoints[index]);
+            free(set_bytes);
+        }
+        return 0;
+    }
     if (check_set_path) return check_set(check_set_path);
 
     if (!manifest_path || (!list_fonts && !convert_face_id)) {

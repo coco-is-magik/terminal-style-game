@@ -280,9 +280,17 @@ output, and a test keeps it parseable and keeps its digests fake. Filling the ex
 digests verifies the archive, which is how its shape was confirmed.
 
 
-**Next:** the runtime wiring — a `GlyphRef` in the cell, the glyph catalog in the scene, and the
-atlas reading a set through `src/glyph_set`. Nothing in the game uses a converted set yet; the
-renderer still draws `font8x8_basic`, so there is no visual change and no regression surface.
+**Next:** the gate for anything visible in the game — the **cell identity migration**. `Cell.glyph`
+is a byte and `CellState` packs glyph + fg + bg into a `uint64_t`, so a codepoint wider than 255
+cannot travel: widening the identity means redesigning `CellState`, then stream signatures,
+checksums, the block codec and the save path, and re-baselining the SMC matrix. That is V1-5 item 5
+and it deserves its own pass; 124 call sites across 20 files is the measure of it.
+
+Landed 2026-11-06, so that migration starts from a working resolver rather than a blank page:
+`src/glyph_source` answers "which face draws this codepoint, or is it missing" in one place —
+converted set first, built-in ASCII second, derived `X` sentinel last, never an error — and
+`fontconv --render <hex codepoints>` draws through it, so the rule is observable today without
+touching the renderer. The renderer still draws `font8x8_basic`; nothing visual changed.
 
 Landed 2026-11-06, on top of the converter: `src/glyph_set` (the single definition of the set's
 byte layout, strict validation with a named result per rejection, binary-search lookup) and

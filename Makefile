@@ -142,6 +142,7 @@ TEST_SHA256_RUNNER           := $(BUILD_DIR)/test-sha256
 TEST_FONT_MANIFEST_RUNNER    := $(BUILD_DIR)/test-font-manifest
 TEST_FONT_FIT_RUNNER         := $(BUILD_DIR)/test-font-fit
 TEST_GLYPH_SET_RUNNER        := $(BUILD_DIR)/test-glyph-set
+TEST_GLYPH_SOURCE_RUNNER     := $(BUILD_DIR)/test-glyph-source
 FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
@@ -739,9 +740,10 @@ $(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUM
 	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
 
-$(FONTCONV_TOOL): tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c | dirs
+$(FONTCONV_TOOL): tools/fontconv.c tools/font8x8_face.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c src/glyph_source.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(FREETYPE_CFLAGS) $(FONTCONV_FREETYPE) \
-		tools/fontconv.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c \
+		tools/fontconv.c tools/font8x8_face.c src/font_manifest.c src/sha256.c \
+		src/font_fit.c src/glyph_set.c src/glyph_source.c \
 		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(FONTCONV_FREETYPE_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
@@ -1291,7 +1293,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1355,6 +1357,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_FONT_MANIFEST_RUNNER)
 		./$(TEST_FONT_FIT_RUNNER)
 	./$(TEST_GLYPH_SET_RUNNER)
+	./$(TEST_GLYPH_SOURCE_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1785,3 +1788,7 @@ clean:
 			-exec rm -rf -- {} +; \
 	fi
 	rm -f -- *.gcov
+
+$(TEST_GLYPH_SOURCE_RUNNER): tests/test_glyph_source.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_source.c src/glyph_source.c src/glyph_set.c src/sha256.c \
+		-o $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_LIBS) $(RPATH)

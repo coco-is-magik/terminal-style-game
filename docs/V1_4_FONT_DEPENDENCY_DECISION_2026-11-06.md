@@ -236,6 +236,32 @@ silently skips is worse than no check, because the green line is believed.
 
 
 
+### The resolver: one place decides which face answers
+
+`src/glyph_source` is deliberately small. Everything interesting about a glyph happens elsewhere —
+`font_fit` decides pixels, `glyph_set` decides storage — and this decides only *which of two faces
+answers, or that neither does*:
+
+1. **the converted set**, if it has the codepoint (it is the face the user chose, and it may
+   deliberately overrule the built-in ASCII look);
+2. **the built-in ASCII face**, for codepoints below 0x80 — so the application's own chrome renders
+   even when no set is loaded, which is the state the project is in today;
+3. **the sentinel**, returned with `kind = MISSING` so the caller paints it magenta-on-red instead
+   of drawing a plausible-looking X and hoping someone notices.
+
+It never fails. A draw path that has to handle an error per cell is a draw path that will
+eventually ignore one, so "unknown codepoint" is an answer, not an exception. NULL is tolerated for
+the same reason. The sentinel's pixels are the built-in `X` read at call time — derived, never
+stored (D8) — and its two colours are named constants pinned by test, because a sentinel whose
+colours matched would be a mark nobody notices.
+
+`fontconv --render <hex codepoints>` drives it, so the rule can be seen rather than trusted. With
+the Misaki set loaded, `41,3042,2588` draw as `set, fit none`; with no set, `41` draws as `builtin`
+(different pixels — proof the set is actually being consulted, not shadowed) and `3042` draws the
+sentinel with `paint fg #FF2BD6 on bg #FF2B2B`.
+
+
+
 ### The missing-glyph sentinel (what `D8` looks like)
 
 The precedent is already in this codebase: `asset_registry_get_missing_decal_pattern()`
