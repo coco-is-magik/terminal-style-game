@@ -111,7 +111,23 @@ field's *meaning*, not the word width. Nothing is built for it today.
 6. **`glyph_source`** and the renderer draw from a codepoint rather than a byte, calling the resolver
    that already exists.
 
-## Rollback point
+## Verification of steps 3–4, as actually run (2026-11-22)
+
+| Gate | Result |
+|---|---|
+| `make` (app, all sources) | `BUILD=0` |
+| `make standards` | clean |
+| `make test` | **88 suites, `TEST=0`**, zero failures |
+| `make matrix` (8 tracker modes, each a **clean rebuild**) | **`MATRIX=0`**, all eight pass |
+| `build/test-smc-state-tracker` | 2/2, including the new packed-layout test |
+
+One caveat worth recording, because it is a property of this build system rather than of the change:
+this Makefile lists source files explicitly and does not track header dependencies, so `make test`
+after a header change rebuilt only the runners whose rules name the changed `.c` files — 18 of them.
+`make test` was therefore *incomplete evidence* on its own. `make matrix` closes that gap by
+`make clean`-ing between modes, so its eight passes are clean-rebuild passes.
+
+
 
 Steps 1–2 are additive and reversible on their own: the set format gains an invariant before the cell
 gains a field, so nothing downstream depends on them yet. Step 3 onwards is one change that must land
