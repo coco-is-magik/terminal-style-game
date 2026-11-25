@@ -320,7 +320,11 @@ SRC_RAYCAST_OPTICAL := $(SRC_RAYCAST) src/raycast_optical.c \
 	src/heightfield_trace_selective.c src/optical_runtime_view.c \
 	src/optical_compositor.c src/mirror_trace.c
 SRC_LIGHTING      := src/lighting.c
-SRC_RENDERER      := src/renderer.c src/glyph_atlas.c
+# Renderer needs the glyph modules: it draws through glyph_paint, which reads glyph_source, which
+# reads glyph_set/sha256. Keeping them in the variable means rules that use $(SRC_RENDERER) inherit
+# them rather than silently failing to link.
+SRC_GLYPH         := src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c
+SRC_RENDERER      := src/renderer.c src/glyph_atlas.c $(SRC_GLYPH)
 SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
 SRC_PLATFORM_CATALOG := src/platform_catalog.c
@@ -1043,14 +1047,14 @@ $(TEST_UI_THEME_DEMO_RUNNER): tests/test_ui_theme_demo.c $(SRC_UI_THEME_DEMO) sr
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_theme_demo.c $(SRC_UI_THEME_DEMO) \
 		src/ui_theme_demo_runtime.c $(SRC_UI_THEME) $(SRC_UI_CANVAS) $(SRC_CHECKED_SIZE) \
 		$(SRC_INPUT) $(SRC_TIMING) $(SRC_UI_COMPOSITOR) \
-		$(SRC_UI_PREFERENCES) $(SRC_GRID) src/renderer.c src/glyph_atlas.c \
+		$(SRC_UI_PREFERENCES) $(SRC_GRID) $(SRC_RENDERER) \
 		-o $(TEST_UI_THEME_DEMO_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_MOTION_DEMO_RUNNER): tests/test_ui_motion_demo.c $(SRC_UI_MOTION_DEMO) src/ui_motion_demo_runtime.c $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_CANVAS) $(SRC_CHECKED_SIZE) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_motion_demo.c $(SRC_UI_MOTION_DEMO) \
 		src/ui_motion_demo_runtime.c $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_CANVAS) \
 		$(SRC_CHECKED_SIZE) $(SRC_INPUT) $(SRC_TIMING) $(SRC_UI_COMPOSITOR) \
-		$(SRC_UI_PREFERENCES) $(SRC_GRID) src/renderer.c src/glyph_atlas.c \
+		$(SRC_UI_PREFERENCES) $(SRC_GRID) $(SRC_RENDERER) \
 		-o $(TEST_UI_MOTION_DEMO_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_MATERIAL_DOCUMENT_RUNNER): tests/test_material_document.c $(SRC_ASSET_DOCUMENT) $(SRC_MATERIAL_DOCUMENT) $(SRC_PLATFORM_PATH) $(SRC_PLATFORM_FS) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) | dirs
