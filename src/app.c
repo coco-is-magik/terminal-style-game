@@ -499,6 +499,10 @@ static bool dispatch_menu_action(const char *action,
     }
 }
 
+/* The smoke path has no long-lived AppResources of its own, and the active glyph source borrows the
+   set it is given, so the storage has to outlive the call. Process-lifetime, released by the OS. */
+static AppResources g_smoke_glyph_resources;
+
 static int run_headless_smoke(void) {
     AssetRegistry assets;
     WorldState world;
@@ -515,6 +519,12 @@ static int run_headless_smoke(void) {
         asset_registry_clear(&assets);
         return 1;
     }
+
+    /* Optional converted glyphs beside the assets: absent is normal, present replaces the built-in
+       ASCII face for any codepoint the set contains (V1-5 step 6). The active glyph source borrows
+       the set, so it has to outlive this function: process-lifetime static, released at exit. */
+    app_resources_init(&g_smoke_glyph_resources);
+    (void)app_resources_load_glyph_set(&g_smoke_glyph_resources, "assets");
 
     map = asset_loader_load_map_data(&world, "assets", 1);
     if (!map) {
@@ -665,6 +675,9 @@ int app_main(int argc, char* argv[]) {
         app_resources_cleanup(&resources);
         return 1;
     }
+    /* Absent is normal (the built-in face answers); present replaces it for every codepoint the
+       set contains. Never fatal: a broken font must not stop the application starting. */
+    (void)app_resources_load_glyph_set(&resources, "assets");
 
     WorldState world;
     world_init(&world);

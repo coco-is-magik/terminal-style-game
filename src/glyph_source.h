@@ -76,6 +76,24 @@ GlyphSourceGlyph glyph_source_resolve(const GlyphSource *source, uint32_t codepo
    without re-deriving the rule. */
 bool glyph_source_is_missing(const GlyphSourceGlyph *glyph);
 
+/* ---- Process-lifetime active set ------------------------------------------------
+ *
+ * The draw sites are deep in hot loops and own no configuration: the renderer, the compositor and
+ * the block cache all need "which faces are loaded right now?" and none of them should be threading
+ * a font pointer through its own call graph to answer it. One process-lifetime selection, set once
+ * at startup, is the same shape as the built-in missing-decal pattern: derived, not owned, and
+ * never serialised.
+ *
+ * Single-threaded by contract, like the rest of the render path. `set` is borrowed: the caller keeps
+ * the bytes alive for as long as it wants glyphs resolved (the loader's buffer is owned by whoever
+ * loaded it).
+ */
+void glyph_source_set_active(const GlyphSet *set);
+
+/* The active source. Never NULL: with no set loaded it answers from the built-in ASCII face, which
+   is the state the application ships in. */
+const GlyphSource *glyph_source_active(void);
+
 /* Stable short name of a kind, for tool output and test failure messages. */
 const char *glyph_source_kind_name(GlyphSourceKind kind);
 

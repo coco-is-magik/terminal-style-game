@@ -38,6 +38,7 @@
 #include "checked_size.h"
 #include "ui_preferences.h"
 #include "smc_state_tracker.h" /* SMC v2 dirty-state tracking (conditional) */
+#include "glyph_paint.h"     /* codepoint -> face + sentinel colours */
 #include "smc_indexed_state_tracker.h" /* SMC v2.1 indexed state tracking */
 #if defined(USE_SMC_STATE_TRACKER) || defined(USE_SMC_INDEXED_STATE_TRACKER) || defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
 #include "smc.h"           /* SMC types (SMC_OK, etc.) */
@@ -535,11 +536,14 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
         renderer_cells_processed++;
         
         /* Pack foreground and background colours into uint32_t once */
-        uint32_t fg = COLOR_TO_UINT32(c.fg);
-        uint32_t bg = COLOR_TO_UINT32(c.bg);
+        SDL_Color cell_fg = c.fg;
+        SDL_Color cell_bg = c.bg;
+        GlyphSourceGlyph resolved = glyph_paint_resolve(c.glyph, &cell_fg, &cell_bg);
+        uint32_t fg = COLOR_TO_UINT32(cell_fg);
+        uint32_t bg = COLOR_TO_UINT32(cell_bg);
         
         /* Look up the 8×8 font bitmap for this glyph. */
-        const uint8_t *glyph_data = font8x8_basic[c.glyph < 128 ? c.glyph : 32];
+        const uint8_t *glyph_data = resolved.rows;
         
         /* Top-left pixel of this cell's 8×8 block in the pixel buffer */
         int base_x = cx * 8;
@@ -615,12 +619,12 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
             renderer_cells_processed++;
 
             /* Pack foreground and background colours into uint32_t once */
-            uint32_t fg = COLOR_TO_UINT32(c.fg);
-            uint32_t bg = COLOR_TO_UINT32(c.bg);
-
-            /* Look up the 8×8 font bitmap for this glyph.
-             * Valid range is 0–127; anything outside becomes space (32). */
-            const uint8_t *glyph_data = font8x8_basic[c.glyph < 128 ? c.glyph : 32];
+            SDL_Color cell_fg = c.fg;
+            SDL_Color cell_bg = c.bg;
+            GlyphSourceGlyph resolved = glyph_paint_resolve(c.glyph, &cell_fg, &cell_bg);
+            uint32_t fg = COLOR_TO_UINT32(cell_fg);
+            uint32_t bg = COLOR_TO_UINT32(cell_bg);
+            const uint8_t *glyph_data = resolved.rows;
 
             /* Top-left pixel of this cell's 8×8 block in the pixel buffer */
             int base_x = cx * 8;

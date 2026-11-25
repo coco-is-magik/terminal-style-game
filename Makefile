@@ -1,6 +1,10 @@
 CC := gcc
 CFLAGS := -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror
 BUILD_DIR := build
+# Explicit, because the header-stamp rule below would otherwise become the first target and make a
+# bare `make` do nothing but touch it. Fixing that silently broke `make` once; it is not left to
+# target order again.
+.DEFAULT_GOAL := all
 VALGRIND ?= valgrind
 CPPCHECK ?= cppcheck
 CPPCHECK_FLAGS := --quiet --error-exitcode=100 --std=c11 \
@@ -144,6 +148,7 @@ TEST_FONT_FIT_RUNNER         := $(BUILD_DIR)/test-font-fit
 TEST_GLYPH_SET_RUNNER        := $(BUILD_DIR)/test-glyph-set
 TEST_GLYPH_SOURCE_RUNNER     := $(BUILD_DIR)/test-glyph-source
 TEST_GLYPH_SET_FILE_RUNNER   := $(BUILD_DIR)/test-glyph-set-file
+TEST_GLYPH_PAINT_RUNNER      := $(BUILD_DIR)/test-glyph-paint
 FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
@@ -835,8 +840,9 @@ $(TEST_VERTICAL_PHYSICS_RUNNER): tests/test_vertical_physics.c $(SRC_VERTICAL_PH
 		$(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) \
 		-o $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_GLYPH_CACHE_RUNNER): tests/test_glyph_block_cache.c src/glyph_block_cache.c | dirs
+$(TEST_GLYPH_CACHE_RUNNER): tests/test_glyph_block_cache.c src/glyph_block_cache.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_block_cache.c src/glyph_block_cache.c \
+		src/glyph_source.c src/glyph_set.c src/sha256.c \
 		-o $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_LIGHTING_CACHE_RUNNER): tests/test_lighting_cache.c src/lighting_cache.c | dirs
@@ -917,9 +923,10 @@ $(TEST_UI_PREFERENCES_RUNNER): tests/test_ui_preferences.c $(SRC_UI_PREFERENCES)
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_preferences.c $(SRC_UI_PREFERENCES) \
 		-o $(TEST_UI_PREFERENCES_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_COMPOSITOR_RUNNER): tests/test_ui_compositor.c tests/font8x8_test_data.c $(SRC_UI_CANVAS) $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) $(SRC_GRID) | dirs
+$(TEST_UI_COMPOSITOR_RUNNER): tests/test_ui_compositor.c tests/font8x8_test_data.c $(SRC_UI_CANVAS) $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) $(SRC_GRID) src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_compositor.c $(SRC_UI_CANVAS) $(SRC_GRID) \
 		tests/font8x8_test_data.c $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) \
+		src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c \
 		-o $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_THEME_RUNNER): tests/test_ui_theme.c $(SRC_UI_THEME) | dirs
@@ -1330,7 +1337,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) $(TEST_GLYPH_PAINT_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1396,6 +1403,7 @@ test: $(TEST_RUNNERS)
 	./$(TEST_GLYPH_SET_RUNNER)
 	./$(TEST_GLYPH_SOURCE_RUNNER)
 	./$(TEST_GLYPH_SET_FILE_RUNNER)
+	./$(TEST_GLYPH_PAINT_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1827,6 +1835,11 @@ clean:
 			-exec rm -rf -- {} +; \
 	fi
 	rm -f -- *.gcov
+
+$(TEST_GLYPH_PAINT_RUNNER): tests/test_glyph_paint.c src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_paint.c src/glyph_paint.c src/glyph_source.c \
+		src/glyph_set.c src/sha256.c \
+		-o $(TEST_GLYPH_PAINT_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_GLYPH_SET_FILE_RUNNER): tests/test_glyph_set_file.c src/glyph_set_file.c src/glyph_set.c src/sha256.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_set_file.c src/glyph_set_file.c \

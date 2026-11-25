@@ -4,8 +4,7 @@
 
 #include "glyph_block_cache.h"
 
-/* font8x8_basic is defined in font8x8.h (included by renderer.c) */
-extern const unsigned char font8x8_basic[128][8];
+#include "glyph_source.h"
 #include <string.h>
 
 /* Cache entry */
@@ -76,7 +75,12 @@ void glyph_block_cache_compute(GlyphBlockKey key, GlyphBlock *block_out) {
         return;
     }
 
-    const uint8_t *glyph_data = font8x8_basic[key.glyph_id < 128 ? key.glyph_id : 32];
+    /* Resolve through the same source the draw paths use, so this cache produces the same pixels
+       for a codepoint as the software rasteriser. The colours in the key are already effective:
+       a caller that wants the missing-glyph sentinel must pass the sentinel colours, which is what
+       glyph_paint_resolve produces. */
+    GlyphSourceGlyph resolved = glyph_source_resolve(glyph_source_active(), key.glyph_id);
+    const uint8_t *glyph_data = resolved.rows;
     uint32_t fg = key.fg_rgba;
     uint32_t bg = key.bg_rgba;
     

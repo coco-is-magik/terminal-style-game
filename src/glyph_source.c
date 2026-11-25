@@ -15,6 +15,18 @@
    about a glyph. */
 extern unsigned char font8x8_basic[128][8];
 
+/* The single process-lifetime selection. Reset by passing NULL, which puts the application back on
+   the built-in face — the same state as a fresh process with no set configured. */
+static GlyphSource g_active_source = {NULL};
+
+void glyph_source_set_active(const GlyphSet *set) {
+    g_active_source.set = set;
+}
+
+const GlyphSource *glyph_source_active(void) {
+    return &g_active_source;
+}
+
 void glyph_source_init(GlyphSource *source, const GlyphSet *set) {
     if (!source) return;
     source->set = set;

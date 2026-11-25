@@ -8,3 +8,4 @@ docs/smc_benchmark_logs/
 !.git/
 !.gitignore
 assets/fonts/
+assets/fonts.tsgfont

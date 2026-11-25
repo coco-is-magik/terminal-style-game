@@ -1,4 +1,5 @@
 #include "ui_compositor.h"
+#include "glyph_paint.h"
 #include "ui_preferences.h"
 
 #include <SDL3/SDL.h>
@@ -125,6 +126,10 @@ static void compose_layer(const UiLayer *layer, int global_scale_percent,
             uint32_t bg;
             int sy;
             int sx;
+            /* Declared here, in the same scope as `glyph`: the rows pointer refers into this struct,
+               so it must outlive the loop that reads it. Scoping it to a narrower block produced a
+               dangling pointer that the compiler caught as maybe-uninitialized. */
+            GlyphSourceGlyph resolved;
             if (!ui_canvas_is_touched(layer->canvas, cx, cy)) continue;
             mark_touched_cell_span(touched_cells, cell_columns, cell_rows,
                                    maximum(clip_x0, origin_x + ui_compositor_scaled_edge(cx * 8, scale)),
@@ -132,9 +137,15 @@ static void compose_layer(const UiLayer *layer, int global_scale_percent,
                                    minimum(clip_x1, origin_x + ui_compositor_scaled_edge((cx + 1) * 8, scale)),
                                    minimum(clip_y1, origin_y + ui_compositor_scaled_edge((cy + 1) * 8, scale)));
             cell = &layer->canvas->cells[cy * layer->canvas->width + cx];
-            glyph = font8x8_basic[cell->glyph < 128 ? cell->glyph : 32];
-            fg = UI_COLOR_TO_UINT32(cell->fg);
-            bg = UI_COLOR_TO_UINT32(cell->bg);
+            /* Same face choice and sentinel rule as the renderer: one call, one answer. */
+            {
+                SDL_Color cell_fg = cell->fg;
+                SDL_Color cell_bg = cell->bg;
+                resolved = glyph_paint_resolve(cell->glyph, &cell_fg, &cell_bg);
+                glyph = resolved.rows;
+                fg = UI_COLOR_TO_UINT32(cell_fg);
+                bg = UI_COLOR_TO_UINT32(cell_bg);
+            }
             for (sy = 0; sy < 8; sy++) {
                 int y0 = origin_y + ui_compositor_scaled_edge(cy * 8 + sy, scale);
                 int y1 = origin_y + ui_compositor_scaled_edge(cy * 8 + sy + 1, scale);
