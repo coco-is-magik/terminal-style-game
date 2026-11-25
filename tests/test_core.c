@@ -96,6 +96,24 @@ static void test_grid_set_get_bounds(void **state) {
     grid_destroy(g);
 }
 
+/* The cell holds a 16-bit codepoint, and `char` is signed on this platform, so a high-bit byte
+   taken straight from a `const char *` would sign-extend: 0xE9 becomes U+FFE9 instead of U+00E9.
+   When the cell was a uint8_t that could not happen — the value truncated to the byte. This test
+   pins the byte-oriented behaviour of grid_print until real UTF-8 decoding arrives (V1-6). */
+static void test_grid_print_treats_high_bytes_as_latin1(void **state) {
+    static const char text[] = "\xE9"; /* é in Latin-1, and a lone UTF-8 continuation byte */
+    Grid *g;
+    Cell c;
+    (void)state;
+    g = grid_create(4, 2);
+    assert_non_null(g);
+    grid_print(g, 0, 0, text, (SDL_Color){255, 255, 255, 255}, (SDL_Color){0, 0, 0, 255});
+    assert_true(grid_get(g, 0, 0, &c));
+    assert_int_equal(c.glyph, 0x00E9U);
+    assert_int_not_equal(c.glyph, 0xFFE9U);
+    grid_destroy(g);
+}
+
 static void test_grid_clear(void **state) {
     (void)state;
     Grid *g = grid_create(3, 3);
@@ -1481,6 +1499,7 @@ int main(void) {
         cmocka_unit_test(test_grid_init_invalid),
         cmocka_unit_test(test_grid_destroy_safety),
         cmocka_unit_test(test_grid_set_get_bounds),
+        cmocka_unit_test(test_grid_print_treats_high_bytes_as_latin1),
         cmocka_unit_test(test_grid_clear),
         cmocka_unit_test(test_grid_clear_region_zero),
         cmocka_unit_test(test_scale_calculations),

@@ -254,8 +254,15 @@ void grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Co
             cy++;
             continue;
         }
-        /* Write the character at the current cursor position */
-        grid_set(grid, cx, cy, text[i], fg, bg);
+        /* Write the character at the current cursor position.
+         *
+         * The byte is taken as a codepoint in U+0000–U+00FF, which is what this path did
+         * implicitly when the cell held a uint8_t and is the honest reading of a `const char *`
+         * that is not UTF-8-aware yet. The explicit unsigned cast matters now that the cell holds
+         * 16 bits: `char` is signed here, so a byte such as 0xE9 would sign-extend to U+FFE9
+         * instead of U+00E9 and point at a codepoint the text never meant. Real UTF-8 decoding is
+         * V1-6's job (utf8proc, D3); until then this function is byte-oriented and says so. */
+        grid_set(grid, cx, cy, (uint16_t)(unsigned char)text[i], fg, bg);
         cx++;   /* Advance column */
     }
 }
