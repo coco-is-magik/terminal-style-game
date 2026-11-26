@@ -97,17 +97,17 @@ static void test_exact_memory_costs_and_break_even(void **state) {
     (void)state;
     assert_true(r9_optical_memory_report(
         SCENE_MAX_WIDTH, SCENE_MAX_HEIGHT, ASSET_ID_CAPACITY, 1024U, &report));
-    assert_int_equal(report.cell_count, 131072U);
+    assert_int_equal(report.cell_count, 2097152U);
     assert_int_equal(report.extension_bytes, 8U);
     assert_int_equal(report.sparse_record_bytes, 12U);
     assert_int_equal(report.material_extension_bytes, 524288U);
-    assert_int_equal(report.dense_cell_extension_bytes, 1048576U);
+    assert_int_equal(report.dense_cell_extension_bytes, 16777216U);
     assert_int_equal(report.sparse_cell_extension_bytes, 12288U);
     assert_int_equal(report.material_plus_sparse_bytes, 536576U);
-    assert_int_equal(report.dense_break_even_sparse_count, 87381U);
-    assert_int_equal(report.material_plus_sparse_break_even_count, 43690U);
+    assert_int_equal(report.dense_break_even_sparse_count, 1398101U);
+    assert_int_equal(report.material_plus_sparse_break_even_count, 1354410U);
     assert_int_equal(report.material_text_payload_bytes, 1441792U);
-    assert_int_equal(report.dense_cell_text_payload_bytes, 2228224U);
+    assert_int_equal(report.dense_cell_text_payload_bytes, 35651584U);
     assert_int_equal(report.sparse_cell_text_payload_bytes, 23552U);
     assert_int_equal(report.material_plus_sparse_text_payload_bytes, 1465344U);
 }

@@ -104,6 +104,20 @@ checksums and a 6 ms budget. Native display and platform profiles remain tracked
   benchmarks independently. Do not use optimization to conceal algorithmic
   regressions.
 
+- [ ] **Test scratch directories leak into `build/`:** several runners create
+  `mkdtemp` trees (`tsg_unified_ed_*`, `tsg_interrupted_layout_*.tmp.*`,
+  `tsg_interrupted_master_*.tmp.*`) and leave them behind even when the test
+  passes, so they accumulate across runs. They are inside the ignored `build/`
+  directory and harmless, but a passing run should not grow the tree. Verified
+  2026-11-25.
+- [ ] **`compile_commands.json` is host-specific and silently stale:** it is
+  ignored by the repository and carries absolute paths, so a tree copied or moved
+  to another host keeps a database pointing at paths that no longer exist, and the
+  editor resolves nothing. It was regenerated for the current host on 2026-11-25.
+  Decide whether to document the regeneration command in the build notes or drop
+  the file in favour of `.clangd`, which already supplies the include roots and is
+  host-independent.
+
 ## Data-first configuration and external editability — **Needs architecture/design**
 
 **Wanted:** Recommit to “from data” behavior where practical. User-set variables,

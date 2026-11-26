@@ -51,6 +51,12 @@ kept visible:
 
 **45 tests**, all inside `make test` (**88 suites**, `TEST=0`). `make standards` clean, cppcheck
 
+**Correction (2026-11-25).** The `88 suites` / `TEST=0` figures above were produced on the source
+host and are superseded. A clean rebuild fails `test-r9-optical-semantics` on stale expectations left
+by the 2026-11-07 scene-ceiling change; corrected on 2026-11-25. The measured inventory is now
+**91 runners / 1005 tests**. See
+[`2026-11-25-host-migration-and-suite-recovery.md`](2026-11-25-host-migration-and-suite-recovery.md).
+
 ## What is proven, and how
 
 Against the **real** Misaki archive (`misaki_ttf_2021-05-05.zip`, 794,317 bytes):

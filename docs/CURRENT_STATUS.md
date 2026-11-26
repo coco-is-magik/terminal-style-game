@@ -14,6 +14,16 @@ recorded as open reconciliations in that document and in [`TODO.md`](TODO.md).
 
 ## Current verified foundation
 
+**2026-11-25 — host migration.** The working tree was copied to a different machine. History, tracked
+files and the older baseline were intact; the copied `build/` artifacts were not usable (compiled for
+a wider x86-64 ISA than the new host provides) and were discarded and rebuilt locally. The first clean
+rebuild exposed one defect that had been hidden since 2026-11-07 by a missing header dependency in the
+test build: `test-r9-optical-semantics` still asserted the pre-2048×1024 cell count. The expectations
+were corrected; no production source changed. On the migrated host `make all`, `make test`
+(**91 runners / 1005 tests, 0 failures**), `make standards`, `make matrix` (8/8) and smoke all pass.
+Full evidence, the runtime caveat for the cppcheck gate, and the remaining unverified gates are in
+[`handoffs/2026-11-25-host-migration-and-suite-recovery.md`](handoffs/2026-11-25-host-migration-and-suite-recovery.md).
+
 **2026-10-19 — editing workspaces.** The game-flow workspace is now a deterministic node graph and
 the authored-Menu workspace is preview-first on the workbench palette. Both use the shared editor
 panel module; the R12 controllers, mutations, history and Save/Discard behaviour are unchanged. An
@@ -62,8 +72,9 @@ mirror disposition are complete.
 Native Windows verification is deliberately limited to two product checks under one command:
 strict `make all` compilation and complete `make test` execution. On 2026-09-15 the single
 `PROFILE_VM_NAME=win10-survey make platform-test-windows` invocation passed strict application
-compilation and all 64 test runners (the suite count at that checkpoint; the current Linux
-aggregate is 81 suites / 927 tests). The runner starts the VM only
+compilation and all 64 test runners (the suite count at that checkpoint; the
+current Linux aggregate on the migrated host is 91 runners / 1005 tests, measured
+2026-11-25). The runner starts the VM only
 when it is off and never stops it. Windows VM benchmarks, stability workloads, standards,
 sanitizers, binary inspection, smoke, and SPICE/display automation are outside this scope. The
 previous expanded Windows procedure and its acceptance-only F6/F7 controls were removed. Its VM

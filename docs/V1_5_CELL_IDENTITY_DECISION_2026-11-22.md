@@ -127,6 +127,16 @@ after a header change rebuilt only the runners whose rules name the changed `.c`
 `make test` was therefore *incomplete evidence* on its own. `make matrix` closes that gap by
 `make clean`-ing between modes, so its eight passes are clean-rebuild passes.
 
+**Correction (2026-11-25).** The `make test` row above is **not reproducible** and should be read as
+`FAIL-PRODUCT`. A clean rebuild on a new host fails `test-r9-optical-semantics`, because `53b67e9`
+(2026-11-07) raised `SCENE_MAX_WIDTH`/`SCENE_MAX_HEIGHT` to 2048×1024 without updating that test's
+hand-written expectations. The `TEST=0` above was produced by the very stale-binary defect this
+section documents: the runner's rule names no headers, so it was never rebuilt after the ceiling
+change. `make matrix` does not close this gap either — it clean-rebuilds only `test-core`. The
+mechanism was closed later by `01c0bc6` (`.headers.stamp` on every `%_RUNNER`/`%_TOOL` target); the
+expectations were corrected on 2026-11-25. See
+[`handoffs/2026-11-25-host-migration-and-suite-recovery.md`](../handoffs/2026-11-25-host-migration-and-suite-recovery.md).
+
 
 
 Steps 1–2 are additive and reversible on their own: the set format gains an invariant before the cell
