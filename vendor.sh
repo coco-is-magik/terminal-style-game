@@ -12,6 +12,10 @@ cd vendor/src
 [ -d enet ] || git clone https://github.com/lsalzman/enet.git
 [ -d cmocka ] || git clone https://gitlab.com/cmocka/cmocka.git
 [ -d smc ] || git clone https://github.com/coco-is-magik/self-modifying-calculator.git smc
+# utf8proc is pinned to a tag rather than tracking a branch: D10 fixes the Unicode version to the
+# vendored data release, so a floating master would silently change what "valid UTF-8" and "one
+# grapheme cluster" mean. Changing this tag is a deliberate act that must update the record with it.
+[ -d utf8proc ] || git clone --branch v2.12.0 --depth 1 https://github.com/JuliaStrings/utf8proc.git utf8proc
 
 build_dep () {
     NAME=$1

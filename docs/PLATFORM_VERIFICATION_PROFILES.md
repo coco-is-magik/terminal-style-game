@@ -9,7 +9,9 @@ appropriate container.
 Linux profiles record the full applicable verification set:
 
 - OS/distribution and release, kernel where applicable, architecture, compiler,
-  linker, C library/runtime, SDL, SDL_mixer, enet, and cmocka versions;
+  linker, C library/runtime, SDL, SDL_mixer, enet, and cmocka versions, plus the
+  vendored utf8proc tag (V1-4 D3 pins the Unicode data release, so the tag is part of
+  the environment identity rather than an implementation detail);
 - strict C11 application build with `-Wall -Wextra -Wpedantic -Werror`;
 - complete `make test`, including SMC runners;
 - `make standards`, or a typed tool failure under `VERIFICATION_POLICY.md`;

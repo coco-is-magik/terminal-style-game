@@ -24,6 +24,20 @@ were corrected; no production source changed. On the migrated host `make all`, `
 Full evidence, the runtime caveat for the cppcheck gate, and the remaining unverified gates are in
 [`handoffs/2026-11-25-host-migration-and-suite-recovery.md`](handoffs/2026-11-25-host-migration-and-suite-recovery.md).
 
+**Roadmap position, 2026-11-25 — V1-5 is the active phase.** V1-0 through V1-4 are closed, with
+V1-3 carrying one outstanding item (the display-backed native review of pointer motion) and V1-G
+running beside the chain with M0 and M1 complete. **V1-5 (glyph identity, raster service, cache,
+mandatory SMC migration)** has landed its converter, font manifest, fit policy, resolver, glyph-set
+format and loader, and the cell-identity migration: `Cell.glyph` is a 16-bit codepoint, `Cell` is 10
+bytes, and `CellState` remains exactly 64 bits, so the SMC batch kernel and every tracker mode are
+unchanged in shape. Outcomes 1, 3 and 5 of that phase are done, 2 is partly done (`utf8proc`
+normalization/segmentation is its own increment), and 4 and 6 are open. V1-6 and V1-7 stay blocked
+until the V1-5 exit gate passes. The remaining work, its order, and the amendments it makes to D7 and
+D8 are in
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md).
+This file previously did not mention V1-4 or V1-5 at all; that gap is why the position had to be
+reconstructed from the decision records.
+
 **2026-10-19 — editing workspaces.** The game-flow workspace is now a deterministic node graph and
 the authored-Menu workspace is preview-first on the workbench palette. Both use the shared editor
 panel module; the R12 controllers, mutations, history and Save/Discard behaviour are unchanged. An

@@ -19,9 +19,6 @@ USE_SMC ?= 0
 # Lighting cache toggle.  Set USE_LIGHTING_CACHE=1 to enable lighting shadow ray cache.
 USE_LIGHTING_CACHE ?= 0
 
-# Glyph cache toggle.  Set USE_GLYPH_CACHE=1 to enable glyph block caching.
-USE_GLYPH_CACHE ?= 0
-
 # Dirty cell tracking toggle.  Set USE_DIRTY_CELLS=1 for renderer-specific custom dirty-cell tracking (reference path).
 USE_DIRTY_CELLS ?= 0
 
@@ -145,10 +142,13 @@ TEST_MAPGEN_SEED_RUNNER      := $(BUILD_DIR)/test-mapgen-seed
 TEST_SHA256_RUNNER           := $(BUILD_DIR)/test-sha256
 TEST_FONT_MANIFEST_RUNNER    := $(BUILD_DIR)/test-font-manifest
 TEST_FONT_FIT_RUNNER         := $(BUILD_DIR)/test-font-fit
+TEST_FONT_HEX_RUNNER         := $(BUILD_DIR)/test-font-hex
 TEST_GLYPH_SET_RUNNER        := $(BUILD_DIR)/test-glyph-set
 TEST_GLYPH_SOURCE_RUNNER     := $(BUILD_DIR)/test-glyph-source
 TEST_GLYPH_SET_FILE_RUNNER   := $(BUILD_DIR)/test-glyph-set-file
 TEST_GLYPH_PAINT_RUNNER      := $(BUILD_DIR)/test-glyph-paint
+TEST_GLYPH_MISSING_SENTINEL_RUNNER := $(BUILD_DIR)/test-glyph-missing-sentinel
+TEST_TEXT_UTF8_RUNNER        := $(BUILD_DIR)/test-text-utf8
 FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
@@ -160,7 +160,6 @@ BENCH_UI_FIELD_RUNNER         := $(BUILD_DIR)/benchmark-ui-field
 TEST_EDITOR_DOMAIN_RUNNER    := $(BUILD_DIR)/test-editor-domain
 TEST_UNIFIED_EDITOR_RUNNER   := $(BUILD_DIR)/test-unified-editor
 TEST_INPUT_RUNNER            := $(BUILD_DIR)/test-input
-TEST_GLYPH_CACHE_RUNNER      := $(BUILD_DIR)/test-glyph-block-cache
 TEST_LIGHTING_CACHE_RUNNER   := $(BUILD_DIR)/test-lighting-cache
 TEST_LIGHTING_RUNNER         := $(BUILD_DIR)/test-lighting
 TEST_APP_OPTIONS_RUNNER      := $(BUILD_DIR)/test-app-options
@@ -321,10 +320,21 @@ SRC_RAYCAST_OPTICAL := $(SRC_RAYCAST) src/raycast_optical.c \
 	src/optical_compositor.c src/mirror_trace.c
 SRC_LIGHTING      := src/lighting.c
 # Renderer needs the glyph modules: it draws through glyph_paint, which reads glyph_source, which
-# reads glyph_set/sha256. Keeping them in the variable means rules that use $(SRC_RENDERER) inherit
-# them rather than silently failing to link.
-SRC_GLYPH         := src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c
-SRC_RENDERER      := src/renderer.c src/glyph_atlas.c $(SRC_GLYPH)
+# reads glyph_set/sha256, and it records what could not be drawn through glyph_missing. Keeping them
+# in the variable means rules that use $(SRC_RENDERER) inherit them rather than silently failing to
+# link — the lesson b632998 recorded the first time this was got wrong.
+SRC_GLYPH         := src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c \
+                     src/glyph_missing.c src/font8x8_face.c
+
+# Vendored utf8proc (V1-4 D3): strict UTF-8, canonical NFC, grapheme segmentation. Pinned to tag
+# v2.12.0 in vendor/src/utf8proc; it compiles clean under this project's warning flags, so it needs no
+# exemption. Compiled from source rather than built by its own build system, matching the pinned SMC
+# sources.
+UTF8PROC_SRC      := vendor/src/utf8proc/utf8proc.c
+UTF8PROC_CFLAGS   := -Ivendor/src/utf8proc
+# utf8proc_data.c is #included by utf8proc.c, not compiled on its own — it has no includes of its own
+# and would not compile separately.
+SRC_RENDERER      := src/renderer.c $(SRC_GLYPH)
 SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
 SRC_PLATFORM_CATALOG := src/platform_catalog.c
@@ -388,10 +398,6 @@ ifeq ($(USE_LIGHTING_CACHE),1)
   SRC_LIGHTING += src/lighting_cache.c
 endif
 
-ifeq ($(USE_GLYPH_CACHE),1)
-  SRC_RENDERER += src/glyph_block_cache.c
-endif
-
 ifeq ($(USE_SMC_STATE_TRACKER),1)
   SRC_RENDERER += src/smc_state_tracker.c
 endif
@@ -409,12 +415,6 @@ endif
 LIGHTING_DEFS :=
 ifeq ($(USE_LIGHTING_CACHE),1)
     LIGHTING_DEFS := -DUSE_LIGHTING_CACHE=1
-endif
-
-# Glyph block cache definitions
-GLYPH_DEFS :=
-ifeq ($(USE_GLYPH_CACHE),1)
-    GLYPH_DEFS := -DUSE_GLYPH_CACHE=1
 endif
 
 # Dirty cell tracking definitions
@@ -468,7 +468,7 @@ endif
 
 # Shared flag/include/lib bundles for tests that compile renderer/lighting/raycast.
 # Defined after feature-flag variables so expansion sees final values.
-TEST_FEATURE_DEFS := $(SMC_DEFS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS)
+TEST_FEATURE_DEFS := $(SMC_DEFS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS)
 TEST_FEATURE_INCLUDES := $(INCLUDES) $(SMC_INCLUDES) $(SMC_INCLUDES_ACTIVE)
 TEST_FEATURE_LIBS := $(TEST_LIBS) $(SMC_LIBS) $(SMC_LIBS_ACTIVE)
 TEST_FEATURE_CFLAGS := $(SMC_CFLAGS_ACTIVE)
@@ -700,7 +700,7 @@ TEST_UNIFIED_EDITOR_SRC := \
 $(APP): $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(SMC_SRC) | dirs
 
 
-	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(GLYPH_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS) $(SMC_CFLAGS_ACTIVE) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
+	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS) $(SMC_CFLAGS_ACTIVE) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
 
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
@@ -768,6 +768,10 @@ $(TEST_FONT_FIT_RUNNER): tests/test_font_fit.c src/font_fit.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_font_fit.c src/font_fit.c \
 		-o $(TEST_FONT_FIT_RUNNER) $(TEST_LIBS) $(RPATH)
 
+$(TEST_FONT_HEX_RUNNER): tests/test_font_hex.c src/font_hex.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_font_hex.c src/font_hex.c \
+		-o $(TEST_FONT_HEX_RUNNER) $(TEST_LIBS) $(RPATH)
+
 $(TEST_GLYPH_SET_RUNNER): tests/test_glyph_set.c src/glyph_set.c src/sha256.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_set.c src/glyph_set.c src/sha256.c \
 		-o $(TEST_GLYPH_SET_RUNNER) $(TEST_LIBS) $(RPATH)
@@ -776,10 +780,10 @@ $(MAPGEN_TOOL): tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUM
 	$(CC) $(CFLAGS) $(INCLUDES) tools/mapgen.c src/mapgen.c src/mapgen_seed.c $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(MAPGEN_TOOL) $(TEST_LIBS) $(RPATH)
 
-$(FONTCONV_TOOL): tools/fontconv.c tools/font8x8_face.c src/font_manifest.c src/sha256.c src/font_fit.c src/glyph_set.c src/glyph_source.c | dirs
+$(FONTCONV_TOOL): tools/fontconv.c tools/font8x8_face.c src/font_manifest.c src/sha256.c src/font_fit.c src/font_hex.c src/glyph_set.c src/glyph_source.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(FREETYPE_CFLAGS) $(FONTCONV_FREETYPE) \
 		tools/fontconv.c tools/font8x8_face.c src/font_manifest.c src/sha256.c \
-		src/font_fit.c src/glyph_set.c src/glyph_source.c \
+		src/font_fit.c src/font_hex.c src/glyph_set.c src/glyph_source.c \
 		-o $(FONTCONV_TOOL) $(TEST_LIBS) $(FONTCONV_FREETYPE_LIBS) $(RPATH)
 
 $(TEST_COMMAND_SYSTEM_RUNNER): tests/test_command_system.c $(TEST_COMMAND_SYSTEM_SRC) | dirs
@@ -843,11 +847,6 @@ $(TEST_VERTICAL_PHYSICS_RUNNER): tests/test_vertical_physics.c $(SRC_VERTICAL_PH
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_vertical_physics.c $(SRC_VERTICAL_PHYSICS) \
 		$(SRC_CAMERA) $(SRC_OPTICAL_RUNTIME_VIEW) $(SRC_MAP) $(SRC_CHECKED_SIZE) $(SRC_MATH) $(SRC_INPUT) \
 		-o $(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_LIBS) $(RPATH)
-
-$(TEST_GLYPH_CACHE_RUNNER): tests/test_glyph_block_cache.c src/glyph_block_cache.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_block_cache.c src/glyph_block_cache.c \
-		src/glyph_source.c src/glyph_set.c src/sha256.c \
-		-o $(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_LIGHTING_CACHE_RUNNER): tests/test_lighting_cache.c src/lighting_cache.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_lighting_cache.c src/lighting_cache.c \
@@ -1341,13 +1340,13 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) $(TEST_GLYPH_PAINT_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_FONT_HEX_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) $(TEST_GLYPH_PAINT_RUNNER) $(TEST_GLYPH_MISSING_SENTINEL_RUNNER) $(TEST_TEXT_UTF8_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
 	$(TEST_SCENE_FLOW_ADAPTER_RUNNER) $(TEST_INPUT_RUNNER) $(TEST_CAMERA_RUNNER) \
 	$(TEST_VERTICAL_PHYSICS_RUNNER) $(TEST_MAP_CATALOG_RUNNER) \
-	$(TEST_GLYPH_CACHE_RUNNER) $(TEST_LIGHTING_CACHE_RUNNER) \
+	$(TEST_LIGHTING_CACHE_RUNNER) \
 	$(TEST_LIGHTING_RUNNER) $(TEST_APP_OPTIONS_RUNNER) $(TEST_SMC_STATE_RUNNER) \
 	$(TEST_SMC_INDEXED_RUNNER) $(TEST_SMC_STREAM_RUNNER) $(TEST_BENCHMARK_RUNNER) $(TEST_APP_MODULES_RUNNER) \
 	$(TEST_CONFIG_RUNNER) $(TEST_ASSET_LOADER_RUNNER) \
@@ -1404,10 +1403,13 @@ test: $(TEST_RUNNERS)
 	./$(TEST_SHA256_RUNNER)
 	./$(TEST_FONT_MANIFEST_RUNNER)
 		./$(TEST_FONT_FIT_RUNNER)
+	./$(TEST_FONT_HEX_RUNNER)
 	./$(TEST_GLYPH_SET_RUNNER)
 	./$(TEST_GLYPH_SOURCE_RUNNER)
 	./$(TEST_GLYPH_SET_FILE_RUNNER)
 	./$(TEST_GLYPH_PAINT_RUNNER)
+	./$(TEST_GLYPH_MISSING_SENTINEL_RUNNER)
+	./$(TEST_TEXT_UTF8_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1419,7 +1421,6 @@ test: $(TEST_RUNNERS)
 	./$(TEST_CAMERA_RUNNER)
 	./$(TEST_VERTICAL_PHYSICS_RUNNER)
 	./$(TEST_MAP_CATALOG_RUNNER)
-	./$(TEST_GLYPH_CACHE_RUNNER)
 	./$(TEST_LIGHTING_CACHE_RUNNER)
 	./$(TEST_LIGHTING_RUNNER)
 	./$(TEST_APP_OPTIONS_RUNNER)
@@ -1766,7 +1767,7 @@ matrix:
 	@set -e; for mode in \
 		"USE_NO_STATE_TRACKER=1" "USE_DIRTY_CELLS=1" "USE_SMC_STATE_TRACKER=1" \
 		"USE_SMC_INDEXED_STATE_TRACKER=1" "USE_SMC_BATCH_STATE_TRACKER=1" \
-		"USE_SMC_STREAM_STATE_TRACKER=1" "USE_LIGHTING_CACHE=1" "USE_GLYPH_CACHE=1"; do \
+		"USE_SMC_STREAM_STATE_TRACKER=1" "USE_LIGHTING_CACHE=1"; do \
 		$(MAKE) matrix-one MATRIX_MODE="$$mode"; \
 	done
 
@@ -1844,6 +1845,17 @@ $(TEST_GLYPH_PAINT_RUNNER): tests/test_glyph_paint.c src/glyph_paint.c src/glyph
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_paint.c src/glyph_paint.c src/glyph_source.c \
 		src/glyph_set.c src/sha256.c \
 		-o $(TEST_GLYPH_PAINT_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_TEXT_UTF8_RUNNER): tests/test_text_utf8.c src/text_utf8.c $(UTF8PROC_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) $(UTF8PROC_CFLAGS) tests/test_text_utf8.c src/text_utf8.c \
+		$(UTF8PROC_SRC) \
+		-o $(TEST_TEXT_UTF8_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_GLYPH_MISSING_SENTINEL_RUNNER): tests/test_glyph_missing_sentinel.c src/glyph_missing.c \
+		src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_missing_sentinel.c src/glyph_missing.c \
+		src/glyph_source.c src/glyph_set.c src/sha256.c \
+		-o $(TEST_GLYPH_MISSING_SENTINEL_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_GLYPH_SET_FILE_RUNNER): tests/test_glyph_set_file.c src/glyph_set_file.c src/glyph_set.c src/sha256.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_set_file.c src/glyph_set_file.c \

@@ -57,7 +57,14 @@ static void test_set_wins_over_the_builtin_face(void **state) {
     assert_int_equal(glyph.mode, 1U);
 }
 
-static void test_builtin_answers_ascii_when_the_set_lacks_it(void **state) {
+/* Requirement changed 2026-11-25 (D8 + the plan's D-C): a source that HAS a set and lacks a codepoint
+   is a coverage gap, and the gap is reported — not quietly filled from the application's own face.
+   The built-in face answers only when the source has no set at all, which is the chrome's declared
+   face and the state a launch with no conversion is in.
+   The old name for this test was `..._ascii_when_the_set_lacks_it`, and it asserted the opposite. It
+   was updated in intent rather than deleted, because the behaviour it protected is exactly what D8
+   forbids. */
+static void test_builtin_answers_ascii_only_when_no_set_is_declared(void **state) {
     GlyphSetEntry entries[1];
     GlyphSet set;
     GlyphSource source;
@@ -72,17 +79,20 @@ static void test_builtin_answers_ascii_when_the_set_lacks_it(void **state) {
     set = build_set(entries, 1U, storage, sizeof(storage));
     glyph_source_init(&source, &set);
 
-    /* 'A' is absent from the set but present in the application's own face, so the chrome keeps
-       rendering even when a set covers only CJK. */
+    /* 'A' is absent from a set that is installed, so this is a gap: the sentinel, and a diagnostic
+       the draw sites will raise. Borrowing the built-in 'A' here would hide the gap, and hide it with
+       a glyph that looks completely plausible. */
     glyph = glyph_source_resolve(&source, 0x0041U);
-    assert_int_equal(glyph.kind, GLYPH_SOURCE_BUILTIN);
-    assert_memory_equal(glyph.rows, font8x8_basic[0x41], GLYPH_SOURCE_CELL_SIZE);
+    assert_int_equal(glyph.kind, GLYPH_SOURCE_MISSING);
+    assert_memory_equal(glyph.rows, glyph_source_resolve(NULL, GLYPH_SOURCE_SENTINEL_CODEPOINT).rows,
+                        GLYPH_SOURCE_CELL_SIZE);
 
-    /* And with no set at all the answer is the same, not an error. */
+    /* With no set at all, the built-in face is the declared source — the chrome's case, and the
+       shipping state — so ASCII answers normally and nothing is missing. */
     glyph_source_init(&empty_source, NULL);
     no_set = glyph_source_resolve(&empty_source, 0x0041U);
     assert_int_equal(no_set.kind, GLYPH_SOURCE_BUILTIN);
-    assert_memory_equal(no_set.rows, glyph.rows, GLYPH_SOURCE_CELL_SIZE);
+    assert_memory_equal(no_set.rows, font8x8_basic[0x41], GLYPH_SOURCE_CELL_SIZE);
 }
 
 static void test_missing_returns_the_sentinel_and_says_so(void **state) {
@@ -148,7 +158,7 @@ static void test_resolution_is_total_and_pure(void **state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_set_wins_over_the_builtin_face),
-        cmocka_unit_test(test_builtin_answers_ascii_when_the_set_lacks_it),
+        cmocka_unit_test(test_builtin_answers_ascii_only_when_no_set_is_declared),
         cmocka_unit_test(test_missing_returns_the_sentinel_and_says_so),
         cmocka_unit_test(test_sentinel_colours_are_the_recorded_palette_values),
         cmocka_unit_test(test_resolution_is_total_and_pure)

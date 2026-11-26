@@ -8,9 +8,16 @@ part of V1-5 required outcomes 1 and 5. It changes no production code yet; the i
 is below, and the phase exit gate is unchanged.
 
 It supersedes the assumption (held in the handoff until now) that the migration required a 128-bit
-state word. It does not supersede anything in
-[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md): the
-8×8 cell, the no-fallback rule and the sentinel all stand.
+state word.
+
+**Correction (2026-11-25).** The original text here claimed this record "does not supersede anything in
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md)". That is
+wrong, and it was wrong when written: D1's 16-bit codepoint and D3's "there is no separate `kind` field"
+replace **D7's packed 32-bit `GlyphRef`** (2-bit kind, 4-bit face slot, 26-bit catalog index), and they
+reduce "`Cell` grows to 4 bytes of glyph" to two. The 8×8 cell, the no-fallback rule and the sentinel do
+still stand. How face identity survives without a slot in the cell is settled in
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md)
+(D-A), which amends D7 in `V1_4` when its I3 increment lands.
 
 ## The question, in plain terms
 
@@ -108,8 +115,23 @@ field's *meaning*, not the word width. Nothing is built for it today.
    with `CASSERT`s on `offsetof(Cell, fg) == 1` and `sizeof(Cell) == 9`; those fired the moment the
    field changed, which is exactly what they were for, and now assert 2/6/10.
 5. **Streams, checksums, block codec, capture/restore**, then `make matrix` re-baselined.
+   — **landed**: the project's side of that contract is the stream descriptors and the configured state
+   size, and both are now derived from the types rather than written as literals
+   (`CELL_STREAM_GLYPH_BYTES = sizeof(Cell.glyph)`, and `CELL_STREAM_STATE_BYTES` computed from it plus
+   the two 3-byte colour fields). `8f36533` had to fix a hardcoded `1` there which compared only the low
+   byte of a two-byte glyph — a codepoint change that altered only the high byte was judged unchanged, so
+   the cell kept stale pixels with no error and every existing test still green. `make matrix` passes all
+   eight tracker modes (verified 2026-11-25). Note for anyone reading "block codec": `scene_block_codec`
+   is the scene file's hex block format and has no relationship to cells; SMC's artifact/state code is
+   vendored and its contract is the descriptor above.
 6. **`glyph_source`** and the renderer draw from a codepoint rather than a byte, calling the resolver
    that already exists.
+   — **landed**: `6672ddc` converted the three draw sites to `glyph_paint_resolve` (`renderer.c` twice,
+   `ui_compositor.c` once), `b632998` finished the build wiring so the glyph modules follow
+   `$(SRC_RENDERER)`. That commit explicitly deferred the aggregate verification ("Not claimed yet: the
+   full `make test` and `make matrix`"); it was completed on 2026-11-25 — `make test` 91 runners /
+   1005 tests, 0 failures, and `make matrix` 8/8. See
+   [`handoffs/2026-11-25-host-migration-and-suite-recovery.md`](../handoffs/2026-11-25-host-migration-and-suite-recovery.md).
 
 ## Verification of steps 3–4, as actually run (2026-11-22)
 
@@ -126,6 +148,12 @@ this Makefile lists source files explicitly and does not track header dependenci
 after a header change rebuilt only the runners whose rules name the changed `.c` files — 18 of them.
 `make test` was therefore *incomplete evidence* on its own. `make matrix` closes that gap by
 `make clean`-ing between modes, so its eight passes are clean-rebuild passes.
+
+**The matrix is seven modes as of 2026-11-25, not eight.** `USE_GLYPH_CACHE=1` was removed with the
+glyph block cache it selected: residency replaced the cache (the V1-5 plan's D-E, applied in I5), and
+the mode had become a no-op that reset two counters nothing incremented. The eight figures above are
+accurate for the checkpoint they record; a reader running `make matrix` today will see seven, and the
+lost mode covered only the feature that no longer exists.
 
 **Correction (2026-11-25).** The `make test` row above is **not reproducible** and should be read as
 `FAIL-PRODUCT`. A clean rebuild on a new host fails `test-r9-optical-semantics`, because `53b67e9`

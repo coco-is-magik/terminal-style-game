@@ -81,8 +81,6 @@ double renderer_time_upload_ms    = 0.0; /* Time spent in SDL_UpdateTexture */
 double renderer_time_present_ms   = 0.0; /* Time spent in render/present */
 uint64_t renderer_cells_processed = 0;  /* Total cells rasterized */
 uint64_t renderer_cells_skipped   = 0;  /* Cells skipped via dirty tracking */
-uint64_t renderer_cache_hits      = 0;  /* Glyph cache hits */
-uint64_t renderer_cache_misses    = 0;  /* Glyph cache misses */
 uint64_t renderer_smc_fallback_count = 0; /* SMC stream fallback count */
 
 #if PROFILE_FRAME
@@ -216,6 +214,13 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
     /* --- Step 1: Allocate the Renderer struct --- */
     Renderer *ren = ren_malloc(sizeof(Renderer));
     if (!ren) return NULL;
+
+    /* Both surfaces start on the built-in ASCII face: the world because no set is installed yet, and
+       the chrome because that is its permanent declared face. Explicit rather than relying on the
+       allocator zeroing, because "which face is this?" must never be an uninitialised answer. */
+    glyph_source_init(&ren->world_source, NULL);
+    glyph_source_init(&ren->ui_source, NULL);
+    glyph_missing_reset(&ren->missing);
 
     ren->cell_w = cell_w;
     ren->cell_h = cell_h;
@@ -353,6 +358,15 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
  *
  * @param ren  Renderer to destroy (NULL-safe)
  */
+void renderer_set_world_glyph_set(Renderer *ren, const GlyphSet *set) {
+    if (!ren) return;
+    glyph_source_init(&ren->world_source, set);
+}
+
+const GlyphMissingState *renderer_glyph_missing(const Renderer *ren) {
+    return ren ? &ren->missing : NULL;
+}
+
 void renderer_destroy(Renderer *ren) {
     if (!ren) return;
     if (ren->screen_texture) SDL_DestroyTexture(ren->screen_texture);
@@ -420,7 +434,7 @@ size_t renderer_merge_restore_indices(uint32_t *dirty_indices,
  *     per-cell SDL rendering calls.
  *
  * The current renderer interprets bit 0 as output pixel 0, bit 1 as output
- * pixel 1, and so on.  This matches glyph_atlas_create_builtin().
+ * pixel 1, and so on — the LSB-first convention glyph_set and font_hex produce.
  *
  * @param ren   The Renderer (provides pixel buffer, SDL assets)
  * @param grid  The Grid containing the cells to render
@@ -430,6 +444,10 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     uint32_t *pixels = ren->pixel_buffer;
     int pitch_pixels = ren->logical_w;   /* Number of uint32_t per row */
 
+    /* One frame of missing-glyph bookkeeping: the per-frame counts and the newly-distinct list start
+       empty, while the reported bitmap persists so a gap is named once and not every frame. */
+    glyph_missing_begin_frame(&ren->missing);
+
 #if PROFILE_FRAME
     double profile_frame_start = profile_now_ms();
     double profile_phase_start = profile_frame_start;
@@ -438,11 +456,6 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
 
     /* ---- Phase 1 Timing ---- */
     uint64_t phase1_start = SDL_GetPerformanceCounter();
-
-#ifdef USE_GLYPH_CACHE
-    renderer_cache_hits = 0;
-    renderer_cache_misses = 0;
-#endif
 
     /* ---- Phase 1: Software rasterization ---- */
 #if defined(USE_SMC_BATCH_STATE_TRACKER) || defined(USE_SMC_STREAM_STATE_TRACKER)
@@ -538,7 +551,10 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
         /* Pack foreground and background colours into uint32_t once */
         SDL_Color cell_fg = c.fg;
         SDL_Color cell_bg = c.bg;
-        GlyphSourceGlyph resolved = glyph_paint_resolve(c.glyph, &cell_fg, &cell_bg);
+        GlyphSourceGlyph resolved = glyph_paint_resolve(&ren->world_source, c.glyph, &cell_fg, &cell_bg);
+        if (glyph_source_is_missing(&resolved)) {
+            glyph_missing_note(&ren->missing, &ren->world_source, c.glyph, cx, cy);
+        }
         uint32_t fg = COLOR_TO_UINT32(cell_fg);
         uint32_t bg = COLOR_TO_UINT32(cell_bg);
         
@@ -621,7 +637,10 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
             /* Pack foreground and background colours into uint32_t once */
             SDL_Color cell_fg = c.fg;
             SDL_Color cell_bg = c.bg;
-            GlyphSourceGlyph resolved = glyph_paint_resolve(c.glyph, &cell_fg, &cell_bg);
+            GlyphSourceGlyph resolved = glyph_paint_resolve(&ren->world_source, c.glyph, &cell_fg, &cell_bg);
+            if (glyph_source_is_missing(&resolved)) {
+                glyph_missing_note(&ren->missing, &ren->world_source, c.glyph, cx, cy);
+            }
             uint32_t fg = COLOR_TO_UINT32(cell_fg);
             uint32_t bg = COLOR_TO_UINT32(cell_bg);
             const uint8_t *glyph_data = resolved.rows;
@@ -665,7 +684,7 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     profile_phase_start = profile_now_ms();
 #endif
     if (layers) {
-        (void)ui_compositor_compose(layers, ui_scale_percent, pixels,
+        (void)ui_compositor_compose(layers, &ren->ui_source, ui_scale_percent, pixels,
                                     ren->logical_w, ren->logical_h,
                                     ren->ui_restore_cells, grid->width, grid->height);
     }

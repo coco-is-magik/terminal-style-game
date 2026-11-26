@@ -188,17 +188,17 @@ different meaning.
 
 ### TSG-ASSET-ENV-0001 — A cell's declared face lacks the glyph the document requires
 
-- **Status:** Planned (V1-5)
+- **Status:** Implemented (V1-5, 2026-11-25)
 - **Category/severity:** ENV / warning — visible in the cell, non-fatal, the run continues
-- **Owner/site:** glyph resolution in the render path; canonical site fixed when V1-5 lands
-- **Detection:** a cell's `GlyphRef` resolves to a codepoint that the cell's declared face does not contain
-- **Context:** face name, face SHA-256 prefix, codepoint (U+XXXX), first offending cell coordinate, count of affected cells this frame
+- **Owner/site:** `src/glyph_missing` decides what is newly distinct; `report_missing_glyphs` in `src/app.c` is the one place that prints it
+- **Detection:** a cell's codepoint resolves to `GLYPH_SOURCE_MISSING` — the source declares a set and that set does not contain the codepoint, or the source is the built-in face and the codepoint is above ASCII
+- **Context:** face (the set's provenance prefix, or `builtin`), codepoint (U+XXXX), first offending cell coordinate, count of affected cells this frame, and a count of any further distinct codepoints beyond the eight named
 - **Meaning:** the document requires a character the installed font does not provide
-- **Recovery:** none attempted by design — there is no fallback chain (`D8`); the cell renders the sentinel (`X`, red background, purple foreground) and rendering continues
+- **Recovery:** none attempted by design — there is no fallback chain (`D8`); the cell renders the sentinel (the built-in `X` on the out-of-theme diagnostic colours) and rendering continues
 - **Preserved state:** the document, its glyph references and the generated glyph set are unchanged; nothing is serialised
 - **Action:** install a face with the required coverage, or change the face for those cells
-- **Verification:** `test-glyph-missing-sentinel` (planned) — asserts the sentinel glyph and exact colours, that exactly one diagnostic is raised per (face, codepoint) regardless of frame count, and that nothing about the sentinel reaches a save or a stream
-- **Introduced:** 2026-11-06
+- **Verification:** `test-glyph-missing-sentinel` asserts the sentinel and the exact colours, that exactly one diagnostic is raised per (face, codepoint) across frames, that a different face reports its own gaps, that the report list bounds itself and names the overflow, and that a source with no set is silent for ASCII. The end-to-end emission was observed in a real run: a one-glyph set produced eight named gaps plus `3 more distinct codepoint(s)`, once for a 180-frame benchmark rather than once per frame.
+- **Introduced:** 2026-11-06 (planned); **implemented 2026-11-25**
 
 ## Entry template
 

@@ -24,8 +24,9 @@ void glyph_paint_colors(const GlyphSourceGlyph *glyph, SDL_Color *fg, SDL_Color 
     }
 }
 
-GlyphSourceGlyph glyph_paint_resolve(uint32_t codepoint, SDL_Color *fg, SDL_Color *bg) {
-    GlyphSourceGlyph glyph = glyph_source_resolve(glyph_source_active(), codepoint);
+GlyphSourceGlyph glyph_paint_resolve(const GlyphSource *source, uint32_t codepoint,
+                                     SDL_Color *fg, SDL_Color *bg) {
+    GlyphSourceGlyph glyph = glyph_source_resolve(source, codepoint);
     glyph_paint_colors(&glyph, fg, bg);
     return glyph;
 }

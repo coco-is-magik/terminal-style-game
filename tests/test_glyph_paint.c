@@ -65,9 +65,10 @@ static void test_a_missing_glyph_takes_over_both_colours(void **state) {
     assert_int_equal(bg.a, 255U);
 }
 
-static void test_resolve_uses_the_active_set_and_restores_the_builtin_face(void **state) {
+static void test_resolve_uses_the_sources_set_and_falls_back_to_builtin(void **state) {
     GlyphSetEntry entries[1];
     GlyphSet set;
+    GlyphSource source;
     uint8_t storage[128];
     SDL_Color fg = {1U, 2U, 3U, 255U};
     SDL_Color bg = {4U, 5U, 6U, 255U};
@@ -79,8 +80,8 @@ static void test_resolve_uses_the_active_set_and_restores_the_builtin_face(void 
     entries[0].rows[0] = 0xAAU;
     set = build_set(entries, 1U, storage, sizeof(storage));
 
-    glyph_source_set_active(&set);
-    glyph = glyph_paint_resolve(0x3042U, &fg, &bg);
+    glyph_source_init(&source, &set);
+    glyph = glyph_paint_resolve(&source, 0x3042U, &fg, &bg);
     assert_int_equal(glyph.kind, GLYPH_SOURCE_SET);
     assert_int_equal(glyph.rows[0], 0xAAU);
     assert_int_equal(fg.r, 1U); /* found: colours untouched */
@@ -88,27 +89,70 @@ static void test_resolve_uses_the_active_set_and_restores_the_builtin_face(void 
     /* A codepoint the set lacks, above ASCII, becomes the diagnostic and takes the colours. */
     fg = (SDL_Color){1U, 2U, 3U, 255U};
     bg = (SDL_Color){4U, 5U, 6U, 255U};
-    glyph = glyph_paint_resolve(0x3043U, &fg, &bg);
+    glyph = glyph_paint_resolve(&source, 0x3043U, &fg, &bg);
     assert_int_equal(glyph.kind, GLYPH_SOURCE_MISSING);
     assert_int_equal(fg.r, GLYPH_SOURCE_SENTINEL_FG_R);
     assert_int_equal(bg.r, GLYPH_SOURCE_SENTINEL_BG_R);
 
-    /* Clearing the active set returns the process to the built-in face, which is the state a real
-       launch has when no conversion has been run. */
-    glyph_source_set_active(NULL);
+    /* A source holding no set answers from the built-in face, which is the state a real launch has
+       when no conversion has been run. */
+    glyph_source_init(&source, NULL);
     fg = (SDL_Color){1U, 2U, 3U, 255U};
-    glyph = glyph_paint_resolve(0x0041U, &fg, &bg);
+    glyph = glyph_paint_resolve(&source, 0x0041U, &fg, &bg);
     assert_int_equal(glyph.kind, GLYPH_SOURCE_BUILTIN);
     assert_memory_equal(glyph.rows, font8x8_basic[0x41], GLYPH_SOURCE_CELL_SIZE);
     assert_int_equal(fg.r, 1U);
-    assert_non_null(glyph_source_active());
+    assert_null(source.set);
+}
+
+/* Two sources in one process, answering differently for the same codepoint. This is the property the
+   deleted process-wide global could not express: the world may use the installed set while the chrome
+   keeps the built-in face, and neither notices the other (V1-5 plan, D-A/D-D). */
+static void test_two_sources_answer_independently(void **state) {
+    GlyphSetEntry entries[1];
+    GlyphSet set;
+    GlyphSource world;
+    GlyphSource chrome;
+    uint8_t storage[128];
+    SDL_Color fg;
+    SDL_Color bg;
+    GlyphSourceGlyph glyph;
+    (void)state;
+
+    memset(entries, 0, sizeof(entries));
+    entries[0].codepoint = 0x3042U;
+    entries[0].rows[0] = 0xAAU;
+    set = build_set(entries, 1U, storage, sizeof(storage));
+    glyph_source_init(&world, &set);
+    glyph_source_init(&chrome, NULL);
+
+    fg = (SDL_Color){1U, 2U, 3U, 255U};
+    bg = (SDL_Color){4U, 5U, 6U, 255U};
+    glyph = glyph_paint_resolve(&world, 0x3042U, &fg, &bg);
+    assert_int_equal(glyph.kind, GLYPH_SOURCE_SET);
+    assert_int_equal(glyph.rows[0], 0xAAU);
+
+    /* The chrome's source has no set, so the same codepoint is a diagnostic there. */
+    fg = (SDL_Color){1U, 2U, 3U, 255U};
+    bg = (SDL_Color){4U, 5U, 6U, 255U};
+    glyph = glyph_paint_resolve(&chrome, 0x3042U, &fg, &bg);
+    assert_int_equal(glyph.kind, GLYPH_SOURCE_MISSING);
+    assert_int_equal(fg.r, GLYPH_SOURCE_SENTINEL_FG_R);
+
+    /* And the world has not moved: resolving through one source does not disturb another. */
+    fg = (SDL_Color){1U, 2U, 3U, 255U};
+    bg = (SDL_Color){4U, 5U, 6U, 255U};
+    glyph = glyph_paint_resolve(&world, 0x3042U, &fg, &bg);
+    assert_int_equal(glyph.kind, GLYPH_SOURCE_SET);
+    assert_int_equal(fg.r, 1U);
 }
 
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_a_found_glyph_keeps_the_cells_own_colours),
         cmocka_unit_test(test_a_missing_glyph_takes_over_both_colours),
-        cmocka_unit_test(test_resolve_uses_the_active_set_and_restores_the_builtin_face)
+        cmocka_unit_test(test_resolve_uses_the_sources_set_and_falls_back_to_builtin),
+        cmocka_unit_test(test_two_sources_answer_independently)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

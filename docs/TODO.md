@@ -318,12 +318,17 @@ output, and a test keeps it parseable and keeps its digests fake. Filling the ex
 digests verifies the archive, which is how its shape was confirmed.
 
 
-**Next:** the gate for anything visible in the game — the **cell identity migration**. `Cell.glyph`
-is a byte and `CellState` packs glyph + fg + bg into a `uint64_t` (56 of 64 bits used), so a codepoint
-wider than 255 cannot travel. Measured blast radius (2026-11-22): 15 direct `cell->glyph` reads, but
-87 `grid_set` and 45 `ui_canvas_set` call sites to re-type — and **no scene-format impact**, since
-scenes store decals and objects, not cells. The real fork is `CellState`: 128-bit state, or a 64-bit
-glyph handle. That is a decision before it is code, and it deserves its own record.
+**Next:** the cell identity migration that this section used to call the gate **has landed** (2026-11-22/24):
+`Cell.glyph` is a `uint16_t`, `Cell` is 10 bytes, `CellState` is still exactly 64 bits, and the SMC
+stream field sizes are derived from the types rather than written as literals. What remains in V1-5 is
+outcome 4 (a cache decision), outcome 6 (a recorded re-test, now done), the `.hex` input path
+(**implemented 2026-11-25**, `fontconv --hex`), and the exit gate. The order, the decisions and the
+amendments to D7/D8 are in
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md);
+read that rather than this paragraph. The two ideas this section used to leave dangling are settled
+there: face identity is a **surface** property, not a per-cell slot (a 4-bit face would have needed 68
+bits), and layers — each already owning its own `UiCanvas` and rasterising to pixels — are the
+extension point if more than one face is ever needed at once.
 
 An earlier note here said "124 call sites across 20 files"; that was a search result, not a
 measurement — it counted decal `glyph_step` and UI `glyph_set` strings. Corrected with the

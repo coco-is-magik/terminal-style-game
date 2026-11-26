@@ -19,6 +19,7 @@
 
 #include "../src/font_manifest.h"
 #include "../src/font_fit.h"
+#include "../src/font_hex.h"
 #include "../src/glyph_set.h"
 #include "../src/glyph_source.h"
 #include "../src/sha256.h"
@@ -51,6 +52,8 @@ static void usage(FILE *out) {
             "                  provides into an 8x8 glyph set. Refuses rather than fitting unless\n"
             "                  --fit names a remedy; the default is none.\n"
             "  --file          which of a multi-file face to convert (default: the first)\n"
+            "  --hex           read the chosen file as a Unifont-style hexdump rather than\n"
+            "                  rasterising it: needs no FreeType, and --size/--fit do not apply\n"
             "  --size          decode at this pixel size (default 8). A font is converted from\n"
             "                  its own 8x8 strike when it has one; --size 16 --fit scale is how a\n"
             "                  16x16 source reaches the cell.\n"
@@ -256,32 +259,20 @@ static void provenance_digest(const FontManifestFace *face, uint8_t out[SHA256_D
 
 #endif /* FONTCONV_HAVE_FREETYPE */
 
-#if FONTCONV_HAVE_FREETYPE
-/* Verify every declared file of a face, then convert one of them. Returns the process exit code:
-   0 converted, 1 the font or a glyph refused, 2 the request itself was wrong. */
-static int convert_face(const FontManifestFace *face, const char *fonts_dir, const char *file_name,
-                        FontFitMode mode, unsigned pixel_size, const char *out_path) {
-    char path[FONTCONV_PATH_MAX];
+/* Verify every declared file of a face, choose the one to convert, and resolve its path.
+   All files or none (D12): converting bytes that do not match the manifest would produce a glyph set
+   nobody can reproduce, and the same rule has to hold whether the chosen file is a TTF or a hexdump.
+   Returns 0 on success, 1 when a file is missing or mismatched, 2 when the request itself is wrong. */
+static int prepare_face_file(const FontManifestFace *face, const char *fonts_dir,
+                             const char *file_name, const FontManifestFile **out_chosen,
+                             char *out_path, size_t out_path_size) {
     const FontManifestFile *chosen = NULL;
     unsigned index;
-    FT_Library library = NULL;
-    FT_Face ft_face = NULL;
-    FT_ULong codepoint;
-    FT_UInt glyph_index;
-    GlyphSetEntry *entries = NULL;
-    unsigned capacity = 0U;
-    unsigned entry_count = 0U;
-    ConversionTally tally;
-    uint8_t provenance[SHA256_DIGEST_SIZE];
-    int exit_code = 0;
 
-    memset(&tally, 0, sizeof(tally));
-
-    /* All files or none (D12): converting bytes that do not match the manifest would produce a
-       glyph set nobody can reproduce. */
     for (index = 0U; index < face->file_count; index++) {
         uint8_t installed[SHA256_DIGEST_SIZE];
         int failure = 0;
+        char path[FONTCONV_PATH_MAX];
         if (!join_path(path, sizeof(path), fonts_dir, face->files[index].file)) {
             fprintf(stderr, "fontconv: path too long for %s\n", face->files[index].file);
             return 2;
@@ -316,7 +307,153 @@ static int convert_face(const FontManifestFace *face, const char *fonts_dir, con
                 "another.\n",
                 face->id, face->file_count, chosen->file);
     }
-    if (!join_path(path, sizeof(path), fonts_dir, chosen->file)) return 2;
+    if (!join_path(out_path, out_path_size, fonts_dir, chosen->file)) return 2;
+    if (out_chosen) *out_chosen = chosen;
+    return 0;
+}
+
+/* Read a whole file into a bounded buffer. 0 on success, 1 unreadable, 2 larger than the bound.
+   A file that fills the buffer exactly is treated as too large: the bound is the format's ceiling,
+   not a target, and saying so is better than silently reading a truncated font. */
+static int read_text_file(const char *path, char *buffer, size_t capacity, size_t *out_size) {
+    FILE *file = fopen(path, "rb");
+    size_t total = 0U;
+    if (!file) {
+        fprintf(stderr, "fontconv: %s is not readable (%s)\n", path, strerror(errno));
+        return 1;
+    }
+    while (total < capacity) {
+        size_t got = fread(buffer + total, 1U, capacity - total, file);
+        if (got == 0U) break;
+        total += got;
+    }
+    if (ferror(file)) {
+        fprintf(stderr, "fontconv: %s could not be read (%s)\n", path, strerror(errno));
+        fclose(file);
+        return 1;
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "fontconv: %s could not be closed (%s)\n", path, strerror(errno));
+        return 1;
+    }
+    if (total == capacity) {
+        fprintf(stderr, "fontconv: %s is larger than the %zu-byte limit for a hexdump\n", path,
+                capacity);
+        return 2;
+    }
+    *out_size = total;
+    return 0;
+}
+
+/* The hexdump path: text in, glyph set out, with no rasteriser and therefore no FreeType. This is
+   the reason the reader exists — a face that describes itself as bits does not need a font library
+   to be converted. Same exit codes as convert_face: 0 converted, 1 the file was refused, 2 the
+   request or the output was wrong. */
+static int convert_face_hex(const FontManifestFace *face, const char *fonts_dir,
+                            const char *file_name, const char *out_path) {
+    char path[FONTCONV_PATH_MAX];
+    GlyphSetEntry *entries = NULL;
+    char *text = NULL;
+    FontHexError hex_error;
+    uint8_t provenance[SHA256_DIGEST_SIZE];
+    size_t text_size = 0U;
+    size_t entry_count = 0U;
+    int prepared;
+    int exit_code = 2;
+
+    prepared = prepare_face_file(face, fonts_dir, file_name, NULL, path, sizeof(path));
+    if (prepared != 0) return prepared;
+
+    text = malloc(FONT_HEX_MAX_TEXT_BYTES);
+    entries = malloc(sizeof(*entries) * (size_t)GLYPH_SET_MAX_GLYPHS);
+    if (!text || !entries) {
+        fprintf(stderr, "fontconv: out of memory reading '%s'\n", path);
+        goto done;
+    }
+    if (read_text_file(path, text, FONT_HEX_MAX_TEXT_BYTES, &text_size) != 0) {
+        exit_code = 1;
+        goto done;
+    }
+    if (font_hex_parse(text, text_size, entries, GLYPH_SET_MAX_GLYPHS, &entry_count, &hex_error) !=
+        FONT_HEX_OK) {
+        fprintf(stderr, "fontconv: %s is not a valid hexdump: %s", path,
+                font_hex_result_name(hex_error.result));
+        if (hex_error.line > 0U) fprintf(stderr, " at line %zu", hex_error.line);
+        if (hex_error.codepoint > 0UL) fprintf(stderr, " (U+%04lX)", hex_error.codepoint);
+        fprintf(stderr, "\n         no glyph set written\n");
+        exit_code = 1;
+        goto done;
+    }
+
+    provenance_digest(face, provenance);
+    {
+        size_t encoded = glyph_set_encoded_size((unsigned)entry_count);
+        uint8_t *bytes = encoded > 0U ? malloc(encoded) : NULL;
+        FILE *out;
+        if (!bytes ||
+            !glyph_set_write(entries, (unsigned)entry_count, provenance, bytes, encoded, NULL)) {
+            free(bytes);
+            fprintf(stderr, "fontconv: cannot encode the glyph set\n");
+            goto done;
+        }
+        out = fopen(out_path, "wb");
+        if (!out || fwrite(bytes, 1U, encoded, out) != encoded || fclose(out) != 0) {
+            if (out) fclose(out);
+            free(bytes);
+            fprintf(stderr, "fontconv: cannot write '%s'\n", out_path);
+            goto done;
+        }
+        free(bytes);
+    }
+    {
+        uint8_t digest[SHA256_DIGEST_SIZE];
+        char set_digest[SHA256_HEX_SIZE];
+        char provenance_hex[SHA256_HEX_SIZE];
+        int failure = 0;
+        if (!digest_file(out_path, digest, &failure)) {
+            fprintf(stderr, "fontconv: wrote '%s' but cannot read it back (%s)\n", out_path,
+                    strerror(failure));
+            goto done;
+        }
+        sha256_to_hex(digest, set_digest);
+        sha256_to_hex(provenance, provenance_hex);
+        printf("set      %s (%u entries, %u bytes)\n", out_path, (unsigned)entry_count,
+               (unsigned)glyph_set_encoded_size((unsigned)entry_count));
+        printf("digest   %s\n", set_digest);
+        printf("source   %s\n", provenance_hex);
+    }
+    exit_code = 0;
+
+done:
+    free(entries);
+    free(text);
+    return exit_code;
+}
+
+#if FONTCONV_HAVE_FREETYPE
+/* Verify every declared file of a face, then convert one of them. Returns the process exit code:
+   0 converted, 1 the font or a glyph refused, 2 the request itself was wrong. */
+static int convert_face(const FontManifestFace *face, const char *fonts_dir, const char *file_name,
+                        FontFitMode mode, unsigned pixel_size, const char *out_path) {
+    char path[FONTCONV_PATH_MAX];
+    const FontManifestFile *chosen = NULL;
+    FT_Library library = NULL;
+    FT_Face ft_face = NULL;
+    FT_ULong codepoint;
+    FT_UInt glyph_index;
+    GlyphSetEntry *entries = NULL;
+    unsigned capacity = 0U;
+    unsigned entry_count = 0U;
+    ConversionTally tally;
+    uint8_t provenance[SHA256_DIGEST_SIZE];
+    int exit_code = 0;
+
+    memset(&tally, 0, sizeof(tally));
+
+    {
+        int prepared = prepare_face_file(face, fonts_dir, file_name, &chosen, path, sizeof(path));
+        if (prepared != 0) return prepared;
+    }
 
     if (FT_Init_FreeType(&library) != 0) {
         fprintf(stderr, "fontconv: FreeType initialisation failed\n");
@@ -684,6 +821,7 @@ int main(int argc, char **argv) {
     FontFitMode fit_mode = FONT_FIT_MODE_NONE;
     unsigned pixel_size = FONT_FIT_CELL_SIZE;
     bool list_fonts = false;
+    bool hex_mode = false;
     const char *check_set_path = NULL;
     const char *render_text = NULL;
     char derived_dir[FONTCONV_PATH_MAX];
@@ -708,6 +846,8 @@ int main(int argc, char **argv) {
             out_path = argv[++argument];
         } else if (strcmp(argv[argument], "--file") == 0 && argument + 1 < argc) {
             file_name = argv[++argument];
+        } else if (strcmp(argv[argument], "--hex") == 0) {
+            hex_mode = true;
         } else if (strcmp(argv[argument], "--fit") == 0 && argument + 1 < argc) {
             fit_name = argv[++argument];
         } else if (strcmp(argv[argument], "--size") == 0 && argument + 1 < argc) {
@@ -824,6 +964,10 @@ int main(int argc, char **argv) {
         if (!face) {
             fprintf(stderr, "fontconv: no face '%s' in %s\n", convert_face_id, manifest_path);
             return 2;
+        }
+        if (hex_mode) {
+            printf("face     %s — %s (hexdump)\n", face->id, face->name);
+            return convert_face_hex(face, fonts_dir, file_name, out_path);
         }
 #if FONTCONV_HAVE_FREETYPE
         printf("face     %s — %s\n", face->id, face->name);

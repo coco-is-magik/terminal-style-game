@@ -170,11 +170,30 @@ afterwards and the aggregate re-run; the numbers above are from that final rebui
 
 1. If any further source change lands, re-run `make clean && make test` plus `make standards` on this
    host; the header stamp makes the rebuild coarse and correct, at the cost of a full rebuild.
-2. The only open product question near this work is unchanged: V1-5 step 5 (streams, checksums, block
-   codec, capture/restore) and the `glyph_source` draw path completion. See
-   [`V1_5_CELL_IDENTITY_DECISION_2026-11-22.md`](../V1_5_CELL_IDENTITY_DECISION_2026-11-22.md) and
-   [`2026-11-22-font-programme-position.md`](2026-11-22-font-programme-position.md).
-3. Do not treat `CURRENT_STATUS.md`'s suite counts (81/927) or the V1-5 record's (88) as current; the
+2. **V1-5 is the active phase, and the cell-identity gate is behind it.** The decision record's steps
+   1–4 have landed, step 6 (drawing through `glyph_paint_resolve`) landed in `6672ddc`, and what step 5
+   covers is now closed: the SMC stream field sizes are derived from the types rather than written as
+   literals (`CELL_STREAM_GLYPH_BYTES = sizeof(Cell.glyph)`, `pack_cell_state` at bit 0 with 16 bits),
+   and the clean rebuild plus the eight-mode matrix above are the evidence that was missing.
+   What remains in V1-5 is **not** step 5. Inspecting the tree leaves three open items:
+   - **Requirement 4 — the cache is not generation-aware.** `src/glyph_block_cache.h` keys on
+     `uint32_t glyph_id` with **no generation or epoch**, and its field comment still reads
+     "ASCII character (0-255)". Installing or clearing a glyph set cannot invalidate cached masks, so
+     a changed face can serve the previous face's pixels. This is the concrete next increment.
+   - **Requirement 6 — re-test logical cells and UI accessibility-scale independence**, explicitly
+     required "after step 4" and not recorded as re-run anywhere.
+   - **Requirement 2's segmentation/normalization/shaping** is `utf8proc` (D3), which the V1-4 record
+     and the font handoff both schedule as its own increment; `src/grid.c:264` says so in place. It
+     also gates V1-6. Do not fold it into the cache work.
+   Then the V1-5 exit gate itself: reference/optimized parity, all SMC modes, fallback exceptional,
+   ASCII and multilingual benchmark/stability budgets, and a Q4 review of the representation change.
+   See [`V1_5_CELL_IDENTITY_DECISION_2026-11-22.md`](../V1_5_CELL_IDENTITY_DECISION_2026-11-22.md),
+   [`2026-11-22-font-programme-position.md`](2026-11-22-font-programme-position.md) and
+   [`FEATURE_ROADMAP.md`](../FEATURE_ROADMAP.md).
+3. **V1-G is a parallel enabler, not the next phase.** M1 is complete (adopted-map seam, deterministic
+   generator, seed sidecar, editor entry on Ctrl+Shift+N); its recorded follow-ups are the seed/size
+   entry UI and the deliberately deferred level/portal format slice.
+4. Do not treat `CURRENT_STATUS.md`'s suite counts (81/927) or the V1-5 record's (88) as current; the
    measured inventory on this host is recorded above.
 
 ## Reproducing this position from scratch

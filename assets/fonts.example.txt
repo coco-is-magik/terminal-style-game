@@ -32,8 +32,12 @@
 #   3. copy the blocks into assets/fonts.txt and replace each digest with the real one
 #   4. check it:  make fontconv
 #                 ./build/fontconv --manifest assets/fonts.txt --list-fonts
-#                 ./build/fontconv --manifest assets/fonts.txt --convert unscii-8 --out /tmp/u.tsgfont
+#                 ./build/fontconv --manifest assets/fonts.txt --convert unscii-8 --hex --out /tmp/u.tsgfont
 #                 ./build/fontconv --check-set /tmp/u.tsgfont --render 41,3042,1F600
+#
+#                 `--hex` selects the hexdump reader; without it the file is handed to FreeType,
+#                 which cannot read text and will refuse it. It also drops the FreeType dependency
+#                 entirely, so a bitmap face converts on a machine with no font library at all.
 #
 # A correct manifest prints one line per file and ends with:
 #   PASS: every declared file is installed and matches its manifest hash

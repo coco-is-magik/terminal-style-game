@@ -15,18 +15,6 @@
    about a glyph. */
 extern unsigned char font8x8_basic[128][8];
 
-/* The single process-lifetime selection. Reset by passing NULL, which puts the application back on
-   the built-in face — the same state as a fresh process with no set configured. */
-static GlyphSource g_active_source = {NULL};
-
-void glyph_source_set_active(const GlyphSet *set) {
-    g_active_source.set = set;
-}
-
-const GlyphSource *glyph_source_active(void) {
-    return &g_active_source;
-}
-
 void glyph_source_init(GlyphSource *source, const GlyphSet *set) {
     if (!source) return;
     source->set = set;
@@ -59,14 +47,18 @@ GlyphSourceGlyph glyph_source_resolve(const GlyphSource *source, uint32_t codepo
     glyph.codepoint = codepoint;
 
     /* The set first: it is the face the user chose, and it may deliberately overrule the built-in
-       ASCII look. Only if it has nothing to say does the application fall back. */
+       ASCII look. */
     if (source && source->set && glyph_set_lookup(source->set, codepoint, &entry)) {
         memcpy(glyph.rows, entry.rows, GLYPH_SOURCE_CELL_SIZE);
         glyph.kind = GLYPH_SOURCE_SET;
         glyph.mode = entry.mode;
         return glyph;
     }
-    if (codepoint < 0x80U) {
+    /* The built-in face answers only when the source has **no set at all** — a launch with no
+       conversion installed, and the application chrome, which declares this face permanently.
+       A source that HAS a set and lacks the codepoint is a coverage gap, and D8 says that is a
+       diagnostic, not a silent borrow from another face (V1_5 plan, D-C). */
+    if ((!source || !source->set) && codepoint < 0x80U) {
         builtin_rows(codepoint, glyph.rows);
         glyph.kind = GLYPH_SOURCE_BUILTIN;
         return glyph;

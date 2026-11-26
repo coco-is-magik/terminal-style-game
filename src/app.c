@@ -23,9 +23,6 @@
 #ifdef USE_LIGHTING_CACHE
 #include "lighting_cache.h"
 #endif
-#ifdef USE_GLYPH_CACHE
-#include "glyph_block_cache.h"
-#endif
 #include "ui_ele.h"
 #include "ui_canvas.h"
 #include "ui_compositor.h"
@@ -396,6 +393,42 @@ static bool enter_unified_editor(UnifiedEditorState *ued,
     return true;
 }
 
+/* TSG-ASSET-ENV-0001 — the world's face lacks a codepoint the document requires.
+ *
+ * Emitted here because this is the boundary that owns the consequence: the run continues, and what to
+ * do about it (install a face with the coverage, or change the face) is the user's decision. The
+ * renderer records misses; `glyph_missing` decides what is *newly distinct*, so this cannot repeat
+ * itself frame after frame even though the cell is missing every frame. The cell itself shows the
+ * sentinel, which is the part the user sees without reading stderr (D8). */
+static void report_missing_glyphs(const Renderer *renderer) {
+    const GlyphMissingState *missing = renderer_glyph_missing(renderer);
+    char face[GLYPH_MISSING_FACE_TEXT_SIZE];
+    uint32_t overflow;
+    unsigned count;
+    unsigned i;
+
+    if (!missing) return;
+    count = glyph_missing_report_count(missing);
+    overflow = glyph_missing_overflow_this_frame(missing);
+    if (count == 0U && overflow == 0U) return;
+
+    glyph_missing_face_text(missing, face);
+    for (i = 0U; i < count; i++) {
+        GlyphMissingReport report;
+        if (!glyph_missing_report(missing, i, &report)) continue;
+        fprintf(stderr,
+                "TSG-ASSET-ENV-0001: face %s lacks U+%04X at cell %d,%d "
+                "(%u affected this frame)\n",
+                face, report.codepoint, report.cell_x, report.cell_y,
+                glyph_missing_affected_this_frame(missing));
+    }
+    /* More distinct gaps than one frame's report list holds: say how many, never drop them silently. */
+    if (overflow > 0U) {
+        fprintf(stderr, "TSG-ASSET-ENV-0001: face %s lacks %u more distinct codepoint(s)\n", face,
+                overflow);
+    }
+}
+
 static void sync_editor_text_input(Renderer *renderer,
                                    AppState app_state,
                                    const UnifiedEditorState *editor) {
@@ -704,9 +737,6 @@ int app_main(int argc, char* argv[]) {
 
 #ifdef USE_LIGHTING_CACHE
     lighting_cache_init();
-#endif
-#ifdef USE_GLYPH_CACHE
-    glyph_block_cache_init();
 #endif
 #ifdef USE_SMC_STATE_TRACKER
     { size_t max_cells = (size_t)cfg->grid_width * (size_t)cfg->grid_height;
@@ -1411,6 +1441,7 @@ int app_main(int argc, char* argv[]) {
         } else {
             renderer_draw(ren, grid);
         }
+        report_missing_glyphs(ren);
         if (display_acceptance_mode) {
             display_acceptance_observe_presentation(&display_acceptance);
         }
@@ -1530,13 +1561,6 @@ int app_main(int argc, char* argv[]) {
                avg_render_ms, absolute_worst_render_ms, effective_worst,
                outlier_trimmed ? "true" : "false", global_min_spare_ms,
                (unsigned long long)measured_frames, framebuffer_checksum, result_str);
-#ifdef USE_GLYPH_CACHE
-        { uint64_t glyphs_total = renderer_cache_hits + renderer_cache_misses;
-          double glyph_hit_rate = glyphs_total > 0 ? (100.0 * renderer_cache_hits / glyphs_total) : 0.0;
-          if (glyphs_total > 0) fprintf(stderr, "Glyph cache stats: hits=%llu misses=%llu hit_rate=%.1f%% raster_ms=%.2f upload_ms=%.2f cells=%llu\n",
-                 (unsigned long long)renderer_cache_hits, (unsigned long long)renderer_cache_misses, glyph_hit_rate,
-                 renderer_time_raster_ms, renderer_time_upload_ms, (unsigned long long)renderer_cells_processed); }
-#endif
         { uint64_t smc_total = 0, smc_fallback = 0, smc_arity = 0, smc_invalid = 0;
           smc_render_opt_get_stats(&smc_total, &smc_fallback, &smc_arity, &smc_invalid);
           if (smc_total > 0) fprintf(stderr, "SMC stats: total_calls=%llu fallback=%llu arity_errors=%llu invalid_ids=%llu\n",

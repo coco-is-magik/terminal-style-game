@@ -8,7 +8,6 @@
 #endif
 
 #include "glyph_set_file.h"
-#include "glyph_source.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -31,8 +30,13 @@ bool app_resources_load_glyph_set(AppResources *resources, const char *assets_di
     switch (glyph_set_file_load(path, &resources->glyph_set_bytes, &resources->glyph_set,
                                 &diagnostic)) {
     case GLYPH_SET_FILE_OK:
-        /* Borrowed by the active source for the life of the process; the bytes stay owned here. */
-        glyph_source_set_active(&resources->glyph_set);
+        /* Borrowed by the world surface for the life of the process; the bytes stay owned here. The
+           chrome's source is deliberately not touched — it declares the built-in face and keeps it
+           (V1-5 plan, D-D). The headless smoke path creates no renderer and draws nothing, so there
+           is no surface to hand the set to and no glyph is ever resolved. */
+        if (resources->renderer) {
+            renderer_set_world_glyph_set(resources->renderer, &resources->glyph_set);
+        }
         resources->glyph_set_loaded = true;
         fprintf(stderr, "glyphs: loaded %u glyphs from %s\n", resources->glyph_set.glyph_count,
                 path);
@@ -62,9 +66,10 @@ bool app_resources_load_glyph_set(AppResources *resources, const char *assets_di
 
 void app_resources_cleanup(AppResources *resources) {
     if (!resources) return;
-    /* Drop the active font before freeing its bytes: the source borrows them. */
+    /* Drop the world's face before freeing its bytes: the source borrows them. The chrome's source is
+       never cleared here, because it was never set from a set. */
     if (resources->glyph_set_loaded) {
-        glyph_source_set_active(NULL);
+        if (resources->renderer) renderer_set_world_glyph_set(resources->renderer, NULL);
         glyph_set_file_free(resources->glyph_set_bytes);
         resources->glyph_set_bytes = NULL;
         resources->glyph_set_loaded = false;

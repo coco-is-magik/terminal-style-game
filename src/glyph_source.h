@@ -6,9 +6,12 @@
  * rule (V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md, D8) from being re-implemented — and
  * re-interpreted — at every draw site.
  *
- * Precedence: **the set answers first, the built-in face second, and only for ASCII.** The set is
- * the face the user chose; the built-in font is the fallback that guarantees the application's own
- * chrome renders even when no set is loaded, which is the state the whole project is in today.
+ * Precedence: **the set answers first; the built-in face answers only when the source declares no set
+ * at all.** Those are two different situations and conflating them was a defect: a source with no set
+ * is a launch with no conversion installed (and the application chrome, which declares the built-in
+ * face permanently), so the built-in face is not a fallback there — it is the declared face. A source
+ * that HAS a set and lacks the codepoint is a coverage gap, and D8 says a gap is a diagnostic, not a
+ * quiet borrow from another face (V1_5 plan, D-C).
  *
  * Missing is a result, not an exception: the caller gets the sentinel's pixels and a `kind` that
  * says they are a sentinel, so the cell can be painted conspicuously (magenta on red) rather than
@@ -75,24 +78,6 @@ GlyphSourceGlyph glyph_source_resolve(const GlyphSource *source, uint32_t codepo
 /* True when `glyph` is the sentinel rather than a real glyph, so a caller can log or count it
    without re-deriving the rule. */
 bool glyph_source_is_missing(const GlyphSourceGlyph *glyph);
-
-/* ---- Process-lifetime active set ------------------------------------------------
- *
- * The draw sites are deep in hot loops and own no configuration: the renderer, the compositor and
- * the block cache all need "which faces are loaded right now?" and none of them should be threading
- * a font pointer through its own call graph to answer it. One process-lifetime selection, set once
- * at startup, is the same shape as the built-in missing-decal pattern: derived, not owned, and
- * never serialised.
- *
- * Single-threaded by contract, like the rest of the render path. `set` is borrowed: the caller keeps
- * the bytes alive for as long as it wants glyphs resolved (the loader's buffer is owned by whoever
- * loaded it).
- */
-void glyph_source_set_active(const GlyphSet *set);
-
-/* The active source. Never NULL: with no set loaded it answers from the built-in ASCII face, which
-   is the state the application ships in. */
-const GlyphSource *glyph_source_active(void);
 
 /* Stable short name of a kind, for tool output and test failure messages. */
 const char *glyph_source_kind_name(GlyphSourceKind kind);

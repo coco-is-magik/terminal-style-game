@@ -12,6 +12,8 @@
 
 #include "grid.h"          /* Grid — the source data to render */
 #include "ui_compositor.h"
+#include "glyph_source.h"  /* GlyphSource — one per surface, see the struct below */
+#include "glyph_missing.h" /* GlyphMissingState — the once-per-(face, codepoint) record */
 #include <SDL3/SDL.h>      /* SDL_Window, SDL_Renderer, SDL_Texture */
 #include <stdbool.h>       /* bool */
 #include <stddef.h>
@@ -40,8 +42,6 @@ extern double renderer_time_upload_ms;       /* Time spent in SDL_UpdateTexture 
 extern double renderer_time_present_ms;      /* Time spent in render/present */
 extern uint64_t renderer_cells_processed;    /* Total cells rasterized */
 extern uint64_t renderer_cells_skipped;     /* Cells skipped via dirty tracking */
-extern uint64_t renderer_cache_hits;         /* Glyph cache hits (if enabled) */
-extern uint64_t renderer_cache_misses;       /* Glyph cache misses (if enabled) */
 extern uint64_t renderer_smc_fallback_count; /* SMC stream fallback count */
 
 #if PROFILE_FRAME
@@ -70,6 +70,17 @@ typedef struct {
     int logical_h;                     /* Logical pixel height */
     int cell_w;                        /* Glyph width (pixels) */
     int cell_h;                        /* Glyph height (pixels) */
+    /* Each surface declares its own face (V1-5 plan, D-A/D-D). `world_source` is the converted set
+       the user installed, or the built-in ASCII face when none is. `ui_source` is the chrome's and
+       stays on the built-in face, so a set with poor ASCII coverage cannot make the application's own
+       menus unreadable. Both borrow their bytes from whoever owns the glyph set; neither is written
+       by the loader except through renderer_set_world_glyph_set. */
+    GlyphSource    world_source;
+    GlyphSource    ui_source;
+    /* What the world surface could not draw, and what has already been said about it. Owned by the
+       renderer rather than by a module global, so two renderers (the app and a workbench preview)
+       cannot share a "reported" list (V1-5 plan, D-C/I4). */
+    GlyphMissingState missing;
     uint8_t *ui_restore_cells;
     size_t ui_restore_cell_count;
 #ifdef USE_SMC_BATCH_STATE_TRACKER
@@ -85,6 +96,13 @@ typedef struct {
 
 Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h);
 void      renderer_destroy(Renderer *ren);
+/* Point the world surface at a converted glyph set, or back at the built-in ASCII face with NULL.
+   Borrowed: the caller must keep the bytes alive for as long as frames are drawn. The chrome's source
+   is deliberately untouched — that is the whole point of having two. */
+void      renderer_set_world_glyph_set(Renderer *ren, const GlyphSet *set);
+/* What the last frame could not draw, for the application boundary to report. Never NULL for a live
+   renderer; the records it holds are the *newly distinct* misses of that frame. */
+const GlyphMissingState *renderer_glyph_missing(const Renderer *ren);
 void      renderer_draw(Renderer *ren, Grid *grid);
 void      renderer_draw_layers(Renderer *ren, Grid *grid,
                                const UiLayerList *layers, int ui_scale_percent);

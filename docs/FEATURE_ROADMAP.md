@@ -440,7 +440,11 @@ dependency decision in
 [`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md),
 which selects glyphs converted locally at build time from user-supplied, hash-verified fonts with
 no glyph data committed, vendored `utf8proc` for UTF-8/NFC/segmentation, no runtime rasteriser,
-and the 32-bit `GlyphRef` identity. The cell stays 8×8: 8×8 CJK bitmap faces exist, so there is no
+and **D7's 32-bit `GlyphRef` identity** — the last of which was **narrowed on 2026-11-22** to a
+16-bit codepoint in the cell: 16 + 24 + 24 = exactly 64 bits, where a face slot would have needed
+68. Face identity now lives on the surface, not in the cell; see
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md)
+(D-A) and the V1-5 status below. The cell stays 8×8: 8×8 CJK bitmap faces exist, so there is no
 cell-size question to measure and no taller text profile to design around.
 
 **Purpose:** Select a deterministic, portable character model and dependency set before
@@ -483,10 +487,34 @@ direction with measured evidence.
 
 ## V1-5 — Glyph identity, raster service, cache, and mandatory SMC migration
 
-**Status:** Committed v1 outcome; **unblocked 2026-11-06** by
-[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md)
-(D1–D12). First task: the converter, its determinism test and the font manifest — a fixed 8×8
-cell, so there is no raster-profile question left.
+**Status:** **Active.** Unblocked 2026-11-06 by
+[`V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md`](V1_4_FONT_DEPENDENCY_DECISION_2026-11-06.md) (D1–D12);
+the first task named there — the converter, its determinism test and the font manifest — landed
+2026-11-06/07, and the cell-identity migration its decision record ordered landed 2026-11-22/24.
+
+Progress against the required outcomes below, measured 2026-11-25:
+
+| # | Outcome | State |
+|---|---|---|
+| 1 | Typed glyph reference, explicit blank/transparent/missing | **done** — 16-bit codepoint, `0x0000`/`0xFFFF` reserved, missing derived at draw time |
+| 2 | Headless font service | **done** — validation, resolution, fit, bounded rasterisation, and (2026-11-25) strict UTF-8, canonical NFC and bounded grapheme clusters via vendored `utf8proc` v2.12.0 |
+| 3 | Side effects outside documents | **held** by design |
+| 4 | Bounded generation-aware raster/atlas caches | **done** — closed by *residence*: all three declared faces fit in 26.8% of the 1 MiB cap, the set is fully resident by design, and the only cross-frame glyph state is keyed to the face's provenance. The two unwired cache modules and the `USE_GLYPH_CACHE` mode were deleted rather than wired (plan, D-E/I5) |
+| 5 | Cell, dirty compare, packed state, streams, checksums, restore, adapters | **done** — type-derived stream sizes; the layout `CASSERT`s fired and were updated as intended |
+| 6 | Logical cells, UI scale independence | **done** — re-tested 2026-11-25, with a new independent-expectation test for the accessibility presets (plan, I1) |
+
+The remaining work, its order, and the amendments it makes to D7 and D8 are in
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md).
+
+**Exit gate, 2026-11-25:** the Q4 review is written
+([`reviews/2026-11-25-v1-5-q4-representation-review.md`](reviews/2026-11-25-v1-5-q4-representation-review.md)),
+the canonical containerised Valgrind gate passes (`0 errors`, no leaks, with `glyph_missing` inside
+`test-core`'s rendition), the SMC matrix passes every remaining mode, and `utf8proc` (D3) landed as the
+plan's I6 — vendored at tag v2.12.0 with strict UTF-8, canonical NFC and bounded grapheme clusters
+behind one module, so every required outcome is now closed. Reference/optimized parity is moot rather
+than outstanding: the optimised path was deleted with the caches. Still open, and both for
+environmental reasons rather than design: the **ASCII** benchmark/stability budgets (need the agreed
+measuring host) and the **multilingual** ones (need an installed face). V1-6 and V1-7 are unblocked.
 
 **Purpose:** Replace raw byte glyph identity and the built-in 128-glyph 8x8 rasterizer
 without sacrificing deterministic grid rendering or SMC gains.

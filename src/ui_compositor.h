@@ -2,6 +2,7 @@
 #define UI_COMPOSITOR_H
 
 #include "ui_canvas.h"
+#include "glyph_source.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -48,7 +49,10 @@ typedef struct {
 void ui_layer_list_clear(UiLayerList *list);
 bool ui_layer_list_add(UiLayerList *list, const UiLayer *layer);
 int ui_compositor_scaled_edge(int source_edge, int scale_percent);
-bool ui_compositor_compose(const UiLayerList *list, int global_scale_percent,
+/* `source` is the face every layer resolves against — the chrome's own, never the world's. NULL means
+   the built-in ASCII face only. */
+bool ui_compositor_compose(const UiLayerList *list, const GlyphSource *source,
+                           int global_scale_percent,
                            uint32_t *pixels, int pixel_width, int pixel_height,
                            uint8_t *touched_cells, int cell_columns, int cell_rows);
 

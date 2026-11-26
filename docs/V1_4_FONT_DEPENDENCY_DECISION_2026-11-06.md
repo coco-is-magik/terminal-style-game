@@ -78,7 +78,7 @@ font manifest the contract; keep the runtime dependency surface at zero for rast
 | **D4** | Shaping | **Not in v1.** Conversion-time only, if a cluster ever needs it | HarfBuzz at runtime — no required script needs context-dependent shaping; CJK/kana/hangul are one-to-one |
 | **D5** | Bidi | **Deferred to V1-6, constrained**: table-driven UAX#9 subset generated at conversion time; until then RTL is refused with a typed diagnostic | fribidi — LGPL conflicts with the static and export paths (V1-19) |
 | **D6** | Cell metrics **[revised]** | **8×8, always — one cell size, no profiles.** The converter fits the font to the cell; the user chooses a font that fits. Proven achievable for CJK by existing 8×8 bitmap faces | The first draft's 8×16/12×12/16×16 profiles: unnecessary (8×8 CJK exists), they changed the visual language for no gain, and they let an unfitting font off the hook instead of reporting it |
-| **D7** | Glyph identity | **Packed 32-bit `GlyphRef`**: 2-bit kind (blank/transparent/missing/ink), 4-bit face slot, 26-bit catalog index | Per-cell `font_id` byte (register A1a) — cannot express blank vs transparent vs missing distinctly |
+| **D7** | Glyph identity **[amended 2026-11-25]** | **A 16-bit codepoint in the cell; the face is a property of the surface, not of the cell** (V1-5 D1/D2, and the plan's D-A). The original choice here — a packed 32-bit `GlyphRef` with a 2-bit kind, a 4-bit face slot and a 26-bit catalog index — was never implemented and could not be: 16 + 4 + 24 + 24 = **68 bits**, and the 64-bit `CellState` the SMC kernel depends on was deliberately kept exact. Kind is now derived at draw time and blank/transparent are reserved codepoints | Per-cell `font_id` byte (register A1a) — cannot express blank vs transparent vs missing distinctly. Also rejected 2026-11-25: a 32-bit codepoint with a 128-bit state (re-baselines every SMC mode for characters no declared face contains), and an 8-bit handle into a registry (256 distinct glyphs on screen; one screenful of Japanese exceeds it) |
 | **D8** | Missing glyph **[revised]** | **No fallback at all.** A glyph the cell's declared face lacks is never borrowed from another face, the system, or a substitute character — it renders as the derived sentinel (`X`, red background, purple foreground) and raises one diagnostic per (face, codepoint) | Per-face fallback stack (the first draft): it makes "which font drew this?" unknowable, hides coverage gaps behind a chain nobody audits, and turns one missing glyph into a resolution-order question. Tofu box: quiet enough to ship by accident. Replacement character: silent |
 | **D9** | Fonts | **The user's, declared in the manifest.** Misaki (8×8 native, JIS 1st+2nd, M+ licence) is the reference that proves 8×8 CJK and the first thing the converter must handle; Noto Sans Mono/CJK (OFL-1.1) covers Latin and beyond-JIS CJK. Which fonts ship with a given build is a manifest question, not a code question | Unifont (GPL with font exception — export risk); assuming a font fits without converting it |
 | **D10** | Unicode version | **Pinned to the vendored data release** (utf8proc + converter), recorded at vendor time | Floating "latest" — makes parity unprovable |
@@ -338,20 +338,25 @@ a silent overflow. Cold cost exists only at load.
 
 ## Consequences for the phases this unblocks
 
-**V1-5 (identity, raster service, cache, SMC migration)** implements D1–D12. Order that respects
-the existing rollback point: typed `GlyphRef` + ASCII adapter first (old readers untouched), then
-the catalog + human-readable glyph table in the scene, then the converted glyph set behind the same
-interface the current atlas has, then SMC adapters. `Cell` grows to 4 bytes of glyph; that touches
-dirty comparison, packed state, stream signatures, checksums, restore behaviour and every SMC
-adapter — the list V1-5 item 5 already names, unchanged by this decision.
+**V1-5 (identity, raster service, cache, SMC migration)** implements D1–D12, with D7 as **amended
+2026-11-25**. What actually happened, recorded rather than predicted: the identity and cell migration
+landed first (2026-11-22/24), and `Cell.glyph` is a `uint16_t` inside a **10-byte** `Cell` — not the
+"4 bytes of glyph" sketched in the first draft of this section. There is no `GlyphRef` type, no
+scene-level glyph catalog, and no per-cell face slot; the face belongs to the surface. What the
+migration did touch is unchanged from the list V1-5 item 5 names: dirty comparison, packed state,
+stream signatures, checksums, restore behaviour and every SMC adapter. The remaining work, in the
+order it should happen, is in
+[`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md).
 
 **V1-6 (Unicode UI, editing, clipboard, IME)** gets three of its groundwork pieces from here:
 strict UTF-8 + NFC + segmentation (`utf8proc`), the missing-glyph diagnostic it must surface, and
 the RTL refusal that stands in until bidi lands. Paste validation shares the same validator as
 typed text (register C1a) — this decision adds no second path.
 
-**V1-7 (glyph-art formats)** inherits D6/D7: one art cell is one face slot + index at 8×8, so
-existing art and the 8×8 aesthetic survive the migration by construction.
+**V1-7 (glyph-art formats)** inherits D6 and D7 **as amended**: one art cell is a codepoint at 8×8,
+and which face draws it is a property of the surface. The original phrasing here — "one art cell is
+one face slot + index" — is void with the face slot. If art variants on a single grid ever become a
+requirement, D5's document-level indirection table is the shape that still fits 64 bits.
 
 **Not decided here, deliberately:**
 
@@ -394,7 +399,7 @@ existing art and the 8×8 aesthetic survive the migration by construction.
 | Raster profile | **answered** (D6 revised): 8×8 only, no profile question left open |
 | Parity contract | **decided** — font-hash + converter determinism, with the research §3 rules applied at conversion (D2, D12) |
 | Resource budgets | **declared** — 1 MB resident glyph set, fully resident |
-| Glyph identity and format direction | **decided** (D7) |
+| Glyph identity and format direction | **decided** (D7, amended 2026-11-25: 16-bit codepoint in the cell, face per surface) |
 | Failure behaviour | **decided** (D11): abort with the exact reason; fitting is opt-in |
 
 V1-4 is **closed**. V1-5 is **unblocked** and may begin at its first task (the converter, its

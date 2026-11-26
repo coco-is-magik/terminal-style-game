@@ -137,7 +137,7 @@ static void test_optimized_compositor_matches_reference(void **state) {
                                 expected_touched, 4, 4);
         reference_compose_layer(&second, scales[scale_index], expected, 31, 25,
                                 expected_touched, 4, 4);
-        assert_true(ui_compositor_compose(&list, scales[scale_index], actual, 31, 25,
+        assert_true(ui_compositor_compose(&list, NULL, scales[scale_index], actual, 31, 25,
                                           actual_touched, 4, 4));
         assert_memory_equal(actual, expected, sizeof(actual));
         assert_memory_equal(actual_touched, expected_touched, sizeof(actual_touched));
@@ -215,7 +215,7 @@ static void test_layers_clip_policy_and_stable_order(void **state) {
     b.scale_policy = UI_SCALE_FIXED_100;
     assert_true(ui_layer_list_add(&list, &a));
     assert_true(ui_layer_list_add(&list, &b));
-    assert_true(ui_compositor_compose(&list, 200, pixels, 20, 20, NULL, 0, 0));
+    assert_true(ui_compositor_compose(&list, NULL, 200, pixels, 20, 20, NULL, 0, 0));
     assert_true(pixels[0] != 0);
     assert_true(pixels[0] != ((uint32_t)black.a << 24));
     assert_int_equal(pixels[7 * 20 + 7], pixels[0]);
@@ -279,7 +279,7 @@ static void test_centered_menu_crop_visible_at_all_presets(void **state) {
         assert_true(origin_x + scaled_width <= 2080);
         assert_true(origin_y + scaled_height <= 1280);
         assert_true(ui_layer_list_add(&list, &layer));
-        assert_true(ui_compositor_compose(&list, presets[p], pixels,
+        assert_true(ui_compositor_compose(&list, NULL, presets[p], pixels,
                                           2080, 1280, NULL, 0, 0));
         assert_true(pixels[sample_y * 2080 + sample_x] != 0);
     }
@@ -289,6 +289,35 @@ static void test_centered_menu_crop_visible_at_all_presets(void **state) {
     grid_destroy(staging);
 }
 
+/* The accessibility presets, pinned to values computed outside this file, because the preset
+   composition test derives its probe coordinates from ui_compositor_scaled_edge itself and so
+   cannot prove the scaling rule — only that it agrees with itself. These literals are the
+   independent reference: cell edges in pixels, and the truncating rule the function documents.
+   Covers V1-5 outcome 6: UI accessibility scale is independent of the cell's byte size. */
+static void test_scaled_edges_have_independent_expectations(void **state) {
+    /* One 8x8 cell, and a full 80x40 canvas, at every accepted preset (100 / 125 / 150 / 200). */
+    static const struct {
+        int source_edge;
+        int scale_percent;
+        int expected;
+    } cases[] = {
+        {8, 100, 8},      {8, 125, 10},     {8, 150, 12},     {8, 200, 16},
+        {640, 100, 640},  {640, 125, 800},  {640, 150, 960},  {640, 200, 1280},
+        {320, 100, 320},  {320, 125, 400},  {320, 150, 480},  {320, 200, 640},
+        /* Truncation, not rounding: 7*125/100 = 8.75 -> 8, 41*150/100 = 61.5 -> 61. */
+        {7, 125, 8},      {41, 150, 61},    {41, 200, 82},    {1, 150, 1},
+        /* Nothing to scale stays nothing; a nonsensical edge is not a negative rectangle. */
+        {0, 150, 0},      {-5, 100, 0},
+    };
+    size_t i;
+    (void)state;
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_int_equal(ui_compositor_scaled_edge(cases[i].source_edge, cases[i].scale_percent),
+                         cases[i].expected);
+    }
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_canvas_transparency_and_intentional_space),
@@ -297,6 +326,7 @@ int main(void) {
         cmocka_unit_test(test_layers_clip_policy_and_stable_order),
         cmocka_unit_test(test_capacity_hidden_and_invalid),
         cmocka_unit_test(test_centered_menu_crop_visible_at_all_presets),
+        cmocka_unit_test(test_scaled_edges_have_independent_expectations),
         cmocka_unit_test(test_optimized_compositor_matches_reference),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
