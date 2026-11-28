@@ -24,6 +24,21 @@ bool glyph_source_is_missing(const GlyphSourceGlyph *glyph) {
     return glyph && glyph->kind == GLYPH_SOURCE_MISSING;
 }
 
+bool glyph_source_set_covers_printable_ascii(const GlyphSet *set) {
+    GlyphSetEntry entry;
+    uint32_t codepoint;
+
+    if (!set) return false; /* no set means the built-in face, which is not an installed face */
+    for (codepoint = 0x20U; codepoint <= 0x7EU; codepoint++) {
+        if (!glyph_set_lookup(set, codepoint, &entry)) return false;
+    }
+    return true;
+}
+
+const GlyphSet *glyph_source_ui_face(const GlyphSet *installed) {
+    return glyph_source_set_covers_printable_ascii(installed) ? installed : NULL;
+}
+
 const char *glyph_source_kind_name(GlyphSourceKind kind) {
     switch (kind) {
     case GLYPH_SOURCE_SET: return "set";

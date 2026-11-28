@@ -33,6 +33,17 @@ static void make_paths(char root[64], char menus[96]) {
     assert_int_equal(test_mkdir(menus), 0);
 }
 
+/* The field's own state, which is what "the paste/keystroke changed nothing" has to mean. A whole-struct
+   comparison cannot say this any more: the workspace also records *why* it refused, on purpose. */
+static void assert_field_unchanged(const UiMenuWorkspace *workspace,
+                                  const UiMenuWorkspace *before) {
+    assert_string_equal(workspace->edit_text, before->edit_text);
+    assert_int_equal(workspace->edit_text_length, before->edit_text_length);
+    assert_int_equal(workspace->edit_text_cursor, before->edit_text_cursor);
+    assert_int_equal(workspace->edit_text_anchor, before->edit_text_anchor);
+    assert_int_equal(workspace->edit_preedit_length, before->edit_preedit_length);
+}
+
 static void save_menu(const char *path, const char *name) {
     UiDocument document;
     UiElementId button;
@@ -148,7 +159,13 @@ static void test_invalid_load_and_boundaries_are_transactional(void **state) {
     before = workspace;
     assert_int_equal(ui_menu_workspace_confirm(&workspace),
                      UI_MENU_WORKSPACE_LOAD_FAILED);
-    assert_memory_equal(&workspace, &before, sizeof(workspace));
+    /* The document is untouched; the only thing that changed is the recorded reason, which is now the
+       point (the field comparison would hide it). */
+    assert_memory_equal(&workspace.document, &before.document, sizeof(workspace.document));
+    assert_int_equal(workspace.has_document, before.has_document);
+    assert_int_equal(workspace.mode, before.mode);
+    /* A structural error has no position to name, so nothing is recorded as one. */
+    assert_null(ui_menu_workspace_last_load_diagnostic(&workspace));
     assert_int_equal(ui_menu_workspace_adjust(&workspace, 1),
                      UI_MENU_WORKSPACE_NO_ACTION);
     assert_int_equal(ui_menu_workspace_adjust(&workspace, 0),
@@ -1038,10 +1055,559 @@ static void test_phase3_action_vocabulary_and_playback_are_host_independent(void
     assert_int_equal(rmdir(root), 0);
 }
 
+/* A workspace holding a field and nothing else. The text-field rules do not need a document, so these
+   tests drive the buffer directly — which is also the only way to reach a caret mid-string, since a real
+   flow always opens the field with the caret at the end. */
+static void text_workspace(UiMenuWorkspace *workspace, UiMenuWorkspaceMode mode, const char *text) {
+    size_t length = strlen(text);
+    ui_menu_workspace_init(workspace);
+    workspace->active = true;
+    workspace->mode = mode;
+    memcpy(workspace->edit_text, text, length + 1U);
+    workspace->edit_text_length = length;
+    workspace->edit_text_cursor = length;
+    workspace->edit_text_anchor = length;
+}
+
+/* "a" + U+3042 + "e" + U+0301: one ASCII, one three-byte character, and a base with its combining mark.
+   Seven bytes, and cluster boundaries only at 0, 1, 4 and 7 — 5 and 6 are inside the last character. */
+
+/* An IME composition is shown, not stored: the field is untouched, so cancelling leaves no trace and
+   committing adds exactly the committed text (V1-6 plan, D-F). */
+static void test_preedit_is_shown_but_never_committed(void **state) {
+    UiMenuWorkspace workspace;
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "ab");
+    before = workspace;
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+
+    /* "にほん" is what the IME is offering; the field still says "ab". */
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "\xE3\x81\xAB\xE3\x81\xBB\xE3\x82\x93",
+                                                   9U),
+                     UI_MENU_WORKSPACE_OK);
+    assert_true(ui_menu_workspace_has_preedit(&workspace));
+    assert_string_equal(workspace.edit_preedit, "\xE3\x81\xAB\xE3\x81\xBB\xE3\x82\x93");
+    assert_string_equal(workspace.edit_text, "ab");
+    assert_int_equal(workspace.edit_text_length, 2U);
+
+    /* Cancelling (empty composition) discards it: the buffer is zeroed and the field cannot tell that a
+       composition ever happened. (A whole-struct comparison would also cover fields this function has no
+       business touching, and cmocka cannot say which byte differed.) */
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "", 0U), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+    assert_string_equal(workspace.edit_preedit, "");
+    assert_string_equal(workspace.edit_text, before.edit_text);
+    assert_int_equal(workspace.edit_text_length, before.edit_text_length);
+    assert_int_equal(workspace.edit_text_cursor, before.edit_text_cursor);
+    assert_int_equal(workspace.edit_text_anchor, before.edit_text_anchor);
+
+    /* Committing is a normal append, and it clears the composition in the same call. */
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "\xE3\x81\xAB", 3U),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xE3\x81\xAB"), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+    assert_string_equal(workspace.edit_text, "ab\xE3\x81\xAB");
+    assert_int_equal(workspace.edit_text_cursor, 5U);
+}
+
+/* A composition that cannot be shown in full is shown as far as a cluster boundary; it is never split. */
+static void test_preedit_is_truncated_at_a_cluster_boundary(void **state) {
+    UiMenuWorkspace workspace;
+    char big[UI_DOCUMENT_CONTENT_CAPACITY + 8U];
+    size_t i;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "");
+    /* Three-byte characters, one byte more than the buffer holds: the last one cannot fit whole. */
+    for (i = 0U; i + 3U < sizeof(big); i += 3U) {
+        big[i] = (char)0xE3;
+        big[i + 1U] = (char)0x81;
+        big[i + 2U] = (char)0x82;
+    }
+    big[i] = '\0';
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, big, i), UI_MENU_WORKSPACE_OK);
+    assert_true(workspace.edit_preedit_length > 0U);
+    assert_int_equal(workspace.edit_preedit_length % 3U, 0U);
+    assert_int_equal(workspace.edit_preedit_length, (UI_DOCUMENT_CONTENT_CAPACITY - 1U) / 3U * 3U);
+    /* And the field is still empty: showing a composition never writes to it. */
+    assert_int_equal(workspace.edit_text_length, 0U);
+}
+
+/* Leaving the field — by Esc or by Enter — takes the composition with it, which is the "focus change must
+   not leave pre-edit behind" clause. */
+static void test_leaving_the_field_discards_the_composition(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "ab");
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "\xE3\x81\xAB", 3U),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_escape(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+
+    /* A caret move ends it too: the composition was anchored where the caret was. Reopen the field,
+       since Esc left it. */
+    workspace.mode = UI_MENU_WORKSPACE_EDIT_CONTENT;
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "\xE3\x81\xAB", 3U),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+
+    /* Outside a text mode there is no field to compose into. */
+    workspace.mode = UI_MENU_WORKSPACE_HIERARCHY;
+    assert_int_equal(ui_menu_workspace_set_preedit(&workspace, "\xE3\x81\xAB", 3U),
+                     UI_MENU_WORKSPACE_NO_ACTION);
+}
+
+
+#define CLUSTER_TEXT "a\xE3\x81\x82" "e\xCC\x81"
+
+static void test_caret_moves_by_cluster_not_by_byte(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, CLUSTER_TEXT);
+    assert_int_equal(workspace.edit_text_length, 7U);
+
+    /* Left from the end skips the combining mark: it belongs to the 'e' before it. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 4U);
+    /* Left again lands before the three-byte character, not inside it. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 1U);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 0U);
+    /* At the start there is nowhere to go, and that is not an error. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 0U);
+
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, 1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 1U);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, 1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 4U);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, 1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 7U);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, 1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 7U);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+}
+
+static void test_selection_extends_with_shift_and_collapses_without(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, CLUSTER_TEXT);
+
+    /* Shift+Left from the end selects the last cluster. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 4U);
+    assert_int_equal(workspace.edit_text_anchor, 7U);
+    assert_true(ui_menu_workspace_has_selection(&workspace));
+
+    /* Shift+Left again grows it backwards over the Japanese character. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 1U);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 0U);
+    assert_int_equal(workspace.edit_text_anchor, 7U);
+
+    /* A plain arrow collapses to the edge it heads for instead of stepping from the far end. */
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, 1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 7U);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+
+    /* Select-all is the one selection a user cannot reach by arrow keys alone. */
+    assert_int_equal(ui_menu_workspace_select_all(&workspace, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_anchor, 0U);
+    assert_int_equal(workspace.edit_text_cursor, 7U);
+    assert_int_equal(ui_menu_workspace_select_all(&workspace, false), UI_MENU_WORKSPACE_OK);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+}
+static void test_typing_inserts_at_the_caret_and_replaces_a_selection(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, false), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "Z"), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "aZbc");
+    assert_int_equal(workspace.edit_text_cursor, 2U);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+
+    /* Typing over a selection replaces it, and the caret lands after the replacement. */
+    assert_int_equal(ui_menu_workspace_select_all(&workspace, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xE3\x81\x82"), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "\xE3\x81\x82");
+    assert_int_equal(workspace.edit_text_cursor, 3U);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+}
+
+static void test_backspace_deletes_a_selection_or_one_cluster(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    /* One cluster goes, all three bytes of it. */
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "a\xE3\x81\x82");
+    assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "a");
+    assert_int_equal(workspace.edit_text_length, 1U);
+    assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "");
+    /* An empty field has nothing to delete, which is NO_ACTION rather than an error. */
+    assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_NO_ACTION);
+
+    /* With a selection, Backspace takes the selection and nothing else. */
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abcdef");
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_move_caret(&workspace, -1, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "abcd");
+    assert_int_equal(workspace.edit_text_cursor, 4U);
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+}
+
+/* The two field kinds refuse differently, and both refusals are visible to the caller rather than
+   silent: content is refused whole, an identifier filters to what it can use. */
+static void test_content_refuses_what_the_document_would_and_identifiers_filter(void **state) {
+    UiMenuWorkspace workspace;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "");
+    /* A control character, an RTL letter and a backslash are all things `ui_text` refuses (I3). */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "a\x01"), UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xD7\x90"), UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "a\\b"), UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_string_equal(workspace.edit_text, "");
+    /* Japanese is not refused: this is the point of the whole phase. */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "HP\xE3\x81\x82"),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "HP\xE3\x81\x82");
+
+    /* A port name is an identifier: the usable characters survive, the rest are dropped. */
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_PORT, "");
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "play now!"), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "playnow");
+    /* A multi-byte character is dropped whole rather than as three stray bytes. */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xE3\x81\x82"),
+                     UI_MENU_WORKSPACE_NO_ACTION);
+    assert_string_equal(workspace.edit_text, "playnow");
+}
+
+/* Capacity refuses the keystroke instead of shortening it, and says so. */
+static void test_field_at_capacity_refuses_without_splitting(void **state) {
+    UiMenuWorkspace workspace;
+    char full[UI_DOCUMENT_CONTENT_CAPACITY];
+    UiMenuWorkspace before;
+    (void)state;
+
+    memset(full, 'x', sizeof(full) - 1U);
+    full[sizeof(full) - 1U] = '\0';
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, full);
+    assert_int_equal(workspace.edit_text_length, UI_DOCUMENT_CONTENT_CAPACITY - 1U);
+
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "y"), UI_MENU_WORKSPACE_FIELD_FULL);
+    assert_field_unchanged(&workspace, &before);
+
+    /* Two bytes do not sneak in where one does not fit: the refusal is whole, not by byte. */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xE3\x81\x82"),
+                     UI_MENU_WORKSPACE_FIELD_FULL);
+    assert_field_unchanged(&workspace, &before);
+
+    /* One byte room left: an ASCII character fits, and the Japanese one still does not. */
+    assert_int_equal(ui_menu_workspace_backspace(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "\xE3\x81\x82"),
+                     UI_MENU_WORKSPACE_FIELD_FULL);
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "y"), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_length, UI_DOCUMENT_CONTENT_CAPACITY - 1U);
+}
+
+
+
+
+/* D-E rule 1: an empty clipboard is a status. Nothing happens, nothing is refused, nothing is reported. */
+static void test_paste_of_nothing_is_silent(void **state) {
+    UiMenuWorkspace workspace;
+    UiTextDiagnostic diagnostic;
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    before = workspace;
+    memset(&diagnostic, 0x5a, sizeof(diagnostic));
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "", 0U, &diagnostic),
+                     UI_MENU_WORKSPACE_NO_ACTION);
+    assert_field_unchanged(&workspace, &before);
+    /* The diagnostic is cleared rather than left holding a previous paste's explanation: a status has
+       nothing to say, and a caller must not read a stale offset. */
+    assert_int_equal(diagnostic.result, UI_TEXT_OK);
+    assert_int_equal(diagnostic.offset, 0U);
+    /* NULL is the same status, for a caller whose platform reported EMPTY. */
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, NULL, 0U, NULL),
+                     UI_MENU_WORKSPACE_NO_ACTION);
+    assert_field_unchanged(&workspace, &before);
+}
+
+/* D-E rule 2: malformed UTF-8 refuses the whole paste and names the byte it starts at. */
+static void test_paste_of_malformed_text_is_refused_with_its_offset(void **state) {
+    UiMenuWorkspace workspace;
+    UiTextDiagnostic diagnostic;
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "ok\x80" "ok", 5U, &diagnostic),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(diagnostic.result, UI_TEXT_MALFORMED);
+    assert_int_equal(diagnostic.offset, 2U);
+    assert_int_equal(diagnostic.codepoint, 0U);
+    assert_field_unchanged(&workspace, &before);
+
+    /* A well-formed paste into the same field still works, so the refusal is about the bytes. */
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "xy", 2U, &diagnostic),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "abcxy");
+}
+
+/* D-E rule 3: a paste that would not fit is refused whole — never shortened to fit. */
+static void test_paste_that_does_not_fit_is_refused_whole(void **state) {
+    UiMenuWorkspace workspace;
+    char big[UI_DOCUMENT_CONTENT_CAPACITY + 16U];
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    memset(big, 'z', sizeof(big) - 1U);
+    big[sizeof(big) - 1U] = '\0';
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, big, sizeof(big) - 1U, NULL),
+                     UI_MENU_WORKSPACE_FIELD_FULL);
+    assert_field_unchanged(&workspace, &before);
+
+    /* Replacing a selection counts the selection: a paste that fits only because the selection goes is
+       accepted, which is why the check subtracts it rather than comparing absolute sizes. */
+    assert_int_equal(ui_menu_workspace_select_all(&workspace, true), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, big, 200U, NULL),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_length, 200U);
+}
+
+/* D-E rule 4: a control character is refused, because a single-line label has no use for one. */
+static void test_paste_with_a_control_character_is_refused(void **state) {
+    UiMenuWorkspace workspace;
+    UiTextDiagnostic diagnostic;
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "line\nbreak", 10U, &diagnostic),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(diagnostic.result, UI_TEXT_CONTROL);
+    assert_int_equal(diagnostic.offset, 4U);
+    assert_int_equal(diagnostic.codepoint, 0x000AU);
+    assert_field_unchanged(&workspace, &before);
+
+    /* Tab too, and the RTL letter that `ui_text` refuses for its own reason (D-C). */
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "a\tb", 3U, NULL),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "\xD7\x90", 2U, &diagnostic),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_int_equal(diagnostic.result, UI_TEXT_RIGHT_TO_LEFT);
+    assert_field_unchanged(&workspace, &before);
+}
+
+/* A pasted identifier is refused as a whole rather than filtered: dropping half of what someone pasted is
+   the half-application D-E forbids, even though typing filters character by character. */
+/* A refusal says *why* and *where*, and a later success does not leave the old reason behind: the surface
+   shows whatever this returns, so a stale one would be a lie about different text. */
+static void test_text_refusals_record_their_reason(void **state) {
+    UiMenuWorkspace workspace;
+    const UiTextDiagnostic *diagnostic;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, "abc");
+    assert_null(ui_menu_workspace_last_text_diagnostic(&workspace));
+
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "x\ny"),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    diagnostic = ui_menu_workspace_last_text_diagnostic(&workspace);
+    assert_non_null(diagnostic);
+    assert_int_equal(diagnostic->result, UI_TEXT_CONTROL);
+    assert_int_equal(diagnostic->offset, 1U);
+    assert_int_equal(diagnostic->codepoint, 0x000AU);
+
+    /* A paste records the same way, because the surface shows one line for both. */
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "ok\x80", 3U, NULL),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    diagnostic = ui_menu_workspace_last_text_diagnostic(&workspace);
+    assert_non_null(diagnostic);
+    assert_int_equal(diagnostic->result, UI_TEXT_MALFORMED);
+    assert_int_equal(diagnostic->offset, 2U);
+
+    /* Success clears it. */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "d"), UI_MENU_WORKSPACE_OK);
+    assert_null(ui_menu_workspace_last_text_diagnostic(&workspace));
+
+    /* A full field is a refusal with no character to blame, so there is no text diagnostic - the surface
+       has its own sentence for it. */
+    {
+        char full[UI_DOCUMENT_CONTENT_CAPACITY];
+        memset(full, 'z', sizeof(full) - 1U);
+        full[sizeof(full) - 1U] = '\0';
+        text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_CONTENT, full);
+        assert_int_equal(ui_menu_workspace_append_text(&workspace, "y"),
+                         UI_MENU_WORKSPACE_FIELD_FULL);
+        assert_null(ui_menu_workspace_last_text_diagnostic(&workspace));
+    }
+}
+
+/* A refused load that is refused for its *content* says which line and column; the workspace keeps that so
+   the chooser can show it. */
+static void test_refused_load_records_its_position(void **state) {
+    UiMenuWorkspace workspace;
+    UiDocument document;
+    UiElementId button;
+    const UiDocumentLoadDiagnostic *load;
+    FILE *file;
+    char root[64], menus[96], path[160];
+    char bytes[4096];
+    size_t length;
+    char *match;
+    (void)state;
+
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&document, "menu"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&document, path), UI_DOCUMENT_OK);
+
+    /* Put one bad byte into the button's content, leaving everything else valid. */
+    file = fopen(path, "rb");
+    assert_non_null(file);
+    length = fread(bytes, 1U, sizeof(bytes) - 1U, file);
+    assert_int_equal(fclose(file), 0);
+    bytes[length] = '\0';
+    match = strstr(bytes, "content=PLAY");
+    assert_non_null(match);
+    match[10] = (char)0x80; /* the 'A' of PLAY becomes an invalid lead byte */
+    file = fopen(path, "wb");
+    assert_non_null(file);
+    assert_true(fwrite(bytes, 1U, length, file) == length);
+    assert_int_equal(fclose(file), 0);
+
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_LOAD_FAILED);
+    load = ui_menu_workspace_last_load_diagnostic(&workspace);
+    assert_non_null(load);
+    assert_true(load->line > 0U);
+    assert_int_equal(load->column, 10U); /* "content=" is 8 bytes, then P at 8, L at 9, the broken A at 10 */
+    assert_int_equal(load->text_result, UI_TEXT_MALFORMED);
+
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+
+static void test_paste_into_an_identifier_is_all_or_nothing(void **state) {
+    UiMenuWorkspace workspace;
+    UiMenuWorkspace before;
+    (void)state;
+
+    text_workspace(&workspace, UI_MENU_WORKSPACE_EDIT_PORT, "");
+    before = workspace;
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "play now!", 9U, NULL),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    assert_field_unchanged(&workspace, &before);
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, "play_now", 8U, NULL),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "play_now");
+}
+static void test_a_paste_is_one_undo_step(void **state) {
+    UiMenuWorkspace workspace;
+    UiDocument document;
+    UiElementId button;
+    char root[64], menus[96], path[160];
+    size_t changes;
+    (void)state;
+
+    make_paths(root, menus);
+    assert_true(snprintf(path, sizeof(path), "%s/menu.tui", menus) > 0);
+    assert_int_equal(ui_document_create_menu(&document, "menu"), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_add_element(&document, UI_DOCUMENT_ELEMENT_BUTTON,
+        1U, "play", "PLAY", "play", &button), UI_DOCUMENT_OK);
+    assert_int_equal(ui_document_save_as(&document, path), UI_DOCUMENT_OK);
+    ui_menu_workspace_init(&workspace);
+    assert_int_equal(ui_menu_workspace_open(&workspace, root), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.element_index = 1U;
+    assert_int_equal(ui_menu_workspace_open_actions(&workspace), UI_MENU_WORKSPACE_OK);
+    workspace.action_index = UI_MENU_ACTION_EDIT_CONTENT;
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.mode, UI_MENU_WORKSPACE_EDIT_CONTENT);
+    assert_string_equal(workspace.edit_text, "PLAY");
+    changes = workspace.change_count;
+
+    assert_int_equal(ui_menu_workspace_paste_text(&workspace, " NOW", 4U, NULL),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "PLAY NOW");
+    /* The field edit is not a document change yet: nothing has been committed. */
+    assert_int_equal(workspace.change_count, changes);
+    assert_int_equal(ui_menu_workspace_confirm(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(ui_document_find_element(&workspace.document, button)->content,
+                        "PLAY NOW");
+    assert_int_equal(workspace.change_count, changes + 1U);
+
+    /* One undo restores the pre-paste text; a second would be needed only if paste had been many edits. */
+    assert_int_equal(ui_menu_workspace_undo(&workspace), UI_MENU_WORKSPACE_OK);
+    assert_string_equal(ui_document_find_element(&workspace.document, button)->content, "PLAY");
+    assert_int_equal(workspace.change_count, changes + 1U);
+
+    ui_menu_workspace_clear(&workspace);
+    assert_int_equal(unlink(path), 0);
+    assert_int_equal(rmdir(menus), 0);
+    assert_int_equal(rmdir(root), 0);
+}
+
+
+
+
+
+
+
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
+/* The property that makes paste usable: it is one edit. One paste, one commit, one undo — not one change
+   per character, which is what pasting through the typing path would produce. */
         cmocka_unit_test(test_chooser_load_hierarchy_property_history_and_discard),
         cmocka_unit_test(test_create_name_save_and_catalog_refresh),
+        cmocka_unit_test(test_caret_moves_by_cluster_not_by_byte),
+        cmocka_unit_test(test_selection_extends_with_shift_and_collapses_without),
+        cmocka_unit_test(test_typing_inserts_at_the_caret_and_replaces_a_selection),
+        cmocka_unit_test(test_backspace_deletes_a_selection_or_one_cluster),
+        cmocka_unit_test(test_content_refuses_what_the_document_would_and_identifiers_filter),
+        cmocka_unit_test(test_field_at_capacity_refuses_without_splitting),
+        cmocka_unit_test(test_paste_of_nothing_is_silent),
+        cmocka_unit_test(test_paste_of_malformed_text_is_refused_with_its_offset),
+        cmocka_unit_test(test_paste_that_does_not_fit_is_refused_whole),
+        cmocka_unit_test(test_paste_with_a_control_character_is_refused),
+        cmocka_unit_test(test_paste_into_an_identifier_is_all_or_nothing),
+        cmocka_unit_test(test_text_refusals_record_their_reason),
+        cmocka_unit_test(test_refused_load_records_its_position),
+        cmocka_unit_test(test_a_paste_is_one_undo_step),
+        cmocka_unit_test(test_preedit_is_shown_but_never_committed),
+        cmocka_unit_test(test_preedit_is_truncated_at_a_cluster_boundary),
+        cmocka_unit_test(test_leaving_the_field_discards_the_composition),
         cmocka_unit_test(test_invalid_load_and_boundaries_are_transactional)
         ,cmocka_unit_test(test_managed_menu_directory_failure_preserves_workspace)
         ,cmocka_unit_test(test_catalog_open_failure_preserves_workspace)

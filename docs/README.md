@@ -19,13 +19,18 @@ only a small set of documents should be treated as current authority.
   — accepted filesystem, catalog, locale-number, UTF-8 path, commit-state, fault,
   migration, and native Windows verification boundaries for W2-W4.
 - [`V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md`](V1_5_GLYPH_FACE_FALLBACK_AND_CACHE_PLAN_2026-11-25.md)
-  — **active phase plan.** Where V1-5 actually stands, the face/fallback/cache decisions this phase
-  ran into, and the I0–I5 increments; also the amendment to D7 (face identity moves to the surface)
+  — **V1-5, delivered** (all six outcomes; I0–I6 records with evidence). Where V1-5 stood, the
+  face/fallback/cache decisions it ran into, and the amendment to D7 (face identity moves to the surface)
   and D8 (sentinel colour naming).
 - [`reviews/2026-11-25-v1-5-q4-representation-review.md`](reviews/2026-11-25-v1-5-q4-representation-review.md)
   — **the Q4 review of the V1-5 representation change**: exit-gate assessment, the coupling and
   determinism findings, the seven defects this work found (and by what), and the two pieces of debt it
   recommends rather than fixes.
+- [`V1_6_TEXT_Q1_PLAN_2026-11-25.md`](V1_6_TEXT_Q1_PLAN_2026-11-25.md)
+  — **active phase plan.** The text surfaces as they actually are (`grid_print` is the single
+  text-to-cells path), the six decisions V1-6 forces — including the chrome's face, width classes and
+  bidi — and the I0–I6 increments with the record of each landed one (I0–I3 at the time of writing),
+  their deviations and what could not be verified here.
 - [`UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md`](UI_LOOK_AND_FEEL_REFERENCE_OF_RECORD.md) — **binding
   look-and-feel authority.** The guiding star for every colour, animation, transition, and motion
   decision. Cited by every phase that touches interface feel. Carries the **locked visual identity**

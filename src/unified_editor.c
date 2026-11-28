@@ -10,6 +10,7 @@
 #include "unified_editor_test.h"
 #include "ui_nested_inspector.h"
 #include "ui_editor_action.h"
+#include "platform_clipboard.h"
 #include "ui_editor_host.h"
 #include "ui_editor_presentation.h"
 #include "ui_app_theme_adapter.h"
@@ -631,8 +632,25 @@ static UiMenuWorkspaceResult editor_update_ui_menu_workspace(
     UiEditorHostViewport viewport = {
         viewport_columns, viewport_rows
     };
-    UiMenuWorkspaceResult result = ui_editor_host_apply_input(
-        &editor->ui_menu_workspace, input, &viewport, handled);
+    char clipboard_text[UI_DOCUMENT_CONTENT_CAPACITY];
+    size_t clipboard_size = 0U;
+    const char *clipboard = NULL;
+    UiMenuWorkspaceResult result;
+
+    /* Read the clipboard only when a paste was asked for and a field is open: no per-frame allocation,
+       and no clipboard traffic from a mode that cannot use it. */
+    if (input->editor_paste_pressed) {
+        UiMenuWorkspaceMode mode = editor->ui_menu_workspace.mode;
+        if ((mode == UI_MENU_WORKSPACE_CREATE_NAME ||
+             mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
+             mode == UI_MENU_WORKSPACE_EDIT_PORT ||
+             mode == UI_MENU_WORKSPACE_EDIT_NAME) &&
+            platform_clipboard_read_text(clipboard_text, sizeof(clipboard_text),
+                                         &clipboard_size) == PLATFORM_CLIPBOARD_OK)
+            clipboard = clipboard_text;
+    }
+    result = ui_editor_host_apply_input(
+        &editor->ui_menu_workspace, input, &viewport, clipboard, handled);
     editor_update_ui_menu_hover(editor, input, viewport_columns, viewport_rows);
     return result;
 }

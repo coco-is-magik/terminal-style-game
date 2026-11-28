@@ -128,7 +128,14 @@ typedef enum {
     UI_MENU_WORKSPACE_SAVE_FAILED,
     UI_MENU_WORKSPACE_MUTATION_FAILED,
     UI_MENU_WORKSPACE_HISTORY_FULL,
-    UI_MENU_WORKSPACE_OK_DURABILITY_WARNING
+    UI_MENU_WORKSPACE_OK_DURABILITY_WARNING,
+    /* The text is not allowed in this field at all — a control character in a label, or a character the
+       identifier rule cannot use. Nothing changed; this is a refusal the editor can show rather than a
+       failure. */
+    UI_MENU_WORKSPACE_REJECTED_TEXT,
+    /* The field is full. The keystroke was dropped rather than shortened, so nothing half-written can be
+       committed (V1-6 plan, I4). */
+    UI_MENU_WORKSPACE_FIELD_FULL
 } UiMenuWorkspaceResult;
 
 typedef struct {
@@ -166,8 +173,27 @@ typedef struct {
     char asset_root[UI_DOCUMENT_PATH_CAPACITY];
     char create_name[UI_DOCUMENT_NAME_CAPACITY];
     size_t create_name_length;
+    /* The same caret/anchor pair for the create-name field, which is not part of any document yet. */
+    size_t create_name_cursor;
+    size_t create_name_anchor;
     char edit_text[UI_DOCUMENT_CONTENT_CAPACITY];
     size_t edit_text_length;
+    /* Where the caret sits and where the selection was anchored, both byte offsets on cluster
+       boundaries. `edit_text_anchor == edit_text_cursor` means "no selection". The field is append-only
+       no longer: a caret is what makes Left, Right, Backspace and typing agree about where "here" is
+       (V1-6 plan, I4). */
+    size_t edit_text_cursor;
+    size_t edit_text_anchor;
+    /* The IME's composition for the open field: drawn after the caret, never part of the text, and cleared
+       by the commit that replaces it (V1-6 plan, D-F). Empty means nothing is being composed. */
+    char edit_preedit[UI_DOCUMENT_CONTENT_CAPACITY];
+    size_t edit_preedit_length;
+    /* Why the last text operation was refused, and why the last load failed, kept so the surface can say
+       so. A result code tells a caller that something was refused; only the diagnostic tells the *person*
+       which byte and which rule, and a refusal nobody can locate cannot be fixed (I3/I4/I5 records). */
+    UiTextDiagnostic last_text_diagnostic;
+    bool last_text_refused;
+    UiDocumentLoadDiagnostic last_load_diagnostic;
     bool has_document;
     bool active;
     UiMenuProperty candidate_property;
@@ -215,6 +241,54 @@ int ui_menu_workspace_preview_scale_percent(const UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_append_text(UiMenuWorkspace *workspace,
                                                     const char *text);
 UiMenuWorkspaceResult ui_menu_workspace_backspace(UiMenuWorkspace *workspace);
+/* Move the caret one cluster left (direction < 0) or right (direction > 0) in a text field.
+ *
+ * `extend` keeps the anchor where it is, growing or shrinking the selection; without it the selection
+ * collapses to the new caret position, which is what a plain arrow key does everywhere. Refused outside
+ * a text mode (NO_ACTION), and at either end of the field the result is OK with nothing moved — a caret
+ * at the start has nowhere to go, which is not an error. */
+UiMenuWorkspaceResult ui_menu_workspace_move_caret(UiMenuWorkspace *workspace, int direction,
+                                                   bool extend);
+/* Select the whole field, or clear the selection with `select == false`. */
+UiMenuWorkspaceResult ui_menu_workspace_select_all(UiMenuWorkspace *workspace, bool select);
+/* True when the field has a non-empty selection. */
+bool ui_menu_workspace_has_selection(const UiMenuWorkspace *workspace);
+
+/**
+ * Paste `text` at the caret as one operation, under D-E's four rules.
+ *
+ * 1. Nothing on the clipboard: the caller passes `size == 0` (or the platform reported EMPTY) and this
+ *    returns NO_ACTION. Silent by design — an empty clipboard is a status, not an error.
+ * 2. Malformed UTF-8 anywhere: refused whole, and `out_diagnostic` names the byte offset and the kind.
+ * 3. Would exceed the field's capacity: refused whole (`FIELD_FULL`). Truncating a paste is silent data
+ *    loss the user cannot see.
+ * 4. A character this field cannot hold (a control character in a single-line label): refused whole.
+ *
+ * "Whole" is the whole point: on every refusal the field is byte-for-byte unchanged, so the paste can be
+ * retried after the user edits the source. A success is one edit, which is one change when it commits —
+ * that is what makes it one undo step.
+ */
+UiMenuWorkspaceResult ui_menu_workspace_paste_text(UiMenuWorkspace *workspace, const char *text,
+                                                   size_t size, UiTextDiagnostic *out_diagnostic);
+/**
+ * Show the IME's composition, or clear it with empty text or NULL.
+ *
+ * The pre-edit is **display only**: it is never part of the field, so a user who cancels a composition
+ * leaves no trace, and one who commits it gets the committed text as a single edit. Truncated at a cluster
+ * boundary if it does not fit, because a composition that cannot be shown in full must still be showable
+ * (D-D). Refused outside a text mode (NO_ACTION) — there is no field to compose into.
+ */
+UiMenuWorkspaceResult ui_menu_workspace_set_preedit(UiMenuWorkspace *workspace, const char *text,
+                                                    size_t size);
+/* True when something is being composed into the open field. */
+bool ui_menu_workspace_has_preedit(const UiMenuWorkspace *workspace);
+/* Why the last text operation was refused, or NULL when it was not. Valid after a call that returned
+   REJECTED_TEXT; cleared by the next text operation that returns OK. */
+const UiTextDiagnostic *ui_menu_workspace_last_text_diagnostic(const UiMenuWorkspace *workspace);
+/* Where the last refused load went wrong, or NULL when the failure was not about content (a missing file,
+   a structural error) — in which case there is no position to name. */
+const UiDocumentLoadDiagnostic *ui_menu_workspace_last_load_diagnostic(
+    const UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_save(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_undo(UiMenuWorkspace *workspace);
 UiMenuWorkspaceResult ui_menu_workspace_redo(UiMenuWorkspace *workspace);

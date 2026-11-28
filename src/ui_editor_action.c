@@ -1,5 +1,7 @@
 #include "ui_editor_action.h"
 
+#include <string.h>
+
 UiMenuWorkspaceResult ui_editor_action_apply(
     UiMenuWorkspace *workspace, const UiEditorAction *action
 ) {
@@ -38,6 +40,16 @@ UiMenuWorkspaceResult ui_editor_action_apply(
             return action->text ? ui_menu_workspace_append_text(workspace, action->text)
                                 : UI_MENU_WORKSPACE_INVALID_ARGUMENT;
         case UI_EDITOR_ACTION_BACKSPACE: return ui_menu_workspace_backspace(workspace);
+        case UI_EDITOR_ACTION_CARET_LEFT:
+            return ui_menu_workspace_move_caret(workspace, -1, action->extend);
+        case UI_EDITOR_ACTION_CARET_RIGHT:
+            return ui_menu_workspace_move_caret(workspace, 1, action->extend);
+        case UI_EDITOR_ACTION_SELECT_ALL:
+            return ui_menu_workspace_select_all(workspace, true);
+        case UI_EDITOR_ACTION_PASTE:
+            return ui_menu_workspace_paste_text(workspace, action->text,
+                                                action->text ? strlen(action->text) : 0U,
+                                                NULL);
         case UI_EDITOR_ACTION_CANDIDATE_BEGIN:
             return ui_menu_workspace_begin_candidate(workspace, action->property);
         case UI_EDITOR_ACTION_CANDIDATE_ACCEPT:

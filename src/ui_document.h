@@ -4,6 +4,7 @@
 
 #include "asset_document.h"
 #include "flow_reference.h"
+#include "ui_text.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -185,6 +186,19 @@ typedef enum {
     UI_DOCUMENT_OK_DURABILITY_WARNING
 } UiDocumentResult;
 
+/* Where a load refused, and why, in terms the person who wrote the file can act on.
+ *
+ * `line` is 1-based and `column` is the 0-based byte offset within that line, so a refusal points at the
+ * offending byte rather than merely at the file. `result` repeats what `ui_document_load_diagnosed`
+ * returned, so a caller that keeps only the diagnostic still knows the outcome. */
+typedef struct {
+    UiDocumentResult result;
+    UiTextResult text_result;
+    size_t line;
+    size_t column;
+    uint32_t codepoint;
+} UiDocumentLoadDiagnostic;
+
 void ui_document_init(UiDocument *document);
 bool ui_document_is_dirty(const UiDocument *document);
 bool ui_document_result_is_committed(UiDocumentResult result);
@@ -245,8 +259,16 @@ UiDocumentResult ui_document_build_flow_reference(
     const UiDocument *document,
     UiFlowReferenceView *out_view
 );
-/* Load is transactional; malformed numeric/color fields preserve document. */
+/* Load is transactional; malformed numeric/color fields preserve document.
+ *
+ * Content is validated as authored text (see `src/ui_text.h`): valid UTF-8 only, no controls or format
+ * characters, no backslash, no right-to-left text (V1-6 plan, D-C). A refusal leaves `*document` exactly
+ * as it was. */
 UiDocumentResult ui_document_load(UiDocument *document, const char *path);
+/* The same load, reporting *where* it refused. `out_diagnostic` may be NULL; on success it is zeroed
+   except for `result == UI_DOCUMENT_OK`, and on a non-content refusal `line == 0`. */
+UiDocumentResult ui_document_load_diagnosed(UiDocument *document, const char *path,
+                                            UiDocumentLoadDiagnostic *out_diagnostic);
 UiDocumentResult ui_document_save_as(UiDocument *document, const char *path);
 UiDocumentResult ui_document_save(UiDocument *document);
 

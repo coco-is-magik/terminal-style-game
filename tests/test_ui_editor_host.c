@@ -40,7 +40,7 @@ static void apply(UiMenuWorkspace *workspace, InputState input) {
     UiEditorHostViewport viewport = {120, 40};
     bool handled = false;
     assert_int_equal(ui_editor_host_apply_input(
-        workspace, &input, &viewport, &handled), UI_MENU_WORKSPACE_OK);
+        workspace, &input, &viewport, NULL, &handled), UI_MENU_WORKSPACE_OK);
     assert_true(handled);
 }
 
@@ -184,9 +184,9 @@ static void test_invalid_host_input_is_rejected(void **state) {
     (void)state;
     ui_menu_workspace_init(&workspace);
     assert_int_equal(ui_editor_host_apply_input(
-        NULL, &input, &viewport, &handled), UI_MENU_WORKSPACE_INVALID_ARGUMENT);
+        NULL, &input, &viewport, NULL, &handled), UI_MENU_WORKSPACE_INVALID_ARGUMENT);
     assert_int_equal(ui_editor_host_apply_input(
-        &workspace, &input, NULL, &handled), UI_MENU_WORKSPACE_INVALID_ARGUMENT);
+        &workspace, &input, NULL, NULL, &handled), UI_MENU_WORKSPACE_INVALID_ARGUMENT);
     ui_menu_workspace_clear(&workspace);
 }
 
@@ -234,7 +234,7 @@ static void test_preview_region_matches_the_painted_frame(void **state) {
     {
         UiEditorHostViewport viewport = {120, 40};
         bool handled = false;
-        assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport,
+        assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL,
                                                     &handled),
                          UI_MENU_WORKSPACE_NO_ACTION);
     }
@@ -246,12 +246,104 @@ static void test_preview_region_matches_the_painted_frame(void **state) {
     assert_int_equal(rmdir(root), 0);
 }
 
+/* In a text field, Left and Right mean "move the caret", not "decrease/increase the selected value".
+   The same keys still mean the second thing everywhere else, which is why this lives in the host rather
+   than in the input layer. Shift turns the move into a selection change. */
+static void test_text_mode_arrows_move_the_caret(void **state) {
+    UiMenuWorkspace workspace;
+    UiEditorHostViewport viewport = {120, 40};
+    InputState input = {0};
+    bool handled = false;
+    char root[64], menus[96], path[128];
+    (void)state;
+
+    /* A field with a caret at its end, which is the state a flow always arrives in. Reaching it through
+       the menus would test the menus; this test is about the host's key mapping. */
+    (void)root;
+    (void)menus;
+    (void)path;
+    ui_menu_workspace_init(&workspace);
+    workspace.active = true;
+    workspace.mode = UI_MENU_WORKSPACE_EDIT_CONTENT;
+    memcpy(workspace.edit_text, "PLAY", sizeof("PLAY"));
+    workspace.edit_text_length = 4U;
+    workspace.edit_text_cursor = 4U;
+    workspace.edit_text_anchor = 4U;
+
+    /* Left moves the caret one cluster and leaves the text alone. */
+    input.editor_decrease_pressed = true;
+    assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL, &handled),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 3U);
+    assert_string_equal(workspace.edit_text, "PLAY");
+    assert_false(ui_menu_workspace_has_selection(&workspace));
+
+    /* Shift+Left is still a Left press — the modifier arrives alongside it, not instead of it. */
+    input.editor_caret_extend_pressed = true;
+    assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL, &handled),
+                     UI_MENU_WORKSPACE_OK);
+    assert_int_equal(workspace.edit_text_cursor, 2U);
+    assert_int_equal(workspace.edit_text_anchor, 3U);
+    assert_true(ui_menu_workspace_has_selection(&workspace));
+
+    /* Backspace then takes exactly the selection. */
+    input.editor_caret_extend_pressed = false;
+    input.editor_text_backspace_pressed = true;
+    assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL, &handled),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "PLY");
+    assert_int_equal(workspace.edit_text_cursor, 2U);
+    ui_menu_workspace_clear(&workspace);
+}
+
+/* An IME composition reaches the field as a pre-edit, and the commit that ends it wins even when both
+   arrive in the same frame — which is how SDL reports them (editing first, commit second). */
+static void test_composition_is_shown_and_the_commit_wins(void **state) {
+    UiMenuWorkspace workspace;
+    UiEditorHostViewport viewport = {120, 40};
+    InputState input = {0};
+    bool handled = false;
+    (void)state;
+
+    ui_menu_workspace_init(&workspace);
+    workspace.active = true;
+    workspace.mode = UI_MENU_WORKSPACE_EDIT_CONTENT;
+    memcpy(workspace.edit_text, "ab", sizeof("ab"));
+    workspace.edit_text_length = 2U;
+    workspace.edit_text_cursor = 2U;
+    workspace.edit_text_anchor = 2U;
+
+    /* Composition alone: shown, and the field is untouched. */
+    memcpy(input.text_editing, "\xE3\x81\xAB", 3U + 1U);
+    input.text_editing_len = 3;
+    input.text_editing_active = true;
+    assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL, &handled),
+                     UI_MENU_WORKSPACE_OK);
+    assert_true(ui_menu_workspace_has_preedit(&workspace));
+    assert_string_equal(workspace.edit_text, "ab");
+
+    /* The same frame carries the commit: the committed text is what the field gets, and the composition is
+       gone as part of that one edit. */
+    memcpy(input.text_input, "\xE3\x81\xAB", 3U + 1U);
+    input.text_input_len = 3;
+    assert_int_equal(ui_editor_host_apply_input(&workspace, &input, &viewport, NULL, &handled),
+                     UI_MENU_WORKSPACE_OK);
+    assert_string_equal(workspace.edit_text, "ab\xE3\x81\xAB");
+    assert_false(ui_menu_workspace_has_preedit(&workspace));
+
+    ui_menu_workspace_clear(&workspace);
+}
+
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_keyboard_hosts_produce_identical_state_and_cells),
         cmocka_unit_test(test_pointer_hosts_produce_identical_history),
         cmocka_unit_test(test_invalid_host_input_is_rejected),
-        cmocka_unit_test(test_preview_region_matches_the_painted_frame)
+        cmocka_unit_test(test_preview_region_matches_the_painted_frame),
+        cmocka_unit_test(test_text_mode_arrows_move_the_caret),
+        cmocka_unit_test(test_composition_is_shown_and_the_commit_wins)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

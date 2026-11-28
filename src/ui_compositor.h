@@ -3,6 +3,7 @@
 
 #include "ui_canvas.h"
 #include "glyph_source.h"
+#include "glyph_missing.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -50,8 +51,11 @@ void ui_layer_list_clear(UiLayerList *list);
 bool ui_layer_list_add(UiLayerList *list, const UiLayer *layer);
 int ui_compositor_scaled_edge(int source_edge, int scale_percent);
 /* `source` is the face every layer resolves against — the chrome's own, never the world's. NULL means
-   the built-in ASCII face only. */
+   the built-in ASCII face only. `missing` may be NULL and is where a codepoint this face cannot draw is
+   recorded, so the chrome's coverage gaps are reportable in their own right rather than hidden behind
+   the world's. */
 bool ui_compositor_compose(const UiLayerList *list, const GlyphSource *source,
+                           GlyphMissingState *missing,
                            int global_scale_percent,
                            uint32_t *pixels, int pixel_width, int pixel_height,
                            uint8_t *touched_cells, int cell_columns, int cell_rows);

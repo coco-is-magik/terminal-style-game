@@ -81,4 +81,40 @@ TextUtf8Result text_utf8_normalize_nfc(const char *bytes, size_t size, char *out
 TextUtf8Result text_utf8_next_cluster(const char *bytes, size_t size, size_t *offset,
                                       uint32_t *out_first_codepoint, size_t *out_length);
 
+/* How a codepoint is treated by the authored-text rules (V1-6 plan, I3).
+ *
+ * The classification comes from the vendored `utf8proc` data rather than a handwritten table, for the
+ * same reason D10 pins the Unicode version to that data: a table someone typed is a table that drifts.
+ *
+ * - PLAIN may appear in authored text.
+ * - CONTROL is category Cc or Cf — invisible characters with no place in a single-line label, including
+ *   the bidi embeddings, overrides and isolates. ZWJ and ZWNJ are deliberately **not** controls: they are
+ *   grapheme-cluster machinery and refusing them would make emoji sequences unrepresentable.
+ * - RIGHT_TO_LEFT is bidi class R or AL on a *visible* character. V1-6 refuses these at ingest rather
+ *   than drawing them left-to-right (D-C).
+ */
+typedef enum {
+    TEXT_UTF8_CLASS_PLAIN = 0,
+    TEXT_UTF8_CLASS_CONTROL,
+    TEXT_UTF8_CLASS_RIGHT_TO_LEFT
+} TextUtf8Class;
+
+/* Stable short name for a class, for tool output and test failure messages. */
+const char *text_utf8_class_name(TextUtf8Class class_);
+
+/* Classify one codepoint. Values above U+10FFFF are CONTROL: they cannot occur in valid text, so a
+   caller holding one is holding a decoder bug, and "unusable" is the safe answer. */
+TextUtf8Class text_utf8_classify(uint32_t codepoint);
+
+/**
+ * Read one codepoint starting at `*offset`.
+ *
+ * The per-codepoint companion to `text_utf8_next_cluster`: a cluster is a drawing unit, a codepoint is a
+ * character, and character rules (control, direction, backslash) must look at each codepoint rather than
+ * only at a cluster's first. Advances `*offset` past the codepoint; on any refusal `*offset` is unchanged,
+ * so a caller can report exactly where the problem starts.
+ */
+TextUtf8Result text_utf8_next_codepoint(const char *bytes, size_t size, size_t *offset,
+                                        uint32_t *out_codepoint);
+
 #endif /* TEXT_UTF8_H */

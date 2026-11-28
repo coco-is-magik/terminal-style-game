@@ -541,7 +541,20 @@ Q4 reviews the cross-cutting representation change.
 
 ## V1-6 — Unicode UI, editing, clipboard, and IME
 
-**Status:** Committed v1 outcome; blocked on V1-3 and V1-5.
+**Status:** **All eight increments landed 2026-11-25**; the exit gate's native acceptance (Linux/Windows keyboard, clipboard, CJK IME) is recorded as unrun here. Each increment's record is in the Q1 plan. Q1 plan in
+[`V1_6_TEXT_Q1_PLAN_2026-11-25.md`](V1_6_TEXT_Q1_PLAN_2026-11-25.md). `grid_print` now writes one cell
+per grapheme cluster instead of one per byte, so multi-byte text draws as text rather than as runs of
+Latin-1 glyphs; `text_edit` provides cluster-aware boundaries, Backspace and capacity truncation, with
+no callers yet by design; the application chrome adopts an installed face only when that set contains
+every printable ASCII codepoint; and authored `UiDocument` content is validated UTF-8 with refusals that
+name a line, column and codepoint; and the editor’s own text fields have a cluster-safe caret, a
+selection and cluster-aligned Backspace, with Left/Right meaning caret in a field and value elsewhere. Clipboard paste is one transaction under D-E: it
+refuses whole rather than half-applying, and commits as one undo step. IME compositions are shown in braces after the
+caret and never committed until SDL reports the commit, which replaces them atomically. Every refusal those paths produce is drawn with its reason and byte
+offset rather than only returned.
+The bidi clause was decided as a **typed refusal** for now (plan
+D-C), which is a recorded deviation from this outcome's wording, not a completed implementation. Open afterwards: the bidi subset D-C deferred, and the native
+Linux/Windows acceptance this environment cannot run.
 
 **Purpose:** Make authored text and editor text boundaries genuinely Unicode-safe on both
 required platforms.

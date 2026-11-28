@@ -166,12 +166,42 @@ static void test_preview_marks_the_hovered_element(void **state) {
     ui_menu_workspace_clear(&workspace);
 }
 
+/* A refused keystroke reaches a cell. A typed refusal nobody can see is a bug report waiting to happen, so
+   the reason and the position are drawn, not just returned (I3/I4/I5 records). */
+static void test_refusal_reason_is_drawn(void **state) {
+    UiMenuWorkspace workspace;
+    AssetRegistry assets;
+    Grid *grid;
+    (void)state;
+
+    ui_menu_workspace_init(&workspace);
+    assert_true(asset_registry_init(&assets));
+    workspace.active = true;
+    workspace.mode = UI_MENU_WORKSPACE_EDIT_CONTENT;
+    memcpy(workspace.edit_text, "ab", sizeof("ab"));
+    workspace.edit_text_length = 2U;
+    workspace.edit_text_cursor = 2U;
+    workspace.edit_text_anchor = 2U;
+    /* The refusal the editor would have produced for a typed newline. */
+    assert_int_equal(ui_menu_workspace_append_text(&workspace, "a\nb"),
+                     UI_MENU_WORKSPACE_REJECTED_TEXT);
+    grid = grid_create(120, 40);
+    assert_non_null(grid);
+    assert_true(ui_editor_presentation_render(&workspace, UI_MENU_WORKSPACE_REJECTED_TEXT,
+                                              &assets, &theme, NULL, 10.0, grid));
+    assert_true(grid_contains_text(grid, "Text refused: CONTROL at byte 1"));
+    grid_destroy(grid);
+    asset_registry_clear(&assets);
+    ui_menu_workspace_clear(&workspace);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_renders_workspace_candidate_without_host_state),
         cmocka_unit_test(test_viewport_keeps_the_preview_on_screen),
         cmocka_unit_test(test_rejects_invalid_arguments),
-        cmocka_unit_test(test_preview_marks_the_hovered_element)
+        cmocka_unit_test(test_preview_marks_the_hovered_element),
+        cmocka_unit_test(test_refusal_reason_is_drawn)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

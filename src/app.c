@@ -400,8 +400,10 @@ static bool enter_unified_editor(UnifiedEditorState *ued,
  * renderer records misses; `glyph_missing` decides what is *newly distinct*, so this cannot repeat
  * itself frame after frame even though the cell is missing every frame. The cell itself shows the
  * sentinel, which is the part the user sees without reading stderr (D8). */
-static void report_missing_glyphs(const Renderer *renderer) {
-    const GlyphMissingState *missing = renderer_glyph_missing(renderer);
+/* One surface's gaps. Both surfaces use this, so the identifier still names exactly one detection case
+   and one canonical site, while the line says *which* surface so a reader is not left guessing whether
+   the menu or the world dropped a glyph. */
+static void report_missing_surface(const GlyphMissingState *missing, const char *surface) {
     char face[GLYPH_MISSING_FACE_TEXT_SIZE];
     uint32_t overflow;
     unsigned count;
@@ -417,16 +419,21 @@ static void report_missing_glyphs(const Renderer *renderer) {
         GlyphMissingReport report;
         if (!glyph_missing_report(missing, i, &report)) continue;
         fprintf(stderr,
-                "TSG-ASSET-ENV-0001: face %s lacks U+%04X at cell %d,%d "
+                "TSG-ASSET-ENV-0001: %s face %s lacks U+%04X at cell %d,%d "
                 "(%u affected this frame)\n",
-                face, report.codepoint, report.cell_x, report.cell_y,
+                surface, face, report.codepoint, report.cell_x, report.cell_y,
                 glyph_missing_affected_this_frame(missing));
     }
     /* More distinct gaps than one frame's report list holds: say how many, never drop them silently. */
     if (overflow > 0U) {
-        fprintf(stderr, "TSG-ASSET-ENV-0001: face %s lacks %u more distinct codepoint(s)\n", face,
-                overflow);
+        fprintf(stderr, "TSG-ASSET-ENV-0001: %s face %s lacks %u more distinct codepoint(s)\n",
+                surface, face, overflow);
     }
+}
+
+static void report_missing_glyphs(const Renderer *renderer) {
+    report_missing_surface(renderer_world_missing(renderer), "world");
+    report_missing_surface(renderer_ui_missing(renderer), "ui");
 }
 
 static void sync_editor_text_input(Renderer *renderer,

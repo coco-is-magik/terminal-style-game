@@ -30,12 +30,13 @@ typedef struct {
 void app_resources_init(AppResources *resources);
 void app_resources_cleanup(AppResources *resources);
 
-/* Load the converted glyph set from <assets_dir>/fonts.tsgfont and give it to the world surface.
+/* Load the converted glyph set from <assets_dir>/fonts.tsgfont and offer it to both surfaces.
  *
  * Never fatal: a missing set leaves the built-in face in charge (the shipping state), and a corrupt
  * one is reported and then ignored, because a broken font must not stop the application from
  * starting with the face it already has. Returns true in both of those cases; false only for a
- * programming error (NULL resources). The application chrome keeps its own source either way. */
+ * programming error (NULL resources). The world always adopts the set; the chrome adopts it only when
+ * it covers every printable ASCII codepoint, which the renderer decides (V1-6 plan, D-A). */
 bool app_resources_load_glyph_set(AppResources *resources, const char *assets_dir);
 
 #endif

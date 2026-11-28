@@ -155,10 +155,78 @@ static void test_resolution_is_total_and_pure(void **state) {
     assert_string_equal(glyph_source_kind_name(GLYPH_SOURCE_MISSING), "missing");
 }
 
+/* The chrome's face policy (V1-6 plan, D-A) rests on this predicate, and the interesting case is the
+   near miss: a set that covers almost all of printable ASCII is exactly as unusable for the interface
+   as one that covers none of it. */
+static void test_printable_ascii_coverage_is_all_or_nothing(void **state) {
+    GlyphSetEntry entries[128];
+    GlyphSet set;
+    uint8_t storage[4096];
+    uint32_t codepoint;
+    unsigned count = 0U;
+    (void)state;
+
+    memset(entries, 0, sizeof(entries));
+    for (codepoint = 0x20U; codepoint <= 0x7EU; codepoint++) {
+        entries[count].codepoint = codepoint;
+        count++;
+    }
+
+    set = build_set(entries, count, storage, sizeof(storage));
+    assert_true(glyph_source_set_covers_printable_ascii(&set));
+
+    /* Drop the last one ('~'): now the chrome must not adopt this face. */
+    set = build_set(entries, count - 1U, storage, sizeof(storage));
+    assert_false(glyph_source_set_covers_printable_ascii(&set));
+
+    /* One glyph is not coverage. */
+    set = build_set(entries, 1U, storage, sizeof(storage));
+    assert_false(glyph_source_set_covers_printable_ascii(&set));
+
+    /* And no set at all is not an installed face. */
+    assert_false(glyph_source_set_covers_printable_ascii(NULL));
+}
+
+/* D-A expressed as behaviour: the chrome takes a full-ASCII face, and refuses a CJK-only one rather than
+   drawing its menus in sentinels. */
+static void test_chrome_adopts_only_a_face_that_can_draw_the_interface(void **state) {
+    GlyphSetEntry entries[128];
+    GlyphSet full_ascii;
+    GlyphSet cjk_only;
+    uint8_t full_storage[4096];
+    uint8_t cjk_storage[256];
+    uint8_t provenance[SHA256_DIGEST_SIZE];
+    size_t length = 0U;
+    (void)state;
+
+    memset(provenance, 0x33, sizeof(provenance));
+    memset(entries, 0, sizeof(entries));
+    for (uint32_t codepoint = 0x20U; codepoint <= 0x7EU; codepoint++) {
+        entries[codepoint - 0x20U].codepoint = codepoint;
+    }
+    full_ascii = build_set(entries, 95U, full_storage, sizeof(full_storage));
+    assert_true(glyph_source_ui_face(&full_ascii) == &full_ascii);
+
+    /* A face that draws Japanese perfectly but ASCII not at all: the world wants it, the menus do not. */
+    memset(entries, 0, sizeof(entries));
+    entries[0].codepoint = 0x3042U;
+    entries[0].mode = 1U;
+    entries[0].rows[3] = 0x3CU;
+    assert_true(glyph_set_write(entries, 1U, provenance, cjk_storage, sizeof(cjk_storage), &length));
+    assert_int_equal(glyph_set_from_bytes(cjk_storage, length, &cjk_only, NULL), GLYPH_SET_OK);
+    assert_null(glyph_source_ui_face(&cjk_only));
+
+    /* No installed face means the built-in one, which is what NULL already means. */
+    assert_null(glyph_source_ui_face(NULL));
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_set_wins_over_the_builtin_face),
         cmocka_unit_test(test_builtin_answers_ascii_only_when_no_set_is_declared),
+        cmocka_unit_test(test_printable_ascii_coverage_is_all_or_nothing),
+        cmocka_unit_test(test_chrome_adopts_only_a_face_that_can_draw_the_interface),
         cmocka_unit_test(test_missing_returns_the_sentinel_and_says_so),
         cmocka_unit_test(test_sentinel_colours_are_the_recorded_palette_values),
         cmocka_unit_test(test_resolution_is_total_and_pure)

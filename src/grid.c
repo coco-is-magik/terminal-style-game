@@ -24,6 +24,7 @@
 
 #include "grid.h"        /* Grid struct, Cell struct, function declarations */
 #include "checked_size.h"
+#include "text_utf8.h"   /* cluster decode — one cluster, one cell */
 #include <stdlib.h>       /* malloc(), free(), calloc() */
 #include <string.h>       /* strlen() */
 
@@ -223,13 +224,17 @@ bool grid_get(Grid *grid, int x, int y, Cell *out_cell) {
 }
 
 /**
- * grid_print() — Write a multi-line text string into the grid
+ * grid_print() — Write a multi-line UTF-8 text string into the grid
  *
- * Walks through the text character by character:
+ * Walks the text cluster by cluster (V1-6 I0):
  *   - A '\n' newline resets the cursor to the starting X and increments Y
- *   - Any other character is written to the current cursor position via grid_set()
+ *   - Any other grapheme cluster is written to the current cursor position via grid_set(), using the
+ *     cluster's first codepoint, and advances the cursor by exactly one column
  *
- * This is used for the HUD overlay (FPS, frame times) and any other
+ * This is the single path from text to cells: the HUD overlay, authored UI labels and the editor's own
+ * chrome all arrive here. It used to read one byte per cell, which drew every multi-byte character as
+ * a run of unrelated Latin-1 glyphs.
+ *
  * on-screen text.  The text is NOT word-wrapped; if it exceeds the grid
  * boundaries, the extra characters are silently discarded by grid_set()'s
  * bounds checking.
@@ -241,28 +246,39 @@ bool grid_get(Grid *grid, int x, int y, Cell *out_cell) {
  * @param fg    Foreground colour for all characters
  * @param bg    Background colour for all characters
  */
-void grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Color bg) {
-    if (!grid || !text) return;
-
+bool grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Color bg) {
+    size_t offset = 0U;
+    size_t size;
     int cx = x;   /* Current column cursor */
     int cy = y;   /* Current row cursor */
 
-    for (size_t i = 0; i < strlen(text); i++) {
-        if (text[i] == '\n') {
+    if (!grid || !text) return false;
+
+    size = strlen(text);
+    while (offset < size) {
+        uint32_t codepoint = 0U;
+        size_t length = 0U;
+
+        if (text[offset] == '\n') {
             /* Newline: reset column to start X, advance row by 1 */
             cx = x;
             cy++;
+            offset++;
             continue;
         }
-        /* Write the character at the current cursor position.
-         *
-         * The byte is taken as a codepoint in U+0000–U+00FF, which is what this path did
-         * implicitly when the cell held a uint8_t and is the honest reading of a `const char *`
-         * that is not UTF-8-aware yet. The explicit unsigned cast matters now that the cell holds
-         * 16 bits: `char` is signed here, so a byte such as 0xE9 would sign-extend to U+FFE9
-         * instead of U+00E9 and point at a codepoint the text never meant. Real UTF-8 decoding is
-         * V1-6's job (utf8proc, D3); until then this function is byte-oriented and says so. */
-        grid_set(grid, cx, cy, (uint16_t)(unsigned char)text[i], fg, bg);
+        /* One cluster, one cell. The cluster's first codepoint is what the cell stores — the same
+           rule the cell model uses, and the reason a combining mark or a ZWJ sequence does not eat a
+           column per byte. */
+        if (text_utf8_next_cluster(text, size, &offset, &codepoint, &length) != TEXT_UTF8_OK) {
+            return false;   /* malformed, or a cluster too long to be a cell */
+        }
+        (void)length;
+        /* A 4-byte sequence is a codepoint above U+FFFF, which a 16-bit cell cannot address. Refused
+           rather than truncated: truncating 0x1F600 to 0xF600 would draw a different character and
+           call it success. */
+        if (codepoint > 0xFFFFU) return false;
+        grid_set(grid, cx, cy, (uint16_t)codepoint, fg, bg);
         cx++;   /* Advance column */
     }
+    return true;
 }

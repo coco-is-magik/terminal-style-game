@@ -63,6 +63,17 @@ bool   grid_clear_region_zero(Grid *grid, int x, int y, int width, int height);
 void   grid_swap_prev(Grid *grid);   /* Swap cells/prev_cells after frame */
 bool   grid_set(Grid *grid, int x, int y, uint16_t glyph, SDL_Color fg, SDL_Color bg);
 bool   grid_get(Grid *grid, int x, int y, Cell *out_cell);
-void   grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Color bg);
+/* Write a UTF-8 string into the grid, one cell per **grapheme cluster**, advancing one column each.
+ *
+ * '\n' still means "next line". Every other cluster's first codepoint is written, which is the same
+ * rule the cell model uses: one cluster, one codepoint identity, one cell.
+ *
+ * Returns false when the walk stopped early, and the cells written before that point are left in
+ * place. There are three ways to stop, and a caller that cares can tell them apart by validating
+ * first: malformed UTF-8, a cluster longer than TEXT_UTF8_MAX_CLUSTER_BYTES, or a codepoint above
+ * U+FFFF — which the 16-bit cell cannot address, so it is refused rather than truncated to a
+ * different character. A bool rather than an enum because every current caller either ignores it or
+ * needs only "did it all fit"; the reasons are `text_utf8`'s to report when someone asks. */
+bool   grid_print(Grid *grid, int x, int y, const char *text, SDL_Color fg, SDL_Color bg);
 
 #endif /* GRID_H */

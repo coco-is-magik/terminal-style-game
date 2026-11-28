@@ -694,6 +694,153 @@ static void test_v4_invalid_binding_and_effect_reject(void **state) {
     assert_int_equal(ui_document_validate(&document), UI_DOCUMENT_INVALID_EFFECT);
 }
 
+/* Replace exactly one `content=<old>` line, so a test can put bytes into the file that the document API
+   would never write. Returns the 1-based line number the replacement landed on, computed from the file
+   itself rather than assumed from the writer's layout. */
+static size_t rewrite_content_line(const char *path, const char *old_value, const char *new_value) {
+    char *bytes = read_file_bytes(path);
+    char needle[512];
+    char replacement[512];
+    char *match;
+    char *cursor;
+    size_t line = 1U;
+    FILE *file;
+    size_t prefix_length;
+
+    assert_true(snprintf(needle, sizeof(needle), "content=%s\n", old_value) > 0);
+    match = strstr(bytes, needle);
+    assert_non_null(match);
+    for (cursor = bytes; cursor < match; cursor++) if (*cursor == '\n') line++;
+    prefix_length = (size_t)(match - bytes);
+    assert_true(snprintf(replacement, sizeof(replacement), "content=%s\n", new_value) > 0);
+    file = fopen(path, "wb");
+    assert_non_null(file);
+    assert_true(fwrite(bytes, 1U, prefix_length, file) == prefix_length);
+    assert_true(fputs(replacement, file) >= 0);
+    assert_true(fputs(match + strlen(needle), file) >= 0);
+    assert_int_equal(fclose(file), 0);
+    free(bytes);
+    return line;
+}
+
+/* A Japanese label survives write then read, and the file really contains the UTF-8 bytes rather than
+   something normalised, escaped, or dropped. This is outcome 1's headline in one test. */
+static void test_utf8_content_round_trips_byte_for_byte(void **state) {
+    UiDocument document;
+    UiDocument loaded;
+    UiElementId panel, button;
+    char path[] = "build/tsg_ui_document_XXXXXX";
+    char *first_write;
+    char *second_write;
+    int fd;
+    (void)state;
+
+    fd = mkstemp(path);
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    build_menu(&document, &panel, &button);
+    /* U+3042 twice: six bytes, two cells, and the old byte-oriented validator refused it outright. */
+    assert_int_equal(ui_document_set_content(&document, 3U, "HP \xE3\x81\x82\xE3\x81\x82"),
+                     UI_DOCUMENT_OK);
+    assert_ui_save_committed(ui_document_save_as(&document, path));
+
+    first_write = read_file_bytes(path);
+    assert_non_null(strstr(first_write, "content=HP \xE3\x81\x82\xE3\x81\x82"));
+
+    assert_int_equal(ui_document_load(&loaded, path), UI_DOCUMENT_OK);
+    assert_string_equal(ui_document_find_element(&loaded, 3U)->content,
+                        "HP \xE3\x81\x82\xE3\x81\x82");
+    assert_ui_save_committed(ui_document_save(&loaded));
+    second_write = read_file_bytes(path);
+    /* Byte-for-byte: a second save of the loaded document writes the same file. */
+    assert_string_equal(second_write, first_write);
+    free(first_write);
+    free(second_write);
+    assert_int_equal(unlink(path), 0);
+}
+
+/* Malformed bytes in a file are refused, and the refusal says exactly where. The document is left
+   untouched, which is what makes the refusal safe to retry after a fix. */
+static void test_malformed_content_is_refused_with_its_position(void **state) {
+    UiDocument document;
+    UiDocument loaded;
+    UiDocument before;
+    UiElementId panel, button;
+    UiDocumentLoadDiagnostic diagnostic;
+    char path[] = "build/tsg_ui_document_XXXXXX";
+    size_t line;
+    int fd;
+    (void)state;
+
+    fd = mkstemp(path);
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    build_menu(&document, &panel, &button);
+    assert_ui_save_committed(ui_document_save_as(&document, path));
+    /* A lone continuation byte after 'A': not a character in any encoding. */
+    line = rewrite_content_line(path, "MISSIONS", "A\x80" "B");
+
+    memset(&loaded, 0x5a, sizeof(loaded));
+    before = loaded;
+    assert_int_equal(ui_document_load_diagnosed(&loaded, path, &diagnostic),
+                     UI_DOCUMENT_INVALID_CONTENT);
+    assert_int_equal(diagnostic.result, UI_DOCUMENT_INVALID_CONTENT);
+    assert_int_equal(diagnostic.text_result, UI_TEXT_MALFORMED);
+    assert_int_equal(diagnostic.line, line);
+    /* "content=" is eight bytes, so 'A' sits at column 8 and the bad byte at column 9. */
+    assert_int_equal(diagnostic.column, 9U);
+    assert_int_equal(diagnostic.codepoint, 0U);
+    assert_memory_equal(&loaded, &before, sizeof(loaded));
+    assert_int_equal(unlink(path), 0);
+}
+
+/* RTL is refused at ingest with its own reason (D-C), not accepted and drawn backwards. */
+static void test_right_to_left_content_is_refused_at_ingest(void **state) {
+    UiDocument document;
+    UiDocument loaded;
+    UiElementId panel, button;
+    UiDocumentLoadDiagnostic diagnostic;
+    char path[] = "build/tsg_ui_document_XXXXXX";
+    int fd;
+    (void)state;
+
+    fd = mkstemp(path);
+    assert_true(fd >= 0);
+    assert_int_equal(close(fd), 0);
+    build_menu(&document, &panel, &button);
+    assert_ui_save_committed(ui_document_save_as(&document, path));
+    (void)rewrite_content_line(path, "MISSIONS", "\xD7\x90");
+
+    assert_int_equal(ui_document_load_diagnosed(&loaded, path, &diagnostic),
+                     UI_DOCUMENT_INVALID_CONTENT);
+    assert_int_equal(diagnostic.text_result, UI_TEXT_RIGHT_TO_LEFT);
+    assert_int_equal(diagnostic.column, 8U);
+    assert_int_equal(diagnostic.codepoint, 0x05D0U);
+    assert_int_equal(unlink(path), 0);
+}
+
+/* The byte capacity is unchanged: 255 bytes fit, 256 do not, and the refusal is the same one ASCII has
+   always produced. D-D keeps the limit in bytes rather than clusters. */
+static void test_content_capacity_is_still_bytes_and_still_refuses(void **state) {
+    UiDocument document;
+    UiElementId panel, button;
+    UiDocument before;
+    char fits[UI_DOCUMENT_CONTENT_CAPACITY];
+    char overflows[UI_DOCUMENT_CONTENT_CAPACITY + 1U];
+    (void)state;
+
+    build_menu(&document, &panel, &button);
+    memset(fits, 'x', sizeof(fits) - 1U);
+    fits[sizeof(fits) - 1U] = '\0';
+    assert_int_equal(ui_document_set_content(&document, 3U, fits), UI_DOCUMENT_OK);
+    memset(overflows, 'x', sizeof(overflows) - 1U);
+    overflows[sizeof(overflows) - 1U] = '\0';
+    before = document;
+    assert_int_equal(ui_document_set_content(&document, 3U, overflows), UI_DOCUMENT_INVALID_CONTENT);
+    assert_memory_equal(&document, &before, sizeof(document));
+}
+
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_create_tree_dirty_and_stable_ids),
@@ -715,6 +862,10 @@ int main(void) {
         ,cmocka_unit_test(test_v4_invalid_binding_and_effect_reject)
         ,cmocka_unit_test(test_animation_add_target_mutations_and_round_trip)
         ,cmocka_unit_test(test_animation_validation_rejects_bad_target_and_layout)
+        ,cmocka_unit_test(test_utf8_content_round_trips_byte_for_byte)
+        ,cmocka_unit_test(test_malformed_content_is_refused_with_its_position)
+        ,cmocka_unit_test(test_right_to_left_content_is_refused_at_ingest)
+        ,cmocka_unit_test(test_content_capacity_is_still_bytes_and_still_refuses)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -100,17 +100,24 @@ static void test_grid_set_get_bounds(void **state) {
    taken straight from a `const char *` would sign-extend: 0xE9 becomes U+FFE9 instead of U+00E9.
    When the cell was a uint8_t that could not happen — the value truncated to the byte. This test
    pins the byte-oriented behaviour of grid_print until real UTF-8 decoding arrives (V1-6). */
-static void test_grid_print_treats_high_bytes_as_latin1(void **state) {
-    static const char text[] = "\xE9"; /* é in Latin-1, and a lone UTF-8 continuation byte */
+/* Requirement changed 2026-11-25 (V1-6 I0). This test used to pin the byte-oriented behaviour of
+   grid_print: a lone 0xE9 became U+00E9, because the cell held a byte and a raw `char` would have
+   sign-extended to U+FFE9. Now grid_print decodes UTF-8 strictly, and a lone 0xE9 is a malformed
+   three-byte lead — so it is refused, and the refusal is the point: accepting it would mean supporting
+   two encodings, and a Latin-1 document is not a UTF-8 document.
+   The half of the old test that still matters is kept: a high byte must never arrive as U+FFE9. */
+static void test_grid_print_refuses_a_lone_high_byte(void **state) {
+    static const char text[] = "\xE9"; /* Latin-1 é, and an invalid UTF-8 lead byte */
     Grid *g;
     Cell c;
     (void)state;
     g = grid_create(4, 2);
     assert_non_null(g);
-    grid_print(g, 0, 0, text, (SDL_Color){255, 255, 255, 255}, (SDL_Color){0, 0, 0, 255});
+    assert_false(grid_print(g, 0, 0, text, (SDL_Color){255, 255, 255, 255},
+                            (SDL_Color){0, 0, 0, 255}));
     assert_true(grid_get(g, 0, 0, &c));
-    assert_int_equal(c.glyph, 0x00E9U);
-    assert_int_not_equal(c.glyph, 0xFFE9U);
+    assert_int_equal(c.glyph, 0x0000U);      /* nothing written */
+    assert_int_not_equal(c.glyph, 0xFFE9U);  /* and certainly not a sign-extended artefact */
     grid_destroy(g);
 }
 
@@ -1499,7 +1506,7 @@ int main(void) {
         cmocka_unit_test(test_grid_init_invalid),
         cmocka_unit_test(test_grid_destroy_safety),
         cmocka_unit_test(test_grid_set_get_bounds),
-        cmocka_unit_test(test_grid_print_treats_high_bytes_as_latin1),
+        cmocka_unit_test(test_grid_print_refuses_a_lone_high_byte),
         cmocka_unit_test(test_grid_clear),
         cmocka_unit_test(test_grid_clear_region_zero),
         cmocka_unit_test(test_scale_calculations),

@@ -211,7 +211,7 @@ bool ui_workbench_runtime_snapshot(UiWorkbench *workbench,
         memcpy(&backdrop, &palette->canvas, sizeof(backdrop));
         for (i = 0; i < count; i++) pixels[i] = backdrop;
     }
-    ok = ui_compositor_compose(&layers, NULL, 100, pixels, 2080, 1280, NULL, 260, 160);
+    ok = ui_compositor_compose(&layers, NULL, NULL, 100, pixels, 2080, 1280, NULL, 260, 160);
 cleanup:
     ui_canvas_destroy(overlay);
     ui_canvas_destroy(footer);

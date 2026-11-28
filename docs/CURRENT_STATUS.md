@@ -14,6 +14,36 @@ recorded as open reconciliations in that document and in [`TODO.md`](TODO.md).
 
 ## Current verified foundation
 
+**2026-11-25 — V1-6 has begun: Unicode text reaches the screen.** V1-5 closed all six of its outcomes
+(the face is a property of the surface, the missing glyph is loud by property, residency replaced the
+cache at 26.8% of the 1 MiB cap, and `utf8proc` v2.12.0 is vendored). V1-6's Q1 plan is approved and its
+first three increments are in: `grid_print` decodes UTF-8 grapheme clusters — one cell per cluster,
+refusing anything above U+FFFF rather than quietly truncating it; `src/text_edit.*` owns cluster-aware
+boundary, Backspace and capacity decisions headlessly (no callers yet, by design); and the chrome now
+adopts an installed face **only when that set contains every printable ASCII codepoint**, checked against
+the set's bytes rather than the manifest's `coverage=` line, so a CJK-only face cannot turn the menus
+into sentinels; and authored `UiDocument` content is now **validated UTF-8** — strict encoding, no
+control or format characters, no backslash, no right-to-left text (a recorded refusal, D-C), with a
+refusal naming the line, column and codepoint because a refusal nobody can locate cannot be fixed.
+The editor's own fields gained the caret outcome 3 assumed they had: Left/Right move by cluster (and
+still decrease/increase a value outside a text field), Shift extends a selection, Backspace deletes
+one cluster or the selection, and a field at capacity refuses the keystroke instead of splitting a
+character. Clipboard paste is a single transaction under D-E: an empty
+clipboard is silent, a malformed or oversized or unrepresentable paste is refused whole with a byte
+offset, and a successful paste is one undo step. IME composition
+arrives through SDL's text-input path: it is drawn in braces after the caret, never committed
+until the platform reports the commit, and it cannot be left behind by a focus change. Every refusal those paths
+produce is drawn in the editor with its reason and byte offset, so a refused keystroke no longer looks
+like nothing happening.
+`TSG-ASSET-ENV-0001` now names the surface (`world`/`ui`) and keeps a separate report
+state per face, because one state serving both would re-report the same gaps forever. On the migrated
+host: `make all`, `make test` (**97 runners / 1091 tests, 0 failures**), `make matrix` (7/7),
+`standards-core` 6/6, `make style`, `make check-ui-workbench-frame` (checksums match) and the
+containerised leak gate (`memcheck-clean`) all pass. V1-6's eight increments have all landed; what
+remains is the native acceptance this host cannot run (Linux/Windows keyboard, clipboard, CJK IME), plus the native
+keyboard/clipboard/CJK-IME acceptance that this environment cannot run. Records, decisions and
+deviations are in [`V1_6_TEXT_Q1_PLAN_2026-11-25.md`](V1_6_TEXT_Q1_PLAN_2026-11-25.md).
+
 **2026-11-25 — host migration.** The working tree was copied to a different machine. History, tracked
 files and the older baseline were intact; the copied `build/` artifacts were not usable (compiled for
 a wider x86-64 ISA than the new host provides) and were discarded and rebuilt locally. The first clean
@@ -24,7 +54,8 @@ were corrected; no production source changed. On the migrated host `make all`, `
 Full evidence, the runtime caveat for the cppcheck gate, and the remaining unverified gates are in
 [`handoffs/2026-11-25-host-migration-and-suite-recovery.md`](handoffs/2026-11-25-host-migration-and-suite-recovery.md).
 
-**Roadmap position, 2026-11-25 — V1-5 is the active phase.** V1-0 through V1-4 are closed, with
+**Roadmap position, 2026-11-25 — superseded by the paragraph above; kept as the record of where V1-5
+stood before it closed.** V1-5 is the active phase. V1-0 through V1-4 are closed, with
 V1-3 carrying one outstanding item (the display-backed native review of pointer motion) and V1-G
 running beside the chain with M0 and M1 complete. **V1-5 (glyph identity, raster service, cache,
 mandatory SMC migration)** has landed its converter, font manifest, fit policy, resolver, glyph-set

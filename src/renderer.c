@@ -220,7 +220,8 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
        allocator zeroing, because "which face is this?" must never be an uninitialised answer. */
     glyph_source_init(&ren->world_source, NULL);
     glyph_source_init(&ren->ui_source, NULL);
-    glyph_missing_reset(&ren->missing);
+    glyph_missing_reset(&ren->missing_world);
+    glyph_missing_reset(&ren->missing_ui);
 
     ren->cell_w = cell_w;
     ren->cell_h = cell_h;
@@ -358,13 +359,22 @@ Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell
  *
  * @param ren  Renderer to destroy (NULL-safe)
  */
-void renderer_set_world_glyph_set(Renderer *ren, const GlyphSet *set) {
+void renderer_set_glyph_set(Renderer *ren, const GlyphSet *set) {
     if (!ren) return;
     glyph_source_init(&ren->world_source, set);
+    /* D-A: the chrome adopts an installed face only when that face can draw the interface. The decision
+       itself is `glyph_source_ui_face`, so it is unit-tested without a window; the renderer only plumbed
+       it. Asking the set rather than the manifest's `coverage=` line means a wrong line cannot produce an
+       unreadable menu. */
+    glyph_source_init(&ren->ui_source, glyph_source_ui_face(set));
 }
 
-const GlyphMissingState *renderer_glyph_missing(const Renderer *ren) {
-    return ren ? &ren->missing : NULL;
+const GlyphMissingState *renderer_world_missing(const Renderer *ren) {
+    return ren ? &ren->missing_world : NULL;
+}
+
+const GlyphMissingState *renderer_ui_missing(const Renderer *ren) {
+    return ren ? &ren->missing_ui : NULL;
 }
 
 void renderer_destroy(Renderer *ren) {
@@ -446,7 +456,8 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
 
     /* One frame of missing-glyph bookkeeping: the per-frame counts and the newly-distinct list start
        empty, while the reported bitmap persists so a gap is named once and not every frame. */
-    glyph_missing_begin_frame(&ren->missing);
+    glyph_missing_begin_frame(&ren->missing_world);
+    glyph_missing_begin_frame(&ren->missing_ui);
 
 #if PROFILE_FRAME
     double profile_frame_start = profile_now_ms();
@@ -553,7 +564,7 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
         SDL_Color cell_bg = c.bg;
         GlyphSourceGlyph resolved = glyph_paint_resolve(&ren->world_source, c.glyph, &cell_fg, &cell_bg);
         if (glyph_source_is_missing(&resolved)) {
-            glyph_missing_note(&ren->missing, &ren->world_source, c.glyph, cx, cy);
+            glyph_missing_note(&ren->missing_world, &ren->world_source, c.glyph, cx, cy);
         }
         uint32_t fg = COLOR_TO_UINT32(cell_fg);
         uint32_t bg = COLOR_TO_UINT32(cell_bg);
@@ -639,7 +650,7 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
             SDL_Color cell_bg = c.bg;
             GlyphSourceGlyph resolved = glyph_paint_resolve(&ren->world_source, c.glyph, &cell_fg, &cell_bg);
             if (glyph_source_is_missing(&resolved)) {
-                glyph_missing_note(&ren->missing, &ren->world_source, c.glyph, cx, cy);
+                glyph_missing_note(&ren->missing_world, &ren->world_source, c.glyph, cx, cy);
             }
             uint32_t fg = COLOR_TO_UINT32(cell_fg);
             uint32_t bg = COLOR_TO_UINT32(cell_bg);
@@ -684,7 +695,8 @@ void renderer_draw_layers(Renderer *ren, Grid *grid,
     profile_phase_start = profile_now_ms();
 #endif
     if (layers) {
-        (void)ui_compositor_compose(layers, &ren->ui_source, ui_scale_percent, pixels,
+        (void)ui_compositor_compose(layers, &ren->ui_source, &ren->missing_ui, ui_scale_percent,
+                                    pixels,
                                     ren->logical_w, ren->logical_h,
                                     ren->ui_restore_cells, grid->width, grid->height);
     }

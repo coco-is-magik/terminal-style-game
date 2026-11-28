@@ -20,7 +20,11 @@ typedef enum {
     INPUT_EVENT_MOUSE_MOTION,
     INPUT_EVENT_MOUSE_BUTTON_DOWN,
     INPUT_EVENT_MOUSE_BUTTON_UP,
-    INPUT_EVENT_MOUSE_WHEEL
+    INPUT_EVENT_MOUSE_WHEEL,
+    /* An IME composition update (`SDL_EVENT_TEXT_EDITING`): text the user is still choosing, which must be
+       shown but never committed. `x`/`y` carry the composition's selection, in bytes, or -1 when unset
+       (V1-6 plan, D-F). */
+    INPUT_EVENT_TEXT_EDITING
 } InputEventType;
 
 typedef enum {
@@ -28,7 +32,7 @@ typedef enum {
     INPUT_KEY_RETURN, INPUT_KEY_LEFT, INPUT_KEY_RIGHT, INPUT_KEY_SPACE,
     INPUT_KEY_BACKSPACE, INPUT_KEY_F5, INPUT_KEY_F9, INPUT_KEY_LEFTBRACKET,
     INPUT_KEY_RIGHTBRACKET, INPUT_KEY_F10, INPUT_KEY_TAB, INPUT_KEY_E,
-    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
+    INPUT_KEY_Z, INPUT_KEY_Y, INPUT_KEY_V, INPUT_KEY_S, INPUT_KEY_O, INPUT_KEY_N, INPUT_KEY_I,
     INPUT_KEY_EQUALS, INPUT_KEY_MINUS, INPUT_KEY_ZERO, INPUT_KEY_L, INPUT_KEY_P,
     INPUT_KEY_T, INPUT_KEY_B, INPUT_KEY_G, INPUT_KEY_U, INPUT_KEY_A
 } InputKey;
@@ -112,6 +116,13 @@ typedef struct {
     bool editor_new_generated_pressed; /* Ctrl+Shift+N — new scene from the map generator */
     bool editor_reload_pressed;      /* F5 — reload scene */
     bool editor_text_backspace_pressed; /* Backspace — edit active text field */
+    /* Shift was held when Left/Right was pressed, so the caret moves and the selection anchor stays.
+       Kept separate from the arrow flags because an InputState is a snapshot of *this frame* and the
+       modifier has to survive with the key that used it (V1-6 plan, I4). */
+    bool editor_caret_extend_pressed;
+    /* Ctrl+V: the host cannot read the clipboard itself, so this only says "the user asked to paste";
+       whatever supplies text does so before the host maps the key (V1-6 plan, D-E). */
+    bool editor_paste_pressed;
     bool editor_previous_pressed;    /* Up — picker previous */
     bool editor_next_pressed;        /* Down — picker next */
     bool editor_decrease_pressed;    /* Left — decrease inspector field */
@@ -143,6 +154,19 @@ typedef struct {
      * Only populated in interactive mode; empty string in headless mode. */
     char text_input[64];
     int  text_input_len;
+
+    /* The IME's current composition, from the last SDL_EVENT_TEXT_EDITING.
+     *
+     * Deliberately *not* cleared per frame: SDL sends an editing event whenever the composition changes and
+     * a final one with empty text when it ends, so clearing between frames would blink the composition off
+     * and on. `text_editing_active` is false once an empty editing event has arrived, which is the signal
+     * that nothing is being composed (V1-6 plan, D-F). The editor clears its own pre-edit when a field
+     * closes, because a focus change can end a composition without SDL saying so. */
+    char text_editing[64];
+    int  text_editing_len;
+    int  text_editing_cursor;
+    int  text_editing_selection;
+    bool text_editing_active;
 } InputState;
 
 /**

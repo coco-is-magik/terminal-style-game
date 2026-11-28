@@ -4,7 +4,8 @@
 
 UiMenuWorkspaceResult ui_editor_host_apply_input(
     UiMenuWorkspace *workspace, const InputState *input,
-    const UiEditorHostViewport *viewport, bool *handled
+    const UiEditorHostViewport *viewport, const char *clipboard_text,
+    bool *handled
 ) {
     UiEditorAction action = {0};
     UiEditorSurfaceRegion region;
@@ -45,14 +46,34 @@ UiMenuWorkspaceResult ui_editor_host_apply_input(
             ? ui_menu_workspace_pointer_release(workspace) : UI_MENU_WORKSPACE_OK;
     }
     if (text_mode) {
+        bool extend = input->editor_caret_extend_pressed;
         if (input->editor_confirm_pressed) action.type = UI_EDITOR_ACTION_CONFIRM;
         else if (input->editor_cancel_pressed || input->editor_ui_workspace_pressed)
             action.type = UI_EDITOR_ACTION_CANCEL;
         else if (input->editor_text_backspace_pressed)
             action.type = UI_EDITOR_ACTION_BACKSPACE;
-        else if (input->text_input_len > 0) {
+        else if (input->editor_decrease_pressed)
+            action.type = UI_EDITOR_ACTION_CARET_LEFT, action.extend = extend;
+        else if (input->editor_increase_pressed)
+            action.type = UI_EDITOR_ACTION_CARET_RIGHT, action.extend = extend;
+        else if (input->editor_paste_pressed && clipboard_text) {
+            action.type = UI_EDITOR_ACTION_PASTE;
+            action.text = clipboard_text;
+        } else if (input->editor_paste_pressed) {
+            /* Rule 1: the key was pressed with nothing readable on the clipboard. Silent, and not an
+               error — the editor simply does nothing. */
+            return UI_MENU_WORKSPACE_NO_ACTION;
+        } else if (input->text_input_len > 0) {
+            /* Committed text is authoritative, so it is handled before a composition is shown: a frame can
+               carry both the editing event and the commit that ended it, and the commit is what the user
+               gets. Appending ends the composition as part of the same edit (D-F). */
             action.type = UI_EDITOR_ACTION_APPEND_TEXT;
             action.text = input->text_input;
+        } else if (input->text_editing_active) {
+            /* A composition in progress: shown after the caret and never committed. Nothing here touches
+               the field, which is why cancelling one leaves no trace. */
+            return ui_menu_workspace_set_preedit(workspace, input->text_editing,
+                                                 (size_t)input->text_editing_len);
         } else {
             *handled = false;
             return UI_MENU_WORKSPACE_NO_ACTION;

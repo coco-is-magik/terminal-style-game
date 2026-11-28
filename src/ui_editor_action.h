@@ -18,6 +18,13 @@ typedef enum {
     UI_EDITOR_ACTION_REDO,
     UI_EDITOR_ACTION_APPEND_TEXT,
     UI_EDITOR_ACTION_BACKSPACE,
+    /* Move the caret inside a text field. `extend` is held down Shift: the selection's anchor stays and
+       the caret moves, which is the only difference between "move" and "select" (V1-6 plan, I4). */
+    UI_EDITOR_ACTION_CARET_LEFT,
+    UI_EDITOR_ACTION_CARET_RIGHT,
+    UI_EDITOR_ACTION_SELECT_ALL,
+    /* Paste the text the caller supplied in `action->text` — one transaction under D-E. */
+    UI_EDITOR_ACTION_PASTE,
     UI_EDITOR_ACTION_CANDIDATE_BEGIN,
     UI_EDITOR_ACTION_CANDIDATE_ACCEPT,
     UI_EDITOR_ACTION_CANDIDATE_CANCEL,
@@ -33,6 +40,8 @@ typedef struct {
     UiAnimationEvent playback_event;
     UiElementId target_id;
     double now_ms;
+    /* Shift was held: affects only the caret actions, where it turns a move into a selection change. */
+    bool extend;
 } UiEditorAction;
 
 UiMenuWorkspaceResult ui_editor_action_apply(

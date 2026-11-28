@@ -79,6 +79,19 @@ GlyphSourceGlyph glyph_source_resolve(const GlyphSource *source, uint32_t codepo
    without re-deriving the rule. */
 bool glyph_source_is_missing(const GlyphSourceGlyph *glyph);
 
+/* True when `set` contains every printable ASCII codepoint, U+0020 through U+007E.
+ *
+ * This is the test behind the chrome's face policy (V1-6 plan, D-A): the application's own interface
+ * may use an installed face **only if that face can draw the interface**. It asks the bytes rather than
+ * the manifest's `coverage=` line, because a declaration can be wrong and a lookup cannot. */
+bool glyph_source_set_covers_printable_ascii(const GlyphSet *set);
+
+/* The face the application chrome may draw with, given the face the application installed, or NULL for
+ * the built-in ASCII face. This *is* the chrome's policy (V1-6 plan, D-A) and lives here rather than in
+ * the renderer so it can be tested without a window: a face that cannot draw the interface is not
+ * adopted, however well it draws the world. */
+const GlyphSet *glyph_source_ui_face(const GlyphSet *installed);
+
 /* Stable short name of a kind, for tool output and test failure messages. */
 const char *glyph_source_kind_name(GlyphSourceKind kind);
 

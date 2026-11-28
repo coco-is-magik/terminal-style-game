@@ -62,7 +62,8 @@ endif
 # Note: $(pwd) might not work in some makes, better use $(shell pwd)
 VENDOR_DIR := $(shell pwd)/vendor/dist
 
-INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include"
+INCLUDES := -I"$(VENDOR_DIR)/include" -I"$(shell pwd)/vendor/src/SDL/include" \
+            -I"$(shell pwd)/vendor/src/utf8proc"
 PLATFORM_LIBS :=
 ifeq ($(OS),Windows_NT)
   PLATFORM_LIBS := -lwinmm -lws2_32
@@ -149,6 +150,10 @@ TEST_GLYPH_SET_FILE_RUNNER   := $(BUILD_DIR)/test-glyph-set-file
 TEST_GLYPH_PAINT_RUNNER      := $(BUILD_DIR)/test-glyph-paint
 TEST_GLYPH_MISSING_SENTINEL_RUNNER := $(BUILD_DIR)/test-glyph-missing-sentinel
 TEST_TEXT_UTF8_RUNNER        := $(BUILD_DIR)/test-text-utf8
+TEST_GRID_PRINT_RUNNER       := $(BUILD_DIR)/test-grid-print
+TEST_TEXT_EDIT_RUNNER        := $(BUILD_DIR)/test-text-edit
+TEST_UI_TEXT_RUNNER          := $(BUILD_DIR)/test-ui-text
+TEST_PLATFORM_CLIPBOARD_RUNNER := $(BUILD_DIR)/test-platform-clipboard
 FONTCONV_TOOL                := $(BUILD_DIR)/fontconv
 TEST_COMMAND_SYSTEM_RUNNER   := $(BUILD_DIR)/test-command-system
 TEST_EDITOR_SELECTION_RUNNER := $(BUILD_DIR)/test-editor-selection
@@ -284,7 +289,21 @@ SRC_FILES := $(wildcard src/*.c)
 
 SRC_CONFIG        := src/config.c
 SRC_CHECKED_SIZE  := src/checked_size.c
-SRC_GRID          := src/grid.c
+# Vendored utf8proc (V1-4 D3): strict UTF-8, canonical NFC, grapheme segmentation. Pinned to tag
+# v2.12.0 in vendor/src/utf8proc; it compiles clean under this project's warning flags, so it needs no
+# exemption. Compiled from source rather than built by its own build system, matching the pinned SMC
+# sources. Defined here, above SRC_GRID, because that variable is expanded immediately.
+UTF8PROC_SRC      := vendor/src/utf8proc/utf8proc.c
+UTF8PROC_CFLAGS   := -Ivendor/src/utf8proc
+# utf8proc_data.c is #included by utf8proc.c, not compiled on its own — it has no includes of its own
+# and would not compile separately.
+
+# Grid writes text into cells, so it needs the UTF-8 decode. Putting the dependency in the variable
+# means every rule that says $(SRC_GRID) inherits it instead of failing to link — the lesson b632998
+# recorded about the glyph modules, applied before it bites this time. `text_utf8` plus the vendored
+# library is the same pair for anyone who decodes text without a grid, so it is its own variable.
+SRC_TEXT_UTF8     := src/text_utf8.c $(UTF8PROC_SRC)
+SRC_GRID          := src/grid.c $(SRC_TEXT_UTF8)
 SRC_MATH          := src/math.c
 SRC_MAP           := src/map.c
 SRC_ASSETS        := src/assets.c
@@ -326,14 +345,6 @@ SRC_LIGHTING      := src/lighting.c
 SRC_GLYPH         := src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c \
                      src/glyph_missing.c src/font8x8_face.c
 
-# Vendored utf8proc (V1-4 D3): strict UTF-8, canonical NFC, grapheme segmentation. Pinned to tag
-# v2.12.0 in vendor/src/utf8proc; it compiles clean under this project's warning flags, so it needs no
-# exemption. Compiled from source rather than built by its own build system, matching the pinned SMC
-# sources.
-UTF8PROC_SRC      := vendor/src/utf8proc/utf8proc.c
-UTF8PROC_CFLAGS   := -Ivendor/src/utf8proc
-# utf8proc_data.c is #included by utf8proc.c, not compiled on its own — it has no includes of its own
-# and would not compile separately.
 SRC_RENDERER      := src/renderer.c $(SRC_GLYPH)
 SRC_PLATFORM_PATH := src/platform_path.c
 SRC_PLATFORM_FS := src/platform_fs.c
@@ -369,12 +380,12 @@ SRC_FLOW_BINDING := src/flow_binding.c
 SRC_FLOW_WORKSPACE := src/flow_workspace.c
 SRC_FLOW_GRAPH := src/flow_graph.c
 SRC_FLOW_PROJECT_CATALOG := src/flow_project_catalog.c
-SRC_UI_DOCUMENT := src/ui_document.c
+SRC_UI_DOCUMENT := src/ui_document.c src/ui_text.c
 SRC_UI_LAYOUT_RESOLVER := src/ui_layout_resolver.c
 SRC_UI_RENDER_ADAPTER := src/ui_render_adapter.c
 SRC_UI_INTERACTION := src/ui_interaction.c
 SRC_UI_MENU_RUNTIME := src/ui_menu_runtime.c
-SRC_UI_MENU_WORKSPACE := src/ui_menu_workspace.c
+SRC_UI_MENU_WORKSPACE := src/ui_menu_workspace.c src/text_edit.c
 SRC_UI_EDITOR_ACTION := src/ui_editor_action.c
 SRC_UI_EDITOR_PRESENTATION := src/ui_editor_presentation.c
 SRC_UI_EDITOR_PANEL := src/ui_editor_panel.c
@@ -697,10 +708,10 @@ TEST_UNIFIED_EDITOR_SRC := \
 
 
 
-$(APP): $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(SMC_SRC) | dirs
+$(APP): $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(SMC_SRC) $(UTF8PROC_SRC) | dirs
 
 
-	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS) $(SMC_CFLAGS_ACTIVE) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
+	$(CC) $(CFLAGS) $(SMC_DEFS_ACTIVE) $(LIGHTING_DEFS) $(DIRTY_DEFS) $(PROFILE_DEFS) $(SMC_CFLAGS_ACTIVE) $(INCLUDES) $(SMC_INCLUDES_ACTIVE) $(SRC_FILES) $(SMC_STATE_FILES_ACTIVE) $(UTF8PROC_SRC) -o $(APP) $(LIBS) $(SMC_LIBS_ACTIVE) $(RPATH)
 
 
 $(TEST_DEPS_RUNNER): tests/test_deps.c | dirs
@@ -815,9 +826,10 @@ $(TEST_EDITOR_DOMAIN_RUNNER): tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SR
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_editor_domain.c $(TEST_EDITOR_DOMAIN_SRC) \
 		-o $(TEST_EDITOR_DOMAIN_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UNIFIED_EDITOR_RUNNER): tests/test_unified_editor.c $(TEST_UNIFIED_EDITOR_SRC) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) | dirs
+$(TEST_UNIFIED_EDITOR_RUNNER): tests/test_unified_editor.c $(TEST_UNIFIED_EDITOR_SRC) $(TEST_FEATURE_EXTRA_SRC) $(SMC_SRC) src/platform_clipboard.c | dirs
 	$(CC) $(CFLAGS) $(TEST_FEATURE_CFLAGS) $(TEST_FEATURE_DEFS) $(TEST_FEATURE_INCLUDES) \
 		tests/test_unified_editor.c $(TEST_UNIFIED_EDITOR_SRC) $(TEST_FEATURE_EXTRA_SRC) \
+		src/platform_clipboard.c \
 		-o $(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_FEATURE_LIBS) $(RPATH)
 
 $(TEST_ENTITY_TRIGGER_SESSION_RUNNER): tests/test_entity_trigger_session.c $(SRC_ENTITY_TRIGGER_SESSION) | dirs
@@ -905,9 +917,9 @@ $(TEST_BENCHMARK_RUNNER): tests/test_benchmark_session.c src/benchmark_session.c
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_benchmark_session.c src/benchmark_session.c \
 		-o $(TEST_BENCHMARK_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/frame_dispatch.c src/grid.c src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c | dirs
+$(TEST_APP_MODULES_RUNNER): tests/test_app_modules.c src/menu_controller.c src/frame_dispatch.c $(SRC_GRID) src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_app_modules.c src/menu_controller.c \
-		src/frame_dispatch.c src/grid.c src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c \
+		src/frame_dispatch.c $(SRC_GRID) src/camera.c $(SRC_OPTICAL_RUNTIME_VIEW) src/math.c src/map.c src/checked_size.c \
 		-o $(TEST_APP_MODULES_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_CONFIG_RUNNER): tests/test_config.c $(SRC_CONFIG) | dirs
@@ -926,10 +938,10 @@ $(TEST_UI_PREFERENCES_RUNNER): tests/test_ui_preferences.c $(SRC_UI_PREFERENCES)
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_preferences.c $(SRC_UI_PREFERENCES) \
 		-o $(TEST_UI_PREFERENCES_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_COMPOSITOR_RUNNER): tests/test_ui_compositor.c tests/font8x8_test_data.c $(SRC_UI_CANVAS) $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) $(SRC_GRID) src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c | dirs
+$(TEST_UI_COMPOSITOR_RUNNER): tests/test_ui_compositor.c tests/font8x8_test_data.c $(SRC_UI_CANVAS) $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) $(SRC_GRID) src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c src/glyph_missing.c | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_compositor.c $(SRC_UI_CANVAS) $(SRC_GRID) \
 		tests/font8x8_test_data.c $(SRC_UI_COMPOSITOR) $(SRC_UI_PREFERENCES) $(SRC_CHECKED_SIZE) \
-		src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c \
+		src/glyph_paint.c src/glyph_source.c src/glyph_set.c src/sha256.c src/glyph_missing.c \
 		-o $(TEST_UI_COMPOSITOR_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_THEME_RUNNER): tests/test_ui_theme.c $(SRC_UI_THEME) | dirs
@@ -1122,16 +1134,18 @@ $(TEST_FLOW_PROJECT_CATALOG_RUNNER): tests/test_flow_project_catalog.c $(SRC_FLO
 		$(SRC_OBJECT_DOCUMENT) $(TEST_SCENE_DOCUMENT_SRC) \
 		-o $(TEST_FLOW_PROJECT_CATALOG_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_DOCUMENT_RUNNER): tests/test_ui_document.c $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
+$(TEST_UI_DOCUMENT_RUNNER): tests/test_ui_document.c $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) $(SRC_TEXT_UTF8) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_document.c $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) \
 		$(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) \
 		$(SRC_ASSET_DOCUMENT) \
+		$(SRC_TEXT_UTF8) \
 		-o $(TEST_UI_DOCUMENT_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_LAYOUT_RESOLVER_RUNNER): tests/test_ui_layout_resolver.c $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
+$(TEST_UI_LAYOUT_RESOLVER_RUNNER): tests/test_ui_layout_resolver.c $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) $(SRC_TEXT_UTF8) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_layout_resolver.c \
 		$(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) \
 		$(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) \
+		$(SRC_TEXT_UTF8) \
 		-o $(TEST_UI_LAYOUT_RESOLVER_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_RENDER_ADAPTER_RUNNER): tests/test_ui_render_adapter.c $(SRC_UI_RENDER_ADAPTER) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_SCENE_ANIMATION_RENDERER) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_UI_CANVAS) $(SRC_GRID) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
@@ -1144,10 +1158,11 @@ $(TEST_UI_RENDER_ADAPTER_RUNNER): tests/test_ui_render_adapter.c $(SRC_UI_RENDER
 		$(SRC_ASSET_DOCUMENT) \
 		-o $(TEST_UI_RENDER_ADAPTER_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_INTERACTION_RUNNER): tests/test_ui_interaction.c $(SRC_UI_INTERACTION) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
+$(TEST_UI_INTERACTION_RUNNER): tests/test_ui_interaction.c $(SRC_UI_INTERACTION) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) $(SRC_TEXT_UTF8) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_interaction.c $(SRC_UI_INTERACTION) \
 		$(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_FLOW_REFERENCE) \
 		$(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) \
+		$(SRC_TEXT_UTF8) \
 		-o $(TEST_UI_INTERACTION_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_MENU_RUNTIME_RUNNER): tests/test_ui_menu_runtime.c $(SRC_UI_MENU_RUNTIME) $(SRC_UI_RENDER_ADAPTER) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_SCENE_ANIMATION_RENDERER) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_INTERACTION) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_UI_CANVAS) $(SRC_GRID) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) $(SRC_FLOW_BINDING) $(SRC_FLOW_RUNTIME) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
@@ -1161,11 +1176,12 @@ $(TEST_UI_MENU_RUNTIME_RUNNER): tests/test_ui_menu_runtime.c $(SRC_UI_MENU_RUNTI
 		$(SRC_ASSET_DOCUMENT) \
 		-o $(TEST_UI_MENU_RUNTIME_RUNNER) $(TEST_LIBS) $(RPATH)
 
-$(TEST_UI_MENU_WORKSPACE_RUNNER): tests/test_ui_menu_workspace.c $(SRC_UI_MENU_WORKSPACE) $(SRC_UI_EDITOR_ACTION) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_MAP_CATALOG) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
+$(TEST_UI_MENU_WORKSPACE_RUNNER): tests/test_ui_menu_workspace.c $(SRC_UI_MENU_WORKSPACE) $(SRC_UI_EDITOR_ACTION) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_MAP_CATALOG) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) $(SRC_TEXT_UTF8) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_menu_workspace.c \
 		$(SRC_UI_MENU_WORKSPACE) $(SRC_UI_EDITOR_ACTION) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_MAP_CATALOG) \
 		$(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) \
 		$(SRC_ASSET_DOCUMENT) \
+		$(SRC_TEXT_UTF8) \
 		-o $(TEST_UI_MENU_WORKSPACE_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_UI_EDITOR_PRESENTATION_RUNNER): tests/test_ui_editor_presentation.c $(SRC_UI_EDITOR_PRESENTATION) $(SRC_UI_EDITOR_PANEL) $(SRC_UI_MENU_WORKSPACE) $(SRC_UI_ANIMATION_PLAYBACK) $(SRC_UI_RENDER_ADAPTER) $(SRC_UI_SCENE_ANIMATION_RENDERER) $(SRC_UI_MOTION) $(SRC_UI_THEME) $(SRC_UI_APP_THEME_ADAPTER) $(SRC_UI_ANIMATION) $(SRC_UI_ELE) $(SRC_UI_NESTED_INSPECTOR) $(SRC_UI_LAYOUT_RESOLVER) $(SRC_UI_DOCUMENT) $(SRC_RGBA_PARSE) $(SRC_UI_CANVAS) $(SRC_GRID) $(SRC_ASSETS) $(SRC_CHECKED_SIZE) $(SRC_MAP_CATALOG) $(SRC_FLOW_REFERENCE) $(SRC_FLOW_DOCUMENT) $(SRC_FLOW_DOCUMENT_PLATFORM) $(SRC_ASSET_DOCUMENT) | dirs
@@ -1340,7 +1356,7 @@ TEST_RUNNERS := $(TEST_DEPS_RUNNER) $(TEST_CORE_RUNNER) $(TEST_DECALS_RUNNER) \
 	$(TEST_UI_ELE_RUNNER) $(TEST_RGBA_PARSE_RUNNER) $(TEST_NUMBER_PARSE_RUNNER) \
 	$(TEST_PLATFORM_CAPABILITIES_RUNNER) $(TEST_PLATFORM_NUMBER_RUNNER) \
 	$(TEST_SCENE_DOCUMENT_RUNNER) $(TEST_SCENE_FORMAT_RUNNER) $(TEST_MAPGEN_RUNNER) \
-	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_FONT_HEX_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) $(TEST_GLYPH_PAINT_RUNNER) $(TEST_GLYPH_MISSING_SENTINEL_RUNNER) $(TEST_TEXT_UTF8_RUNNER) \
+	$(TEST_MAPGEN_SEED_RUNNER) $(TEST_SHA256_RUNNER) $(TEST_FONT_MANIFEST_RUNNER) $(TEST_FONT_FIT_RUNNER) $(TEST_FONT_HEX_RUNNER) $(TEST_GLYPH_SET_RUNNER) $(TEST_GLYPH_SOURCE_RUNNER) $(TEST_GLYPH_SET_FILE_RUNNER) $(TEST_GLYPH_PAINT_RUNNER) $(TEST_GLYPH_MISSING_SENTINEL_RUNNER) $(TEST_TEXT_UTF8_RUNNER) $(TEST_GRID_PRINT_RUNNER) $(TEST_TEXT_EDIT_RUNNER) $(TEST_UI_TEXT_RUNNER) $(TEST_PLATFORM_CLIPBOARD_RUNNER) \
 	$(TEST_COMMAND_SYSTEM_RUNNER) $(TEST_EDITOR_SELECTION_RUNNER) \
 	$(TEST_EDITOR_HIGHLIGHT_RUNNER) $(TEST_EDITOR_DOMAIN_RUNNER) \
 	$(TEST_UNIFIED_EDITOR_RUNNER) $(TEST_ENTITY_TRIGGER_SESSION_RUNNER) \
@@ -1410,6 +1426,10 @@ test: $(TEST_RUNNERS)
 	./$(TEST_GLYPH_PAINT_RUNNER)
 	./$(TEST_GLYPH_MISSING_SENTINEL_RUNNER)
 	./$(TEST_TEXT_UTF8_RUNNER)
+	./$(TEST_GRID_PRINT_RUNNER)
+	./$(TEST_TEXT_EDIT_RUNNER)
+	./$(TEST_UI_TEXT_RUNNER)
+	./$(TEST_PLATFORM_CLIPBOARD_RUNNER)
 	./$(TEST_COMMAND_SYSTEM_RUNNER)
 	./$(TEST_EDITOR_SELECTION_RUNNER)
 	./$(TEST_EDITOR_HIGHLIGHT_RUNNER)
@@ -1845,6 +1865,24 @@ $(TEST_GLYPH_PAINT_RUNNER): tests/test_glyph_paint.c src/glyph_paint.c src/glyph
 	$(CC) $(CFLAGS) $(INCLUDES) tests/test_glyph_paint.c src/glyph_paint.c src/glyph_source.c \
 		src/glyph_set.c src/sha256.c \
 		-o $(TEST_GLYPH_PAINT_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_TEXT_EDIT_RUNNER): tests/test_text_edit.c src/text_edit.c src/text_utf8.c $(UTF8PROC_SRC) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_text_edit.c src/text_edit.c src/text_utf8.c \
+		$(UTF8PROC_SRC) \
+		-o $(TEST_TEXT_EDIT_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_UI_TEXT_RUNNER): tests/test_ui_text.c src/ui_text.c $(SRC_TEXT_UTF8) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_ui_text.c src/ui_text.c \
+		$(SRC_TEXT_UTF8) \
+		-o $(TEST_UI_TEXT_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_PLATFORM_CLIPBOARD_RUNNER): tests/test_platform_clipboard.c src/platform_clipboard.c | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_platform_clipboard.c src/platform_clipboard.c \
+		-o $(TEST_PLATFORM_CLIPBOARD_RUNNER) $(TEST_LIBS) $(RPATH)
+
+$(TEST_GRID_PRINT_RUNNER): tests/test_grid_print.c $(SRC_GRID) $(SRC_CHECKED_SIZE) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) tests/test_grid_print.c $(SRC_GRID) $(SRC_CHECKED_SIZE) \
+		-o $(TEST_GRID_PRINT_RUNNER) $(TEST_LIBS) $(RPATH)
 
 $(TEST_TEXT_UTF8_RUNNER): tests/test_text_utf8.c src/text_utf8.c $(UTF8PROC_SRC) | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) $(UTF8PROC_CFLAGS) tests/test_text_utf8.c src/text_utf8.c \

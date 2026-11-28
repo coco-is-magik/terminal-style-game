@@ -4,6 +4,7 @@
 #include "input.h"
 #include "timing.h"
 #include "ui_editor_host.h"
+#include "platform_clipboard.h"
 #include "ui_editor_presentation.h"
 #include "ui_app_theme_adapter.h"
 
@@ -92,8 +93,19 @@ UiEditorRuntimeResult ui_editor_runtime_run(
             input.mouse_grid_x = (int)(render_x / (float)renderer->cell_w);
             input.mouse_grid_y = (int)(render_y / (float)renderer->cell_h);
         }
-        last_result = ui_editor_host_apply_input(
-            &workspace, &input, &viewport, &handled);
+        /* The clipboard is read only on the frame the key is pressed, so no allocation happens per frame,
+           and only when a field is open, because that is the only place a paste can land. */
+        {
+            char clipboard_text[UI_DOCUMENT_CONTENT_CAPACITY];
+            size_t clipboard_size = 0U;
+            const char *clipboard = NULL;
+            if (input.editor_paste_pressed && text_mode(workspace.mode) &&
+                platform_clipboard_read_text(clipboard_text, sizeof(clipboard_text),
+                                             &clipboard_size) == PLATFORM_CLIPBOARD_OK)
+                clipboard = clipboard_text;
+            last_result = ui_editor_host_apply_input(
+                &workspace, &input, &viewport, clipboard, &handled);
+        }
         (void)handled;
         if (!workspace.active) break;
         if (running && text_mode(workspace.mode) != text_input_active) {

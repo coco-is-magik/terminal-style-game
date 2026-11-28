@@ -214,6 +214,69 @@ static void test_end_and_arguments(void **state) {
                      TEXT_UTF8_INVALID_ARGUMENT);
 }
 
+/* The per-codepoint walk and the classification that the authored-text rules rest on. */
+static void test_codepoint_walk_stops_where_the_bytes_do(void **state) {
+    const char text[] = "a\xE3\x81\x82\xF0\x9F\x98\x80";
+    size_t offset = 0U;
+    uint32_t codepoint = 0U;
+    (void)state;
+
+    assert_int_equal(text_utf8_next_codepoint(text, sizeof(text) - 1U, &offset, &codepoint),
+                     TEXT_UTF8_OK);
+    assert_int_equal(codepoint, 0x0061U);
+    assert_int_equal(offset, 1U);
+    assert_int_equal(text_utf8_next_codepoint(text, sizeof(text) - 1U, &offset, &codepoint),
+                     TEXT_UTF8_OK);
+    assert_int_equal(codepoint, 0x3042U);
+    assert_int_equal(offset, 4U);
+    assert_int_equal(text_utf8_next_codepoint(text, sizeof(text) - 1U, &offset, &codepoint),
+                     TEXT_UTF8_OK);
+    assert_int_equal(codepoint, 0x1F600U);
+    assert_int_equal(offset, sizeof(text) - 1U);
+    assert_int_equal(text_utf8_next_codepoint(text, sizeof(text) - 1U, &offset, &codepoint),
+                     TEXT_UTF8_END);
+
+    /* A refusal leaves the offset on the offending byte, which is what makes a diagnostic locatable. */
+    offset = 1U;
+    assert_int_equal(text_utf8_next_codepoint("a\x80", 2U, &offset, &codepoint), TEXT_UTF8_MALFORMED);
+    assert_int_equal(offset, 1U);
+    offset = 5U;
+    assert_int_equal(text_utf8_next_codepoint("ab", 2U, &offset, &codepoint),
+                     TEXT_UTF8_INVALID_ARGUMENT);
+}
+
+static void test_classification_uses_the_vendored_data(void **state) {
+    (void)state;
+
+    assert_int_equal(text_utf8_classify('a'), TEXT_UTF8_CLASS_PLAIN);
+    assert_int_equal(text_utf8_classify(0x3042U), TEXT_UTF8_CLASS_PLAIN);
+    assert_int_equal(text_utf8_classify(' '), TEXT_UTF8_CLASS_PLAIN);
+
+    /* Cc and Cf are controls, including the bidi machinery that is category Cf. */
+    assert_int_equal(text_utf8_classify(0x0000U), TEXT_UTF8_CLASS_CONTROL);
+    assert_int_equal(text_utf8_classify(0x000AU), TEXT_UTF8_CLASS_CONTROL);
+    assert_int_equal(text_utf8_classify(0x007FU), TEXT_UTF8_CLASS_CONTROL);
+    assert_int_equal(text_utf8_classify(0x0085U), TEXT_UTF8_CLASS_CONTROL);
+    assert_int_equal(text_utf8_classify(0x200EU), TEXT_UTF8_CLASS_CONTROL); /* LRM */
+    assert_int_equal(text_utf8_classify(0x202EU), TEXT_UTF8_CLASS_CONTROL); /* RLO */
+    assert_int_equal(text_utf8_classify(0x061CU), TEXT_UTF8_CLASS_CONTROL); /* ALM */
+
+    /* The joiners are how a cluster is spelled, so they stay plain despite being Cf. */
+    assert_int_equal(text_utf8_classify(0x200CU), TEXT_UTF8_CLASS_PLAIN); /* ZWNJ */
+    assert_int_equal(text_utf8_classify(0x200DU), TEXT_UTF8_CLASS_PLAIN); /* ZWJ */
+
+    /* Visible right-to-left letters are their own class: valid text this phase refuses to draw. */
+    assert_int_equal(text_utf8_classify(0x05D0U), TEXT_UTF8_CLASS_RIGHT_TO_LEFT); /* Hebrew */
+    assert_int_equal(text_utf8_classify(0x0627U), TEXT_UTF8_CLASS_RIGHT_TO_LEFT); /* Arabic */
+    /* Not every codepoint in a right-to-left block is directional: Arabic-Indic digits are AN, and a
+       digit is a digit wherever it comes from. */
+    assert_int_equal(text_utf8_classify(0x0660U), TEXT_UTF8_CLASS_PLAIN);
+
+    /* Out of range is unusable, and unusable is treated as a control rather than as text. */
+    assert_int_equal(text_utf8_classify(0x110000U), TEXT_UTF8_CLASS_CONTROL);
+    assert_string_equal(text_utf8_class_name(TEXT_UTF8_CLASS_RIGHT_TO_LEFT), "RIGHT_TO_LEFT");
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_valid_utf8_of_each_length),
@@ -224,6 +287,8 @@ int main(void) {
         cmocka_unit_test(test_cluster_bound_is_enforced),
         cmocka_unit_test(test_cluster_walk_refuses_malformed),
         cmocka_unit_test(test_end_and_arguments),
+        cmocka_unit_test(test_codepoint_walk_stops_where_the_bytes_do),
+        cmocka_unit_test(test_classification_uses_the_vendored_data),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

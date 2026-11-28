@@ -99,7 +99,8 @@ static void mark_touched_cell_span(uint8_t *touched_cells,
     }
 }
 
-static void compose_layer(const UiLayer *layer, const GlyphSource *source, int global_scale_percent,
+static void compose_layer(const UiLayer *layer, const GlyphSource *source,
+                          GlyphMissingState *missing, int global_scale_percent,
                           uint32_t *pixels, int width, int height,
                           uint8_t *touched_cells, int cell_columns, int cell_rows) {
     int scale = layer_scale(layer, global_scale_percent);
@@ -142,6 +143,9 @@ static void compose_layer(const UiLayer *layer, const GlyphSource *source, int g
                 SDL_Color cell_fg = cell->fg;
                 SDL_Color cell_bg = cell->bg;
                 resolved = glyph_paint_resolve(source, cell->glyph, &cell_fg, &cell_bg);
+                if (glyph_source_is_missing(&resolved) && missing) {
+                    glyph_missing_note(missing, source, cell->glyph, cx, cy);
+                }
                 glyph = resolved.rows;
                 fg = UI_COLOR_TO_UINT32(cell_fg);
                 bg = UI_COLOR_TO_UINT32(cell_bg);
@@ -169,7 +173,7 @@ static void compose_layer(const UiLayer *layer, const GlyphSource *source, int g
 }
 
 bool ui_compositor_compose(const UiLayerList *list, const GlyphSource *source,
-                           int global_scale_percent,
+                           GlyphMissingState *missing, int global_scale_percent,
                            uint32_t *pixels, int pixel_width, int pixel_height,
                            uint8_t *touched_cells, int cell_columns, int cell_rows) {
     size_t pass;
@@ -194,7 +198,7 @@ bool ui_compositor_compose(const UiLayerList *list, const GlyphSource *source,
                 break;
             }
         }
-        if (selected) compose_layer(selected, source, global_scale_percent, pixels,
+        if (selected) compose_layer(selected, source, missing, global_scale_percent, pixels,
                                     pixel_width, pixel_height, touched_cells,
                                     cell_columns, cell_rows);
     }

@@ -71,16 +71,18 @@ typedef struct {
     int cell_w;                        /* Glyph width (pixels) */
     int cell_h;                        /* Glyph height (pixels) */
     /* Each surface declares its own face (V1-5 plan, D-A/D-D). `world_source` is the converted set
-       the user installed, or the built-in ASCII face when none is. `ui_source` is the chrome's and
-       stays on the built-in face, so a set with poor ASCII coverage cannot make the application's own
-       menus unreadable. Both borrow their bytes from whoever owns the glyph set; neither is written
-       by the loader except through renderer_set_world_glyph_set. */
+       the user installed, or the built-in ASCII face when none is. `ui_source` is the chrome's and takes
+       the installed set only when that set covers every printable ASCII codepoint; otherwise it stays on
+       the built-in face, so a set with poor ASCII coverage cannot make the application's own menus
+       unreadable (V1-6 plan, D-A). Both borrow their bytes from whoever owns the glyph set; neither is
+       written except through renderer_set_glyph_set. */
     GlyphSource    world_source;
     GlyphSource    ui_source;
-    /* What the world surface could not draw, and what has already been said about it. Owned by the
-       renderer rather than by a module global, so two renderers (the app and a workbench preview)
-       cannot share a "reported" list (V1-5 plan, D-C/I4). */
-    GlyphMissingState missing;
+    /* What each surface could not draw, and what has already been said about it. Two states, not one:
+       a state is keyed to the face that produced it, so a single state serving both surfaces would
+       clear itself every time they alternated and re-report the same gaps forever (V1-5 plan, D-C). */
+    GlyphMissingState missing_world;
+    GlyphMissingState missing_ui;
     uint8_t *ui_restore_cells;
     size_t ui_restore_cell_count;
 #ifdef USE_SMC_BATCH_STATE_TRACKER
@@ -96,13 +98,21 @@ typedef struct {
 
 Renderer* renderer_create(int win_w, int win_h, int grid_w, int grid_h, int cell_w, int cell_h);
 void      renderer_destroy(Renderer *ren);
-/* Point the world surface at a converted glyph set, or back at the built-in ASCII face with NULL.
-   Borrowed: the caller must keep the bytes alive for as long as frames are drawn. The chrome's source
-   is deliberately untouched — that is the whole point of having two. */
-void      renderer_set_world_glyph_set(Renderer *ren, const GlyphSet *set);
-/* What the last frame could not draw, for the application boundary to report. Never NULL for a live
+/* Install the converted glyph set the application loaded, or clear it with NULL. Borrowed: the caller
+   must keep the bytes alive for as long as frames are drawn.
+ *
+ * This decides **both** surfaces, because there is one installed face and each surface asks whether it
+ * can use it (V1-6 plan, D-A):
+ *   - the world always adopts it;
+ *   - the chrome adopts it **only if the set covers printable ASCII**, and otherwise keeps the built-in
+ *     face, so a CJK-only face cannot turn the menus into a field of sentinels.
+ * Nothing else in the renderer writes `ui_source`. */
+void      renderer_set_glyph_set(Renderer *ren, const GlyphSet *set);
+/* What the world surface could not draw, for the application boundary to report. Never NULL for a live
    renderer; the records it holds are the *newly distinct* misses of that frame. */
-const GlyphMissingState *renderer_glyph_missing(const Renderer *ren);
+const GlyphMissingState *renderer_world_missing(const Renderer *ren);
+/* The same for the application chrome, which is a different face and therefore a different subject. */
+const GlyphMissingState *renderer_ui_missing(const Renderer *ren);
 void      renderer_draw(Renderer *ren, Grid *grid);
 void      renderer_draw_layers(Renderer *ren, Grid *grid,
                                const UiLayerList *layers, int ui_scale_percent);

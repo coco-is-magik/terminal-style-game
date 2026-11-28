@@ -77,6 +77,49 @@ TextUtf8Result text_utf8_normalize_nfc(const char *bytes, size_t size, char *out
     return TEXT_UTF8_OK;
 }
 
+const char *text_utf8_class_name(TextUtf8Class class_) {
+    switch (class_) {
+    case TEXT_UTF8_CLASS_PLAIN: return "PLAIN";
+    case TEXT_UTF8_CLASS_CONTROL: return "CONTROL";
+    case TEXT_UTF8_CLASS_RIGHT_TO_LEFT: return "RIGHT_TO_LEFT";
+    }
+    return "UNKNOWN";
+}
+
+TextUtf8Class text_utf8_classify(uint32_t codepoint) {
+    const utf8proc_property_t *property;
+    utf8proc_category_t category;
+
+    if (codepoint > 0x10FFFFU) return TEXT_UTF8_CLASS_CONTROL;
+    category = utf8proc_category((utf8proc_int32_t)codepoint);
+    if (category == UTF8PROC_CATEGORY_CC || category == UTF8PROC_CATEGORY_CF) {
+        /* The joiners are how a cluster is spelled, not formatting noise. */
+        if (codepoint == 0x200CU || codepoint == 0x200DU) return TEXT_UTF8_CLASS_PLAIN;
+        return TEXT_UTF8_CLASS_CONTROL;
+    }
+    property = utf8proc_get_property((utf8proc_int32_t)codepoint);
+    if (!property) return TEXT_UTF8_CLASS_CONTROL;
+    if (property->bidi_class == UTF8PROC_BIDI_CLASS_R ||
+        property->bidi_class == UTF8PROC_BIDI_CLASS_AL) return TEXT_UTF8_CLASS_RIGHT_TO_LEFT;
+    return TEXT_UTF8_CLASS_PLAIN;
+}
+
+TextUtf8Result text_utf8_next_codepoint(const char *bytes, size_t size, size_t *offset,
+                                        uint32_t *out_codepoint) {
+    utf8proc_int32_t codepoint = 0;
+    size_t step = 0U;
+    TextUtf8Result result;
+
+    if (!bytes || !offset || !out_codepoint) return TEXT_UTF8_INVALID_ARGUMENT;
+    if (*offset > size) return TEXT_UTF8_INVALID_ARGUMENT;
+    if (*offset == size) return TEXT_UTF8_END;
+    result = decode_one(bytes, size, *offset, &codepoint, &step);
+    if (result != TEXT_UTF8_OK) return result;
+    *out_codepoint = (uint32_t)codepoint;
+    *offset += step;
+    return TEXT_UTF8_OK;
+}
+
 TextUtf8Result text_utf8_next_cluster(const char *bytes, size_t size, size_t *offset,
                                       uint32_t *out_first_codepoint, size_t *out_length) {
     size_t start;

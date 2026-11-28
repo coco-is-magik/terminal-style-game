@@ -8,6 +8,7 @@
 
 #include "../src/ui_canvas.h"
 #include "../src/ui_compositor.h"
+#include "../src/glyph_missing.h"
 #include "../src/grid.h"
 
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
@@ -137,7 +138,7 @@ static void test_optimized_compositor_matches_reference(void **state) {
                                 expected_touched, 4, 4);
         reference_compose_layer(&second, scales[scale_index], expected, 31, 25,
                                 expected_touched, 4, 4);
-        assert_true(ui_compositor_compose(&list, NULL, scales[scale_index], actual, 31, 25,
+        assert_true(ui_compositor_compose(&list, NULL, NULL, scales[scale_index], actual, 31, 25,
                                           actual_touched, 4, 4));
         assert_memory_equal(actual, expected, sizeof(actual));
         assert_memory_equal(actual_touched, expected_touched, sizeof(actual_touched));
@@ -215,7 +216,7 @@ static void test_layers_clip_policy_and_stable_order(void **state) {
     b.scale_policy = UI_SCALE_FIXED_100;
     assert_true(ui_layer_list_add(&list, &a));
     assert_true(ui_layer_list_add(&list, &b));
-    assert_true(ui_compositor_compose(&list, NULL, 200, pixels, 20, 20, NULL, 0, 0));
+    assert_true(ui_compositor_compose(&list, NULL, NULL, 200, pixels, 20, 20, NULL, 0, 0));
     assert_true(pixels[0] != 0);
     assert_true(pixels[0] != ((uint32_t)black.a << 24));
     assert_int_equal(pixels[7 * 20 + 7], pixels[0]);
@@ -279,7 +280,7 @@ static void test_centered_menu_crop_visible_at_all_presets(void **state) {
         assert_true(origin_x + scaled_width <= 2080);
         assert_true(origin_y + scaled_height <= 1280);
         assert_true(ui_layer_list_add(&list, &layer));
-        assert_true(ui_compositor_compose(&list, NULL, presets[p], pixels,
+        assert_true(ui_compositor_compose(&list, NULL, NULL, presets[p], pixels,
                                           2080, 1280, NULL, 0, 0));
         assert_true(pixels[sample_y * 2080 + sample_x] != 0);
     }
@@ -318,9 +319,43 @@ static void test_scaled_edges_have_independent_expectations(void **state) {
 }
 
 
+/* A codepoint the chrome's face cannot draw is recorded against the chrome, with the cell it was seen
+   at — the UI's own gaps, not the world's (V1-6 plan, I2). */
+static void test_missing_codepoint_is_noted_for_the_chrome(void **state) {
+    UiCanvas *canvas = ui_canvas_create(4, 2);
+    GlyphMissingState missing;
+    UiLayerList list = {0};
+    UiLayer layer;
+    uint32_t pixels[32 * 16];
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Color black = {0, 0, 0, 255};
+    (void)state;
+
+    assert_non_null(canvas);
+    /* U+3042 with no set loaded: the built-in face covers ASCII only, so this is a genuine gap. */
+    assert_true(ui_canvas_set(canvas, 1, 0, 0x3042U, white, black));
+    layer = layer_for(canvas, 1, 0, 32, 16);
+    assert_true(ui_layer_list_add(&list, &layer));
+
+    glyph_missing_reset(&missing);
+    glyph_missing_begin_frame(&missing);
+    assert_true(ui_compositor_compose(&list, NULL, &missing, 100, pixels, 32, 16, NULL, 4, 2));
+    assert_int_equal(glyph_missing_report_count(&missing), 1U);
+    assert_int_equal(glyph_missing_affected_this_frame(&missing), 1U);
+
+    /* A second frame over the same content counts the cell again but must not report it again. */
+    glyph_missing_begin_frame(&missing);
+    assert_true(ui_compositor_compose(&list, NULL, &missing, 100, pixels, 32, 16, NULL, 4, 2));
+    assert_int_equal(glyph_missing_report_count(&missing), 0U);
+    assert_int_equal(glyph_missing_affected_this_frame(&missing), 1U);
+
+    ui_canvas_destroy(canvas);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_canvas_transparency_and_intentional_space),
+        cmocka_unit_test(test_missing_codepoint_is_noted_for_the_chrome),
         cmocka_unit_test(test_region_copy_does_not_resurrect_stale_glyphs),
         cmocka_unit_test(test_fractional_edges_are_adjacent),
         cmocka_unit_test(test_layers_clip_policy_and_stable_order),

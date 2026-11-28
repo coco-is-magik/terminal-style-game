@@ -392,6 +392,40 @@ static void test_editor_ui_workspace_is_nonrepeat_edge(void **state) {
     assert_false(input.editor_ui_workspace_pressed);
 }
 
+/* The IME's composition arrives as its own event and survives frames, because SDL re-sends it only when it
+   changes; an empty one means the composition ended (V1-6 plan, D-F). */
+static void test_text_editing_state_survives_frames(void **state) {
+    InputState input = {0};
+    InputEvent editing = {
+        INPUT_EVENT_TEXT_EDITING, INPUT_KEY_NONE, false, false, false, 3.0f, 1.0f, 0,
+        "\xE3\x81\xAB"
+    };
+    (void)state;
+
+    input_apply_event(&input, &editing, false);
+    assert_true(input.text_editing_active);
+    assert_int_equal(input.text_editing_len, 3);
+    assert_string_equal(input.text_editing, "\xE3\x81\xAB");
+    assert_int_equal(input.text_editing_cursor, 3);
+    assert_int_equal(input.text_editing_selection, 1);
+
+    /* A frame with no events does not wipe it: input_begin_frame clears per-frame fields, not this one. */
+    input_begin_frame(&input);
+    assert_true(input.text_editing_active);
+    assert_int_equal(input.text_editing_len, 3);
+
+    /* An empty composition ends it. */
+    editing.text = "";
+    input_apply_event(&input, &editing, false);
+    assert_false(input.text_editing_active);
+    assert_int_equal(input.text_editing_len, 0);
+
+    /* Headless mode filters it like every other non-quit event. */
+    editing.text = "x";
+    input_apply_event(&input, &editing, true);
+    assert_false(input.text_editing_active);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_frame_reset_preserves_held_and_quit),
@@ -411,6 +445,7 @@ int main(void) {
         cmocka_unit_test(test_editor_flow_workspace_is_nonrepeat_edge),
         cmocka_unit_test(test_editor_flow_connect_is_nonrepeat_edge),
         cmocka_unit_test(test_editor_ui_workspace_is_nonrepeat_edge),
+        cmocka_unit_test(test_text_editing_state_survives_frames),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -52,6 +52,8 @@ void input_begin_frame(InputState *input) {
     RESET_FIELD(editor_new_generated_pressed);
     RESET_FIELD(editor_reload_pressed);
     RESET_FIELD(editor_text_backspace_pressed);
+    RESET_FIELD(editor_caret_extend_pressed);
+    RESET_FIELD(editor_paste_pressed);
     RESET_FIELD(editor_previous_pressed);
     RESET_FIELD(editor_next_pressed);
     RESET_FIELD(editor_decrease_pressed);
@@ -80,6 +82,19 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         return;
     }
     if (headless_mode) return;
+    if (event->type == INPUT_EVENT_TEXT_EDITING) {
+        const char *text = event->text ? event->text : "";
+        int length = 0;
+        while (text[length] != '\0' && length < (int)sizeof(input->text_editing) - 1)
+            length++;
+        memcpy(input->text_editing, text, (size_t)length);
+        input->text_editing[length] = '\0';
+        input->text_editing_len = length;
+        input->text_editing_cursor = (int)event->x;
+        input->text_editing_selection = (int)event->y;
+        input->text_editing_active = length > 0;
+        return;
+    }
     if (event->type == INPUT_EVENT_TEXT && event->text) {
         const char *text = event->text;
         while (*text && input->text_input_len < (int)sizeof(input->text_input) - 1) {
@@ -143,6 +158,7 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
             else {
                 input->arrow_left = true;
                 input->editor_decrease_pressed = true;
+                if (event->shift) input->editor_caret_extend_pressed = true;
             }
             break;
         case INPUT_KEY_RIGHT:
@@ -150,6 +166,7 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
             else {
                 input->arrow_right = true;
                 input->editor_increase_pressed = true;
+                if (event->shift) input->editor_caret_extend_pressed = true;
             }
             break;
         case INPUT_KEY_SPACE:
@@ -169,6 +186,7 @@ void input_apply_event(InputState *input, const InputEvent *event, bool headless
         case INPUT_KEY_E: input->editor_select_pressed = true; break;
         case INPUT_KEY_Z: if (event->ctrl) input->editor_undo_pressed = true; break;
         case INPUT_KEY_Y: if (event->ctrl) input->editor_redo_pressed = true; break;
+        case INPUT_KEY_V: if (event->ctrl) input->editor_paste_pressed = true; break;
         case INPUT_KEY_S:
             if (event->ctrl && event->shift) input->editor_save_as_pressed = true;
             else if (event->ctrl) input->editor_save_pressed = true;
@@ -211,6 +229,7 @@ static InputKey translate_key(SDL_Keycode key) {
         case SDLK_RIGHTBRACKET: return INPUT_KEY_RIGHTBRACKET; case SDLK_F10: return INPUT_KEY_F10;
         case SDLK_TAB: return INPUT_KEY_TAB; case SDLK_E: return INPUT_KEY_E;
         case SDLK_Z: return INPUT_KEY_Z; case SDLK_Y: return INPUT_KEY_Y;
+        case SDLK_V: return INPUT_KEY_V;
         case SDLK_S: return INPUT_KEY_S; case SDLK_O: return INPUT_KEY_O;
         case SDLK_N: return INPUT_KEY_N; case SDLK_I: return INPUT_KEY_I;
         case SDLK_L: return INPUT_KEY_L;
@@ -281,6 +300,10 @@ void input_process(InputState *input, bool headless_mode) {
             event.shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
         } else if (e.type == SDL_EVENT_TEXT_INPUT) {
             event.type = INPUT_EVENT_TEXT; event.text = e.text.text;
+        } else if (e.type == SDL_EVENT_TEXT_EDITING) {
+            event.type = INPUT_EVENT_TEXT_EDITING; event.text = e.edit.text;
+            event.x = (float)e.edit.start;
+            event.y = (float)e.edit.length;
         } else if (e.type == SDL_EVENT_MOUSE_MOTION) {
             event.type = INPUT_EVENT_MOUSE_MOTION;
             event.x = e.motion.xrel; event.y = e.motion.yrel;

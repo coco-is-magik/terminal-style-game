@@ -4,6 +4,7 @@
 #include "ui_document_internal.h"
 #include "platform_fs.h"
 #include "rgba_parse.h"
+#include "ui_text.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -28,16 +29,10 @@ static bool valid_name(const char *name) {
 }
 
 static bool valid_content(const char *content) {
-    size_t i;
-    size_t length;
     if (!content) return false;
-    length = strlen(content);
-    if (length >= UI_DOCUMENT_CONTENT_CAPACITY) return false;
-    for (i = 0U; i < length; i++) {
-        unsigned char c = (unsigned char)content[i];
-        if (c < 32U || c > 126U || c == '\\') return false;
-    }
-    return true;
+    /* What may be said is `ui_text`'s decision (V1-6 plan, I3); how much fits is this field's. */
+    if (strlen(content) >= UI_DOCUMENT_CONTENT_CAPACITY) return false;
+    return ui_text_check_cstr(content, NULL) == UI_TEXT_OK;
 }
 
 static bool valid_system_action(const char *action) {
@@ -1243,9 +1238,11 @@ UiDocumentResult ui_document_save(UiDocument *document) {
     return ui_document_internal_save(document, UI_DOCUMENT_SAVE_FAULT_NONE);
 }
 
-static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
+static UiDocumentResult parse_file(FILE *file, UiDocument *candidate,
+                                   UiDocumentLoadDiagnostic *diagnostic) {
     enum { ROOT, ELEMENT } section = ROOT;
     char line[512];
+    size_t line_number = 0U;
     uint32_t version = 0U;
     bool have_version = false, have_kind = false, have_name = false, have_next = false;
     bool have_role = false;
@@ -1273,6 +1270,7 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
         char *separator;
         char *key;
         char *value;
+        line_number++;
         trim_line(line);
         if (line[0] == '\0' || line[0] == '#') continue;
         if (strcmp(line, "[element]") == 0) {
@@ -1358,8 +1356,23 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
                 have_type = parse_type(value, &element->type);
             else if (strcmp(key, "name") == 0 && !have_element_name)
                 have_element_name = copy_string(element->name, sizeof(element->name), value);
-            else if (strcmp(key, "content") == 0 && !have_content)
+            else if (strcmp(key, "content") == 0 && !have_content) {
+                /* Refused here rather than after the whole file is read, because this is the one place
+                   that still knows which line and column the offending byte sits on. */
+                UiTextDiagnostic text_diagnostic;
+                UiTextResult text_result = ui_text_check_cstr(value, &text_diagnostic);
+                if (text_result != UI_TEXT_OK) {
+                    if (diagnostic) {
+                        diagnostic->result = UI_DOCUMENT_INVALID_CONTENT;
+                        diagnostic->text_result = text_result;
+                        diagnostic->line = line_number;
+                        diagnostic->column = (size_t)(value - line) + text_diagnostic.offset;
+                        diagnostic->codepoint = text_diagnostic.codepoint;
+                    }
+                    return UI_DOCUMENT_INVALID_CONTENT;
+                }
                 have_content = copy_string(element->content, sizeof(element->content), value);
+            }
             else if (strcmp(key, "port") == 0 && !have_port)
                 have_port = copy_string(element->flow_port, sizeof(element->flow_port), value);
             else if (strcmp(key, "binding") == 0 && !have_binding)
@@ -1547,18 +1560,34 @@ static UiDocumentResult parse_file(FILE *file, UiDocument *candidate) {
     return ui_document_validate(candidate);
 }
 
-UiDocumentResult ui_document_load(UiDocument *document, const char *path) {
+UiDocumentResult ui_document_load_diagnosed(UiDocument *document, const char *path,
+                                            UiDocumentLoadDiagnostic *out_diagnostic) {
     UiDocument candidate;
     UiDocumentResult result;
     FILE *file;
+    if (out_diagnostic) memset(out_diagnostic, 0, sizeof(*out_diagnostic));
     if (!document || !path || path[0] == '\0' ||
-        strlen(path) >= UI_DOCUMENT_PATH_CAPACITY) return UI_DOCUMENT_INVALID_ARGUMENT;
+        strlen(path) >= UI_DOCUMENT_PATH_CAPACITY) {
+        if (out_diagnostic) out_diagnostic->result = UI_DOCUMENT_INVALID_ARGUMENT;
+        return UI_DOCUMENT_INVALID_ARGUMENT;
+    }
     file = fopen(path, "r");
-    if (!file) return UI_DOCUMENT_IO_ERROR;
-    result = parse_file(file, &candidate);
+    if (!file) {
+        if (out_diagnostic) out_diagnostic->result = UI_DOCUMENT_IO_ERROR;
+        return UI_DOCUMENT_IO_ERROR;
+    }
+    result = parse_file(file, &candidate, out_diagnostic);
     if (fclose(file) != 0 && result == UI_DOCUMENT_OK) result = UI_DOCUMENT_IO_ERROR;
-    if (result != UI_DOCUMENT_OK) return result;
+    if (result != UI_DOCUMENT_OK) {
+        if (out_diagnostic) out_diagnostic->result = result;
+        return result;
+    }
     (void)copy_string(candidate.path, sizeof(candidate.path), path);
+    if (out_diagnostic) out_diagnostic->result = UI_DOCUMENT_OK;
     *document = candidate;
     return UI_DOCUMENT_OK;
+}
+
+UiDocumentResult ui_document_load(UiDocument *document, const char *path) {
+    return ui_document_load_diagnosed(document, path, NULL);
 }

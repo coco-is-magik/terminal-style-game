@@ -5,6 +5,9 @@
 #include "ui_layout_resolver.h"
 #include "ui_nested_inspector.h"
 #include "platform_fs.h"
+#include "text_edit.h"
+#include "text_utf8.h"
+#include "ui_text.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -14,6 +17,232 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+/* Which buffer the current text mode edits. `CREATE_NAME` has its own because the name being typed is
+   not part of any document yet; the three edit modes share one. A descriptor keeps every rule below
+   written once instead of once per mode. */
+typedef struct {
+    char *bytes;
+    size_t capacity; /* counts the terminator, which is what text_edit_replace_range expects */
+    size_t *length;
+    size_t *cursor;
+    size_t *anchor;
+} TextField;
+
+static bool text_field_for(UiMenuWorkspace *workspace, TextField *out) {
+    if (!workspace || !out) return false;
+    if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME) {
+        out->bytes = workspace->create_name;
+        out->capacity = sizeof(workspace->create_name);
+        out->length = &workspace->create_name_length;
+        out->cursor = &workspace->create_name_cursor;
+        out->anchor = &workspace->create_name_anchor;
+        return true;
+    }
+    if (workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
+        workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
+        workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME) {
+        out->bytes = workspace->edit_text;
+        out->capacity = sizeof(workspace->edit_text);
+        out->length = &workspace->edit_text_length;
+        out->cursor = &workspace->edit_text_cursor;
+        out->anchor = &workspace->edit_text_anchor;
+        return true;
+    }
+    return false;
+}
+
+/* An identifier is `[A-Za-z0-9_-]`; content is authored text and obeys `ui_text` (V1-6 plan, I3).
+   The distinction changes what a rejected keystroke means: an identifier *filters* to the characters it
+   can use, which is long-standing behaviour and friendlier than silently dropping the whole word, while
+   content is refused whole, because half a label is not what anyone typed. */
+static bool text_field_is_identifier(const UiMenuWorkspace *workspace) {
+    return workspace->mode != UI_MENU_WORKSPACE_EDIT_CONTENT;
+}
+
+/* Does an identifier field accept this text *whole*? Typing filters a mixed string to the characters it
+   can use; a paste refuses the whole thing, because silently dropping half of what someone pasted is the
+   half-application D-E forbids. */
+static bool identifier_accepts(const char *text, size_t size) {
+    size_t offset = 0U;
+    while (offset < size) {
+        uint32_t codepoint = 0U;
+        if (text_utf8_next_codepoint(text, size, &offset, &codepoint) != TEXT_UTF8_OK) return false;
+        if (codepoint > 0x7EU) return false;
+        if (!((codepoint >= 'a' && codepoint <= 'z') ||
+              (codepoint >= 'A' && codepoint <= 'Z') ||
+              (codepoint >= '0' && codepoint <= '9') ||
+              codepoint == '_' || codepoint == '-')) return false;
+    }
+    return true;
+}
+
+static void text_field_begin(UiMenuWorkspace *workspace, const char *source) {
+    TextField field;
+    size_t length;
+
+    if (!text_field_for(workspace, &field)) return;
+    length = source ? strlen(source) : 0U;
+    if (length + 1U > field.capacity) length = field.capacity - 1U;
+    if (length > 0U) memcpy(field.bytes, source, length);
+    field.bytes[length] = '\0';
+    *field.length = length;
+    /* Start at the end, which is where the append-only field always was. Opening a field also ends any
+       composition: whatever was being composed belonged to the field that just went away. */
+    *field.cursor = length;
+    *field.anchor = length;
+    memset(workspace->edit_preedit, 0, sizeof(workspace->edit_preedit));
+    workspace->edit_preedit_length = 0U;
+}
+
+static void clear_preedit(UiMenuWorkspace *workspace);
+
+/* A pre-edit is drawn, not committed: it has to be well-formed UTF-8 to reach a cell, but it is not held
+   to `ui_text`'s authored-text rules until it is committed, because a composition may legitimately pass
+   through states no field would accept. */
+UiMenuWorkspaceResult ui_menu_workspace_set_preedit(UiMenuWorkspace *workspace, const char *text,
+                                                    size_t size) {
+    TextField field;
+    size_t fitted = 0U;
+
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (!text || size == 0U) {
+        clear_preedit(workspace);
+        return UI_MENU_WORKSPACE_OK;
+    }
+    /* A composition that cannot be shown in full is shown as far as a cluster boundary: refusing to show
+       it at all would leave the user typing blind (D-D). */
+    (void)text_edit_fit(text, size, workspace->edit_preedit, sizeof(workspace->edit_preedit),
+                        &fitted);
+    workspace->edit_preedit_length = fitted;
+    return UI_MENU_WORKSPACE_OK;
+}
+
+/* Record why a text operation was refused (or that it was not), so the surface can say so. */
+static void note_text_result(UiMenuWorkspace *workspace, UiMenuWorkspaceResult result,
+                             const UiTextDiagnostic *diagnostic) {
+    if (result == UI_MENU_WORKSPACE_REJECTED_TEXT && diagnostic) {
+        workspace->last_text_diagnostic = *diagnostic;
+        workspace->last_text_refused = true;
+        return;
+    }
+    /* A refusal with no diagnostic is still a refusal - it is the capacity case - and a success clears
+       both, so a stale reason can never be shown beside different text. */
+    workspace->last_text_refused = result == UI_MENU_WORKSPACE_REJECTED_TEXT ||
+                                   result == UI_MENU_WORKSPACE_FIELD_FULL;
+    workspace->last_text_diagnostic.result = UI_TEXT_OK;
+    workspace->last_text_diagnostic.offset = 0U;
+    workspace->last_text_diagnostic.codepoint = 0U;
+}
+
+const UiTextDiagnostic *ui_menu_workspace_last_text_diagnostic(const UiMenuWorkspace *workspace) {
+    return workspace && workspace->last_text_refused &&
+           workspace->last_text_diagnostic.result != UI_TEXT_OK
+        ? &workspace->last_text_diagnostic : NULL;
+}
+
+const UiDocumentLoadDiagnostic *ui_menu_workspace_last_load_diagnostic(
+    const UiMenuWorkspace *workspace) {
+    if (!workspace || workspace->last_load_diagnostic.line == 0U) return NULL;
+    return &workspace->last_load_diagnostic;
+}
+
+bool ui_menu_workspace_has_preedit(const UiMenuWorkspace *workspace) {
+    return workspace && workspace->edit_preedit_length > 0U;
+}
+
+static void clear_preedit(UiMenuWorkspace *workspace) {
+    /* Zeroed rather than terminated: "nothing of it is kept" is then true byte for byte, which is what
+       makes a test able to say so. */
+    memset(workspace->edit_preedit, 0, sizeof(workspace->edit_preedit));
+    workspace->edit_preedit_length = 0U;
+}
+
+bool ui_menu_workspace_has_selection(const UiMenuWorkspace *workspace) {
+    if (!workspace) return false;
+    return workspace->edit_text_anchor != workspace->edit_text_cursor ||
+           workspace->create_name_anchor != workspace->create_name_cursor;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_move_caret(UiMenuWorkspace *workspace, int direction,
+                                                   bool extend) {
+    TextField field;
+    size_t target = 0U;
+    size_t begin = 0U;
+    size_t end = 0U;
+    TextEditResult moved;
+
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (direction == 0) return UI_MENU_WORKSPACE_NO_ACTION;
+    /* The composition is anchored where the caret was; moving the caret ends it rather than leaving it
+       pointing at a spot the text no longer occupies. */
+    clear_preedit(workspace);
+    if (!text_edit_is_boundary(field.bytes, *field.length, *field.cursor))
+        return UI_MENU_WORKSPACE_MUTATION_FAILED;
+
+    if (direction < 0) {
+        moved = text_edit_prev_boundary(field.bytes, *field.length, *field.cursor, &target);
+    } else {
+        moved = text_edit_next_boundary(field.bytes, *field.length, *field.cursor, &target);
+    }
+    if (moved != TEXT_EDIT_OK) return UI_MENU_WORKSPACE_MUTATION_FAILED;
+
+    if (extend) {
+        /* The anchor stays put, so a selection grows and shrinks in both directions. */
+        *field.cursor = target;
+    } else if (*field.anchor != *field.cursor) {
+        /* A plain arrow collapses the selection to the edge it is heading for, rather than stepping one
+           cluster from an end the user cannot see. */
+        text_edit_selection(*field.anchor, *field.cursor, &begin, &end);
+        *field.cursor = direction < 0 ? begin : end;
+        *field.anchor = *field.cursor;
+    } else {
+        *field.cursor = target;
+        *field.anchor = target;
+    }
+    return UI_MENU_WORKSPACE_OK;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_select_all(UiMenuWorkspace *workspace, bool select) {
+    TextField field;
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (select) {
+        *field.anchor = 0U;
+        *field.cursor = *field.length;
+    } else {
+        *field.anchor = *field.cursor;
+    }
+    return UI_MENU_WORKSPACE_OK;
+}
+
+/* Insert at the caret, replacing any selection. Returns NO_ACTION when there is nothing to insert and
+   FIELD_FULL when it would not fit, so a caller can tell "ignored" from "refused". */
+static UiMenuWorkspaceResult text_field_insert(UiMenuWorkspace *workspace,
+                                               const char *text, size_t size) {
+    TextField field;
+    size_t begin = 0U;
+    size_t end = 0U;
+    TextEditResult result;
+
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    text_edit_selection(*field.anchor, *field.cursor, &begin, &end);
+    result = text_edit_replace_range(field.bytes, field.capacity, field.length, begin, end,
+                                     text, size, field.cursor);
+    if (result == TEXT_EDIT_NO_ROOM) {
+        note_text_result(workspace, UI_MENU_WORKSPACE_FIELD_FULL, NULL);
+        return UI_MENU_WORKSPACE_FIELD_FULL;
+    }
+    if (result != TEXT_EDIT_OK) return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    *field.anchor = *field.cursor;
+    note_text_result(workspace, UI_MENU_WORKSPACE_OK, NULL);
+    return UI_MENU_WORKSPACE_OK;
+}
+
 
 static void select_id(UiMenuWorkspace *workspace, UiElementId id);
 static UiMenuWorkspaceResult record_change(UiMenuWorkspace *workspace,
@@ -614,7 +843,9 @@ static UiMenuWorkspaceResult load_selected(UiMenuWorkspace *workspace) {
     UiDocument candidate;
     if (!entry) return UI_MENU_WORKSPACE_NO_ACTION;
     ui_document_init(&candidate);
-    if (ui_document_load(&candidate, entry->path) != UI_DOCUMENT_OK)
+    memset(&workspace->last_load_diagnostic, 0, sizeof(workspace->last_load_diagnostic));
+    if (ui_document_load_diagnosed(&candidate, entry->path,
+                                   &workspace->last_load_diagnostic) != UI_DOCUMENT_OK)
         return UI_MENU_WORKSPACE_LOAD_FAILED;
     reset_document(workspace);
     workspace->document = candidate;
@@ -766,20 +997,15 @@ static UiMenuWorkspaceResult add_child(UiMenuWorkspace *workspace,
 
 static void begin_element_text_edit(UiMenuWorkspace *workspace, bool port) {
     const UiDocumentElement *element = ui_menu_workspace_selected_element(workspace);
-    const char *source = port ? element->flow_port : element->content;
-    size_t length = strlen(source);
-    memcpy(workspace->edit_text, source, length + 1U);
-    workspace->edit_text_length = length;
     workspace->mode = port ? UI_MENU_WORKSPACE_EDIT_PORT
                            : UI_MENU_WORKSPACE_EDIT_CONTENT;
+    text_field_begin(workspace, port ? element->flow_port : element->content);
 }
 
 static void begin_element_name_edit(UiMenuWorkspace *workspace) {
     const UiDocumentElement *element = ui_menu_workspace_selected_element(workspace);
-    size_t length = strlen(element->name);
-    memcpy(workspace->edit_text, element->name, length + 1U);
-    workspace->edit_text_length = length;
     workspace->mode = UI_MENU_WORKSPACE_EDIT_NAME;
+    text_field_begin(workspace, element->name);
 }
 
 static UiMenuWorkspaceResult commit_element_text(UiMenuWorkspace *workspace,
@@ -954,11 +1180,12 @@ UiMenuWorkspaceResult ui_menu_workspace_internal_confirm(
     const UiDocumentElement *element;
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    /* Committing the field ends any composition, so no field is left with one behind it (D-F). */
+    clear_preedit(workspace);
     if (workspace->mode == UI_MENU_WORKSPACE_CHOOSER) {
         if (workspace->chooser_index == workspace->catalog.count) {
-            workspace->create_name[0] = '\0';
-            workspace->create_name_length = 0U;
             workspace->mode = UI_MENU_WORKSPACE_CREATE_NAME;
+            text_field_begin(workspace, "");
             return UI_MENU_WORKSPACE_OK;
         }
         return load_selected(workspace);
@@ -1061,6 +1288,9 @@ UiMenuWorkspaceResult ui_menu_workspace_confirm(UiMenuWorkspace *workspace) {
 UiMenuWorkspaceResult ui_menu_workspace_escape(UiMenuWorkspace *workspace) {
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    /* Esc cancels the composition with the field: nothing of it is kept, which is what "cancel discards"
+       means (D-F). */
+    clear_preedit(workspace);
     if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME) {
         workspace->mode = UI_MENU_WORKSPACE_CHOOSER;
         return UI_MENU_WORKSPACE_OK;
@@ -1334,48 +1564,136 @@ int ui_menu_workspace_preview_scale_percent(const UiMenuWorkspace *workspace) {
 
 UiMenuWorkspaceResult ui_menu_workspace_append_text(UiMenuWorkspace *workspace,
                                                     const char *text) {
-    size_t i;
+    char filtered[UI_DOCUMENT_CONTENT_CAPACITY];
+    size_t size;
+    size_t kept = 0U;
+    size_t offset = 0U;
+    UiMenuWorkspaceResult result;
+    TextField field;
+
     if (!workspace || !text) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
-    if (workspace->mode != UI_MENU_WORKSPACE_CREATE_NAME &&
-        workspace->mode != UI_MENU_WORKSPACE_EDIT_CONTENT &&
-        workspace->mode != UI_MENU_WORKSPACE_EDIT_PORT &&
-        workspace->mode != UI_MENU_WORKSPACE_EDIT_NAME)
-        return UI_MENU_WORKSPACE_NO_ACTION;
-    for (i = 0U; text[i] != '\0'; i++) {
-        unsigned char c = (unsigned char)text[i];
-        char *buffer = workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME
-            ? workspace->create_name : workspace->edit_text;
-        size_t *length = workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME
-            ? &workspace->create_name_length : &workspace->edit_text_length;
-        size_t capacity = workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME
-            ? sizeof(workspace->create_name) :
-            (workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
-             workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME)
-            ? UI_DOCUMENT_NAME_CAPACITY : sizeof(workspace->edit_text);
-        bool identifier = workspace->mode != UI_MENU_WORKSPACE_EDIT_CONTENT;
-        if ((identifier && !(isalnum(c) || c == '_' || c == '-')) ||
-            (!identifier && (c < 32U || c > 126U || c == '\\'))) continue;
-        if (*length + 1U >= capacity)
-            return UI_MENU_WORKSPACE_INVALID_NAME;
-        buffer[(*length)++] = (char)c;
-        buffer[*length] = '\0';
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+
+    size = strlen(text);
+    if (size == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+    /* Committed text replaces the composition, whatever the commit turns out to be: leaving a pre-edit up
+       after its own commit would show the user a character that is not there. */
+    clear_preedit(workspace);
+
+    note_text_result(workspace, UI_MENU_WORKSPACE_OK, NULL);
+
+    if (text_field_is_identifier(workspace)) {
+        /* Filter by *codepoint*, so a multi-byte character is dropped whole rather than as three unusable
+           bytes, and the characters an identifier can use still arrive as they always did. */
+        while (offset < size) {
+            uint32_t codepoint = 0U;
+            if (text_utf8_next_codepoint(text, size, &offset, &codepoint) != TEXT_UTF8_OK)
+                return UI_MENU_WORKSPACE_REJECTED_TEXT;
+            if (codepoint > 0x7EU) continue;
+            if (!((codepoint >= 'a' && codepoint <= 'z') ||
+                  (codepoint >= 'A' && codepoint <= 'Z') ||
+                  (codepoint >= '0' && codepoint <= '9') ||
+                  codepoint == '_' || codepoint == '-')) continue;
+            if (kept + 1U >= sizeof(filtered)) break;
+            filtered[kept++] = (char)codepoint;
+        }
+        if (kept == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+        result = text_field_insert(workspace, filtered, kept);
+        note_text_result(workspace, result, NULL);
+        return result;
     }
+
+    /* Content is refused whole: half a label is not what anyone typed, and the document would refuse the
+       half that arrived anyway. */
+    {
+        UiTextDiagnostic diagnostic;
+        if (ui_text_check(text, size, &diagnostic) != UI_TEXT_OK) {
+            note_text_result(workspace, UI_MENU_WORKSPACE_REJECTED_TEXT, &diagnostic);
+            return UI_MENU_WORKSPACE_REJECTED_TEXT;
+        }
+    }
+    result = text_field_insert(workspace, text, size);
+    note_text_result(workspace, result, NULL);
+    return result;
+}
+
+UiMenuWorkspaceResult ui_menu_workspace_paste_text(UiMenuWorkspace *workspace, const char *text,
+                                                   size_t size, UiTextDiagnostic *out_diagnostic) {
+    TextField field;
+    UiTextDiagnostic diagnostic;
+    size_t begin = 0U;
+    size_t end = 0U;
+    size_t replaced;
+    TextEditResult result;
+
+    if (out_diagnostic) memset(out_diagnostic, 0, sizeof(*out_diagnostic));
+    if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
+    if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    /* Rule 1: nothing to paste is a status, not a failure, and it is silent. */
+    if (!text) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (size == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+
+    clear_preedit(workspace);
+    text_edit_selection(*field.anchor, *field.cursor, &begin, &end);
+    replaced = end - begin;
+
+    /* Rule 3 before rule 2: capacity is arithmetic and needs no interpretation, and reporting "too large"
+       for a paste that is also malformed is the more useful answer — nothing about it can be used. */
+    if (*field.length - replaced + size >= field.capacity) {
+        note_text_result(workspace, UI_MENU_WORKSPACE_FIELD_FULL, NULL);
+        return UI_MENU_WORKSPACE_FIELD_FULL;
+    }
+
+    /* Rules 2 and 4 share one check, because they share one owner: `ui_text` decides what may be in a
+       field, and its diagnostic says which rule and where. */
+    if (text_field_is_identifier(workspace)) {
+        if (!identifier_accepts(text, size)) {
+            note_text_result(workspace, UI_MENU_WORKSPACE_REJECTED_TEXT, NULL);
+            return UI_MENU_WORKSPACE_REJECTED_TEXT;
+        }
+    } else if (ui_text_check(text, size, &diagnostic) != UI_TEXT_OK) {
+        if (out_diagnostic) *out_diagnostic = diagnostic;
+        note_text_result(workspace, UI_MENU_WORKSPACE_REJECTED_TEXT, &diagnostic);
+        return UI_MENU_WORKSPACE_REJECTED_TEXT;
+    }
+
+    /* One range write, so a successful paste is one edit rather than a sequence of them. */
+    result = text_edit_replace_range(field.bytes, field.capacity, field.length, begin, end,
+                                     text, size, field.cursor);
+    if (result == TEXT_EDIT_NO_ROOM) return UI_MENU_WORKSPACE_FIELD_FULL;
+    if (result != TEXT_EDIT_OK) return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    *field.anchor = *field.cursor;
     return UI_MENU_WORKSPACE_OK;
 }
 
+
 UiMenuWorkspaceResult ui_menu_workspace_backspace(UiMenuWorkspace *workspace) {
+    TextField field;
+    size_t begin = 0U;
+    size_t end = 0U;
+
     if (!workspace) return UI_MENU_WORKSPACE_INVALID_ARGUMENT;
     if (!workspace->active) return UI_MENU_WORKSPACE_INACTIVE;
-    if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME) {
-        if (workspace->create_name_length == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
-        workspace->create_name[--workspace->create_name_length] = '\0';
-    } else if (workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
-               workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
-               workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME) {
-        if (workspace->edit_text_length == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
-        workspace->edit_text[--workspace->edit_text_length] = '\0';
-    } else return UI_MENU_WORKSPACE_NO_ACTION;
+    if (!text_field_for(workspace, &field)) return UI_MENU_WORKSPACE_NO_ACTION;
+    clear_preedit(workspace);
+
+    if (*field.anchor != *field.cursor) {
+        /* Backspace on a selection deletes the selection, which is what a user who just selected text
+           expects and what every editor does. */
+        text_edit_selection(*field.anchor, *field.cursor, &begin, &end);
+        if (text_edit_replace_range(field.bytes, field.capacity, field.length, begin, end,
+                                    NULL, 0U, field.cursor) != TEXT_EDIT_OK)
+            return UI_MENU_WORKSPACE_MUTATION_FAILED;
+        *field.anchor = *field.cursor;
+        return UI_MENU_WORKSPACE_OK;
+    }
+
+    if (*field.cursor == 0U) return UI_MENU_WORKSPACE_NO_ACTION;
+    if (text_edit_backspace(field.bytes, field.capacity, field.length, field.cursor) != TEXT_EDIT_OK)
+        return UI_MENU_WORKSPACE_MUTATION_FAILED;
+    *field.anchor = *field.cursor;
     return UI_MENU_WORKSPACE_OK;
 }
 

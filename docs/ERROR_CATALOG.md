@@ -188,16 +188,16 @@ different meaning.
 
 ### TSG-ASSET-ENV-0001 — A cell's declared face lacks the glyph the document requires
 
-- **Status:** Implemented (V1-5, 2026-11-25)
+- **Status:** Implemented (V1-5, 2026-11-25; extended to the application chrome in V1-6, 2026-11-25)
 - **Category/severity:** ENV / warning — visible in the cell, non-fatal, the run continues
-- **Owner/site:** `src/glyph_missing` decides what is newly distinct; `report_missing_glyphs` in `src/app.c` is the one place that prints it
-- **Detection:** a cell's codepoint resolves to `GLYPH_SOURCE_MISSING` — the source declares a set and that set does not contain the codepoint, or the source is the built-in face and the codepoint is above ASCII
-- **Context:** face (the set's provenance prefix, or `builtin`), codepoint (U+XXXX), first offending cell coordinate, count of affected cells this frame, and a count of any further distinct codepoints beyond the eight named
-- **Meaning:** the document requires a character the installed font does not provide
+- **Owner/site:** `src/glyph_missing` decides what is newly distinct; `report_missing_surface` in `src/app.c` is the one place that prints it, called once per surface
+- **Detection:** a cell's codepoint resolves to `GLYPH_SOURCE_MISSING` — the source declares a set and that set does not contain the codepoint, or the source is the built-in face and the codepoint is above ASCII. Two surfaces are checked, each against **its own** face: the world (`Renderer.world_source`) and the application chrome (`Renderer.ui_source`)
+- **Context:** surface (`world` or `ui`), face (the set's provenance prefix, or `builtin`), codepoint (U+XXXX), first offending cell coordinate, count of affected cells this frame, and a count of any further distinct codepoints beyond the eight named
+- **Meaning:** the document requires a character the installed font does not provide. For `ui` this means authored interface text mentions a character the chrome's face cannot draw — the chrome's face is the installed set only when that set covers U+0020–U+007E (`D-A`), so a CJK-only face leaves the menus on the built-in face and only chrome text above ASCII can raise this
 - **Recovery:** none attempted by design — there is no fallback chain (`D8`); the cell renders the sentinel (the built-in `X` on the out-of-theme diagnostic colours) and rendering continues
 - **Preserved state:** the document, its glyph references and the generated glyph set are unchanged; nothing is serialised
 - **Action:** install a face with the required coverage, or change the face for those cells
-- **Verification:** `test-glyph-missing-sentinel` asserts the sentinel and the exact colours, that exactly one diagnostic is raised per (face, codepoint) across frames, that a different face reports its own gaps, that the report list bounds itself and names the overflow, and that a source with no set is silent for ASCII. The end-to-end emission was observed in a real run: a one-glyph set produced eight named gaps plus `3 more distinct codepoint(s)`, once for a 180-frame benchmark rather than once per frame.
+- **Verification:** `test-glyph-missing-sentinel` asserts the sentinel and the exact colours, that exactly one diagnostic is raised per (face, codepoint) across frames, that a different face reports its own gaps, that the report list bounds itself and names the overflow, and that a source with no set is silent for ASCII. The end-to-end emission was observed in a real run: a one-glyph set produced eight named gaps plus `3 more distinct codepoint(s)`, once for a 180-frame benchmark rather than once per frame. `test-ui-compositor` asserts a chrome cell above ASCII is recorded against the chrome and is reported once, not per frame; `test-glyph-source` asserts the adoption policy that decides which face the chrome asks.
 - **Introduced:** 2026-11-06 (planned); **implemented 2026-11-25**
 
 ## Entry template

@@ -2,6 +2,8 @@
 
 #include "ui_app_theme_adapter.h"
 #include "ui_editor_panel.h"
+#include "text_edit.h"
+#include "ui_text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -237,6 +239,27 @@ static void render_preview(const UiMenuWorkspace *workspace,
 #define UI_EDITOR_PREVIEW_MARGIN 2
 #define UI_EDITOR_PREVIEW_TOP 3
 
+/* Render a text field as the panel shows it: the caret as `_` at its own offset, and a selection between
+   `[` and `]` so a reader can see what Backspace will take. With the caret at the end — where every field
+   opens — the result is exactly the `text_` the editor has always drawn. */
+static void format_text_field(char *out, size_t capacity, const char *bytes, size_t length,
+                              size_t cursor, size_t anchor) {
+    size_t begin = 0U;
+    size_t end = 0U;
+    size_t i;
+    size_t written = 0U;
+
+    if (!out || capacity < 2U) return;
+    text_edit_selection(anchor, cursor, &begin, &end);
+    for (i = 0U; i <= length && written + 3U < capacity; i++) {
+        if (end > begin && i == begin) out[written++] = '[';
+        if (i == cursor) out[written++] = '_';
+        if (end > begin && i == end) out[written++] = ']';
+        if (i < length && written + 2U < capacity) out[written++] = bytes[i];
+    }
+    out[written] = '\0';
+}
+
 static int editor_left_width(int columns) {
     int width = columns / 2 - 2;
     if (width > UI_EDITOR_LEFT_MAX) width = UI_EDITOR_LEFT_MAX;
@@ -370,6 +393,7 @@ bool ui_editor_presentation_render_viewport(
     UiEditorPanelRow rows[UI_EDITOR_PANEL_MAX_ROWS];
     UiEditorPanelRow top[4];
     char line[160];
+    char field[UI_DOCUMENT_CONTENT_CAPACITY + 8];
     int columns;
     int limit_rows;
     int bottom;
@@ -379,6 +403,7 @@ bool ui_editor_presentation_render_viewport(
     int hierarchy_bottom;
     size_t top_count = 0U;
     const char *note = NULL;
+    char note_buffer[128];
     const UiDocument *preview_document;
     const UiDocumentElement *selected;
     if (!workspace || !workspace->active || !grid || !theme) return false;
@@ -403,6 +428,29 @@ bool ui_editor_presentation_render_viewport(
     else if (last_result == UI_MENU_WORKSPACE_MUTATION_FAILED ||
              last_result == UI_MENU_WORKSPACE_HISTORY_FULL)
         note = "Change rejected";
+    else if (last_result == UI_MENU_WORKSPACE_REJECTED_TEXT) {
+        /* The typed refusal, with its reason and position: a caller can act on "CONTROL at byte 4" where
+           "Text refused" alone would leave them guessing (I3/I4/I5 records). */
+        const UiTextDiagnostic *diagnostic = ui_menu_workspace_last_text_diagnostic(workspace);
+        if (diagnostic) {
+            char described[64];
+            ui_text_describe(diagnostic, described, sizeof(described));
+            snprintf(note_buffer, sizeof(note_buffer), "Text refused: %s", described);
+        } else {
+            snprintf(note_buffer, sizeof(note_buffer), "Text refused");
+        }
+        note = note_buffer;
+    } else if (last_result == UI_MENU_WORKSPACE_FIELD_FULL)
+        note = "Field full: nothing was added";
+    else if (last_result == UI_MENU_WORKSPACE_LOAD_FAILED) {
+        const UiDocumentLoadDiagnostic *load = ui_menu_workspace_last_load_diagnostic(workspace);
+        if (load) {
+            snprintf(note_buffer, sizeof(note_buffer), "Load failed: line %d col %d: %s",
+                     (int)load->line, (int)load->column,
+                     ui_text_result_name(load->text_result));
+            note = note_buffer;
+        }
+    }
 
     /* A workspace is a set of panes, not a display surface: the canvas stays black,
        chrome is the shared panel, and the preview is the only thing that carries the
@@ -456,17 +504,31 @@ bool ui_editor_presentation_render_viewport(
         return true;
     }
     if (workspace->mode == UI_MENU_WORKSPACE_CREATE_NAME) {
-        snprintf(line, sizeof(line), "Name: %.80s_", workspace->create_name);
+        format_text_field(field, sizeof(field), workspace->create_name,
+                          workspace->create_name_length, workspace->create_name_cursor,
+                          workspace->create_name_anchor);
+        snprintf(line, sizeof(line), "Name: %.120s", field);
         row_set(&rows[0], line, "", true);
         (void)ui_editor_panel_render(grid, left, 1, "NEW MENU", "", rows, 1,
-                                     "Type=name  Enter=create  Esc=cancel", NULL,
+                                     "Type=name  Enter=create  Esc=cancel", note,
                                      now_ms, false, &palette);
         return true;
     }
     if (workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT ||
         workspace->mode == UI_MENU_WORKSPACE_EDIT_PORT ||
         workspace->mode == UI_MENU_WORKSPACE_EDIT_NAME) {
-        snprintf(line, sizeof(line), "%.120s_", workspace->edit_text);
+        format_text_field(field, sizeof(field), workspace->edit_text,
+                          workspace->edit_text_length, workspace->edit_text_cursor,
+                          workspace->edit_text_anchor);
+        /* The IME composition is drawn after the field in braces: visibly not part of the text, so a user
+           can tell what is committed from what is still being chosen (V1-6 plan, D-F). */
+        if (ui_menu_workspace_has_preedit(workspace)) {
+            /* The line buffer is 160 bytes, so the field and the composition take fixed shares of it
+               rather than relying on the compiler to prove the sum fits. */
+            snprintf(line, sizeof(line), "%.100s{%.40s}", field, workspace->edit_preedit);
+        } else {
+            snprintf(line, sizeof(line), "%.120s", field);
+        }
         row_set(&rows[0], line, "", true);
         (void)ui_editor_panel_render(grid, left, 1,
                                      workspace->mode == UI_MENU_WORKSPACE_EDIT_CONTENT
@@ -475,7 +537,7 @@ bool ui_editor_presentation_render_viewport(
                                          ? "EDIT BUTTON PORT" : "RENAME ELEMENT",
                                      "", rows, 1,
                                      "Type=text  Backspace=delete  Enter=commit  Esc=cancel",
-                                     NULL, now_ms, false, &palette);
+                                     note, now_ms, false, &palette);
         return true;
     }
     if (workspace->mode == UI_MENU_WORKSPACE_REMOVE_PROMPT) {
